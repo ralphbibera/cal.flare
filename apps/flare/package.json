@@ -1,0 +1,36 @@
+{
+  "name": "@calflare/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.22.1"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler dev",
+    "type-check": "wrangler types && astro sync && tsc --noEmit",
+    "type-check:ci": "node scripts/type-check-ci.mjs",
+    "lint": "biome check ../../package.json astro.config.mjs package.json tsconfig.json wrangler.jsonc src scripts",
+    "test": "yarn verify:d1",
+    "verify:d1": "node scripts/verify-d1.mjs"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "14.4.2",
+    "@astrojs/react": "7.0.0",
+    "astro": "7.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.10",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "oxc-transform-react": "0.145.0",
+    "typescript": "5.9.3",
+    "wrangler": "4.152.0"
+  }
+}
