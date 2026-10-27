@@ -16,6 +16,30 @@ const { default: react } = await import(
 );
 const root = fileURLToPath(new URL("fixtures/title/", import.meta.url));
 const artifacts = new URL("../.verification/", import.meta.url);
+async function differentPixels([expected, actual]) {
+  const pixels = async (bytes) => {
+    const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+    const canvas = new OffscreenCanvas(image.width, image.height);
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+    const data = context.getImageData(0, 0, image.width, image.height).data;
+    image.close();
+    return { width: canvas.width, height: canvas.height, data };
+  };
+  const left = await pixels(expected);
+  const right = await pixels(actual);
+  if (left.width !== right.width || left.height !== right.height) return Infinity;
+  let count = 0;
+  for (let offset = 0; offset < left.data.length; offset += 4) {
+    for (let channel = 0; channel < 4; channel++) {
+      if (left.data[offset + channel] !== right.data[offset + channel]) {
+        count++;
+        break;
+      }
+    }
+  }
+  return count;
+}
 await promisify(execFile)(
   "git",
   [
@@ -29,6 +53,9 @@ await promisify(execFile)(
     "packages/config/theme",
     "packages/coss-ui/src/styles/globals.css",
     "apps/web/public/fonts/Inter-roman.var.woff2",
+    "packages/ui/components/icon/Icon.tsx",
+    "packages/ui/components/icon/icon-names.ts",
+    "apps/web/public/icons/sprite.svg",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -39,6 +66,7 @@ const server = await createServer({
   // Compile unchanged upstream components without activating their Next.js workspace.
   tsconfig: fileURLToPath(new URL("../tsconfig.json", import.meta.url)),
   plugins: [react()],
+  optimizeDeps: { noDiscovery: true, include: ["react", "react-dom/client", "tailwind-merge"] },
   css: { postcss: fileURLToPath(new URL("../", import.meta.url)) },
   resolve: {
     alias: {
@@ -46,6 +74,9 @@ const server = await createServer({
         new URL("../../web/modules/bookings/components/event-meta/Title.tsx", import.meta.url)
       ),
       "@calcom/ui/classNames": fileURLToPath(new URL("../../../packages/ui/classNames.ts", import.meta.url)),
+      "@reference/icon": fileURLToPath(
+        new URL("../../../packages/ui/components/icon/Icon.tsx", import.meta.url)
+      ),
     },
   },
   server: {
@@ -129,40 +160,61 @@ try {
         path: fileURLToPath(new URL(`candidate-title-${name}-${theme}.png`, artifacts)),
         fullPage: true,
       });
-      const differentPixels = await page.evaluate(
-        async ([expected, actual]) => {
-          const pixels = async (bytes) => {
-            const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
-            const canvas = new OffscreenCanvas(image.width, image.height);
-            const context = canvas.getContext("2d");
-            context.drawImage(image, 0, 0);
-            const data = context.getImageData(0, 0, image.width, image.height).data;
-            image.close();
-            return { width: canvas.width, height: canvas.height, data };
-          };
-          const left = await pixels(expected);
-          const right = await pixels(actual);
-          if (left.width !== right.width || left.height !== right.height) return Infinity;
-          let count = 0;
-          for (let offset = 0; offset < left.data.length; offset += 4) {
-            for (let channel = 0; channel < 4; channel++) {
-              if (left.data[offset + channel] !== right.data[offset + channel]) {
-                count++;
-                break;
-              }
-            }
-          }
-          return count;
-        },
-        [[...reference], [...candidate]]
-      );
-      assert.equal(differentPixels, 0, `${name} ${theme} must match the pinned reference`);
+      const difference = await page.evaluate(differentPixels, [[...reference], [...candidate]]);
+      assert.equal(difference, 0, `${name} ${theme} must match the pinned reference`);
       assert.deepEqual(errors, []);
       await context.close();
     }
   }
   console.log(
     "PASS EventTitle matches the pinned reference with zero different pixels at desktop/mobile widths in light/dark themes."
+  );
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(error.name));
+      await page.goto(`${origin}/icons.html?theme=${theme}`);
+      await page.getByTestId("svg-props").waitFor();
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll("main svg")].every((icon) => icon.getBBox().width > 0)
+      );
+      const count = await page.getByTestId("sprite-icon").count();
+      assert.ok(count > 0);
+      const reference = await page.screenshot({
+        path: fileURLToPath(new URL(`reference-icons-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      await page.goto(`${origin}/candidate-icons.html?theme=${theme}`);
+      await page.getByTestId("svg-props").waitFor();
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll("main svg")].every((icon) => icon.getBBox().width > 0)
+      );
+      assert.equal(await page.getByTestId("sprite-icon").count(), count);
+      assert.equal(await page.locator('main svg:not([aria-hidden="true"])').count(), 0);
+      assert.equal(await page.getByTestId("number-size").getAttribute("width"), "24");
+      assert.equal(await page.getByTestId("string-size").getAttribute("width"), "2rem");
+      assert.equal(await page.getByTestId("svg-props").getAttribute("width"), "40");
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const candidate = await page.screenshot({
+        path: fileURLToPath(new URL(`candidate-icons-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      assert.equal(
+        await page.evaluate(differentPixels, [[...reference], [...candidate]]),
+        0,
+        `${name} ${theme} icons must match the pinned reference`
+      );
+      assert.deepEqual(errors, []);
+      await context.close();
+    }
+  }
+  console.log(
+    "PASS all sprite icons match the pinned reference with zero different pixels at desktop/mobile widths in light/dark themes."
   );
 } finally {
   try {
