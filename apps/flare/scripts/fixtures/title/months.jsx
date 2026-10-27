@@ -24,11 +24,11 @@ createRoot(document.getElementById("root")).render(
       slotsViewOnSmallScreen: false,
     }}>
     <MonthCases
-      Picker={({ month, selected, onDate, onMonth, minDate, ...props }) => (
+      Picker={({ month, selected, onDate, onMonth, minDate, offsetMinutes, ...props }) => (
         <DatePicker
           {...props}
           locale="en-US"
-          browsingDate={dayjs(month)}
+          browsingDate={offsetMinutes === undefined ? dayjs(month) : dayjs(month).utcOffset(offsetMinutes)}
           selected={selected ? dayjs(selected) : null}
           minDate={minDate ? new Date(minDate) : undefined}
           onChange={(date) => onDate(date?.format("YYYY-MM-DD") || null)}

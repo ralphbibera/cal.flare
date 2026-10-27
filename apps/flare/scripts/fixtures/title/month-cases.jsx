@@ -5,11 +5,13 @@ export function MonthCases({ Picker }) {
   const scenario = new URLSearchParams(location.search).get("case") || "early";
   const late = scenario === "late" || scenario === "compact";
   const leap = scenario === "leap";
-  const [month, setMonth] = useState(leap ? "2032-02-01" : "2030-01-01");
+  const offset = scenario === "offset";
+  const [month, setMonth] = useState(offset ? "2030-02-28T10:00:00Z" : leap ? "2032-02-01" : "2030-01-01");
   const [selected, setSelected] = useState(scenario === "selected" ? "2030-01-12" : null);
   let includedDates = ["2030-01-10", "2030-01-12", "2030-01-13", "2030-02-01"];
   if (late) includedDates = ["2030-01-21", "2030-01-22", "2030-02-01"];
   if (leap) includedDates = ["2032-02-29"];
+  if (offset) includedDates = ["2030-03-01"];
   if (["loading", "empty"].includes(scenario)) includedDates = [];
   if (scenario === "ooo") includedDates = ["2030-01-13"];
   const slots = Object.fromEntries(includedDates.map((date) => [date, [{ time: `${date}T10:00:00Z` }]]));
@@ -31,7 +33,10 @@ export function MonthCases({ Picker }) {
           isLoading={scenario === "loading"}
           isCompact={scenario === "compact"}
           weekStart={scenario === "monday" ? 1 : 0}
-          minDate={scenario === "minimum" ? "2030-01-12T12:00:00Z" : undefined}
+          offsetMinutes={offset ? 840 : undefined}
+          minDate={
+            offset ? "2030-01-01T00:00:00Z" : scenario === "minimum" ? "2030-01-12T12:00:00Z" : undefined
+          }
         />
         <output data-testid="selection">{selected || "none"}</output>
       </main>
