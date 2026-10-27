@@ -1,0 +1,266 @@
+import type { Interval } from "../domain/scheduling.ts";
+import type { Settings } from "../domain/settings.ts";
+import { parseSettings } from "../domain/settings.ts";
+import type { SlotCondition } from "./booking-availability.ts";
+import { BookingAvailability } from "./booking-availability.ts";
+import { BookingDelivery } from "./booking-delivery.ts";
+import type { Action, Booking, BookingSnapshot, BookingView, Calendar, Command } from "./booking-model.ts";
+import { parseChange, parseCreate, snapshot } from "./booking-model.ts";
+import { ErrorWithCode } from "./http.ts";
+import { base64url, encryptionKey, hash } from "./secrets.ts";
+
+type Options = { db: D1Database; calendar: Calendar; settings: Settings; secret: string; now?: () => number };
+const MINUTE = 60_000;
+const encoder = new TextEncoder();
+async function identity(context: string, value: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(`${context}:${value}`)));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export class BookingService {
+  private readonly db: D1DatabaseSession;
+  private readonly calendar: Calendar;
+  private readonly settings: Settings;
+  private readonly secret: string;
+  private readonly now: () => number;
+  private readonly delivery: BookingDelivery;
+  constructor(options: Options) {
+    this.db = options.db.withSession("first-primary");
+    this.calendar = options.calendar;
+    this.settings = structuredClone(options.settings);
+    this.secret = options.secret;
+    this.now = options.now ?? Date.now;
+    this.delivery = new BookingDelivery({
+      db: this.db,
+      calendar: this.calendar,
+      now: this.now,
+      availability: {
+        condition: (desired, exclude, settings) => this.scheduler(settings).condition(desired, exclude),
+      },
+    });
+  }
+  private scheduler(settings: Settings = this.settings): BookingAvailability {
+    return new BookingAvailability(this.db, this.calendar, settings, this.now);
+  }
+  private async token(id: string): Promise<string> {
+    await encryptionKey(this.secret);
+    const bytes = Uint8Array.from(atob(this.secret), (character) => character.charCodeAt(0));
+    const key = await crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, [
+      "sign",
+    ]);
+    return base64url(
+      new Uint8Array(
+        await crypto.subtle.sign("HMAC", key, encoder.encode(`calflare:booking-management:v1:${id}`))
+      )
+    );
+  }
+  private async booking(id: string, token?: string): Promise<Booking> {
+    if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) throw new ErrorWithCode("not_found", 404);
+    if (token !== undefined && !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ErrorWithCode("not_found", 404);
+    const row =
+      token === undefined
+        ? await this.db.prepare("SELECT * FROM booking WHERE id=?").bind(id).first<Booking>()
+        : await this.db
+            .prepare("SELECT * FROM booking WHERE id=? AND token_hash=?")
+            .bind(id, await hash(token))
+            .first<Booking>();
+    if (!row) throw new ErrorWithCode("not_found", 404);
+    return row;
+  }
+  private async authorized(id: string, token: string): Promise<Booking> {
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw new ErrorWithCode("not_found", 404);
+    return this.booking(id, token);
+  }
+  private async result(command: Command, payload: string, manage = false): Promise<BookingView> {
+    if (command.payload !== payload) throw new ErrorWithCode("idempotency_mismatch", 409);
+    if (command.outcome !== "accepted") throw new ErrorWithCode(command.outcome, 409);
+    await this.delivery.process(command.id);
+    const view = await this.render(await this.booking(command.booking_id));
+    return manage ? { ...view, manageToken: await this.token(command.booking_id) } : view;
+  }
+  private async replay(requestKey: string, payload: string, manage = false): Promise<BookingView | null> {
+    const command = await this.db
+      .prepare("SELECT * FROM booking_command WHERE request_key=?")
+      .bind(requestKey)
+      .first<Command>();
+    return command ? this.result(command, payload, manage) : null;
+  }
+  async create(input: unknown): Promise<BookingView> {
+    const data = parseCreate(input),
+      payload = JSON.stringify(data);
+    const replay = await this.replay(data.requestKey, payload, true);
+    if (replay) return replay;
+    const settings = parseSettings(this.settings);
+    const id = await identity("calflare:booking:v1", data.requestKey);
+    const commandId = await identity("calflare:command:v1", data.requestKey);
+    const desired: BookingSnapshot = {
+      id,
+      start: data.start,
+      end: data.start + settings.event.durationMinutes * MINUTE,
+      title: settings.event.title,
+      description: settings.event.description,
+      timeZone: data.timeZone,
+      attendee: { name: data.name, email: data.email },
+      privateMetadata: { application: "calflare", booking: id, operation: commandId },
+    };
+    return this.admit(
+      {
+        requestKey: data.requestKey,
+        payload,
+        id,
+        commandId,
+        action: "create",
+        version: 0,
+        desired,
+        tokenHash: await hash(await this.token(id)),
+        precondition: await this.scheduler().condition(desired),
+      },
+      true
+    );
+  }
+  async change(id: string, token: string, input: unknown): Promise<BookingView> {
+    const booking = await this.authorized(id, token),
+      data = parseChange(input);
+    const { action, requestKey, version } = data;
+    const start = action === "reschedule" ? data.start : undefined;
+    const payload = JSON.stringify({
+      action,
+      id,
+      requestKey,
+      version,
+      ...(start === undefined ? {} : { start }),
+    });
+    const replay = await this.replay(requestKey, payload);
+    if (replay) return replay;
+    parseSettings(this.settings);
+    const commandId = await identity("calflare:command:v1", requestKey);
+    const original = snapshot(booking.confirmed_json ?? booking.initial_json);
+    const desired = {
+      ...original,
+      ...(start === undefined ? {} : { start, end: start + original.end - original.start }),
+      privateMetadata: { ...original.privateMetadata, operation: commandId },
+    };
+    const precondition =
+      action === "cancel" || booking.pending_id || booking.version !== version || booking.state !== "active"
+        ? "accepted"
+        : await this.scheduler().condition(desired, id);
+    return this.admit({
+      requestKey,
+      payload,
+      id,
+      commandId,
+      action,
+      version,
+      desired,
+      tokenHash: "",
+      precondition,
+    });
+  }
+  private async admit(
+    input: {
+      requestKey: string;
+      payload: string;
+      id: string;
+      commandId: string;
+      action: Action;
+      version: number;
+      desired: BookingSnapshot;
+      tokenHash: string;
+      precondition: SlotCondition;
+    },
+    manage = false
+  ): Promise<BookingView> {
+    const { beforeMinutes, afterMinutes } = this.settings.event;
+    try {
+      await this.db.batch([
+        this.db
+          .prepare(`INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
+        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
+        id=excluded.id,request_key=excluded.request_key,booking_id=excluded.booking_id,
+        action=excluded.action,payload=excluded.payload,expected_version=excluded.expected_version,
+        desired_json=excluded.desired_json,settings_json=excluded.settings_json,token_hash=excluded.token_hash,
+        occupied_start=excluded.occupied_start,occupied_end=excluded.occupied_end,precondition=excluded.precondition`)
+          .bind(
+            input.commandId,
+            input.requestKey,
+            input.id,
+            input.action,
+            input.payload,
+            input.version,
+            JSON.stringify(input.desired),
+            JSON.stringify(parseSettings(this.settings)),
+            input.tokenHash,
+            input.desired.start - beforeMinutes * MINUTE,
+            input.desired.end + afterMinutes * MINUTE,
+            input.precondition,
+            this.now()
+          ),
+      ]);
+    } catch (error) {
+      const replay = await this.replay(input.requestKey, input.payload, manage);
+      if (replay) return replay;
+      throw error;
+    }
+    const result = await this.replay(input.requestKey, input.payload, manage);
+    if (!result) throw new ErrorWithCode("temporarily_unavailable", 503);
+    return result;
+  }
+  async view(id: string, token: string): Promise<BookingView> {
+    return this.render(await this.authorized(id, token));
+  }
+  async retry(id: string, token: string): Promise<BookingView> {
+    await this.authorized(id, token);
+    return this.ownerRetry(id);
+  }
+  async ownerRetry(id: string): Promise<BookingView> {
+    const booking = await this.booking(id);
+    if (booking.pending_id) await this.delivery.process(booking.pending_id);
+    return this.render(await this.booking(id));
+  }
+  async ownerList(): Promise<BookingView[]> {
+    const rows = await this.db.prepare("SELECT * FROM booking ORDER BY rowid DESC LIMIT 1000").all<Booking>();
+    return Promise.all(rows.results.map((row) => this.render(row)));
+  }
+  private async render(booking: Booking): Promise<BookingView> {
+    const event = snapshot(booking.confirmed_json ?? booking.initial_json);
+    const pending = booking.pending_id
+      ? await this.db
+          .prepare("SELECT * FROM booking_command WHERE id=?")
+          .bind(booking.pending_id)
+          .first<Command>()
+      : null;
+    let status: BookingView["status"] = "confirmed";
+    if (booking.state === "cancelled") status = "cancelled";
+    if (pending?.action === "create") status = "pending";
+    if (pending?.action === "reschedule") status = "rescheduling";
+    if (pending?.action === "cancel") status = "cancelling";
+    if (pending?.error) status = "attention";
+    return {
+      id: booking.id,
+      status,
+      version: booking.version,
+      start: event.start,
+      end: event.end,
+      name: event.attendee.name,
+      email: event.attendee.email,
+      timeZone: event.timeZone,
+      title: event.title,
+      ...(pending ? { pendingAction: pending.action } : {}),
+      ...(pending?.error ? { error: pending.error } : {}),
+    };
+  }
+  async availability(
+    from: number,
+    to: number,
+    visitorTimeZone: string,
+    exclude?: { id: string; token: string }
+  ): Promise<Interval[]> {
+    const booking = exclude ? await this.authorized(exclude.id, exclude.token) : undefined;
+    return this.scheduler().slots(from, to, visitorTimeZone, booking);
+  }
+  async recover(limit = 20): Promise<void> {
+    return this.delivery.recover(limit);
+  }
+}
