@@ -61,6 +61,11 @@ await promisify(execFile)(
     "packages/dayjs",
     "packages/i18n/locales/en/common.json",
     "packages/ui/components/tooltip/Tooltip.tsx",
+    "packages/features/calendars/lib/getAvailableDatesInMonth.ts",
+    "packages/lib/dayjs",
+    "packages/lib/weekday.ts",
+    "packages/lib/dateTimeFormatter.ts",
+    "packages/ui/components/skeleton/Skeleton.tsx",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -80,6 +85,7 @@ const server = await createServer({
       "class-variance-authority",
       "@radix-ui/react-tooltip",
       "dayjs",
+      "zod",
       ...[
         "customParseFormat",
         "duration",
@@ -121,15 +127,23 @@ const server = await createServer({
           "zustand/shallow",
           "@calcom/embed-core/embed-iframe",
           "@calcom/features/bookings/Booker/BookerStoreProvider",
-          "@calcom/features/calendars/lib/getAvailableDatesInMonth",
-          "@calcom/lib/dayjs",
           "@calcom/lib/hooks/useLocale",
-          "@calcom/lib/weekday",
-          "@calcom/ui/components/button",
-          "@calcom/ui/components/skeleton",
-          "@calcom/ui/components/tooltip",
           "./NoAvailabilityDialog",
         ].map((name) => [name, join(root, "calendar-boundaries.jsx")])
+      ),
+      "@calcom/features/calendars/lib/getAvailableDatesInMonth": fileURLToPath(
+        new URL("../../../packages/features/calendars/lib/getAvailableDatesInMonth.ts", import.meta.url)
+      ),
+      "@calcom/lib/dayjs": fileURLToPath(new URL("../../../packages/lib/dayjs/index.ts", import.meta.url)),
+      "@calcom/lib/weekday": fileURLToPath(new URL("../../../packages/lib/weekday.ts", import.meta.url)),
+      "@calcom/ui/components/button": fileURLToPath(
+        new URL("../../../packages/ui/components/button/Button.tsx", import.meta.url)
+      ),
+      "@calcom/ui/components/skeleton": fileURLToPath(
+        new URL("../../../packages/ui/components/skeleton/Skeleton.tsx", import.meta.url)
+      ),
+      "@calcom/ui/components/tooltip": fileURLToPath(
+        new URL("../../../packages/ui/components/tooltip/Tooltip.tsx", import.meta.url)
       ),
     },
   },
@@ -498,6 +512,81 @@ try {
   }
   console.log(
     "PASS tooltips match the pinned wrapper with zero different pixels on all four sides and preserve keyboard, hover, controlled and empty-content behavior."
+  );
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      for (const [scenario, expected] of [
+        ["early", "2030-01-10"],
+        ["selected", "2030-01-12"],
+        ["late", "2030-01-21"],
+        ["compact", "2030-01-21"],
+        ["loading", "none"],
+        ["empty", "none"],
+        ["monday", "2030-01-10"],
+        ["leap", "2032-02-29"],
+        ["ooo", "2030-01-11"],
+        ["minimum", "2030-01-12"],
+      ]) {
+        const context = await browser.newContext({ viewport, locale: "en-US", timezoneId: "UTC" });
+        const page = await context.newPage();
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("console", (message) => {
+          if (message.type() === "error") errors.push(message.text());
+        });
+        let date = "2030-01-09T12:00:00Z";
+        if (["late", "compact"].includes(scenario)) date = "2030-01-20T12:00:00Z";
+        if (scenario === "leap") date = "2032-01-09T12:00:00Z";
+        await page.clock.setFixedTime(new Date(date));
+        await page.goto(`${origin}/months.html?case=${scenario}&theme=${theme}`);
+        await page.getByTestId("selected-month-label").waitFor();
+        await page.addStyleTag({
+          content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
+        });
+        assert.equal(await page.locator("main svg").count(), 2);
+        await page.waitForFunction(() =>
+          [...document.querySelectorAll("main svg")].every((icon) => icon.getBBox().width > 0)
+        );
+        await page.waitForFunction(
+          (value) => document.querySelector('[data-testid="selection"]').textContent === value,
+          expected
+        );
+        assert.equal(await page.locator("button.bg-brand-default").count(), expected === "none" ? 0 : 1);
+        await page.evaluate(() => document.fonts.ready);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await page.screenshot({
+          path: fileURLToPath(new URL(`reference-month-${name}-${theme}-${scenario}.png`, artifacts)),
+          fullPage: true,
+        });
+        if (scenario === "early") {
+          await page.getByRole("button", { name: "12", exact: true }).click();
+          assert.equal(await page.getByTestId("selection").textContent(), "2030-01-12");
+          await page.getByTestId("incrementMonth").click();
+          await page.waitForFunction(
+            () => document.querySelector('[data-testid="selection"]').textContent === "2030-02-01"
+          );
+          await page.getByTestId("decrementMonth").click();
+          await page.waitForFunction(
+            () => document.querySelector('[data-testid="selection"]').textContent === "2030-01-10"
+          );
+          assert.equal(await page.getByTestId("decrementMonth").isDisabled(), true);
+        }
+        if (scenario === "late") {
+          assert.equal(await page.getByTestId("day").first().textContent(), "8");
+          await page.getByRole("button", { name: "1", exact: true }).hover();
+          await page.getByRole("tooltip").waitFor();
+          assert.equal(await page.getByRole("tooltip").textContent(), "February");
+        }
+        assert.deepEqual(errors, []);
+        await context.close();
+      }
+    }
+  }
+  console.log(
+    "PASS pinned month picker renders ten scenarios at desktop/mobile widths in light/dark themes, with native date selection, navigation and next-month tooltip."
   );
 } finally {
   try {
