@@ -22,7 +22,7 @@ const temporary = await mkdtemp(join(tmpdir(), "calflare-d1-"));
 let platform = null;
 let db = null;
 
-function command(organizer, key, start = 100, end = 200, eventType = "intro") {
+function command(organizer, key, start = 100, end = 200, eventType = "intro", capacity = null) {
   const identity = createHash("sha256")
     .update(JSON.stringify([organizer, key]))
     .digest("hex");
@@ -33,8 +33,19 @@ function command(organizer, key, start = 100, end = 200, eventType = "intro") {
     event_type_id: eventType,
     start_ms: start,
     end_ms: end,
-    request_payload: JSON.stringify({ end, eventType, kind: "create", start }),
+    request_payload: JSON.stringify({ capacity, end, eventType, kind: "create", start }),
     google_event_id: identity,
+    seat_capacity: capacity,
+    seat_attendee_id: null,
+  };
+}
+
+function seatCommand(organizer, key, booking, attendee) {
+  return {
+    ...command(organizer, key),
+    booking_id: booking,
+    seat_attendee_id: attendee,
+    request_payload: JSON.stringify({ kind: "seat", booking, attendee }),
   };
 }
 
@@ -50,7 +61,7 @@ function prepare(sql, parameters) {
 
 async function submit(parameters, additional = []) {
   const results = await db.batch([...statements.map((sql) => prepare(sql, parameters)), ...additional]);
-  const result = results[1].results[0];
+  const result = results[statements.length - 1].results[0];
   assert.ok(result.outcome === "accepted" || result.outcome === "conflict");
   return result;
 }
@@ -116,9 +127,12 @@ try {
     "end_ms",
     "request_payload",
     "google_event_id",
+    "seat_capacity",
   ]) {
     const changed = { ...original };
-    if (typeof changed[field] === "number") {
+    if (changed[field] === null) {
+      changed[field] = 2;
+    } else if (typeof changed[field] === "number") {
       changed[field] += 1;
     } else {
       changed[field] = `${changed[field]}changed`;
@@ -196,8 +210,123 @@ try {
     .first("n");
   assert.equal(overlaps, 0);
   pass("50 concurrent D1 batch pairs each persist one winner, one conflict, and one intent");
+
+  for (let round = 0; round < 50; round++) {
+    const owner = `seats-${round}`;
+    const occurrence = command(owner, "occurrence", 100, 200, "intro", 2);
+    assert.equal((await submit(occurrence)).outcome, "accepted");
+    const first = seatCommand(owner, "first", occurrence.booking_id, "attendee-1");
+    assert.equal((await submit(first)).outcome, "accepted");
+    const inputs = [
+      seatCommand(owner, "left", occurrence.booking_id, "attendee-2"),
+      seatCommand(owner, "right", occurrence.booking_id, "attendee-3"),
+    ];
+    const results = await Promise.all(inputs.map((input) => submit(input)));
+    assert.deepEqual(results.map((result) => result.outcome).sort(), ["accepted", "conflict"]);
+    assert.deepEqual(await Promise.all(inputs.map((input) => submit(input))), results);
+    const winner = inputs[results.findIndex((result) => result.outcome === "accepted")];
+    const accepted = results.find((result) => result.outcome === "accepted");
+    assert.deepEqual(await Promise.all([submit(winner), submit(winner)]), [accepted, accepted]);
+    for (const [table, expected] of [
+      ["seat_claim", 2],
+      ["seat_request", 3],
+    ]) {
+      const n = await db
+        .prepare(`SELECT count(*) AS n FROM ${table} WHERE organizer_id = ?`)
+        .bind(owner)
+        .first("n");
+      assert.equal(n, expected);
+    }
+    assert.deepEqual(await counts(owner), [1, 1, 1]);
+    const snapshot = await db
+      .prepare("SELECT * FROM seat_request WHERE organizer_id = ? ORDER BY request_key")
+      .bind(owner)
+      .all();
+    for (const field of ["booking_id", "seat_attendee_id", "request_payload"]) {
+      await assert.rejects(submit({ ...first, [field]: `${first[field]}changed` }), /idempotency_mismatch/);
+      const current = await db
+        .prepare("SELECT * FROM seat_request WHERE organizer_id = ? ORDER BY request_key")
+        .bind(owner)
+        .all();
+      assert.deepEqual(current.results, snapshot.results);
+    }
+    await db
+      .prepare("DELETE FROM seat_claim WHERE organizer_id = ? AND request_key = ?")
+      .bind(owner, winner.request_key)
+      .run();
+    const loser = inputs[results.findIndex((result) => result.outcome === "conflict")];
+    assert.equal((await submit(loser)).outcome, "conflict");
+  }
+  const excess = await db
+    .prepare(`SELECT count(*) AS n FROM booking_command b WHERE b.seat_capacity IS NOT NULL
+    AND (SELECT count(*) FROM seat_claim s WHERE s.organizer_id = b.organizer_id
+    AND s.booking_id = b.booking_id) > b.seat_capacity`)
+    .first("n");
+  assert.equal(excess, 0);
+  pass(
+    "50 D1 final-seat races preserve capacity, shared occupancy, one create intent, replay, and durable rejection"
+  );
+
+  const occurrence = command("seat-failure", "occurrence", 100, 200, "intro", 1);
+  await submit(occurrence);
+  const first = seatCommand("seat-failure", "first", occurrence.booking_id, "attendee-1");
+  await db
+    .prepare(`CREATE TRIGGER injected_seat_failure AFTER INSERT ON seat_claim
+    WHEN NEW.organizer_id = 'seat-failure' BEGIN SELECT RAISE(ABORT, 'injected_after_seat'); END`)
+    .run();
+  await assert.rejects(submit(first), /injected_after_seat/);
+  for (const table of ["seat_request", "seat_claim"]) {
+    assert.equal(
+      await db.prepare(`SELECT count(*) AS n FROM ${table} WHERE organizer_id = 'seat-failure'`).first("n"),
+      0
+    );
+  }
+  assert.deepEqual(await counts("seat-failure"), [1, 1, 1]);
+  await db.prepare("DROP TRIGGER injected_seat_failure").run();
+  await submit(first);
+  await assert.rejects(submit(command("seat-failure", "first")), /idempotency_mismatch/);
+  await assert.rejects(
+    submit(seatCommand("seat-failure", "occurrence", occurrence.booking_id, "other")),
+    /idempotency_mismatch/
+  );
+  await assert.rejects(
+    submit(seatCommand("wrong-owner", "first", occurrence.booking_id, "attendee")),
+    /FOREIGN KEY/
+  );
+  const batchOccurrence = command("seat-batch", "occurrence", 100, 200, "intro", 1);
+  await submit(batchOccurrence);
+  await assert.rejects(
+    submit(seatCommand("seat-batch", "first", batchOccurrence.booking_id, "attendee"), [
+      db.prepare("INSERT INTO injected_failure (value) VALUES (-1)"),
+    ]),
+    /CHECK constraint failed/
+  );
+  for (const table of ["seat_request", "seat_claim"]) {
+    assert.equal(
+      await db.prepare(`SELECT count(*) AS n FROM ${table} WHERE organizer_id = 'seat-batch'`).first("n"),
+      0
+    );
+  }
+  assert.equal(
+    (await submit(seatCommand("seat-failure", "full", occurrence.booking_id, "other"))).outcome,
+    "conflict"
+  );
+  await assert.rejects(
+    db
+      .prepare("INSERT INTO seat_claim VALUES ('seat-failure', ?, 'other', 'full')")
+      .bind(occurrence.booking_id)
+      .run(),
+    /seat_capacity/
+  );
+  await assert.rejects(
+    db.prepare("UPDATE seat_claim SET attendee_id = 'other'").run(),
+    /replace_seat_atomically/
+  );
+  pass(
+    "D1 seat admission rolls back on failure, rejects cross-kind replay and cross-owner references, and guards direct writes"
+  );
   process.stdout.write(
-    "Local workerd/D1 binding verified. Deployed D1, HTTP booking, Google, and Free limits remain unverified.\n"
+    "Local workerd/D1 verified. Deployed D1, HTTP booking, seat lifecycle, provider delivery, and operating cost remain unverified.\n"
   );
 } finally {
   try {
