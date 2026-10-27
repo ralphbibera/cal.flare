@@ -14,6 +14,7 @@
     "@astrojs/react/@vitejs/plugin-react": "6.1.1"
   },
   "scripts": {
+    "setup": "node apps/flare/scripts/setup.mjs",
     "dev": "yarn workspace @calflare/web dev",
     "build": "yarn workspace @calflare/web build",
     "preview": "yarn workspace @calflare/web preview",
