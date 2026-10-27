@@ -519,6 +519,7 @@ try {
   ]) {
     for (const theme of ["light", "dark"]) {
       for (const [scenario, expected] of [
+        ["offset", "none"],
         ["early", "2030-01-10"],
         ["selected", "2030-01-12"],
         ["late", "2030-01-21"],
@@ -530,63 +531,81 @@ try {
         ["ooo", "2030-01-11"],
         ["minimum", "2030-01-12"],
       ]) {
-        const context = await browser.newContext({ viewport, locale: "en-US", timezoneId: "UTC" });
-        const page = await context.newPage();
-        const errors = [];
-        page.on("pageerror", (error) => errors.push(error.message));
-        page.on("console", (message) => {
-          if (message.type() === "error") errors.push(message.text());
-        });
-        let date = "2030-01-09T12:00:00Z";
-        if (["late", "compact"].includes(scenario)) date = "2030-01-20T12:00:00Z";
-        if (scenario === "leap") date = "2032-01-09T12:00:00Z";
-        await page.clock.setFixedTime(new Date(date));
-        await page.goto(`${origin}/months.html?case=${scenario}&theme=${theme}`);
-        await page.getByTestId("selected-month-label").waitFor();
-        await page.addStyleTag({
-          content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
-        });
-        assert.equal(await page.locator("main svg").count(), 2);
-        await page.waitForFunction(() =>
-          [...document.querySelectorAll("main svg")].every((icon) => icon.getBBox().width > 0)
-        );
-        await page.waitForFunction(
-          (value) => document.querySelector('[data-testid="selection"]').textContent === value,
-          expected
-        );
-        assert.equal(await page.locator("button.bg-brand-default").count(), expected === "none" ? 0 : 1);
-        await page.evaluate(() => document.fonts.ready);
-        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-        await page.screenshot({
-          path: fileURLToPath(new URL(`reference-month-${name}-${theme}-${scenario}.png`, artifacts)),
-          fullPage: true,
-        });
-        if (scenario === "early") {
-          await page.getByRole("button", { name: "12", exact: true }).click();
-          assert.equal(await page.getByTestId("selection").textContent(), "2030-01-12");
-          await page.getByTestId("incrementMonth").click();
-          await page.waitForFunction(
-            () => document.querySelector('[data-testid="selection"]').textContent === "2030-02-01"
+        const captures = [];
+        for (const version of ["reference", "candidate"]) {
+          const context = await browser.newContext({ viewport, locale: "en-US", timezoneId: "UTC" });
+          const page = await context.newPage();
+          const errors = [];
+          page.on("pageerror", (error) => errors.push(error.message));
+          page.on("console", (message) => {
+            if (message.type() === "error") errors.push(message.text());
+          });
+          let date = "2030-01-09T12:00:00Z";
+          if (["late", "compact"].includes(scenario)) date = "2030-01-20T12:00:00Z";
+          if (scenario === "leap") date = "2032-01-09T12:00:00Z";
+          await page.clock.setFixedTime(new Date(date));
+          const entry = version === "reference" ? "months.html" : "candidate-months.html";
+          await page.goto(`${origin}/${entry}?case=${scenario}&theme=${theme}`);
+          await page.getByTestId("selected-month-label").waitFor();
+          await page.addStyleTag({
+            content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
+          });
+          assert.equal(await page.locator("main svg").count(), 2);
+          await page.waitForFunction(() =>
+            [...document.querySelectorAll("main svg")].every((icon) => icon.getBBox().width > 0)
           );
-          await page.getByTestId("decrementMonth").click();
           await page.waitForFunction(
-            () => document.querySelector('[data-testid="selection"]').textContent === "2030-01-10"
+            (value) => document.querySelector('[data-testid="selection"]').textContent === value,
+            expected
           );
-          assert.equal(await page.getByTestId("decrementMonth").isDisabled(), true);
+          if (scenario === "offset") {
+            assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2030-03");
+            assert.equal(await page.getByRole("button", { name: "1", exact: true }).isDisabled(), true);
+          }
+          assert.equal(await page.locator("button.bg-brand-default").count(), expected === "none" ? 0 : 1);
+          await page.evaluate(() => document.fonts.ready);
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          captures.push(
+            Array.from(
+              await page.screenshot({
+                path: fileURLToPath(new URL(`${version}-month-${name}-${theme}-${scenario}.png`, artifacts)),
+                fullPage: true,
+              })
+            )
+          );
+          if (version === "candidate")
+            assert.equal(
+              await page.evaluate(differentPixels, captures),
+              0,
+              `month ${name}/${theme}/${scenario} pixels`
+            );
+          if (scenario === "early") {
+            await page.getByRole("button", { name: "12", exact: true }).click();
+            assert.equal(await page.getByTestId("selection").textContent(), "2030-01-12");
+            await page.getByTestId("incrementMonth").click();
+            await page.waitForFunction(
+              () => document.querySelector('[data-testid="selection"]').textContent === "2030-02-01"
+            );
+            await page.getByTestId("decrementMonth").click();
+            await page.waitForFunction(
+              () => document.querySelector('[data-testid="selection"]').textContent === "2030-01-10"
+            );
+            assert.equal(await page.getByTestId("decrementMonth").isDisabled(), true);
+          }
+          if (scenario === "late") {
+            assert.equal(await page.getByTestId("day").first().textContent(), "8");
+            await page.getByRole("button", { name: "1", exact: true }).hover();
+            await page.getByRole("tooltip").waitFor();
+            assert.equal(await page.getByRole("tooltip").textContent(), "February");
+          }
+          assert.deepEqual(errors, []);
+          await context.close();
         }
-        if (scenario === "late") {
-          assert.equal(await page.getByTestId("day").first().textContent(), "8");
-          await page.getByRole("button", { name: "1", exact: true }).hover();
-          await page.getByRole("tooltip").waitFor();
-          assert.equal(await page.getByRole("tooltip").textContent(), "February");
-        }
-        assert.deepEqual(errors, []);
-        await context.close();
       }
     }
   }
   console.log(
-    "PASS pinned month picker renders ten scenarios at desktop/mobile widths in light/dark themes, with native date selection, navigation and next-month tooltip."
+    "PASS month picker matches the pinned source with zero different pixels in eleven scenarios across desktop/mobile and light/dark, preserving offset-date boundaries, selection, navigation and next-month tooltip."
   );
 } finally {
   try {
