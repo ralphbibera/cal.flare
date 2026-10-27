@@ -43,3 +43,5 @@ jobs:
         run: node .yarn/releases/yarn-4.12.0.cjs test:sqlite
       - name: Build
         run: node .yarn/releases/yarn-4.12.0.cjs build
+      - name: Verify built Worker
+        run: node .yarn/releases/yarn-4.12.0.cjs verify:worker
