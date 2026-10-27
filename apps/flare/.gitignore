@@ -1,5 +1,6 @@
 .astro/
 .wrangler/
+.verification/
 .yarn/
 dist/
 node_modules/
