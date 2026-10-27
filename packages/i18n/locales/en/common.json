@@ -1,4 +1,12 @@
 {
+  "flare_booking_status_unavailable": "Booking status is currently unavailable.",
+  "flare_booking_pending": "This booking is not confirmed yet.",
+  "flare_booking_attention": "This booking needs the organizer's attention.",
+  "flare_booking_check_status": "Check booking status",
+  "flare_booking_result_error": "We couldn't confirm the result. Retry to check this booking safely.",
+  "flare_booking_storage_error": "We couldn't restore or save this booking safely. Please contact the organizer before starting another booking.",
+  "flare_booking_slot_changed": "The event or time has changed. Go back to choose an available time.",
+  "flare_booking_invalid_attendee": "Check your name and email address.",
   "flare_previous_month": "Previous month",
   "flare_next_month": "Next month",
   "flare_availability_error": "Availability could not be loaded. Please try again.",

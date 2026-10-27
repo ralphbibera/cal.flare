@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import type { PublicBooking } from "../client/bookings.ts";
+import { useEffect, useRef, useState } from "react";
+import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
+import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
 import { BookingCalendar, type BookingCalendarProps } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
 import { EventTitle } from "./EventTitle.tsx";
@@ -13,21 +14,131 @@ type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
     hour24: string;
     selectedTime: string;
     minutes: string;
+    name: string;
+    email: string;
+    confirm: string;
+    back: string;
+    confirmed: string;
+    cancelled: string;
+    pending: string;
+    attention: string;
+    checkStatus: string;
+    bookingError: string;
+    storageError: string;
+    slotConflict: string;
+    invalidInput: string;
+    statusUnavailable: string;
   };
 };
+
+type Booking = Awaited<ReturnType<BookerClient["view"]>>;
+type Stage =
+  | { kind: "loading" | "calendar" | "blocked" }
+  | { kind: "form"; start: number }
+  | PendingCreate
+  | { kind: "receipt"; receipt: CreationReceipt; booking?: Booking };
+const client = new BookerClient();
+const inputClass =
+  "bg-default border-default text-default h-8 w-full rounded-[10px] border px-3 py-2 text-sm font-normal leading-none shadow-outline-gray-rested transition-all hover:border-emphasis focus:border-emphasis focus:ring-0 focus:shadow-outline-gray-focused";
+const attempts = () => new CreateAttempts({ storage: sessionStorage, scope: location.pathname });
 
 export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [timeZone, setTimeZone] = useState("UTC");
   const [zones, setZones] = useState(["UTC"]);
   const [format, setFormat] = useState<"h:mma" | "HH:mm">("h:mma");
-  const [selected, setSelected] = useState<string>();
-  const [hydrated, setHydrated] = useState(false);
+  const [stage, setStage] = useState<Stage>({ kind: "loading" });
+  const [draft, setDraft] = useState({ name: "", email: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const nameInput = useRef<HTMLInputElement>(null);
+  async function loadReceipt(receipt: CreationReceipt, retry = false) {
+    setStage((previous) =>
+      previous.kind === "receipt" && previous.receipt === receipt ? previous : { kind: "receipt", receipt }
+    );
+    setBusy(true);
+    setError("");
+    try {
+      const booking = await (retry ? client.retry(receipt.access) : client.view(receipt.access));
+      setTimeZone(booking.timeZone);
+      setStage({ kind: "receipt", receipt, booking });
+    } catch {
+      setError(labels.bookingError);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function restore() {
+    setError("");
+    try {
+      const saved = attempts().read();
+      if (saved?.kind === "receipt") {
+        void loadReceipt(saved);
+        return;
+      }
+      if (saved?.kind === "pending") setTimeZone(saved.request.timeZone);
+      setStage(saved ?? { kind: "calendar" });
+    } catch {
+      setStage({ kind: "blocked" });
+      setError(labels.storageError);
+    }
+  }
   useEffect(() => {
     const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setZones([...new Set(["UTC", local, ...Intl.supportedValuesOf("timeZone")])]);
     setTimeZone(local);
-    setHydrated(true);
+    restore();
   }, []);
+  useEffect(() => {
+    if (stage.kind === "form") nameInput.current?.focus();
+  }, [stage.kind]);
+  const start =
+    stage.kind === "form"
+      ? stage.start
+      : stage.kind === "pending"
+        ? stage.request.start
+        : stage.kind === "receipt"
+          ? stage.booking?.start
+          : undefined;
+  const selected = start === undefined ? undefined : new Date(start).toISOString();
+  async function submit() {
+    if (busy || (stage.kind !== "form" && stage.kind !== "pending")) return;
+    let pending: PendingCreate;
+    try {
+      pending =
+        stage.kind === "pending" ? stage : attempts().begin({ start: stage.start, ...draft, timeZone });
+    } catch (failure) {
+      if (failure instanceof ErrorWithCode && failure.code === "invalid_input") setError(labels.invalidInput);
+      else {
+        setStage({ kind: "blocked" });
+        setError(labels.storageError);
+      }
+      return;
+    }
+    setStage(pending);
+    setBusy(true);
+    setError("");
+    try {
+      const booking = await client.create(pending.request);
+      const receipt = attempts().acknowledge(pending.request.requestKey, {
+        id: booking.id,
+        token: booking.manageToken,
+      });
+      setDraft({ name: "", email: "" });
+      setStage({ kind: "receipt", receipt, booking });
+    } catch (failure) {
+      try {
+        if (attempts().reject(pending.request.requestKey, failure)) {
+          setStage({ kind: "form", start: pending.request.start });
+          setDraft({ name: pending.request.name, email: pending.request.email });
+          setError(labels.slotConflict);
+        } else setError(labels.bookingError);
+      } catch {
+        setError(labels.storageError);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
   const selectedLabel = selected
     ? new Intl.DateTimeFormat("en-US", {
         dateStyle: "full",
@@ -64,9 +175,9 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   id="booker-time-zone"
                   className="bg-default w-full min-w-0 text-sm"
                   value={timeZone}
+                  disabled={stage.kind !== "calendar"}
                   onChange={(change) => {
                     setTimeZone(change.target.value);
-                    setSelected(undefined);
                   }}>
                   {zones.map((zone) => (
                     <option key={zone}>{zone}</option>
@@ -95,17 +206,120 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             )}
           </div>
         </section>
-        {hydrated ? (
+        {stage.kind === "calendar" ? (
           <BookingCalendar
             locale="en-US"
             timeZone={timeZone}
             timeFormat={format}
             labels={labels}
             selectedTime={selected}
-            onTimeSelect={setSelected}
+            onTimeSelect={(value) => {
+              setError("");
+              setStage({ kind: "form", start: Date.parse(value) });
+            }}
           />
         ) : (
-          <p role="status">{labels.loading}</p>
+          <section className="border-subtle p-6 md:col-span-2 md:border-l">
+            {stage.kind === "loading" && <p role="status">{labels.loading}</p>}
+            {(stage.kind === "form" || stage.kind === "pending") && (
+              <form
+                className="flex h-full flex-col gap-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submit();
+                }}>
+                <label className="text-default block text-sm font-medium">
+                  {labels.name}
+                  <input
+                    ref={nameInput}
+                    className={inputClass}
+                    name="name"
+                    autoComplete="name"
+                    required
+                    maxLength={200}
+                    pattern=".*\S.*"
+                    readOnly={busy || stage.kind === "pending"}
+                    value={stage.kind === "pending" ? stage.request.name : draft.name}
+                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  />
+                </label>
+                <label className="text-default block text-sm font-medium">
+                  {labels.email}
+                  <input
+                    className={inputClass}
+                    type="email"
+                    name="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    required
+                    maxLength={254}
+                    readOnly={busy || stage.kind === "pending"}
+                    value={stage.kind === "pending" ? stage.request.email : draft.email}
+                    onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+                  />
+                </label>
+                {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
+                {error && <p role="alert">{error}</p>}
+                <div className="mt-auto flex justify-end space-x-2">
+                  <Button
+                    color="minimal"
+                    disabled={busy || stage.kind === "pending"}
+                    onClick={() => {
+                      setError("");
+                      setStage({ kind: "calendar" });
+                    }}>
+                    {labels.back}
+                  </Button>
+                  <Button type="submit" loading={busy}>
+                    {stage.kind === "pending" ? labels.retry : labels.confirm}
+                  </Button>
+                </div>
+              </form>
+            )}
+            {stage.kind === "receipt" && (
+              <div className="space-y-4">
+                <h2 className="text-emphasis text-xl font-semibold" aria-live="polite">
+                  {busy
+                    ? labels.loading
+                    : !stage.booking
+                      ? labels.statusUnavailable
+                      : stage.booking.status === "confirmed"
+                        ? labels.confirmed
+                        : stage.booking?.status === "cancelled"
+                          ? labels.cancelled
+                          : stage.booking?.status === "attention"
+                            ? labels.attention
+                            : labels.pending}
+                </h2>
+                {stage.booking && (
+                  <>
+                    <p>{stage.booking.title}</p>
+                    <p>{stage.booking.name}</p>
+                    <p>{stage.booking.email}</p>
+                  </>
+                )}
+                {error && <p role="alert">{error}</p>}
+                <Button
+                  color="secondary"
+                  loading={busy}
+                  onClick={() =>
+                    void loadReceipt(
+                      stage.receipt,
+                      stage.booking?.status !== "confirmed" && stage.booking?.status !== "cancelled"
+                    )
+                  }>
+                  {labels.checkStatus}
+                </Button>
+              </div>
+            )}
+            {stage.kind === "blocked" && (
+              <>
+                <p role="alert">{error}</p>
+                <Button onClick={restore}>{labels.retry}</Button>
+              </>
+            )}
+          </section>
         )}
       </div>
     </main>

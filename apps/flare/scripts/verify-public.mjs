@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifySubmission } from "./verify-submission.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
 export async function verifyPublic(browser) {
@@ -49,6 +50,8 @@ export async function verifyPublic(browser) {
     const first = await page.getByTestId("time").first().getAttribute("data-time");
     await page.getByTestId("time").first().click();
     assert.equal(await page.getByTestId("event-meta").locator("time").getAttribute("datetime"), first);
+    await page.getByLabel("Name", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     const zoneSelect = page.getByLabel("Time zone", { exact: true });
     const india = await zoneSelect.evaluate((select) =>
       ["Asia/Kolkata", "Asia/Calcutta"].find((zone) =>
@@ -73,6 +76,7 @@ export async function verifyPublic(browser) {
     await page.getByTestId("time").first().focus();
     await page.keyboard.press("Enter");
     assert.equal(await page.getByTestId("event-meta").locator("time").getAttribute("datetime"), first);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     for (const viewport of [
       { width: 390, height: 844 },
       { width: 768, height: 900 },
@@ -103,6 +107,7 @@ export async function verifyPublic(browser) {
     console.log(
       "PASS public Astro page SSR, hydration, built assets, private-data omission, escaped description, timezone labels and UTC selection. Local workerd/D1; Google is mocked."
     );
+    await verifySubmission(browser, fixture, browserDate);
   } finally {
     try {
       await context?.close();

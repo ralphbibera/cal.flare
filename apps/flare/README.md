@@ -31,7 +31,11 @@ open `/<event-slug>` to view its availability. The default slug is `intro`.
 The slug `api` is reserved for application routes.
 The page renders event details on the server, then loads the calendar in the browser.
 Visitors can change their time zone and time format and select a UTC-backed time.
-The public page does not yet include attendee submission or booking management.
+The public page accepts attendee details and submits bookings with a saved request identity.
+Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
+replace the pending attendee data with a private receipt in this tab's session storage.
+The page distinguishes confirmed bookings from results needing recovery or organizer attention.
+Booking-management screens are not yet included.
 See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
 
 ## Verify the focused port
