@@ -107,6 +107,56 @@ try {
     await rm(privateDirectory, { recursive: true, force: true });
   }
   browser = await chromium.launch();
+  const sessionContext = await browser.newContext();
+  const sessionPage = await sessionContext.newPage();
+  await sessionPage.goto(origin);
+  const attemptsModule = `/@fs${fileURLToPath(new URL("../src/client/create-attempt.ts", import.meta.url))}`;
+  const firstAttempt = await sessionPage.evaluate(async (url) => {
+    const { CreateAttempts } = await import(url);
+    return new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).begin({
+      start: Date.UTC(2030, 0, 1, 10),
+      name: "Browser guest",
+      email: "browser@example.test",
+      timeZone: "UTC",
+    });
+  }, attemptsModule);
+  await sessionPage.reload();
+  const resumed = await sessionPage.evaluate(async (url) => {
+    const { CreateAttempts } = await import(url);
+    return new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).read();
+  }, attemptsModule);
+  assert.deepEqual(resumed, firstAttempt);
+  const requestKey = firstAttempt.request.requestKey;
+  await sessionPage.evaluate(
+    async ({ url, requestKey }) => {
+      const { CreateAttempts } = await import(url);
+      new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).acknowledge(requestKey, {
+        id: "a".repeat(64),
+        token: "b".repeat(43),
+      });
+    },
+    { url: attemptsModule, requestKey }
+  );
+  await sessionPage.reload();
+  const receipt = await sessionPage.evaluate(async (url) => {
+    const { CreateAttempts } = await import(url);
+    return {
+      saved: new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).read(),
+      attendeeRetained: ["browser@example.test", "Browser guest"].some((value) =>
+        JSON.stringify({ ...sessionStorage }).includes(value)
+      ),
+    };
+  }, attemptsModule);
+  assert.deepEqual(receipt.saved, {
+    kind: "receipt",
+    requestKey,
+    access: { id: "a".repeat(64), token: "b".repeat(43) },
+  });
+  assert.equal(receipt.attendeeRetained, false);
+  await sessionContext.close();
+  console.log(
+    "PASS native session storage preserves the request across reload and replaces attendee data with a receipt."
+  );
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
     ["mobile", { width: 390, height: 844 }],
