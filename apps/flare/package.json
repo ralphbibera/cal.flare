@@ -14,7 +14,8 @@
     "type-check": "wrangler types && astro sync && tsc --noEmit",
     "type-check:ci": "node scripts/type-check-ci.mjs",
     "lint": "biome check ../../package.json astro.config.mjs package.json tsconfig.json wrangler.jsonc src scripts",
-    "test": "yarn verify:d1",
+    "test": "yarn test:unit && yarn verify:d1",
+    "test:unit": "node --experimental-strip-types --test scripts/*.test.ts",
     "verify:d1": "node scripts/verify-d1.mjs"
   },
   "dependencies": {
