@@ -13,6 +13,7 @@ import { defaultSettings } from "../src/domain/settings.ts";
 import type { BookingView, Calendar } from "../src/server/booking-model.ts";
 import { BookingService } from "../src/server/bookings.ts";
 import type { CalendarEvent, EventInput } from "../src/server/google.ts";
+import { GoogleCalendarError } from "../src/server/google.ts";
 import { saveSettings } from "../src/server/settings.ts";
 
 test("booking service admits, manages and replays bookings safely across competing requests", async () => {
@@ -65,7 +66,14 @@ test("booking service admits, manages and replays bookings safely across competi
       day = 24 * hour;
     let serial = 0,
       inserts = 0;
+    let clock = now;
     let busyGate: (() => Promise<void>) | undefined, inserted: (() => void) | undefined;
+    let insertGate: (() => Promise<void>) | undefined,
+      updateGate: (() => Promise<void>) | undefined,
+      deleteGate: (() => Promise<void>) | undefined,
+      insertError: Error | undefined;
+    const updateTags: string[] = [],
+      deleteTags: string[] = [];
     const events = new Map<string, CalendarEvent>();
     const event = (input: EventInput): CalendarEvent => ({
       id: input.id,
@@ -94,6 +102,8 @@ test("booking service admits, manages and replays bookings safely across competi
       },
       async insert(input) {
         inserts++;
+        await insertGate?.();
+        if (insertError) throw insertError;
         assert.equal(events.has(input.id), false);
         const result = event(input);
         events.set(input.id, result);
@@ -101,17 +111,23 @@ test("booking service admits, manages and replays bookings safely across competi
         return { id: result.id, etag: result.etag };
       },
       async update(id, etag, input) {
-        assert.equal(events.get(id)?.etag, etag);
+        updateTags.push(etag);
+        await updateGate?.();
+        if (events.get(id)?.etag !== etag)
+          throw new GoogleCalendarError("definite", 412, "Event precondition failed");
         const result = event({ ...input, id });
         events.set(id, result);
         return { id, etag: result.etag };
       },
       async delete(id, etag) {
-        assert.equal(events.get(id)?.etag, etag);
+        deleteTags.push(etag);
+        await deleteGate?.();
+        if (events.get(id)?.etag !== etag)
+          throw new GoogleCalendarError("definite", 412, "Event precondition failed");
         events.delete(id);
       },
     };
-    const options = { db, calendar, settings, secret: btoa("k".repeat(32)), now: () => now };
+    const options = { db, calendar, settings, secret: btoa("k".repeat(32)), now: () => clock };
     let service = new BookingService(options);
     const input = (start: number) => ({
       requestKey: crypto.randomUUID(),
@@ -220,6 +236,189 @@ test("booking service admits, manages and replays bookings safely across competi
         .first("n"),
       0
     );
+    const change = (view: BookingView, action: "reschedule" | "cancel", start?: number) => ({
+      action,
+      version: view.version,
+      requestKey: crypto.randomUUID(),
+      ...(start === undefined ? {} : { start }),
+    });
+    const holds = (id: string) =>
+      db.prepare("SELECT count(*) AS n FROM booking_reservation WHERE booking_id=?").bind(id).first("n");
+    const counts = () =>
+      Promise.all(
+        ["booking", "booking_command", "booking_reservation"].map((table) =>
+          db.prepare(`SELECT count(*) AS n FROM ${table}`).first("n")
+        )
+      );
+    const beforeAdmission = await counts();
+    await db
+      .prepare(`CREATE TRIGGER injected_admission BEFORE INSERT ON booking_reservation
+      WHEN NEW.start > ${now + 200 * day} BEGIN SELECT RAISE(ABORT,'injected_admission'); END`)
+      .run();
+    await assert.rejects(service.create(input(now + 210 * day + hour)), /injected_admission/);
+    assert.deepEqual(
+      await counts(),
+      beforeAdmission,
+      "Failed admission leaves no command, booking or reservation"
+    );
+    await db.prepare("DROP TRIGGER injected_admission").run();
+
+    const failedAck = await service.create(input(now + 70 * day + 10 * hour));
+    await db
+      .prepare(`CREATE TRIGGER injected_finish BEFORE INSERT ON booking_reservation
+      WHEN NEW.booking_id='${failedAck.id}' AND NEW.role='current'
+      BEGIN SELECT RAISE(ABORT,'injected_finish'); END`)
+      .run();
+    const moveAck = change(failedAck, "reschedule", failedAck.start + 2 * hour);
+    const uncertainAck = await service.change(failedAck.id, token(failedAck), moveAck);
+    assert.equal(uncertainAck.status, "attention");
+    assert.equal(uncertainAck.start, failedAck.start);
+    assert.equal(await holds(failedAck.id), 2);
+    await db.prepare("DROP TRIGGER injected_finish").run();
+    const beforeAckRetry = updateTags.length;
+    const settledAck = await new BookingService(options).retry(failedAck.id, token(failedAck));
+    assert.equal(settledAck.status, "confirmed");
+    assert.equal(settledAck.start, moveAck.start);
+    assert.equal(await holds(failedAck.id), 1);
+    assert.equal(
+      updateTags.length,
+      beforeAckRetry,
+      "Finalization recovery observes the applied event without rewriting it"
+    );
+
+    let release = () => {},
+      announce = () => {};
+    const rejectedInsertEntered = new Promise<void>((resolve) => {
+      announce = resolve;
+    });
+    insertGate = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+        announce();
+      });
+    insertError = new GoogleCalendarError("retryable", 429, "Explicit rejection");
+    const rejectedInput = input(now + 71 * day + 10 * hour);
+    const rejectedInsert = service.create(rejectedInput);
+    await rejectedInsertEntered;
+    clock += 300_000;
+    await new BookingService(options).recover(100);
+    insertGate = undefined;
+    release();
+    const rejectedAfterLease = await rejectedInsert;
+    assert.equal(rejectedAfterLease.status, "attention");
+    assert.equal(await holds(rejectedAfterLease.id), 1);
+    assert.equal(
+      await db
+        .prepare("SELECT execution FROM booking_command WHERE request_key=?")
+        .bind(rejectedInput.requestKey)
+        .first("execution"),
+      "queued"
+    );
+    insertError = undefined;
+    clock += 300_000;
+    const beforeRejectionRetry = inserts;
+    await new BookingService(options).recover(100);
+    assert.equal((await service.view(rejectedAfterLease.id, token(rejectedAfterLease))).status, "confirmed");
+    assert.equal(inserts, beforeRejectionRetry + 1);
+
+    for (const action of ["reschedule", "cancel"] as const) {
+      const target = await service.create(input(now + (action === "reschedule" ? 72 : 73) * day + 10 * hour));
+      const original = events.get(target.id);
+      assert.ok(original);
+      const dispatched = new Promise<void>((resolve) => {
+        announce = resolve;
+      });
+      const block = () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+          announce();
+        });
+      if (action === "reschedule") updateGate = block;
+      else deleteGate = block;
+      const request = change(target, action, action === "reschedule" ? target.start + 2 * hour : undefined);
+      const inFlight = service.change(target.id, token(target), request);
+      await dispatched;
+      const responded = {
+        ...original,
+        etag: `"rsvp-after-${action}"`,
+        attendees: original.attendees.map((guest) => ({ ...guest, responseStatus: "accepted" })),
+      };
+      events.set(target.id, responded);
+      clock += 300_000;
+      assert.equal(
+        (await new BookingService(options).retry(target.id, token(target))).error,
+        "event_changed"
+      );
+      updateGate = undefined;
+      deleteGate = undefined;
+      release();
+      await inFlight;
+      assert.deepEqual(
+        events.get(target.id),
+        responded,
+        "Delayed conditional mutation cannot overwrite newer event state"
+      );
+      const view = await service.view(target.id, token(target));
+      assert.equal(view.error, "event_changed");
+      assert.equal(view.start, target.start);
+      const writes = updateTags.length + deleteTags.length;
+      await new BookingService(options).retry(target.id, token(target));
+      assert.equal(updateTags.length + deleteTags.length, writes, "Retry cannot adopt a newer ETag");
+      assert.equal(await holds(target.id), action === "reschedule" ? 2 : 1);
+    }
+
+    const delayed = await service.create(input(now + 74 * day + 10 * hour));
+    const oldEntered = new Promise<void>((resolve) => {
+      announce = resolve;
+    });
+    let blocked = false;
+    updateGate = async () => {
+      if (blocked) return;
+      blocked = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+        announce();
+      });
+    };
+    const oldMove = change(delayed, "reschedule", delayed.start + 2 * hour);
+    const oldRequest = service.change(delayed.id, token(delayed), oldMove);
+    await oldEntered;
+    const fixedBase = updateTags.at(-1);
+    clock += 300_000;
+    await new BookingService(options).recover(100);
+    const firstRecovered = await service.view(delayed.id, token(delayed));
+    assert.equal(firstRecovered.status, "confirmed");
+    assert.equal(firstRecovered.start, oldMove.start);
+    assert.equal(updateTags.at(-1), fixedBase, "Recovery retries the original conditional ETag");
+    const newMove = change(firstRecovered, "reschedule", delayed.start + 4 * hour);
+    const newer = await service.change(delayed.id, token(delayed), newMove);
+    const newerEvent = structuredClone(events.get(delayed.id));
+    assert.ok(newerEvent);
+    release();
+    await oldRequest;
+    updateGate = undefined;
+    assert.equal(newer.start, newMove.start);
+    assert.deepEqual(
+      events.get(delayed.id),
+      newerEvent,
+      "Old sender cannot overwrite the newer provider event"
+    );
+    assert.deepEqual(
+      await service.view(delayed.id, token(delayed)),
+      newer,
+      "Old sender cannot acknowledge or overwrite the newer booking"
+    );
+    const competing = await service.create(input(now + 75 * day + 10 * hour));
+    const commands = await Promise.allSettled([
+      service.change(
+        competing.id,
+        token(competing),
+        change(competing, "reschedule", competing.start + 2 * hour)
+      ),
+      service.change(competing.id, token(competing), change(competing, "cancel")),
+    ]);
+    assert.equal(commands.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(commands.filter((result) => result.status === "rejected").length, 1);
   } finally {
     try {
       await platform?.dispose();
