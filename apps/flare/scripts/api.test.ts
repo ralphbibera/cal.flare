@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { GoogleCalendarError } from "../src/server/google.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
 test("migrated booking flow runs over HTTP with local D1 and fixture Calendar", async (t) => {
@@ -80,4 +81,80 @@ test("migrated booking flow runs over HTTP with local D1 and fixture Calendar", 
       ["delete", created.id],
     ]
   );
+});
+
+test("HTTP admission bounds Calendar work before availability and booking admission", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { request, send, calendar, db } = fixture;
+  const busy = calendar.busy.bind(calendar);
+  let calls = 0;
+  const countedBusy: typeof calendar.busy = async (...args) => {
+    calls++;
+    return busy(...args);
+  };
+  calendar.busy = countedBusy;
+  const path = `/api/slots?${new URLSearchParams({
+    from: new Date(fixture.now()).toISOString(),
+    to: new Date(fixture.now() + hour).toISOString(),
+    timeZone: "UTC",
+  })}`;
+  const check = async (response: Response, status: number): Promise<void> => {
+    assert.equal(response.status, status);
+    const data = await response.json();
+    assert.ok(typeof data === "object" && data !== null && !Array.isArray(data));
+    if (status === 200) assert.ok("slots" in data && Array.isArray(data.slots) && data.slots.length > 0);
+    if (status === 429) assert.equal("error" in data && data.error, "too_many_requests");
+  };
+
+  await t.test("one IP gets sixty availability requests and rejection does no Calendar work", async () => {
+    for (let index = 0; index < 60; index++) {
+      await check(await request(path), 200);
+    }
+    await check(await request(path), 429);
+    assert.equal(calls, 60);
+    await check(await request(path, { headers: { "CF-Connecting-IP": "192.0.2.2" } }), 200);
+    assert.equal(calls, 61, "another IP can use the remaining global budget");
+  });
+
+  await t.test("one request key cannot bypass the minute limit after pre-admission failure", async () => {
+    await db.prepare("DELETE FROM http_rate").run();
+    calls = 0;
+    calendar.busy = async (): Promise<never> => {
+      calls++;
+      throw new GoogleCalendarError("retryable", 503, "Fixture Calendar unavailable before admission");
+    };
+    const input = {
+      requestKey: crypto.randomUUID(),
+      start: fixture.now() + 10 * hour,
+      name: "Guest",
+      email: "guest@example.test",
+      timeZone: "UTC",
+    };
+    for (let index = 0; index < 60; index++) await check(await send("/api/bookings", input), 503);
+    await check(await send("/api/bookings", input), 429);
+    assert.equal(calls, 60);
+    assert.equal(await db.prepare("SELECT count(*) AS n FROM booking_command").first("n"), 0);
+    assert.equal(await db.prepare("SELECT count(*) AS n FROM booking").first("n"), 0);
+    assert.equal(await db.prepare("SELECT count(*) AS n FROM http_attempt").first("n"), 1);
+  });
+
+  await t.test("different IPs compete atomically for the last global availability admission", async () => {
+    await db.prepare("DELETE FROM http_rate").run();
+    await db
+      .prepare("INSERT INTO http_rate VALUES (?, 'slots:all', 599)")
+      .bind(Math.floor(fixture.now() / 60_000))
+      .run();
+    calls = 0;
+    calendar.busy = countedBusy;
+    const responses = await Promise.all(
+      ["192.0.2.3", "192.0.2.4"].map((ip) => request(path, { headers: { "CF-Connecting-IP": ip } }))
+    );
+    assert.deepEqual(responses.map((response) => response.status).sort(), [200, 429]);
+    for (const response of responses) {
+      if (response.status === 200) await check(response, 200);
+      else await check(response, 429);
+    }
+    assert.equal(calls, 1, "the rejected global contender must not reach Calendar");
+  });
 });
