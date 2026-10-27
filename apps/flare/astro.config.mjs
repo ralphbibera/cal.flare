@@ -4,6 +4,7 @@ import { defineConfig } from "astro/config";
 
 export default defineConfig({
   output: "server",
+  session: false,
   adapter: cloudflare({ imageService: "passthrough" }),
   integrations: [react()],
 });
