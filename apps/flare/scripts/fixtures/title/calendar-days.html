@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Booking calendar day comparison</title>
+  </head>
+  <body class="dark:bg-default bg-subtle p-6 antialiased">
+    <div id="root"></div>
+    <script type="module">
+      const path = new URLSearchParams(location.search).has("candidate") ? "/candidate-calendar-days.jsx" : "/calendar-days.jsx";
+      import(path);
+    </script>
+  </body>
+</html>

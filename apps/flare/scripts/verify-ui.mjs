@@ -57,6 +57,9 @@ await promisify(execFile)(
     "packages/ui/components/icon/icon-names.ts",
     "apps/web/public/icons/sprite.svg",
     "packages/ui/components/button/Button.tsx",
+    "packages/features/calendars/components/DatePicker.tsx",
+    "packages/dayjs",
+    "packages/i18n/locales/en/common.json",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -69,7 +72,25 @@ const server = await createServer({
   plugins: [react()],
   optimizeDeps: {
     noDiscovery: true,
-    include: ["react", "react-dom/client", "tailwind-merge", "class-variance-authority"],
+    include: [
+      "react",
+      "react-dom/client",
+      "tailwind-merge",
+      "class-variance-authority",
+      "dayjs",
+      ...[
+        "customParseFormat",
+        "duration",
+        "isBetween",
+        "isToday",
+        "localizedFormat",
+        "minMax",
+        "relativeTime",
+        "timezone",
+        "toArray",
+        "utc",
+      ].map((name) => `dayjs/plugin/${name}`),
+    ],
   },
   css: { postcss: fileURLToPath(new URL("../", import.meta.url)) },
   resolve: {
@@ -86,6 +107,25 @@ const server = await createServer({
       ),
       "next/link": join(root, "button-boundaries.jsx"),
       "../tooltip/Tooltip": join(root, "button-boundaries.jsx"),
+      "@reference/calendar-day": fileURLToPath(
+        new URL("../../../packages/features/calendars/components/DatePicker.tsx", import.meta.url)
+      ),
+      "@calcom/dayjs": fileURLToPath(new URL("../../../packages/dayjs/index.ts", import.meta.url)),
+      ...Object.fromEntries(
+        [
+          "zustand/shallow",
+          "@calcom/embed-core/embed-iframe",
+          "@calcom/features/bookings/Booker/BookerStoreProvider",
+          "@calcom/features/calendars/lib/getAvailableDatesInMonth",
+          "@calcom/lib/dayjs",
+          "@calcom/lib/hooks/useLocale",
+          "@calcom/lib/weekday",
+          "@calcom/ui/components/button",
+          "@calcom/ui/components/skeleton",
+          "@calcom/ui/components/tooltip",
+          "./NoAvailabilityDialog",
+        ].map((name) => [name, join(root, "calendar-boundaries.jsx")])
+      ),
     },
   },
   server: {
@@ -333,6 +373,57 @@ try {
   }
   console.log(
     "PASS native booking buttons match the pinned reference with zero different pixels and retain keyboard, form, disabled, loading and ref behavior."
+  );
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      const context = await browser.newContext({ viewport, locale: "en-US", timezoneId: "UTC" });
+      const page = await context.newPage();
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      page.on("console", (message) => {
+        if (message.type() === "error") errors.push(message.text());
+      });
+      await page.clock.setFixedTime(new Date("2030-01-09T12:00:00Z"));
+      await page.goto(`${origin}/calendar-days.html?theme=${theme}`);
+      await page.getByRole("button", { name: "Date 11", exact: true }).waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const reference = await page.screenshot({
+        path: fileURLToPath(new URL(`reference-calendar-days-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      assert.deepEqual(errors, []);
+      await page.goto(`${origin}/calendar-days.html?candidate&theme=${theme}`);
+      await page.getByRole("button", { name: "Date 11", exact: true }).waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const candidate = await page.screenshot({
+        path: fileURLToPath(new URL(`candidate-calendar-days-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      assert.equal(
+        await page.evaluate(differentPixels, [[...reference], [...candidate]]),
+        0,
+        `${name} ${theme} calendar days must match the pinned reference`
+      );
+      assert.equal(await page.getByTestId("day").count(), 12);
+      assert.equal(await page.locator('button[data-disabled="true"]').count(), 4);
+      assert.equal(await page.getByTestId("away-emoji").count(), 2);
+      assert.equal(await page.locator(".sr-only").filter({ hasText: "Today" }).count(), 3);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.getByRole("button", { name: "Date 0", exact: true }).click();
+      assert.equal(await page.getByLabel("Selections").textContent(), "1");
+      await page.getByRole("button", { name: "Date 1", exact: true }).press("Enter");
+      assert.equal(await page.getByLabel("Selections").textContent(), "2");
+      await page.getByRole("button", { name: "Date 2", exact: true }).evaluate((button) => button.click());
+      assert.equal(await page.getByLabel("Selections").textContent(), "2");
+      assert.deepEqual(errors, []);
+      await context.close();
+    }
+  }
+  console.log(
+    "PASS calendar day states match the pinned reference with zero different pixels and preserve native selection and disabled behavior."
   );
 } finally {
   try {

@@ -470,6 +470,7 @@ __metadata:
     "@types/react-dom": "npm:19.3.0"
     astro: "npm:7.4.2"
     class-variance-authority: "npm:0.4.0"
+    dayjs: "npm:1.11.2"
     oxc-transform-react: "npm:0.145.0"
     postcss: "npm:8.5.6"
     react: "npm:19.3.1"
@@ -2360,6 +2361,13 @@ __metadata:
   version: 3.2.3
   resolution: "csstype@npm:3.2.3"
   checksum: 10/ad41baf7e2ffac65ab544d79107bf7cd1a4bb9bab9ac3302f59ab4ba655d5e30942a8ae46e10ba160c6f4ecea464cc95b975ca2fefbdeeacd6ac63f12f99fe1f
+  languageName: node
+  linkType: hard
+
+"dayjs@npm:1.11.2":
+  version: 1.11.2
+  resolution: "dayjs@npm:1.11.2"
+  checksum: 10/cac57d7728837ec36f39ae683879abb59d38b7c940a48f5d7fa7a22f6dda91a01570424e436cccf17f67c2530374b4a7bf5d9dc5225fcfa2bb5e5f6a39d47650
   languageName: node
   linkType: hard
 
