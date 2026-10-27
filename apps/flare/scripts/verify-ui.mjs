@@ -116,15 +116,53 @@ try {
       );
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       assert.deepEqual(errors, []);
-      await page.screenshot({
+      const reference = await page.screenshot({
         path: fileURLToPath(new URL(`reference-title-${name}-${theme}.png`, artifacts)),
         fullPage: true,
       });
+      await page.goto(`${origin}/candidate.html?theme=${theme}`);
+      await page.locator('[data-testid="event-title"]').nth(2).waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      assert.equal(await page.locator("h1").count(), 2);
+      assert.equal(await page.locator("h2").count(), 1);
+      const candidate = await page.screenshot({
+        path: fileURLToPath(new URL(`candidate-title-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      const differentPixels = await page.evaluate(
+        async ([expected, actual]) => {
+          const pixels = async (bytes) => {
+            const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+            const canvas = new OffscreenCanvas(image.width, image.height);
+            const context = canvas.getContext("2d");
+            context.drawImage(image, 0, 0);
+            const data = context.getImageData(0, 0, image.width, image.height).data;
+            image.close();
+            return { width: canvas.width, height: canvas.height, data };
+          };
+          const left = await pixels(expected);
+          const right = await pixels(actual);
+          if (left.width !== right.width || left.height !== right.height) return Infinity;
+          let count = 0;
+          for (let offset = 0; offset < left.data.length; offset += 4) {
+            for (let channel = 0; channel < 4; channel++) {
+              if (left.data[offset + channel] !== right.data[offset + channel]) {
+                count++;
+                break;
+              }
+            }
+          }
+          return count;
+        },
+        [[...reference], [...candidate]]
+      );
+      assert.equal(differentPixels, 0, `${name} ${theme} must match the pinned reference`);
+      assert.deepEqual(errors, []);
       await context.close();
     }
   }
   console.log(
-    "PASS upstream event-title reference at desktop/mobile widths in light/dark themes. No port parity claimed."
+    "PASS EventTitle matches the pinned reference with zero different pixels at desktop/mobile widths in light/dark themes."
   );
 } finally {
   try {

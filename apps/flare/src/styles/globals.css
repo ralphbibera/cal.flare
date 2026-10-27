@@ -1,0 +1,41 @@
+@import "tailwindcss" source(none);
+@source "../";
+
+@custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: Inter;
+  src: url("../../../web/public/fonts/Inter-roman.var.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@theme inline {
+  --font-sans: Inter, system-ui, sans-serif;
+  --color-default: var(--cal-bg);
+  --color-subtle: var(--cal-bg-subtle);
+  --border-color-default: var(--cal-border);
+  --text-color-default: var(--cal-text);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --cal-bg: hsla(0, 0%, 100%, 1);
+  --cal-bg-subtle: hsla(220, 14%, 94%, 1);
+  --cal-border: hsla(216, 12%, 84%, 1);
+  --cal-text: hsla(220, 6%, 25%, 1);
+}
+
+.dark {
+  --cal-bg: hsla(0, 0%, 6%, 1);
+  --cal-bg-subtle: hsla(0, 0%, 15%, 1);
+  --cal-border: hsla(0, 0%, 30%, 1);
+  --cal-text: hsla(0, 0%, 83%, 1);
+}
+
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}

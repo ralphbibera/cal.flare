@@ -25,7 +25,8 @@
     "@astrojs/react": "7.0.0",
     "astro": "7.4.2",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "tailwind-merge": "1.13.2"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.10",
@@ -37,7 +38,6 @@
     "@types/react-dom": "19.3.0",
     "oxc-transform-react": "0.145.0",
     "postcss": "8.5.6",
-    "tailwind-merge": "1.13.2",
     "tailwind-scrollbar": "4.0.2",
     "tailwindcss": "4.1.17",
     "tailwindcss-radix": "4.0.2",
