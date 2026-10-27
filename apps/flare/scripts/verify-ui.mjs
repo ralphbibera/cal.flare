@@ -56,6 +56,7 @@ await promisify(execFile)(
     "packages/ui/components/icon/Icon.tsx",
     "packages/ui/components/icon/icon-names.ts",
     "apps/web/public/icons/sprite.svg",
+    "packages/ui/components/button/Button.tsx",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -66,7 +67,10 @@ const server = await createServer({
   // Compile unchanged upstream components without activating their Next.js workspace.
   tsconfig: fileURLToPath(new URL("../tsconfig.json", import.meta.url)),
   plugins: [react()],
-  optimizeDeps: { noDiscovery: true, include: ["react", "react-dom/client", "tailwind-merge"] },
+  optimizeDeps: {
+    noDiscovery: true,
+    include: ["react", "react-dom/client", "tailwind-merge", "class-variance-authority"],
+  },
   css: { postcss: fileURLToPath(new URL("../", import.meta.url)) },
   resolve: {
     alias: {
@@ -77,6 +81,11 @@ const server = await createServer({
       "@reference/icon": fileURLToPath(
         new URL("../../../packages/ui/components/icon/Icon.tsx", import.meta.url)
       ),
+      "@reference/button": fileURLToPath(
+        new URL("../../../packages/ui/components/button/Button.tsx", import.meta.url)
+      ),
+      "next/link": join(root, "button-boundaries.jsx"),
+      "../tooltip/Tooltip": join(root, "button-boundaries.jsx"),
     },
   },
   server: {
@@ -265,6 +274,65 @@ try {
   }
   console.log(
     "PASS all sprite icons match the pinned reference with zero different pixels at desktop/mobile widths in light/dark themes."
+  );
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(`${origin}/buttons.html?theme=${theme}`);
+      await page.getByTestId("interactive").waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll("main svg use")].every((use) => use.parentNode.getBBox().width > 0)
+      );
+      await page.addStyleTag({
+        content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
+      });
+      const reference = await page.screenshot({
+        path: fileURLToPath(new URL(`reference-buttons-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      assert.deepEqual(errors, []);
+      await page.goto(`${origin}/buttons.html?candidate&theme=${theme}`);
+      await page.getByTestId("interactive").waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll("main svg use")].every((use) => use.parentNode.getBBox().width > 0)
+      );
+      await page.addStyleTag({
+        content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
+      });
+      const candidate = await page.screenshot({
+        path: fileURLToPath(new URL(`candidate-buttons-${name}-${theme}.png`, artifacts)),
+        fullPage: true,
+      });
+      assert.equal(
+        await page.evaluate(differentPixels, [[...reference], [...candidate]]),
+        0,
+        `${name} ${theme} buttons must match the pinned reference`
+      );
+      assert.equal(await page.getByTestId("loading").count(), 4);
+      assert.equal(await page.locator('[data-testid="loading"]:disabled').count(), 4);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.getByTestId("interactive").click();
+      assert.equal(await page.getByLabel("Actions").textContent(), "1");
+      await page.getByTestId("interactive").press("Enter");
+      assert.equal(await page.getByLabel("Actions").textContent(), "2");
+      await page.getByTestId("submit").click();
+      assert.equal(await page.getByLabel("Actions").textContent(), "3");
+      await page.getByTestId("disabled").evaluate((button) => button.click());
+      assert.equal(await page.getByLabel("Actions").textContent(), "3");
+      assert.deepEqual(errors, []);
+      await context.close();
+    }
+  }
+  console.log(
+    "PASS native booking buttons match the pinned reference with zero different pixels and retain keyboard, form, disabled, loading and ref behavior."
   );
 } finally {
   try {

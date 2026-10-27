@@ -469,6 +469,7 @@ __metadata:
     "@types/react": "npm:19.3.0"
     "@types/react-dom": "npm:19.3.0"
     astro: "npm:7.4.2"
+    class-variance-authority: "npm:0.4.0"
     oxc-transform-react: "npm:0.145.0"
     postcss: "npm:8.5.6"
     react: "npm:19.3.1"
@@ -2193,6 +2194,18 @@ __metadata:
   version: 4.4.0
   resolution: "ci-info@npm:4.4.0"
   checksum: 10/dfded0c630267d89660c8abb988ac8395a382bdfefedcc03e3e2858523312c5207db777c239c34774e3fcff11f015477c19d2ac8a58ea58aa476614a2e64f434
+  languageName: node
+  linkType: hard
+
+"class-variance-authority@npm:0.4.0":
+  version: 0.4.0
+  resolution: "class-variance-authority@npm:0.4.0"
+  peerDependencies:
+    typescript: ">= 4.5.5 < 5"
+  peerDependenciesMeta:
+    typescript:
+      optional: true
+  checksum: 10/9e65ab73546c6968f98e40764ed90eed45df8c47420edbee8b770f3592c486600628041ab96d3064b7567ff5227c7390af9adaee033c6106a025dee678c2ca36
   languageName: node
   linkType: hard
 

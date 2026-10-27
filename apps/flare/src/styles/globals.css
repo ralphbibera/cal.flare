@@ -1,4 +1,6 @@
 @import "tailwindcss" source(none);
+@import "../../../../packages/config/theme/tokens.css";
+@import "../../../../packages/coss-ui/src/styles/globals.css";
 @source "../";
 
 @custom-variant dark (&:is(.dark *));
