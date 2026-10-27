@@ -1,5 +1,5 @@
 import type { Interval } from "../domain/scheduling.ts";
-import { isValidTimeZone } from "../domain/scheduling.ts";
+import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
 import { parseSettings } from "../domain/settings.ts";
 import type { BookingView, parseChange, parseCreate } from "../server/booking-model.ts";
@@ -183,7 +183,7 @@ class BookerClient {
       `/api/slots?${query}`,
       (value) => {
         const data = object(value);
-        if (!Array.isArray(data.slots) || data.slots.length > 44_640) throw new Error();
+        if (!Array.isArray(data.slots) || data.slots.length > MAX_QUERY_DAYS * 1440) throw new Error();
         return data.slots.map(interval);
       },
       { headers, signal }

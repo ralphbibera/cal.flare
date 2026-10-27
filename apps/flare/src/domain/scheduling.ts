@@ -25,6 +25,8 @@ type AvailabilityInput = {
 
 const MINUTE = 60_000;
 const DAY: number = 1440 * MINUTE;
+// Two complete calendar months plus a day for offset transitions.
+const MAX_QUERY_DAYS = 63;
 const EARLIEST: number = Date.UTC(2000, 0, 1);
 const LATEST: number = Date.UTC(2100, 0, 1);
 
@@ -58,7 +60,8 @@ function validate(input: AvailabilityInput): void {
   if (!isValidTimeZone(schedule.timeZone)) throw new RangeError("Invalid IANA time zone");
   if (!isValidTimeZone(input.visitorTimeZone)) throw new RangeError("Invalid visitor time zone");
   for (const value of [from, to, now]) integer(value, EARLIEST, LATEST, "timestamp");
-  if (to <= from || to - from > 31 * DAY) throw new RangeError("Query must span (0, 31] days");
+  if (to <= from || to - from > MAX_QUERY_DAYS * DAY)
+    throw new RangeError(`Query must span (0, ${MAX_QUERY_DAYS}] days`);
   integer(policy.durationMinutes, 1, 1440, "durationMinutes");
   integer(policy.intervalMinutes, 1, 1440, "intervalMinutes");
   for (const value of [policy.beforeMinutes, policy.afterMinutes, policy.noticeMinutes]) {
@@ -198,5 +201,5 @@ function availableSlots(input: AvailabilityInput): Interval[] {
   return slots;
 }
 
-export { availableSlots, isValidTimeZone, overlaps };
+export { availableSlots, isValidTimeZone, MAX_QUERY_DAYS, overlaps };
 export type { AvailabilityInput, Interval, Schedule, SlotPolicy, WorkingRule };

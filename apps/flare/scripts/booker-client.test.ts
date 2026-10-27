@@ -3,6 +3,48 @@ import { test } from "node:test";
 import { BookerClient, ErrorWithCode } from "../src/client/bookings.ts";
 import { apiFixture, hour } from "./fixtures/api.ts";
 
+test("calendar prefetch crosses months through HTTP/D1 and rejects oversized ranges before Calendar work", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  let reads = 0;
+  const original = fixture.calendar.busy.bind(fixture.calendar);
+  fixture.calendar.busy = (...args) => {
+    reads++;
+    return original(...args);
+  };
+  const client = new BookerClient((path, init) => fixture.request(path, init));
+  const from = fixture.now();
+  const to = from + 63 * 24 * hour;
+  const slots = await client.slots({ from, to, timeZone: "UTC" });
+  assert.equal(slots.length, 18_139);
+  assert.deepEqual(slots[0], { start: from, end: from + 0.5 * hour });
+  assert.deepEqual(slots.at(-1), { start: to - 0.5 * hour, end: to });
+  assert.equal(reads, 1);
+  await assert.rejects(client.slots({ from, to: to + 1, timeZone: "UTC" }), (error: unknown) => {
+    assert.ok(error instanceof ErrorWithCode);
+    assert.equal(error.status, 400);
+    assert.equal(error.code, "invalid_range");
+    return true;
+  });
+  assert.equal(reads, 1);
+});
+
+test("calendar decoder accepts the full bounded minute grid and rejects an extra result", async () => {
+  const from = Date.UTC(2030, 0, 1);
+  const slots = Array.from({ length: 90_720 }, (_, index) => ({
+    start: from + index * 60_000,
+    end: from + (index + 1) * 60_000,
+  }));
+  const client = new BookerClient(async () => Response.json({ slots }));
+  const request = { from, to: from + 63 * 24 * hour, timeZone: "UTC" };
+  assert.deepEqual(await client.slots(request), slots);
+  slots.push({ start: request.to, end: request.to + 60_000 });
+  await assert.rejects(
+    client.slots(request),
+    (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_response"
+  );
+});
+
 test("booker client completes the booking lifecycle through HTTP and migrated D1", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);
