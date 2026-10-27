@@ -60,6 +60,7 @@ await promisify(execFile)(
     "packages/features/calendars/components/DatePicker.tsx",
     "packages/dayjs",
     "packages/i18n/locales/en/common.json",
+    "packages/ui/components/tooltip/Tooltip.tsx",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -77,6 +78,7 @@ const server = await createServer({
       "react-dom/client",
       "tailwind-merge",
       "class-variance-authority",
+      "@radix-ui/react-tooltip",
       "dayjs",
       ...[
         "customParseFormat",
@@ -104,6 +106,9 @@ const server = await createServer({
       ),
       "@reference/button": fileURLToPath(
         new URL("../../../packages/ui/components/button/Button.tsx", import.meta.url)
+      ),
+      "@reference/tooltip": fileURLToPath(
+        new URL("../../../packages/ui/components/tooltip/Tooltip.tsx", import.meta.url)
       ),
       "next/link": join(root, "button-boundaries.jsx"),
       "../tooltip/Tooltip": join(root, "button-boundaries.jsx"),
@@ -424,6 +429,75 @@ try {
   }
   console.log(
     "PASS calendar day states match the pinned reference with zero different pixels and preserve native selection and disabled behavior."
+  );
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      for (const side of ["top", "right", "bottom", "left"]) {
+        const context = await browser.newContext({ viewport });
+        const page = await context.newPage();
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("console", (message) => {
+          if (message.type() === "error") errors.push(message.text());
+        });
+        await page.goto(`${origin}/tooltips.html?theme=${theme}&side=${side}`);
+        await page.getByTestId("tooltip-content").waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const reference = await page.screenshot({
+          path: fileURLToPath(new URL(`reference-tooltip-${name}-${theme}-${side}.png`, artifacts)),
+          fullPage: true,
+        });
+        assert.deepEqual(errors, []);
+        await page.goto(`${origin}/tooltips.html?candidate&theme=${theme}&side=${side}`);
+        await page.getByTestId("tooltip-content").waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const candidate = await page.screenshot({
+          path: fileURLToPath(new URL(`candidate-tooltip-${name}-${theme}-${side}.png`, artifacts)),
+          fullPage: true,
+        });
+        assert.equal(
+          await page.evaluate(differentPixels, [[...reference], [...candidate]]),
+          0,
+          `${name} ${theme} ${side} tooltip must match the pinned reference`
+        );
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        if (side === "top") {
+          await page.goto(`${origin}/tooltips.html?candidate&theme=${theme}&mode=interactive`);
+          const trigger = page.getByRole("button", { name: "View next month" });
+          const tooltip = page.getByRole("tooltip");
+          await trigger.hover();
+          await tooltip.waitFor();
+          assert.equal(await tooltip.textContent(), "February");
+          assert.equal(await page.getByTestId("tooltip-content").getAttribute("data-side"), "top");
+          assert.equal(await trigger.getAttribute("aria-describedby"), await tooltip.getAttribute("id"));
+          await page.keyboard.press("Escape");
+          await tooltip.waitFor({ state: "hidden" });
+          await page.mouse.move(0, 0);
+          await page.keyboard.press("Tab");
+          await tooltip.waitFor();
+          await trigger.evaluate((button) => button.blur());
+          await tooltip.waitFor({ state: "hidden" });
+          await page.goto(`${origin}/tooltips.html?candidate&theme=${theme}&mode=closed`);
+          await page.getByRole("button", { name: "View next month" }).focus();
+          await assert.rejects(
+            () => page.getByRole("tooltip").waitFor({ timeout: 200 }),
+            (error) => error instanceof Error && error.name === "TimeoutError"
+          );
+          await page.goto(`${origin}/tooltips.html?candidate&theme=${theme}&mode=empty`);
+          await page.getByTestId("empty-child").nth(2).waitFor();
+          assert.equal(await page.locator("main [data-state]").count(), 0);
+          assert.equal(await page.getByRole("tooltip").count(), 0);
+        }
+        assert.deepEqual(errors, []);
+        await context.close();
+      }
+    }
+  }
+  console.log(
+    "PASS tooltips match the pinned wrapper with zero different pixels on all four sides and preserve keyboard, hover, controlled and empty-content behavior."
   );
 } finally {
   try {
