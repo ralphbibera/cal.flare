@@ -153,7 +153,7 @@ test("booking availability combines visitor rounding, D1 holds and fresh calenda
     const count = calls.length;
     await assert.rejects(availability.slots(from, to, "Invalid/Zone"), /invalid_input/);
     await assert.rejects(availability.slots(from, from, "UTC"), /invalid_range/);
-    await assert.rejects(availability.slots(from, from + 32 * 86_400_000, "UTC"), /invalid_range/);
+    await assert.rejects(availability.slots(from, from + 63 * 86_400_000 + 1, "UTC"), /invalid_range/);
     assert.equal(
       await availability.condition({ ...desired, start: from - 60 * minute, end: from - 30 * minute }),
       "invalid_slot"

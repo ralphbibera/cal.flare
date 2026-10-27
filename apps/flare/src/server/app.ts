@@ -1,4 +1,4 @@
-import { isValidTimeZone } from "../domain/scheduling.ts";
+import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import { parseSettings } from "../domain/settings.ts";
 import type { AuthEnv } from "./auth.ts";
 import { beginLogin, finishLogin, logout, requireOwner } from "./auth.ts";
@@ -128,7 +128,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
       !Number.isSafeInteger(from) ||
       !Number.isSafeInteger(to) ||
       to <= from ||
-      to - from > 31 * 86_400_000
+      to - from > MAX_QUERY_DAYS * 86_400_000
     ) {
       throw new ErrorWithCode("invalid_range");
     }

@@ -315,7 +315,7 @@ test("invalid and unbounded domain inputs fail before generating slots", () => {
   const value = input();
   const invalid: AvailabilityInput[] = [
     { ...value, to: value.from },
-    { ...value, to: value.from + 31 * 86400000 + 1 },
+    { ...value, to: value.from + 63 * 86400000 + 1 },
     { ...value, from: Number.NaN },
     { ...value, now: Number.POSITIVE_INFINITY },
     { ...value, visitorTimeZone: "Mars/Olympus" },
@@ -418,7 +418,7 @@ test("hourly offset interpolation matches the minute-scan oracle across fraction
   }
 });
 
-test("the core retains all 44,640 one-minute slots across its 31-day bound", () => {
+test("the core retains all 44,640 one-minute slots across a 31-day window", () => {
   const value = input({
     schedule: {
       timeZone: "America/New_York",
@@ -431,4 +431,27 @@ test("the core retains all 44,640 one-minute slots across its 31-day bound", () 
   const slots = availableSlots(value);
   assert.equal(slots.length, 44_640);
   assert.deepEqual(slots, scannedWorkingMinutes(value));
+});
+
+test("two-month prefetch remains bounded and retains every minute and cross-boundary slot", () => {
+  const from = at("2026-01-01T00:00Z");
+  const value = input({
+    schedule: {
+      timeZone: "UTC",
+      rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 0, endMinute: 1440 })),
+    },
+    policy: { ...policy, durationMinutes: 1, intervalMinutes: 1 },
+    from,
+    to: from + 63 * 86_400_000,
+  });
+  const slots = availableSlots(value);
+  assert.equal(slots.length, 90_720);
+  for (let index = 0; index < slots.length; index++) {
+    assert.deepEqual(slots[index], { start: from + index * 60_000, end: from + (index + 1) * 60_000 });
+  }
+  assert.throws(() => availableSlots({ ...value, to: value.to + 1 }), RangeError);
+  const spaced = availableSlots({ ...value, policy: { ...policy, durationMinutes: 3, intervalMinutes: 7 } });
+  const boundary = from + 31 * 86_400_000;
+  assert.ok(spaced.some((slot) => slot.start === boundary - 60_000 && slot.end === boundary + 2 * 60_000));
+  assert.ok(spaced.some((slot) => slot.start === boundary + 6 * 60_000));
 });

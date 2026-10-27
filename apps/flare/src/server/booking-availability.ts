@@ -1,5 +1,5 @@
 import type { Interval } from "../domain/scheduling.ts";
-import { availableSlots, isValidTimeZone } from "../domain/scheduling.ts";
+import { availableSlots, isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
 import { parseSettings } from "../domain/settings.ts";
 import type { Booking, BookingSnapshot, Calendar } from "./booking-model.ts";
@@ -59,7 +59,7 @@ export class BookingAvailability {
   async slots(from: number, to: number, visitorTimeZone: string, exclude?: Booking): Promise<Interval[]> {
     timestamp(from);
     timestamp(to);
-    if (from >= to || to - from > 31 * DAY || to > this.now() + 365 * DAY)
+    if (from >= to || to - from > MAX_QUERY_DAYS * DAY || to > this.now() + 365 * DAY)
       throw new ErrorWithCode("invalid_range");
     if (!isValidTimeZone(visitorTimeZone)) throw new ErrorWithCode("invalid_input");
     let durationMinutes = this.settings.event.durationMinutes;

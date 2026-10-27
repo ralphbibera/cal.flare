@@ -185,6 +185,14 @@ async function verifyWorker(fixture) {
   })}`;
   const slots = await read(await request(slotsPath));
   assert.ok(slots.slots.length >= 8);
+  const prefetchTo = tomorrow + 63 * 24 * hour;
+  const prefetchPath = (to) =>
+    `/api/slots?${new URLSearchParams({ from: new Date(tomorrow).toISOString(), to: new Date(to).toISOString(), timeZone: "UTC" })}`;
+  const prefetched = await read(await request(prefetchPath(prefetchTo)));
+  assert.equal(prefetched.slots.length, 3_024);
+  assert.equal(prefetched.slots[0].start, tomorrow);
+  assert.equal(prefetched.slots.at(-1).end, prefetchTo);
+  assert.equal((await read(await request(prefetchPath(prefetchTo + 1)), 400)).error, "invalid_range");
   await verifyTokenRefresh(fixture, slotsPath);
   await verifyBookingJourney(fixture, slots, slotsPath);
   await verifyRecovery(fixture, slots);
