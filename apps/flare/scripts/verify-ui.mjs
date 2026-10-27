@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { chromium } from "@playwright/test";
+import { verifyCalendar } from "./verify-calendar.mjs";
 
 const require = createRequire(import.meta.url);
 const { createServer } = await import(
@@ -172,6 +173,7 @@ const server = await createServer({
   server: {
     host: "127.0.0.1",
     port: 0,
+    proxy: { "/api": { target: "http://127.0.0.1:8796" } },
     fs: {
       deny: ["**/.dev.vars", "**/.dev.vars.*", "**/.env", "**/.env.*", "**/*.{crt,pem,key}", "**/.git/**"],
     },
@@ -197,6 +199,7 @@ try {
     await rm(privateDirectory, { recursive: true, force: true });
   }
   browser = await chromium.launch();
+  await verifyCalendar(browser, origin);
   const sessionContext = await browser.newContext();
   const sessionPage = await sessionContext.newPage();
   await sessionPage.goto(origin);
