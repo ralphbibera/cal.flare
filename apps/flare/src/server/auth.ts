@@ -264,3 +264,36 @@ export async function logout(env: AuthEnv, request: Request): Promise<Response> 
       .run();
   return redirect(`${origin}/`, [setCookie("flare_session", "", 0, origin)]);
 }
+export async function accessToken(env: AuthEnv): Promise<string> {
+  const { key, email } = await config(env);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const connection = await env.DB.prepare(
+      "SELECT g.ciphertext, g.version FROM google_connection g JOIN owner o ON o.id = g.owner_id WHERE o.id = 'owner' AND o.email = ?"
+    )
+      .bind(email)
+      .first<{ ciphertext: string; version: number }>();
+    if (!connection) throw new ErrorWithCode("GOOGLE_DISCONNECTED", "Organizer must connect Google Calendar");
+    const tokens = storedTokens(await unseal(key, connection.ciphertext, "google:owner"));
+    if (tokens.expiresAt > Date.now() + 60_000) return tokens.access;
+    let refreshed: Tokens;
+    try {
+      refreshed = parseTokens(
+        await exchange(env, { grant_type: "refresh_token", refresh_token: tokens.refresh }),
+        tokens.refresh
+      );
+    } catch (error) {
+      const latest = await env.DB.prepare(
+        "SELECT version FROM google_connection WHERE owner_id = 'owner'"
+      ).first<{ version: number }>();
+      if (latest && latest.version !== connection.version) continue;
+      throw error;
+    }
+    const result = await env.DB.prepare(
+      "UPDATE google_connection SET ciphertext = ?, version = version + 1 WHERE owner_id = 'owner' AND version = ?"
+    )
+      .bind(await seal(key, JSON.stringify(refreshed), "google:owner"), connection.version)
+      .run();
+    if (result.meta.changes === 1) return refreshed.access;
+  }
+  throw new ErrorWithCode("TOKEN_RACE", "Google connection changed during token refresh");
+}
