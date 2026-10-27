@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AvailabilityInput, SlotPolicy } from "../src/domain/scheduling.ts";
-import { availableSlots, overlaps } from "../src/domain/scheduling.ts";
+import type { AvailabilityInput, Interval, SlotPolicy } from "../src/domain/scheduling.ts";
+import { availableSlots, isValidTimeZone, overlaps } from "../src/domain/scheduling.ts";
 
 const at = (value: string): number => Date.parse(value);
 const policy: SlotPolicy = {
@@ -23,6 +23,41 @@ const input = (changes: Partial<AvailabilityInput> = {}): AvailabilityInput => (
 });
 const starts = (value: AvailabilityInput): string[] =>
   availableSlots(value).map((slot) => new Date(slot.start).toISOString());
+
+// Keep the original per-minute Intl scan independent of offset interpolation.
+function scannedWorkingMinutes(value: AvailabilityInput): Interval[] {
+  const { schedule, from, to } = value;
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: schedule.timeZone,
+    calendar: "gregory",
+    numberingSystem: "latn",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const first = Math.ceil(from / 60_000) * 60_000;
+  const count = Math.max(0, Math.floor((to - first) / 60_000));
+  const slots: Interval[] = [];
+  for (let index = 0; index < count; index++) {
+    const fields = Object.fromEntries(
+      formatter.formatToParts(first + index * 60_000).map((part) => [part.type, part.value])
+    );
+    const date = `${fields.year}-${fields.month}-${fields.day}`;
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const ranges =
+      schedule.overrides?.find((item) => item.date === date)?.ranges ??
+      schedule.rules.filter((rule) => rule.weekday === weekday);
+    const minute = Number(fields.hour) * 60 + Number(fields.minute);
+    if (ranges.some((range) => range.startMinute <= minute && minute < range.endMinute)) {
+      const start = first + index * 60_000;
+      slots.push({ start, end: start + 60_000 });
+    }
+  }
+  return slots;
+}
 
 test("weekly hours return sorted elapsed-duration UTC slots without mutating input", () => {
   const value = input();
@@ -274,4 +309,126 @@ test("pinned seven-minute spacing starts at the free range rather than midnight"
     policy: { ...policy, intervalMinutes: 7, durationMinutes: 3 },
   });
   assert.deepEqual(starts(value), ["2026-01-05T09:00:00.000Z", "2026-01-05T09:07:00.000Z"]);
+});
+
+test("invalid and unbounded domain inputs fail before generating slots", () => {
+  const value = input();
+  const invalid: AvailabilityInput[] = [
+    { ...value, to: value.from },
+    { ...value, to: value.from + 31 * 86400000 + 1 },
+    { ...value, from: Number.NaN },
+    { ...value, now: Number.POSITIVE_INFINITY },
+    { ...value, visitorTimeZone: "Mars/Olympus" },
+    { ...value, from: at("1999-12-31T23:59Z"), to: at("2000-01-01T00:01Z") },
+    { ...value, from: at("2099-12-31T23:59Z"), to: at("2100-01-01T00:01Z") },
+    { ...value, now: at("1999-12-31T23:59Z") },
+    { ...value, now: at("2100-01-01T00:01Z") },
+    { ...value, policy: { ...policy, intervalMinutes: 0 } },
+    { ...value, policy: { ...policy, durationMinutes: 1.5 } },
+    { ...value, policy: { ...policy, beforeMinutes: -1 } },
+    { ...value, policy: { ...policy, noticeMinutes: 44641 } },
+    { ...value, schedule: { timeZone: "Mars/Olympus", rules: [] } },
+    { ...value, schedule: { timeZone: "UTC", rules: [{ weekday: 7, startMinute: 0, endMinute: 60 }] } },
+    { ...value, schedule: { timeZone: "UTC", rules: [{ weekday: 1, startMinute: 60, endMinute: 60 }] } },
+    { ...value, schedule: { ...value.schedule, overrides: [{ date: "2026-02-30", ranges: [] }] } },
+    {
+      ...value,
+      schedule: {
+        ...value.schedule,
+        overrides: [
+          { date: "2026-01-05", ranges: [] },
+          { date: "2026-01-05", ranges: [] },
+        ],
+      },
+    },
+    { ...value, busy: [{ start: value.from, end: value.from }] },
+    { ...value, busy: Array.from({ length: 10001 }, () => ({ start: value.from, end: value.to })) },
+  ];
+  for (const invalidInput of invalid) assert.throws(() => availableSlots(invalidInput), RangeError);
+  assert.equal(isValidTimeZone("Asia/Kolkata"), true);
+  assert.equal(isValidTimeZone("+05:30"), false);
+});
+
+test("a 31-day query retains pinned seven-minute spacing from each free-range start", () => {
+  assert.deepEqual(
+    starts(
+      input({
+        schedule: { timeZone: "UTC", rules: [{ weekday: 1, startMinute: 540, endMinute: 550 }] },
+        policy: { ...policy, intervalMinutes: 7, durationMinutes: 3 },
+        to: at("2026-02-05T00:00Z"),
+      })
+    ),
+    [
+      "2026-01-05T09:00:00.000Z",
+      "2026-01-05T09:07:00.000Z",
+      "2026-01-12T09:00:00.000Z",
+      "2026-01-12T09:07:00.000Z",
+      "2026-01-19T09:00:00.000Z",
+      "2026-01-19T09:07:00.000Z",
+      "2026-01-26T09:00:00.000Z",
+      "2026-01-26T09:07:00.000Z",
+      "2026-02-02T09:00:00.000Z",
+      "2026-02-02T09:07:00.000Z",
+    ]
+  );
+});
+
+test("hourly offset interpolation matches the minute-scan oracle across fractional zones and transitions", () => {
+  const cases = [
+    ["America/New_York", "2026-03-07"],
+    ["America/New_York", "2026-10-31"],
+    ["Australia/Lord_Howe", "2026-04-04"],
+    ["Australia/Lord_Howe", "2026-10-03"],
+    ["Pacific/Chatham", "2026-04-04"],
+    ["Pacific/Chatham", "2026-09-26"],
+    ["Asia/Kathmandu", "2026-01-05"],
+    ["Asia/Kolkata", "2026-01-05"],
+    ["Australia/Eucla", "2026-01-05"],
+    ["America/St_Johns", "2026-03-07"],
+    ["Africa/Casablanca", "2026-02-14"],
+    ["Africa/Casablanca", "2026-03-21"],
+    ["Antarctica/Troll", "2026-03-28"],
+    ["Antarctica/Troll", "2026-10-24"],
+    ["Pacific/Apia", "2011-12-29"],
+    ["America/Sao_Paulo", "2018-11-03"],
+  ];
+  for (const [timeZone, date] of cases) {
+    const from = at(`${date}T00:17:00Z`) + 1;
+    const value = input({
+      schedule: {
+        timeZone,
+        rules: Array.from({ length: 7 }, (_, weekday) => [
+          { weekday, startMinute: 0, endMinute: 127 },
+          { weekday, startMinute: 130, endMinute: 1440 },
+        ]).flat(),
+        overrides: [{ date, ranges: [{ startMinute: 29, endMinute: 1431 }] }],
+      },
+      from,
+      to: from + 3 * 86_400_000 - 2,
+      now: from - 60_000,
+      policy: {
+        durationMinutes: 1,
+        intervalMinutes: 1,
+        beforeMinutes: 0,
+        afterMinutes: 0,
+        noticeMinutes: 0,
+      },
+    });
+    assert.deepEqual(availableSlots(value), scannedWorkingMinutes(value), `${timeZone} ${date}`);
+  }
+});
+
+test("the core retains all 44,640 one-minute slots across its 31-day bound", () => {
+  const value = input({
+    schedule: {
+      timeZone: "America/New_York",
+      rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 0, endMinute: 1440 })),
+    },
+    policy: { ...policy, durationMinutes: 1, intervalMinutes: 1 },
+    from: at("2026-03-01T00:00Z"),
+    to: at("2026-04-01T00:00Z"),
+  });
+  const slots = availableSlots(value);
+  assert.equal(slots.length, 44_640);
+  assert.deepEqual(slots, scannedWorkingMinutes(value));
 });
