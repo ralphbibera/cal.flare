@@ -1,3 +1,18 @@
+# Cal.flare
+
+Cal.flare is an independent, MIT-licensed Cloudflare port of [Cal.diy](https://github.com/calcom/cal.diy).
+The new stack uses Astro, reusable React components, Workers, and a focused D1 data model.
+The root workspace now builds `apps/flare`. Inherited Cal.diy source remains available for selective reuse.
+
+Start with the [development guide](apps/flare/README.md) and [migration plan](docs/porting/cloudflare-astro.md).
+The current implementation proves local Workers/D1 plumbing and experimental reservations.
+Google connection, visitor booking, invitation delivery, and production deployment remain to be implemented and verified.
+
+## Original Cal.diy documentation
+
+The original README follows as historical documentation for the inherited source.
+Its installation commands describe the original application.
+
 > [!WARNING]  
 > Use at your own risk. Cal.diy is the open source community edition of Cal.com and it is intended for users who want to self-host their own Cal.diy instance. It is strictly recommended for personal, non-production use. Please review all installation and configuration steps carefully. Self-hosting requires advanced knowledge of server administration, database management, and securing sensitive data. Proceed only if you are comfortable with these responsibilities.
 
