@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { getPlatformProxy } from "wrangler";
 import type { AuthEnv } from "../src/server/auth.ts";
-import { beginLogin, finishLogin, logout, requireOwner } from "../src/server/auth.ts";
-import { encryptionKey, unseal } from "../src/server/secrets.ts";
+import { accessToken, beginLogin, finishLogin, logout, requireOwner } from "../src/server/auth.ts";
+import { encryptionKey, seal, unseal } from "../src/server/secrets.ts";
 
 const platform = await getPlatformProxy<{ DB: D1Database }>({
   configPath: fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),
@@ -203,6 +203,173 @@ try {
       .getSetCookie()
       .find((value) => value.startsWith("flare_session="))
       ?.split(";")[0] ?? "";
+  const refreshKey = await encryptionKey(env.TOKEN_ENCRYPTION_KEY);
+  const beforeCachedAccess = requests;
+  assert.equal(await accessToken(env), "second-access");
+  assert.equal(requests, beforeCachedAccess, "A usable stored token must not trigger refresh");
+  const beforeRace = await db.prepare("SELECT count(*) AS n FROM owner_session").first<{ n: number }>();
+  const beforeVersion = await db
+    .prepare("SELECT version FROM google_connection")
+    .first<{ version: number }>();
+  const raceAttempts = await Promise.all([attempt(), attempt()]);
+  const loginFetch = globalThis.fetch;
+  let arrivals = 0;
+  let release = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  globalThis.fetch = async (url, init) => {
+    if (String(url) === "https://oauth2.googleapis.com/token") {
+      await loginFetch(url, init);
+      return Response.json({
+        access_token: new URLSearchParams(String(init?.body)).get("code"),
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope:
+          "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+      });
+    }
+    assert.equal(String(url), "https://openidconnect.googleapis.com/v1/userinfo");
+    const code = new Headers(init?.headers).get("Authorization")?.replace(/^Bearer /, "");
+    arrivals++;
+    if (arrivals === 2) release();
+    await ready;
+    return Response.json({
+      sub: "pinned-subject",
+      email: "owner@example.com",
+      email_verified: true,
+      name: code,
+    });
+  };
+  const outcomes = await Promise.allSettled(raceAttempts.map(callback));
+  globalThis.fetch = loginFetch;
+  assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+  const rejected = outcomes.find((result) => result.status === "rejected");
+  assert.ok(rejected?.status === "rejected" && rejected.reason.code === "TOKEN_RACE");
+  const winner = raceAttempts[outcomes.findIndex((result) => result.status === "fulfilled")];
+  const winnerCode = new URL(winner.callback).searchParams.get("code");
+  assert.equal(await accessToken(env), winnerCode, "Only the winner's connection is stored");
+  assert.equal(
+    (await db.prepare("SELECT version FROM google_connection").first<{ version: number }>())?.version,
+    (beforeVersion?.version ?? 0) + 1,
+    "Only one callback may change the connection version"
+  );
+  assert.equal(
+    (await db.prepare("SELECT name FROM owner").first<{ name: string }>())?.name,
+    winnerCode,
+    "The rejected callback must not overwrite the winning owner's profile"
+  );
+  assert.equal(
+    (await db.prepare("SELECT count(*) AS n FROM owner_session").first<{ n: number }>())?.n,
+    (beforeRace?.n ?? 0) + 1,
+    "A rejected independent callback must not persist an owner session"
+  );
+  for (const data of raceAttempts) await assert.rejects(callback(data), /consumed/);
+  const sharedAttempt = await attempt();
+  const beforeShared = requests;
+  const sharedOutcomes = await Promise.allSettled([callback(sharedAttempt), callback(sharedAttempt)]);
+  assert.equal(sharedOutcomes.filter((result) => result.status === "fulfilled").length, 1);
+  const sharedRejected = sharedOutcomes.find((result) => result.status === "rejected");
+  assert.ok(sharedRejected?.status === "rejected" && sharedRejected.reason.code === "OAUTH_STATE");
+  assert.equal(requests, beforeShared + 2, "Concurrent replay must exchange one code and read one identity");
+  console.log(
+    "PASS independent OAuth callback race persists exactly one session and consumes both states (real local D1)"
+  );
+  async function expire() {
+    await db
+      .prepare("UPDATE google_connection SET ciphertext = ?, version = version + 1")
+      .bind(
+        await seal(
+          refreshKey,
+          JSON.stringify({ access: "expired", refresh: "refresh-secret", expiresAt: 0 }),
+          "google:owner"
+        )
+      )
+      .run();
+  }
+  await expire();
+  tokenReply = { access_token: "refreshed", token_type: "Bearer", expires_in: 120 };
+  assert.equal(await accessToken(env), "refreshed");
+  const refreshed = await db
+    .prepare("SELECT ciphertext FROM google_connection")
+    .first<{ ciphertext: string }>();
+  assert.ok(refreshed);
+  const stored = JSON.parse(await unseal(refreshKey, refreshed.ciphertext, "google:owner"));
+  assert.equal(
+    stored.refresh,
+    "refresh-secret",
+    "Refresh responses that omit refresh_token must preserve it"
+  );
+  assert.ok(stored.expiresAt > Date.now() + 110_000 && stored.expiresAt <= Date.now() + 120_000);
+  await expire();
+  tokenReply = { access_token: "invalid", token_type: "Bearer", expires_in: "3600" };
+  await assert.rejects(accessToken(env), /expiry/);
+  const raceFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    await db
+      .prepare("UPDATE google_connection SET ciphertext = ?, version = version + 1")
+      .bind(
+        await seal(
+          refreshKey,
+          JSON.stringify({
+            access: "winning-access",
+            refresh: "winning-refresh",
+            expiresAt: Date.now() + 3600_000,
+          }),
+          "google:owner"
+        )
+      )
+      .run();
+    return Response.json({
+      access_token: "stale-access",
+      refresh_token: "stale-refresh",
+      token_type: "Bearer",
+      expires_in: 3600,
+    });
+  };
+  assert.equal(
+    await accessToken(env),
+    "winning-access",
+    "A refresh must not overwrite a newer connection version"
+  );
+  await expire();
+  globalThis.fetch = async () => {
+    await db
+      .prepare("UPDATE google_connection SET ciphertext = ?, version = version + 1")
+      .bind(
+        await seal(
+          refreshKey,
+          JSON.stringify({
+            access: "winner-after-error",
+            refresh: "new-refresh",
+            expiresAt: Date.now() + 3600_000,
+          }),
+          "google:owner"
+        )
+      )
+      .run();
+    throw new TypeError("stale request failed");
+  };
+  assert.equal(await accessToken(env), "winner-after-error");
+  await expire();
+  const beforeExhaustion = await db
+    .prepare("SELECT ciphertext, version FROM google_connection")
+    .first<{ ciphertext: string; version: number }>();
+  assert.ok(beforeExhaustion);
+  let refreshAttempts = 0;
+  globalThis.fetch = async () => {
+    assert.ok(++refreshAttempts <= 3, "Refresh contention must stop after three attempts");
+    await db.prepare("UPDATE google_connection SET version = version + 1").run();
+    return Response.json({ access_token: "losing-access", token_type: "Bearer", expires_in: 3600 });
+  };
+  await assert.rejects(accessToken(env), { code: "TOKEN_RACE" });
+  assert.equal(refreshAttempts, 3);
+  assert.deepEqual(
+    await db.prepare("SELECT ciphertext, version FROM google_connection").first(),
+    { ciphertext: beforeExhaustion.ciphertext, version: beforeExhaustion.version + 3 },
+    "Exhausted refreshes must leave the winning credential untouched"
+  );
+  globalThis.fetch = raceFetch;
   await assert.rejects(logout(env, request), /same-origin POST/);
   await logout(
     env,
