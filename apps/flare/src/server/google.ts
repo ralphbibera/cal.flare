@@ -16,6 +16,16 @@ export class GoogleCalendarError extends ErrorWithCode {
   }
 }
 export type BusyRange = { start: number; end: number };
+export type EventInput = {
+  id: string;
+  start: string | number;
+  end: string | number;
+  timeZone: string;
+  title: string;
+  description: string;
+  attendee: { name: string; email: string };
+  privateMetadata: Record<string, string>;
+};
 type EventTime = { dateTime: string; timeZone?: string } | { date: string; timeZone?: string };
 export type CalendarEvent = {
   id: string;
@@ -65,6 +75,7 @@ function event(value: unknown): CalendarEvent {
     attendees: [],
     extendedProperties: { private: {} },
   };
+  match(result.etag);
   for (const field of ["status", "transparency", "summary", "description"] as const) {
     if (data[field] !== undefined) {
       if (typeof data[field] !== "string") throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid event text");
@@ -133,6 +144,36 @@ function midnight(date: string, zone: string, edge: "start" | "end"): number {
   // Midnight can be skipped or repeated by a time-zone transition. Widen only that boundary.
   const choices = exact.length ? exact : [...candidates];
   return edge === "start" ? Math.min(...choices) : Math.max(...choices);
+}
+function body(input: Omit<EventInput, "id">) {
+  const start = typeof input.start === "number" ? new Date(input.start).toISOString() : input.start;
+  const end = typeof input.end === "number" ? new Date(input.end).toISOString() : input.end;
+  interval(start, end);
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: input.timeZone }).format();
+  } catch {
+    throw new ErrorWithCode("INVALID_EVENT", "Invalid event time zone");
+  }
+  if (
+    !input.timeZone ||
+    !input.title.trim() ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.attendee.email) ||
+    Object.values(input.privateMetadata).some((v) => typeof v !== "string")
+  )
+    throw new ErrorWithCode("INVALID_EVENT", "Invalid event input");
+  return {
+    summary: input.title,
+    description: input.description,
+    start: { dateTime: start, timeZone: input.timeZone },
+    end: { dateTime: end, timeZone: input.timeZone },
+    attendees: [{ email: input.attendee.email, displayName: input.attendee.name }],
+    extendedProperties: { private: input.privateMetadata },
+  };
+}
+function match(etag: string): Record<string, string> {
+  if (etag.match(/^"[\x21\x23-\x7e\x80-\xff]*"$/)?.[0] !== etag)
+    throw new ErrorWithCode("INVALID_ETAG", "A concrete Google event ETag is required");
+  return { "If-Match": etag };
 }
 async function rateLimited(response: Response): Promise<boolean> {
   const reader = response.body?.getReader();
@@ -302,6 +343,21 @@ export class GoogleCalendar {
     }
     throw new GoogleCalendarError("retryable", 200, "Google Calendar pagination limit exceeded");
   }
+  async insert(input: EventInput): Promise<{ id: string; etag: string }> {
+    if (!/^[0-9a-v]{5,1024}$/.test(input.id))
+      throw new ErrorWithCode("INVALID_EVENT", "Event ID must use Google base32hex syntax");
+    const response = await this.request(`${events}?sendUpdates=all`, "POST", {
+      ...body(input),
+      id: input.id,
+    });
+    return this.parsed(response, true, (value) => {
+      const data = object(value);
+      if (data.id !== input.id) throw new Error();
+      const etag = nonempty(data.etag);
+      match(etag);
+      return { id: input.id, etag };
+    });
+  }
   async get(id: string): Promise<CalendarEvent | null> {
     const response = await this.request(
       `${events}/${encodeURIComponent(nonempty(id))}`,
@@ -326,5 +382,32 @@ export class GoogleCalendar {
       if (parsed.id !== id) throw new Error();
       return parsed;
     });
+  }
+  async update(
+    id: string,
+    etag: string,
+    input: Omit<EventInput, "id">
+  ): Promise<{ id: string; etag: string }> {
+    const response = await this.request(
+      `${events}/${encodeURIComponent(nonempty(id))}?sendUpdates=all`,
+      "PATCH",
+      body(input),
+      match(etag)
+    );
+    return this.parsed(response, true, (value) => {
+      const data = object(value);
+      if (data.id !== id) throw new Error();
+      const etag = nonempty(data.etag);
+      match(etag);
+      return { id, etag };
+    });
+  }
+  async delete(id: string, etag: string): Promise<void> {
+    await this.request(
+      `${events}/${encodeURIComponent(nonempty(id))}?sendUpdates=all`,
+      "DELETE",
+      undefined,
+      match(etag)
+    );
   }
 }
