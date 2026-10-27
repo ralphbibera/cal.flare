@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { chromium } from "@playwright/test";
 import { verifyCalendar } from "./verify-calendar.mjs";
+import { verifyPublic } from "./verify-public.mjs";
 
 const require = createRequire(import.meta.url);
 const { createServer } = await import(
@@ -60,7 +61,6 @@ await promisify(execFile)(
     "packages/ui/components/button/Button.tsx",
     "packages/features/calendars/components/DatePicker.tsx",
     "packages/dayjs",
-    "packages/i18n/locales/en/common.json",
     "packages/ui/components/tooltip/Tooltip.tsx",
     "packages/features/calendars/lib/getAvailableDatesInMonth.ts",
     "packages/lib/dayjs",
@@ -72,13 +72,29 @@ await promisify(execFile)(
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
+const { stdout: referenceDictionary } = await promisify(execFile)(
+  "git",
+  ["show", "0f19cc46ef6b6426ee398c670575b3c96be7af9e:packages/i18n/locales/en/common.json"],
+  { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
+);
 await mkdir(artifacts, { recursive: true });
 const server = await createServer({
   root,
   configFile: false,
   // Compile unchanged upstream components without activating their Next.js workspace.
   tsconfig: fileURLToPath(new URL("../tsconfig.json", import.meta.url)),
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "pinned-reference-dictionary",
+      resolveId(id) {
+        if (id.endsWith("/packages/i18n/locales/en/common.json")) return "\0pinned-reference-dictionary";
+      },
+      load(id) {
+        if (id === "\0pinned-reference-dictionary") return `export default ${referenceDictionary}`;
+      },
+    },
+  ],
   optimizeDeps: {
     noDiscovery: true,
     include: [
@@ -200,6 +216,7 @@ try {
   }
   browser = await chromium.launch();
   await verifyCalendar(browser, origin);
+  await verifyPublic(browser);
   const sessionContext = await browser.newContext();
   const sessionPage = await sessionContext.newPage();
   await sessionPage.goto(origin);

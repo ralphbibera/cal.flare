@@ -165,9 +165,38 @@ async function verifyWorker(fixture) {
   const { request, send, read, google } = fixture;
   assert.deepEqual(await read(await request("/api/health")), { status: "ok", storage: "d1" });
   await read(await request("/api/public"), 503);
+  const unavailable = await request("/intro");
+  assert.equal(unavailable.status, 503);
+  assert.ok((await unavailable.text()).includes("This event is temporarily unavailable"));
   await read(await request("/api/owner"), 401);
   const ownerHeaders = await fixture.login();
   await read(await send("/api/owner", settings, ownerHeaders, "PUT"));
+  assert.equal(
+    (
+      await read(
+        await send(
+          "/api/owner",
+          { ...settings, event: { ...settings.event, slug: "api" } },
+          ownerHeaders,
+          "PUT"
+        ),
+        400
+      )
+    ).error,
+    "INVALID_SETTINGS"
+  );
+  assert.deepEqual((await read(await request("/api/owner", { headers: ownerHeaders }))).settings, settings);
+  const missing = await request("/missing-event");
+  assert.equal(missing.status, 404);
+  const publicPage = await request(`/${settings.event.slug}`);
+  assert.equal(publicPage.status, 200);
+  assert.equal(publicPage.headers.get("Cache-Control"), "private, no-store");
+  const html = await publicPage.text();
+  assert.ok(html.includes(settings.event.title));
+  assert.ok(html.includes("astro-island"));
+  assert.ok(!html.includes("organizer@example.test"));
+  for (const secret of [...Object.values(fixture.secrets), ...google.secrets])
+    assert.ok(!html.includes(secret));
   const owner = await read(await request("/api/owner", { headers: ownerHeaders }));
   assert.equal(owner.owner.email, "organizer@example.test");
   assert.deepEqual(owner.settings, settings);
@@ -196,8 +225,44 @@ async function verifyWorker(fixture) {
   await verifyTokenRefresh(fixture, slotsPath);
   await verifyBookingJourney(fixture, slots, slotsPath);
   await verifyRecovery(fixture, slots);
+  await verifyPublicIdentity(fixture);
   assert.deepEqual(fixture.upstreamFailures, [], "upstream fixture failures must not be swallowed");
   return { ownerHeaders };
+}
+
+async function verifyPublicIdentity(fixture) {
+  const original = fixture.google.fetch;
+  fixture.google.fetch = async (request) => {
+    const response = await original(request);
+    if (new URL(request.url).pathname !== "/v1/userinfo") return response;
+    const identity = await response.json();
+    delete identity.name;
+    return Response.json(identity);
+  };
+  try {
+    await fixture.login();
+  } finally {
+    fixture.google.fetch = original;
+  }
+  assert.equal(
+    await fixture.db.prepare("SELECT name FROM owner WHERE id='owner'").first("name"),
+    "organizer@example.test"
+  );
+  for (const name of [
+    "organizer@example.test",
+    " ORGANIZER@EXAMPLE.TEST ",
+    "Host organizer@example.test",
+    "",
+  ]) {
+    await fixture.db.prepare("UPDATE owner SET name=? WHERE id='owner'").bind(name).run();
+    const data = await fixture.read(await fixture.request("/api/public"));
+    assert.equal(data.organizer.name, "Organizer");
+    const page = await fixture.request(`/${settings.event.slug}`);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.ok(!html.toLowerCase().includes("organizer@example.test"));
+    assert.ok(html.includes("Organizer"));
+  }
 }
 
 async function verifyTokenRefresh(fixture, slotsPath) {

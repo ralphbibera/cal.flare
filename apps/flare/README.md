@@ -26,6 +26,14 @@ For a built Worker, run `build` followed by `preview` through the same bundled Y
 `preview` invokes local Wrangler against Astro's generated deployment configuration.
 No deploy command is provided by the root scripts.
 
+After the organizer connects Google and configures the event through the authenticated API,
+open `/<event-slug>` to view its availability. The default slug is `intro`.
+The slug `api` is reserved for application routes.
+The page renders event details on the server, then loads the calendar in the browser.
+Visitors can change their time zone and time format and select a UTC-backed time.
+The public page does not yet include attendee submission or booking management.
+See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
+
 ## Verify the focused port
 
 Run these root scripts with the same Node/Yarn command:
@@ -37,7 +45,16 @@ mise exec -- node .yarn/releases/yarn-4.12.0.cjs lint
 mise exec -- node .yarn/releases/yarn-4.12.0.cjs test
 mise exec -- node .yarn/releases/yarn-4.12.0.cjs test:sqlite
 mise exec -- node .yarn/releases/yarn-4.12.0.cjs build
+mise exec -- node .yarn/releases/yarn-4.12.0.cjs verify:worker
+mise exec -- node .yarn/releases/yarn-4.12.0.cjs verify:ui
 ```
+
+The browser verifier requires the build and Playwright's matching Chromium installation.
+CI installs it with `yarn workspace @calflare/web exec playwright install --with-deps --only-shell chromium`.
+It compares shared components with pinned upstream rendering and drives the public Astro page
+through the built local Worker. Provider responses are controlled fixtures.
+The page journey covers hydration, static assets, escaped event text, timezone selection,
+and UTC slot identity. It does not establish full-page pixel parity or live invitation delivery.
 
 The D1 verifier applies the experimental SQL file with Wrangler into temporary local storage.
 The CI type-check accepts the inherited `--force` flag. Every invocation runs checks without a Turbo cache.
@@ -53,7 +70,10 @@ Their OXC peer ranges agree. The newer integration/plugin combination declared i
 The root no longer inherits the old Vite 6 override or legacy integration dependencies.
 
 The [reservation model](../../experiments/d1-reservations/schema.sql) remains experimental.
-The app exposes health only. It has no owner authentication, public booking endpoint, operation processor, or Google connection.
+The app includes owner OAuth, D1-backed sessions, authenticated settings, public availability,
+booking lifecycle APIs, and scheduled recovery. The current model has one organizer, one event,
+and the primary Google calendar. Broader account and feature parity remain migration work.
 Generated Wrangler types and local state are ignored. The current D1 configuration is for local development.
-Image transformation is disabled. Astro's default session KV binding is still present locally; owner-session persistence has not been implemented.
-Production resource configuration, deployed execution, Google delivery, and Free-plan usage require separate verification and deployment authorization.
+Image transformation and Astro's default session storage are disabled.
+Production resource configuration, deployed execution, live Google delivery, and measured
+Workers Paid usage require separate verification and deployment authorization.

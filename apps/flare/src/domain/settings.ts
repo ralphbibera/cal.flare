@@ -79,6 +79,7 @@ function parseSettings(input: unknown): Settings {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new SettingsError("slug must contain lowercase letters, digits, and single separating hyphens");
   }
+  if (slug === "api") throw new SettingsError("slug is reserved for application routes");
   const title = text(event.title, "title", 100, 1);
   if (!title.trim()) throw new SettingsError("title must not be blank");
   const timeZone = text(schedule.timeZone, "timeZone", 100, 1);

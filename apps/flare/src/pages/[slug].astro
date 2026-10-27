@@ -1,0 +1,49 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../packages/i18n/locales/en/common.json";
+import { PublicBooker } from "../components/PublicBooker.tsx";
+import { getPublicBooking } from "../server/app.ts";
+import "../styles/globals.css";
+
+let booking: Awaited<ReturnType<typeof getPublicBooking>> | undefined;
+let status = 200;
+try {
+  const current = await getPublicBooking(env);
+  if (current.event.slug === Astro.params.slug) booking = current;
+  else status = 404;
+} catch {
+  status = 503;
+}
+Astro.response.status = status;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "no-referrer");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+const fallback = status === 404 ? common.flare_event_not_found : common.flare_event_unavailable;
+const labels = {
+  today: common.today,
+  previousMonth: common.flare_previous_month,
+  nextMonth: common.flare_next_month,
+  loading: common.loading,
+  error: common.flare_availability_error,
+  retry: common.retry,
+  empty: common.no_available_slots,
+  timeZone: common.flare_time_zone,
+  timeFormat: common.flare_time_format,
+  hour12: common.flare_hour_12,
+  hour24: common.flare_hour_24,
+  selectedTime: common.flare_selected_time,
+  minutes: common.flare_duration_minutes,
+};
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{booking ? `${booking.event.title} | ${booking.organizer.name}` : fallback}</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    {booking ? <PublicBooker client:load organizer={booking.organizer} event={booking.event} labels={labels} /> : <main class="mx-auto max-w-xl p-6"><h1>{fallback}</h1></main>}
+    <noscript><p>{common.flare_javascript_required}</p></noscript>
+  </body>
+</html>
