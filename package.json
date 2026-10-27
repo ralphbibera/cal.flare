@@ -23,6 +23,7 @@
     "lint": "yarn workspace @calflare/web lint",
     "test": "yarn workspace @calflare/web test",
     "test:sqlite": "TZ=UTC python3 experiments/d1-reservations/verify.py",
-    "verify:worker": "yarn workspace @calflare/web verify:worker"
+    "verify:worker": "yarn workspace @calflare/web verify:worker",
+    "verify:ui": "yarn workspace @calflare/web verify:ui"
   }
 }
