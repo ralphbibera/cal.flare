@@ -8,9 +8,10 @@ const { Response } = createRequire(require.resolve("wrangler/package.json"))("mi
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 
-async function exchangeTokens(request, codes, refresh, origin, access) {
+async function exchangeTokens(request, codes, refresh, origin, access, grants) {
   assert.equal(request.method, "POST");
   const form = new URLSearchParams(await request.text());
+  grants.push(form.get("grant_type"));
   if (form.get("grant_type") === "authorization_code") {
     const challenge = codes.get(form.get("code"));
     assert.ok(challenge, "only fixture-issued authorization codes are accepted");
@@ -38,6 +39,7 @@ export function createGoogleFixture(origin) {
   const events = new Map();
   const writes = [];
   const denied = [];
+  const grants = [];
   let revision = 0;
   let cutAfter;
   const cut = (action) => {
@@ -49,6 +51,7 @@ export function createGoogleFixture(origin) {
     events,
     writes,
     denied,
+    grants,
     secrets: [access, refresh],
     authorize(url) {
       assert.equal(url.origin, "https://accounts.google.com");
@@ -64,7 +67,7 @@ export function createGoogleFixture(origin) {
     async fetch(request) {
       const url = new URL(request.url);
       if (url.origin === "https://oauth2.googleapis.com" && url.pathname === "/token") {
-        return exchangeTokens(request, codes, refresh, origin, access);
+        return exchangeTokens(request, codes, refresh, origin, access, grants);
       }
       if (url.origin === "https://openidconnect.googleapis.com" && url.pathname === "/v1/userinfo") {
         assert.ok(
