@@ -47,7 +47,7 @@ jobs:
         run: node .yarn/releases/yarn-4.12.0.cjs verify:worker
       - name: Install Chromium
         run: node .yarn/releases/yarn-4.12.0.cjs workspace @calflare/web exec playwright install --with-deps --only-shell chromium
-      - name: Capture upstream UI reference
+      - name: Verify browser journeys and UI parity
         run: |
           git fetch --no-tags --depth=1 origin 0f19cc46ef6b6426ee398c670575b3c96be7af9e
           node .yarn/releases/yarn-4.12.0.cjs verify:ui

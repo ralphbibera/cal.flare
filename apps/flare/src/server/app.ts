@@ -1,3 +1,4 @@
+import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import { parseSettings } from "../domain/settings.ts";
 import type { AuthEnv } from "./auth.ts";
@@ -67,12 +68,19 @@ async function owner(env: AuthEnv, request: Request) {
 }
 
 async function connectedOwner(env: AuthEnv): Promise<{ name: string }> {
+  const email = env.GOOGLE_OWNER_EMAIL?.toLowerCase() ?? "";
   const identity = await env.DB.prepare(`SELECT o.name FROM owner o
     JOIN google_connection g ON g.owner_id = o.id WHERE o.id = 'owner' AND o.email = ?`)
-    .bind(env.GOOGLE_OWNER_EMAIL?.toLowerCase() ?? "")
+    .bind(email)
     .first<{ name: string }>();
   if (!identity) throw new ErrorWithCode("setup_required", 503);
-  return identity;
+  const name = identity.name.trim();
+  return { name: !name || name.toLowerCase().includes(email) ? common.organizer : name };
+}
+
+async function getPublicBooking(env: AuthEnv) {
+  const organizer = await connectedOwner(env);
+  return { organizer, ...(await getSettings(env.DB)) };
 }
 
 function bookingResponse(value: Awaited<ReturnType<BookingService["view"]>>, created = false): Response {
@@ -90,6 +98,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   if (path === "/api/auth/login" && method === "GET") return beginLogin(env, request);
   if (path === "/api/auth/callback" && method === "GET") return finishLogin(env, request);
   if (path === "/api/auth/logout" && method === "POST") return logout(env, request);
+  if (path === "/api/public" && method === "GET") return json(await getPublicBooking(env));
 
   const settings = await getSettings(env.DB);
   const service = new BookingService({
@@ -112,10 +121,6 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     const input = record(await body(request));
     if (typeof input.id !== "string") throw new ErrorWithCode("invalid_booking");
     return bookingResponse(await service.ownerRetry(input.id));
-  }
-  if (path === "/api/public" && method === "GET") {
-    const identity = await connectedOwner(env);
-    return json({ organizer: identity, ...settings });
   }
   if (path === "/api/slots" && method === "GET") {
     await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
@@ -153,3 +158,5 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   }
   return json({ error: "not_found" }, 404);
 }
+
+export { getPublicBooking };
