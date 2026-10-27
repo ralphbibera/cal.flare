@@ -16,9 +16,9 @@ SCHEMA = ROOT / "schema.sql"
 STATEMENTS = [sql.strip() for sql in (ROOT / "submit.sql").read_text().split(";") if sql.strip()]
 
 
-def command(organizer, key, start=100, end=200, event_type="intro"):
+def command(organizer, key, start=100, end=200, event_type="intro", capacity=None):
     identity = hashlib.sha256(json.dumps([organizer, key]).encode()).hexdigest()
-    payload = {"kind": "create", "eventType": event_type, "start": start, "end": end}
+    payload = {"kind": "create", "eventType": event_type, "start": start, "end": end, "capacity": capacity}
     return {
         "organizer_id": organizer,
         "request_key": key,
@@ -28,7 +28,17 @@ def command(organizer, key, start=100, end=200, event_type="intro"):
         "end_ms": end,
         "request_payload": json.dumps(payload, sort_keys=True, separators=(",", ":")),
         "google_event_id": identity,
+        "seat_capacity": capacity,
+        "seat_attendee_id": None,
     }
+
+
+def seat_command(organizer, key, booking_id, attendee):
+    parameters = command(organizer, key)
+    parameters.update(booking_id=booking_id, seat_attendee_id=attendee,
+                      request_payload=json.dumps({"kind": "seat", "booking": booking_id,
+                                                  "attendee": attendee}, sort_keys=True))
+    return parameters
 
 
 def submit(db, parameters):
@@ -93,10 +103,11 @@ class ReservationExperiment(unittest.TestCase):
         with closing(self.open()) as reopened:
             self.assertEqual(submit(reopened, original), accepted)
             self.assertEqual(submit(reopened, blocked), rejected)
-            for field in ("booking_id", "event_type_id", "start_ms", "end_ms", "request_payload", "google_event_id"):
+            for field in ("booking_id", "event_type_id", "start_ms", "end_ms", "request_payload", "google_event_id",
+                          "seat_capacity"):
                 changed = dict(original)
                 value = changed[field]
-                changed[field] = value + 1 if isinstance(value, int) else value + "changed"
+                changed[field] = 2 if value is None else value + 1 if isinstance(value, int) else value + "changed"
                 with self.subTest(field=field):
                     with self.assertRaisesRegex(sqlite3.IntegrityError, "idempotency_mismatch"):
                         submit(reopened, changed)
@@ -191,11 +202,95 @@ class ReservationExperiment(unittest.TestCase):
         self.assertEqual(results[0][0], "accepted")
         self.assertEqual(self.counts(), (1, 1, 1))
 
+    def test_final_seat_races_share_occupancy_and_replay(self):
+        for index in range(50):
+            owner = f"seated-{index}"
+            occurrence = command(owner, "occurrence", capacity=2)
+            self.assertEqual(submit(self.db, occurrence)[0], "accepted")
+            first = seat_command(owner, "first", occurrence["booking_id"], "attendee-1")
+            self.assertEqual(submit(self.db, first)[0], "accepted")
+            barrier = threading.Barrier(2, timeout=5)
+
+            def contender(parameters):
+                with closing(self.open()) as db:
+                    barrier.wait()
+                    return submit(db, parameters)
+
+            requests = [seat_command(owner, "left", occurrence["booking_id"], "attendee-2"),
+                        seat_command(owner, "right", occurrence["booking_id"], "attendee-3")]
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(contender, request) for request in requests]
+                results = [future.result(timeout=10) for future in futures]
+            self.assertEqual(sorted(result[0] for result in results), ["accepted", "conflict"])
+            with closing(self.open()) as reopened:
+                for request, result in zip(requests, results):
+                    self.assertEqual(submit(reopened, request), result)
+                self.assertEqual(reopened.execute("SELECT count(*) FROM seat_claim WHERE organizer_id = ?",
+                                                 (owner,)).fetchone()[0], 2)
+                self.assertEqual(reopened.execute("SELECT count(*) FROM seat_request WHERE organizer_id = ?",
+                                                 (owner,)).fetchone()[0], 3)
+                snapshot = reopened.execute("SELECT * FROM seat_request WHERE organizer_id = ? ORDER BY request_key",
+                                            (owner,)).fetchall()
+                for field in ("booking_id", "seat_attendee_id", "request_payload"):
+                    changed = {**first, field: first[field] + "changed"}
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, "idempotency_mismatch"):
+                        submit(reopened, changed)
+                    self.assertEqual(reopened.execute(
+                        "SELECT * FROM seat_request WHERE organizer_id = ? ORDER BY request_key", (owner,)).fetchall(),
+                        snapshot)
+                for table in ("booking_command", "reservation", "calendar_operation"):
+                    self.assertEqual(reopened.execute(f"SELECT count(*) FROM {table} WHERE organizer_id = ?",
+                                                      (owner,)).fetchone()[0], 1)
+                winner = next(request for request, result in zip(requests, results) if result[0] == "accepted")
+                loser = next(request for request, result in zip(requests, results) if result[0] == "conflict")
+                reopened.execute("DELETE FROM seat_claim WHERE organizer_id = ? AND request_key = ?",
+                                 (owner, winner["request_key"]))
+                self.assertEqual(submit(reopened, loser)[0], "conflict")
+                self.assertEqual(reopened.execute("SELECT count(*) FROM seat_claim WHERE organizer_id = ?",
+                                                 (owner,)).fetchone()[0], 1)
+            self.assert_no_overlaps()
+        excess = self.db.execute("""SELECT count(*) FROM booking_command b WHERE b.seat_capacity IS NOT NULL
+            AND (SELECT count(*) FROM seat_claim s WHERE s.organizer_id=b.organizer_id
+                 AND s.booking_id=b.booking_id) > b.seat_capacity""").fetchone()[0]
+        self.assertEqual(excess, 0)
+
+    def test_seat_failure_and_direct_writes_preserve_invariants(self):
+        occurrence = command("seat-failure", "occurrence", capacity=1)
+        submit(self.db, occurrence)
+        first = seat_command("seat-failure", "first", occurrence["booking_id"], "attendee-1")
+        self.db.executescript("""CREATE TRIGGER injected_seat_failure AFTER INSERT ON seat_claim
+            BEGIN SELECT RAISE(ABORT, 'injected_after_seat'); END;""")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "injected_after_seat"):
+            submit(self.db, first)
+        for table in ("seat_request", "seat_claim"):
+            self.assertEqual(self.db.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 0)
+        self.assertEqual(self.counts(), (1, 1, 1))
+        self.db.execute("DROP TRIGGER injected_seat_failure")
+        self.assertEqual(submit(self.db, first)[0], "accepted")
+        for changed_kind in (command("seat-failure", "first"),
+                             seat_command("seat-failure", "occurrence", occurrence["booking_id"], "other")):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "idempotency_mismatch"):
+                submit(self.db, changed_kind)
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "replace_seat_atomically"):
+            self.db.execute("UPDATE seat_claim SET attendee_id = 'other'")
+        self.assertEqual(submit(self.db, seat_command("seat-failure", "full", occurrence["booking_id"], "other"))[0],
+                         "conflict")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "seat_capacity"):
+            self.db.execute("INSERT INTO seat_claim VALUES (?, ?, 'other', 'full')",
+                            ("seat-failure", occurrence["booking_id"]))
+        with self.assertRaises(sqlite3.IntegrityError):
+            submit(self.db, seat_command("wrong-owner", "first", occurrence["booking_id"], "attendee-1"))
+        ordinary = command("ordinary", "occurrence")
+        submit(self.db, ordinary)
+        self.assertEqual(submit(self.db, seat_command("ordinary", "first", ordinary["booking_id"], "attendee"))[0],
+                         "conflict")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--schema", type=Path, default=SCHEMA)
     arguments, remaining = parser.parse_known_args()
     SCHEMA = arguments.schema
-    print(f"Local SQLite {sqlite3.sqlite_version}; 50 independent-writer races; no D1 or Google calls", flush=True)
+    print(f"Local SQLite {sqlite3.sqlite_version}; 50 overlap and 50 final-seat writer races; no D1 or Google calls",
+          flush=True)
     unittest.main(argv=[sys.argv[0], *remaining], verbosity=2)

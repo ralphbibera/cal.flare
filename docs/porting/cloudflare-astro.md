@@ -101,7 +101,7 @@ TZ=UTC python3 experiments/d1-reservations/verify.py
 ```
 
 Python's standard library is sufficient. Temporary file databases are removed after the run.
-`schema.sql` is an experimental model, not a production migration. `submit.sql` is the fixed create-command sequence.
+`schema.sql` is an experimental model, not a production migration. `submit.sql` is the fixed admission sequence.
 The Python runner supplies synthetic canonical payloads and IDs, wraps the statements in a local transaction, and checks committed state.
 It does not branch between SQL statements based on query results.
 The Node verifier at `apps/flare/scripts/verify-d1.mjs` adapts named parameters to positional D1 bindings and sends the fixed statements in one atomic `batch()`.
@@ -117,6 +117,13 @@ Canonical payload bytes are stored directly; hashing and production payload cano
 Candidate reservations demonstrate separate old/new occupancy, not a complete reschedule command.
 Interval inputs here represent occupied time. The production adapter must derive buffered occupancy from trusted event settings.
 
+For an existing seated occurrence, a seat request records immutable attendee identity and an accepted or conflicting result.
+Its attendee claim consumes capacity while reusing the occurrence's organizer reservation and original create intent.
+The pinned `addSeatToBooking` in `packages/features/bookings/lib/handleSeats/create/createNewSeat.ts` supplies the fresh-count and atomic attendee/seat contract.
+The reference revision is `0f19cc46ef6b6426ee398c670575b3c96be7af9e`.
+Durable replay, cross-kind key rejection, and rollback checks are additional safety rules.
+This prototype supports positive fixed capacity. It does not implement occurrence-plus-first-seat creation, seat changes, or provider attendee-update delivery.
+
 The checks protect project rules at the real SQLite boundary:
 
 - Exact, partial, nested, and enclosing conflicts lose. Touching endpoints and other organizers can book.
@@ -126,6 +133,8 @@ The checks protect project rules at the real SQLite boundary:
 - A failure while recording calendar intent rolls back the command and reservation too.
 - Direct conflicting claim insertion and interval updates fail. Composite foreign keys reject mismatched organizers.
 - Persisted old/candidate reservations block both ranges while leaving the gap bookable after connection reopening.
+- Fifty final-seat races start with one attendee in a capacity-two occurrence. Exactly one contender wins, without another organizer reservation or create intent.
+- Seat replay, changed canonical inputs, wrong-owner references, and injected admission failures preserve the expected state.
 
 A removed overlap predicate, mutable request identity, lost transaction/trigger, or extra intent on replay should fail these checks.
 No test double stands in for a database. Provider success is not simulated or claimed.
