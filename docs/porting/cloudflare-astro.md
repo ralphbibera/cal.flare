@@ -89,8 +89,8 @@ Each code increment targets fewer than 500 changed code lines and fewer than 10 
 Keep the existing upstream app intact while establishing the focused path. Do not install its full dependency graph for this experiment.
 The root toolchain uses Astro, its Cloudflare and React integrations, React/React DOM, Wrangler, and TypeScript/type tooling.
 The development guide describes the pinned versions and verification commands.
-Inherited GitHub workflows still reference legacy packages. Migrate CI in a separate reviewed step before publishing changes.
-No commit, PR, push, or deployment is part of these increments.
+Focused CI verifies the Astro workspace. Inherited application workflows are preserved in `.github/legacy-workflows` outside the active graph.
+Publication and deployment follow the repository's separate authorization requirements.
 
 ## Run the reservation experiment
 
