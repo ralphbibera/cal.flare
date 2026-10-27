@@ -106,7 +106,7 @@ export class FakeCalendar {
   }
 }
 
-export async function apiFixture() {
+export async function apiFixture({ port = 0 }: { port?: number } = {}) {
   const configPath = fileURLToPath(new URL("../../wrangler.jsonc", import.meta.url));
   const require = createRequire(import.meta.url);
   const wrangler = join(dirname(require.resolve("wrangler/package.json")), "bin/wrangler.js");
@@ -203,7 +203,13 @@ export async function apiFixture() {
         outgoing.destroy(error instanceof Error ? error : new Error("Fixture bridge failed"));
       }
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     env.PUBLIC_ORIGIN = `http://127.0.0.1:${address.port}`;
