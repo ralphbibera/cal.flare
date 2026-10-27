@@ -1,24 +1,28 @@
+import { createContext, useContext } from "react";
 import strings from "../../../../../packages/i18n/locales/en/common.json";
 
+export const CalendarReferenceContext = createContext(null);
+
 function unavailable() {
-  throw new Error("The isolated calendar-day reference must not execute calendar orchestration");
+  throw new Error("Calendar reference reached an unsupported path");
 }
 
 export function useLocale() {
-  return { t: (key) => strings[key] };
+  return { t: (key) => strings[key], i18n: { language: "en-US" }, isLocaleReady: true };
 }
 export function useEmbedStyles(key) {
   if (!["enabledDateButton", "disabledDateButton"].includes(key)) throw new Error("Unexpected embed style");
   return {};
 }
-export const useSlotsViewOnSmallScreen = unavailable;
-export const useBookerStoreContext = unavailable;
-export const getAvailableDatesInMonth = unavailable;
-export const daysInMonth = unavailable;
-export const yyyymmdd = unavailable;
-export const weekdayNames = unavailable;
-export const Button = unavailable;
-export const SkeletonText = unavailable;
-export const Tooltip = unavailable;
+export function useBookerStoreContext(selector) {
+  const state = useContext(CalendarReferenceContext);
+  if (state === null) return unavailable();
+  return selector(state);
+}
+export function useSlotsViewOnSmallScreen() {
+  const state = useContext(CalendarReferenceContext);
+  if (state === null) return unavailable();
+  return state.slotsViewOnSmallScreen;
+}
 export const shallow = unavailable;
 export default unavailable;
