@@ -9,6 +9,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { unstable_getMiniflareWorkerOptions } from "wrangler";
+import { encryptionKey, seal, unseal } from "../src/server/secrets.ts";
 import { hour, settings as httpSettings } from "./fixtures/api.ts";
 import { createGoogleFixture } from "./fixtures/google.mjs";
 
@@ -148,7 +149,11 @@ async function createWorkerFixture({ port = 8794 } = {}) {
       close,
       temporary,
       settings,
-      secrets: [bindings.GOOGLE_CLIENT_ID, bindings.GOOGLE_CLIENT_SECRET, bindings.TOKEN_ENCRYPTION_KEY],
+      secrets: {
+        GOOGLE_CLIENT_ID: bindings.GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: bindings.GOOGLE_CLIENT_SECRET,
+        TOKEN_ENCRYPTION_KEY: bindings.TOKEN_ENCRYPTION_KEY,
+      },
     };
   } catch (error) {
     await close();
@@ -166,7 +171,11 @@ async function verifyWorker(fixture) {
   const owner = await read(await request("/api/owner", { headers: ownerHeaders }));
   assert.equal(owner.owner.email, "organizer@example.test");
   assert.deepEqual(owner.settings, settings);
-  for (const secret of [...fixture.secrets, ...google.secrets, ownerHeaders.Cookie.split("=")[1]])
+  for (const secret of [
+    ...Object.values(fixture.secrets),
+    ...google.secrets,
+    ownerHeaders.Cookie.split("=")[1],
+  ])
     assert.ok(!JSON.stringify(owner).includes(secret));
   const tomorrow = Math.ceil((Date.now() + 24 * hour) / (24 * hour)) * 24 * hour;
   const slotsPath = `/api/slots?${new URLSearchParams({
@@ -176,10 +185,36 @@ async function verifyWorker(fixture) {
   })}`;
   const slots = await read(await request(slotsPath));
   assert.ok(slots.slots.length >= 8);
+  await verifyTokenRefresh(fixture, slotsPath);
   await verifyBookingJourney(fixture, slots, slotsPath);
   await verifyRecovery(fixture, slots);
   assert.deepEqual(fixture.upstreamFailures, [], "upstream fixture failures must not be swallowed");
   return { ownerHeaders };
+}
+
+async function verifyTokenRefresh(fixture, slotsPath) {
+  const { db, request, read, google } = fixture;
+  const key = await encryptionKey(fixture.secrets.TOKEN_ENCRYPTION_KEY);
+  const before = await db
+    .prepare("SELECT ciphertext,version FROM google_connection WHERE owner_id='owner'")
+    .first();
+  const tokens = JSON.parse(await unseal(key, before.ciphertext, "google:owner"));
+  assert.deepEqual(google.grants, ["authorization_code"]);
+  await db
+    .prepare("UPDATE google_connection SET ciphertext=?,version=version+1 WHERE owner_id='owner'")
+    .bind(await seal(key, JSON.stringify({ ...tokens, expiresAt: 0 }), "google:owner"))
+    .run();
+  assert.ok((await read(await request(slotsPath))).slots.length > 0);
+  const after = await db
+    .prepare("SELECT ciphertext,version FROM google_connection WHERE owner_id='owner'")
+    .first();
+  const refreshed = JSON.parse(await unseal(key, after.ciphertext, "google:owner"));
+  assert.equal(after.version, before.version + 2);
+  assert.ok(refreshed.expiresAt > Date.now() + 3_500_000);
+  assert.equal(refreshed.refresh, tokens.refresh);
+  for (const token of [refreshed.access, refreshed.refresh]) assert.ok(!after.ciphertext.includes(token));
+  assert.ok((await read(await request(slotsPath))).slots.length > 0);
+  assert.deepEqual(google.grants, ["authorization_code", "refresh_token"]);
 }
 
 async function verifyBookingJourney(fixture, slots, slotsPath) {
