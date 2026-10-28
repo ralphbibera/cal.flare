@@ -131,6 +131,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         hour12: format === "h:mma",
       }).format(new Date(selected))
     : undefined;
+  const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
   return (
     <main className="main text-default my-20 flex min-h-full w-full flex-col items-center overflow-visible">
       <div
@@ -171,7 +172,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 ))}
               </select>
             </EventMetaBlock>
-            <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />
+            {stage.kind !== "calendar" && timeFormatToggle}
             {selected && (
               <EventMetaBlock icon="calendar" role="status">
                 {labels.selectedTime}
@@ -186,6 +187,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             locale="en-US"
             timeZone={timeZone}
             timeFormat={format}
+            timeFormatToggle={timeFormatToggle}
             labels={labels}
             selectedTime={selected}
             onTimeSelect={(value) => {

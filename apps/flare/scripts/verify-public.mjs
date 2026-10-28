@@ -114,6 +114,7 @@ export async function verifyPublic(browser) {
       await page.goto(`${fixture.origin}/${settings.event.slug}`);
       await request;
       await page.getByRole("status").filter({ hasText: "Loading" }).waitFor();
+      assert.equal(await page.getByRole("radiogroup", { name: "Time format", exact: true }).count(), 0);
       const placeholders = page.locator('[aria-hidden="true"] span.animate-pulse');
       assert.ok((await placeholders.count()) >= 1 && (await placeholders.count()) <= 6);
       assert.equal(await page.getByTestId("time").count(), 0);
@@ -129,7 +130,7 @@ export async function verifyPublic(browser) {
     await page.getByTestId("time").first().waitFor();
     assert.equal(await page.locator('[aria-hidden="true"] span.animate-pulse').count(), 0);
     assert.equal(
-      await page.locator("header").textContent(),
+      await page.locator("header > span").textContent(),
       `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(browserDate)}01`
     );
     assert.equal(await page.getByTestId("event-title").textContent(), settings.event.title);
@@ -144,9 +145,11 @@ export async function verifyPublic(browser) {
       })
     );
     const first = await page.getByTestId("time").first().getAttribute("data-time");
+    assert.equal(await page.getByTestId("event-meta").getByRole("radiogroup").count(), 0);
     await page.getByTestId("time").first().click();
     assert.equal(await page.getByTestId("event-meta").locator("time").getAttribute("datetime"), first);
     await page.getByLabel("Name", { exact: true }).waitFor();
+    assert.equal(await page.getByTestId("event-meta").getByRole("radiogroup").count(), 1);
     await page.getByRole("button", { name: "Back", exact: true }).click();
     const zoneSelect = page.getByLabel("Time zone", { exact: true });
     const india = await zoneSelect.evaluate((select) =>
@@ -168,10 +171,12 @@ export async function verifyPublic(browser) {
     const shifted = await page.getByTestId("time").first().getAttribute("data-time");
     assert.equal(shifted, first);
     assert.equal(
-      await page.locator("header").textContent(),
+      await page.locator("header > span").textContent(),
       `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: india }).format(new Date(first))}02`
     );
-    const formatControl = page.getByRole("radiogroup", { name: "Time format", exact: true });
+    const formatControl = page
+      .locator("header")
+      .getByRole("radiogroup", { name: "Time format", exact: true });
     await formatControl.getByRole("radio", { name: "24h", exact: true }).click();
     assert.equal(await formatControl.getByRole("radio", { name: "24h", checked: true }).count(), 1);
     await page.waitForFunction(() => document.querySelector('[data-testid="time"]')?.textContent === "04:30");
@@ -179,6 +184,8 @@ export async function verifyPublic(browser) {
     await page.keyboard.press("Enter");
     assert.equal(await page.getByTestId("event-meta").locator("time").getAttribute("datetime"), first);
     await page.getByRole("button", { name: "Back", exact: true }).click();
+    await formatControl.waitFor();
+    assert.equal(await formatControl.getByRole("radio", { name: "24h", checked: true }).count(), 1);
     for (const viewport of [
       { width: 390, height: 844 },
       { width: 768, height: 900 },

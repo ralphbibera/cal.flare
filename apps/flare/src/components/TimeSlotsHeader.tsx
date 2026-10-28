@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { twMerge } from "tailwind-merge";
 
 type Props = {
@@ -5,13 +6,21 @@ type Props = {
   day: string;
   isToday?: boolean;
   availableMonth?: string;
+  timeFormatToggle?: ReactElement;
   customClassNames?: {
     availableTimeSlotsHeaderContainer?: string;
     availableTimeSlotsTitle?: string;
   };
 };
 
-export function TimeSlotsHeader({ weekday, day, isToday, availableMonth, customClassNames }: Props) {
+export function TimeSlotsHeader({
+  weekday,
+  day,
+  isToday,
+  availableMonth,
+  timeFormatToggle,
+  customClassNames,
+}: Props) {
   return (
     <header
       className={twMerge(
@@ -36,6 +45,7 @@ export function TimeSlotsHeader({ weekday, day, isToday, availableMonth, customC
           {availableMonth && `, ${availableMonth}`}
         </span>
       </span>
+      {timeFormatToggle && <div className="ml-auto rtl:mr-auto">{timeFormatToggle}</div>}
     </header>
   );
 }
