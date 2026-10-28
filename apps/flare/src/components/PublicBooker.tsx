@@ -7,6 +7,7 @@ import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
 import { EventTitle } from "./EventTitle.tsx";
 import { Icon } from "./Icon.tsx";
+import { Input } from "./Input.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
   labels: typeof bookingLabels;
@@ -19,8 +20,6 @@ type Stage =
   | PendingCreate
   | { kind: "receipt"; receipt: CreationReceipt; booking?: Booking };
 const client = new BookerClient();
-const inputClass =
-  "bg-default border-default text-default h-8 w-full rounded-[10px] border px-3 py-2 text-sm font-normal leading-none shadow-outline-gray-rested transition-all hover:border-emphasis focus:border-emphasis focus:ring-0 focus:shadow-outline-gray-focused";
 const attempts = () => new CreateAttempts({ storage: sessionStorage, scope: location.pathname });
 
 export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
@@ -211,9 +210,8 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 }}>
                 <label className="text-default block text-sm font-medium">
                   {labels.name}
-                  <input
+                  <Input
                     ref={nameInput}
-                    className={inputClass}
                     name="name"
                     autoComplete="name"
                     required
@@ -226,8 +224,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 </label>
                 <label className="text-default block text-sm font-medium">
                   {labels.email}
-                  <input
-                    className={inputClass}
+                  <Input
                     type="email"
                     name="email"
                     autoComplete="email"
