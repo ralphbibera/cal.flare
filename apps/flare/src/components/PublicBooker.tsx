@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
 import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
 import { BookingCalendar, type BookingCalendarProps } from "./BookingCalendar.tsx";
+import { BookingManagement } from "./BookingManagement.tsx";
 import { Button } from "./Button.tsx";
 import { EventTitle } from "./EventTitle.tsx";
 import { Icon } from "./Icon.tsx";
@@ -28,6 +29,9 @@ type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
     slotConflict: string;
     invalidInput: string;
     statusUnavailable: string;
+    reschedule: string;
+    cancelEvent: string;
+    cancelPrompt: string;
   };
 };
 
@@ -51,14 +55,14 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nameInput = useRef<HTMLInputElement>(null);
-  async function loadReceipt(receipt: CreationReceipt, retry = false) {
+  async function loadReceipt(receipt: CreationReceipt) {
     setStage((previous) =>
       previous.kind === "receipt" && previous.receipt === receipt ? previous : { kind: "receipt", receipt }
     );
     setBusy(true);
     setError("");
     try {
-      const booking = await (retry ? client.retry(receipt.access) : client.view(receipt.access));
+      const booking = await client.view(receipt.access);
       setTimeZone(booking.timeZone);
       setStage({ kind: "receipt", receipt, booking });
     } catch {
@@ -277,42 +281,26 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 </div>
               </form>
             )}
-            {stage.kind === "receipt" && (
-              <div className="space-y-4">
-                <h2 className="text-emphasis text-xl font-semibold" aria-live="polite">
-                  {busy
-                    ? labels.loading
-                    : !stage.booking
-                      ? labels.statusUnavailable
-                      : stage.booking.status === "confirmed"
-                        ? labels.confirmed
-                        : stage.booking?.status === "cancelled"
-                          ? labels.cancelled
-                          : stage.booking?.status === "attention"
-                            ? labels.attention
-                            : labels.pending}
-                </h2>
-                {stage.booking && (
-                  <>
-                    <p>{stage.booking.title}</p>
-                    <p>{stage.booking.name}</p>
-                    <p>{stage.booking.email}</p>
-                  </>
-                )}
-                {error && <p role="alert">{error}</p>}
-                <Button
-                  color="secondary"
-                  loading={busy}
-                  onClick={() =>
-                    void loadReceipt(
-                      stage.receipt,
-                      stage.booking?.status !== "confirmed" && stage.booking?.status !== "cancelled"
-                    )
-                  }>
-                  {labels.checkStatus}
-                </Button>
-              </div>
-            )}
+            {stage.kind === "receipt" &&
+              (stage.booking ? (
+                <BookingManagement
+                  booking={stage.booking}
+                  access={stage.receipt.access}
+                  labels={labels}
+                  timeFormat={format}
+                  onUpdated={(booking) => setStage({ ...stage, booking })}
+                />
+              ) : (
+                <div className="space-y-4">
+                  <h2 className="text-emphasis text-xl font-semibold" aria-live="polite">
+                    {busy ? labels.loading : labels.statusUnavailable}
+                  </h2>
+                  {error && <p role="alert">{error}</p>}
+                  <Button color="secondary" loading={busy} onClick={() => void loadReceipt(stage.receipt)}>
+                    {labels.checkStatus}
+                  </Button>
+                </div>
+              ))}
             {stage.kind === "blocked" && (
               <>
                 <p role="alert">{error}</p>
