@@ -1,6 +1,6 @@
 const image = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>')}`;
 
-export function MetaCases({ Block }) {
+export function MetaCases({ Block, duration }) {
   return (
     <main className="mx-auto w-full max-w-[280px] space-y-4 rounded-xl border border-default bg-default p-6 text-default">
       <Block data-testid="empty" />
@@ -38,6 +38,11 @@ export function MetaCases({ Block }) {
         data-testid="props">
         Custom content
       </Block>
+      {[undefined, 0, 1, 30, 59, 60, 61, 90, 120, 121, 480].map((minutes, index) => (
+        <Block key={index} icon="clock" data-testid={`duration-${index}`}>
+          {duration(minutes)}
+        </Block>
+      ))}
     </main>
   );
 }
