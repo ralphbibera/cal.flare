@@ -67,6 +67,18 @@ async function verifyCalendar(browser, origin) {
     permit.resolve();
     await page.getByTestId("time").first().waitFor();
     assert.deepEqual(await page.getByTestId("time").allTextContents(), ["11:00pm", "11:30pm"]);
+    assert.equal(await page.locator("header").textContent(), "Tue01");
+    await page.getByTestId("day").filter({ hasText: /^3$/ }).click();
+    assert.equal(await page.locator("header").textContent(), "Thu03");
+    assert.equal(
+      await page.getByTestId("time").first().getAttribute("data-time"),
+      "2030-01-03T23:00:00.000Z"
+    );
+    await page
+      .getByTestId("day")
+      .filter({ hasText: /^1Today$/ })
+      .click();
+    assert.equal(await page.locator("header").textContent(), "Tue01");
     assert.equal(requests[0].searchParams.get("from"), "2030-01-01T00:00:00.000Z");
     assert.equal(requests[0].searchParams.get("to"), "2030-03-01T00:00:00.000Z");
     await page.unroute("**/api/slots?**");
@@ -81,11 +93,15 @@ async function verifyCalendar(browser, origin) {
       "2030-01-01T23:00:00.000Z"
     );
     assert.equal(await page.locator('[data-testid="day"].bg-brand-default').textContent(), "2");
+    assert.equal(await page.locator("header").textContent(), "Wed02");
     assert.equal(requests.at(-1).searchParams.get("from"), "2029-12-31T18:30:00.000Z");
     await page.getByLabel("Time zone").selectOption("UTC");
     await page.waitForFunction(
-      () => document.querySelector('[data-testid="time"]')?.textContent === "11:00pm"
+      () =>
+        document.querySelector('[data-testid="time"]')?.getAttribute("data-time") ===
+        "2030-01-02T23:00:00.000Z"
     );
+    assert.equal(await page.locator("header").textContent(), "Wed02");
     const held = Promise.withResolvers();
     await page.route("**/api/slots?**", async (route) => {
       if (new URL(route.request().url()).searchParams.get("from") !== "2030-02-01T00:00:00.000Z")
@@ -112,6 +128,7 @@ async function verifyCalendar(browser, origin) {
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     );
     assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2030-03");
+    assert.equal(await page.locator("header").textContent(), "Fri01");
     assert.equal(await page.getByTestId("time").count(), 2);
     assert.equal(
       await page.getByTestId("time").first().getAttribute("data-time"),
@@ -145,6 +162,7 @@ async function verifyCalendar(browser, origin) {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await page.getByRole("status").filter({ hasText: "No available times" }).waitFor();
     assert.equal(await page.getByTestId("time").count(), 0);
+    assert.equal(await page.locator("header").count(), 0);
     fixture.calendar.events.clear();
     assert.equal(
       (
@@ -173,6 +191,7 @@ async function verifyCalendar(browser, origin) {
         "2030-02-01T23:00:00.000Z"
     );
     assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2030-02");
+    assert.equal(await page.locator("header").textContent(), "Fri01");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.screenshot({
       path: new URL("../.verification/calendar-api-mobile.png", import.meta.url).pathname,

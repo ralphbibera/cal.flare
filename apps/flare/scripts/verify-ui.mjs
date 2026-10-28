@@ -76,6 +76,8 @@ await promisify(execFile)(
     "packages/lib/dateTimeFormatter.ts",
     "packages/ui/components/skeleton/Skeleton.tsx",
     "apps/web/modules/bookings/components/AvailableTimes.tsx",
+    "apps/web/modules/bookings/components/AvailableTimesHeader.tsx",
+    "packages/prisma/zod-utils.ts",
     "packages/lib/webstorage.ts",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
@@ -161,6 +163,11 @@ const server = await createServer({
       "@reference/times": fileURLToPath(
         new URL("../../web/modules/bookings/components/AvailableTimes.tsx", import.meta.url)
       ),
+      "@reference/times-header": fileURLToPath(
+        new URL("../../web/modules/bookings/components/AvailableTimesHeader.tsx", import.meta.url)
+      ),
+      "@calcom/prisma/zod-utils": join(root, "time-boundaries.jsx"),
+      "@calcom/features/bookings/components/TimeFormatToggle": join(root, "time-boundaries.jsx"),
       "@calcom/lib/webstorage": fileURLToPath(
         new URL("../../../packages/lib/webstorage.ts", import.meta.url)
       ),
@@ -481,6 +488,7 @@ try {
           page.on("console", (message) => {
             if (message.type() === "error") errors.push(message.text());
           });
+          await page.clock.install({ time: new Date("2030-01-09T12:00:00Z") });
           const entry = version === "reference" ? "times.html" : "candidate-times.html";
           await page.goto(`${origin}/${entry}?case=${scenario}&theme=${theme}`);
           const buttons = page.getByTestId("time");
@@ -493,6 +501,12 @@ try {
           if (scenario === "twentyfour") expected = ["09:00", "12:30", "23:00"];
           if (scenario === "zone") expected = ["2:30pm", "6:00pm", "4:30am"];
           assert.deepEqual(await buttons.allTextContents(), expected);
+          assert.deepEqual(await page.locator("main header").allTextContents(), [
+            "Wed09",
+            "Thu10",
+            "Fri11, January",
+            "Sat12",
+          ]);
           assert.equal(await buttons.nth(1).isDisabled(), ["loading", "unavailable"].includes(scenario));
           assert.equal(await buttons.first().isDisabled(), scenario === "loading");
           assert.equal(
@@ -532,7 +546,7 @@ try {
     }
   }
   console.log(
-    "PASS ordinary time rows match pinned source with zero different pixels, native selection and timezone/clock formatting across six states and four width/theme combinations."
+    "PASS ordinary time rows and month-view headings match pinned source with zero different pixels, native selection and timezone/clock formatting across six states and four width/theme combinations."
   );
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],

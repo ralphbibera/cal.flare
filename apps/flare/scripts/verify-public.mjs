@@ -108,6 +108,10 @@ export async function verifyPublic(browser) {
     }
     await page.goto(`${fixture.origin}/${settings.event.slug}`);
     await page.getByTestId("time").first().waitFor();
+    assert.equal(
+      await page.locator("header").textContent(),
+      `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(browserDate)}01`
+    );
     assert.equal(await page.getByTestId("event-title").textContent(), settings.event.title);
     assert.equal(await page.locator('[data-testid="event-meta"] img').count(), 0);
     assert.ok((await page.getByTestId("event-meta").textContent()).includes(settings.event.description));
@@ -143,6 +147,10 @@ export async function verifyPublic(browser) {
       .click();
     const shifted = await page.getByTestId("time").first().getAttribute("data-time");
     assert.equal(shifted, first);
+    assert.equal(
+      await page.locator("header").textContent(),
+      `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: india }).format(new Date(first))}02`
+    );
     await page.getByRole("button", { name: "24h", exact: true }).click();
     await page.waitForFunction(() => document.querySelector('[data-testid="time"]')?.textContent === "04:30");
     await page.getByTestId("time").first().focus();
