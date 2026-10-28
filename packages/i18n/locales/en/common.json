@@ -4800,5 +4800,9 @@
   "flare_event_details_invalid": "Check the event details. The URL slug api is reserved.",
   "flare_event_details_failed": "We couldn't save these event details. Your draft is still here. Try saving again.",
   "flare_event_details_javascript": "Enable JavaScript to edit this event.",
+  "flare_booking_status_confirmed": "Confirmed",
+  "flare_booking_status_rescheduling": "Rescheduling",
+  "flare_booking_status_cancelling": "Canceling",
+  "flare_booking_status_attention": "Needs organizer attention",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
