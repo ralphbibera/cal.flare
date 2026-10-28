@@ -51,6 +51,7 @@ await promisify(execFile)(
     "--",
     "apps/web/modules/bookings/components/event-meta/Title.tsx",
     "apps/web/modules/bookings/components/event-meta/Details.tsx",
+    "apps/web/modules/bookings/components/event-meta/Duration.tsx",
     "packages/ui/classNames.ts",
     "apps/web/styles",
     "packages/config/theme",
@@ -134,6 +135,10 @@ const server = await createServer({
       "@reference/meta": fileURLToPath(
         new URL("../../web/modules/bookings/components/event-meta/Details.tsx", import.meta.url)
       ),
+      "@reference/duration": fileURLToPath(
+        new URL("../../web/modules/bookings/components/event-meta/Duration.tsx", import.meta.url)
+      ),
+      "@calcom/web/modules/apps/components/AllApps": join(root, "meta-boundaries.jsx"),
       "@calcom/ui/components/icon": fileURLToPath(
         new URL("../../../packages/ui/components/icon/Icon.tsx", import.meta.url)
       ),
@@ -280,7 +285,24 @@ try {
           );
           assert.equal(await page.getByTestId("empty").count(), 0);
           assert.equal(await page.getByTestId("zero").textContent(), "0");
-          assert.equal(await page.locator("main > div").count(), 9);
+          assert.equal(await page.locator("main > div").count(), 18);
+          for (const [index, text] of [
+            null,
+            null,
+            "1m",
+            "30m",
+            "59m",
+            "1h",
+            "1h 1m",
+            "1h 30m",
+            "2h",
+            "2h 1m",
+            "8h",
+          ].entries()) {
+            const duration = page.getByTestId(`duration-${index}`);
+            if (text === null) assert.equal(await duration.count(), 0);
+            else assert.equal(await duration.textContent(), text);
+          }
           assert.equal(await page.locator("main img").count(), 3);
           assert.equal(await page.getByTestId("custom").locator("svg").count(), 0);
           assert.equal(
@@ -308,7 +330,7 @@ try {
     }
   }
   console.log(
-    "PASS metadata blocks match pinned source with zero different pixels across desktop/mobile and light/dark, including icons, wrapping, highlights, image filters, empty children and native props."
+    "PASS metadata blocks and compact duration text match pinned source with zero different pixels across desktop/mobile and light/dark, including hour boundaries, icons, wrapping, highlights, image filters, empty children and native props."
   );
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],

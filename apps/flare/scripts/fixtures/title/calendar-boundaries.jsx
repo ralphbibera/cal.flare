@@ -25,4 +25,5 @@ export function useSlotsViewOnSmallScreen() {
   return state.slotsViewOnSmallScreen;
 }
 export const shallow = unavailable;
+export const useIsEmbed = unavailable;
 export default unavailable;
