@@ -9,6 +9,7 @@ import { EventMetaBlock } from "./EventMetaBlock.tsx";
 import { EventTitle } from "./EventTitle.tsx";
 import { formatDuration } from "./format-duration.ts";
 import { Input } from "./Input.tsx";
+import { Label } from "./Label.tsx";
 import { ScrollableWithGradients } from "./ScrollableWithGradients.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
@@ -212,10 +213,11 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   event.preventDefault();
                   void submit();
                 }}>
-                <label className="text-default block text-sm font-medium">
-                  {labels.name}
+                <div>
+                  <Label htmlFor="booker-name">{labels.name}</Label>
                   <Input
                     ref={nameInput}
+                    id="booker-name"
                     name="name"
                     autoComplete="name"
                     required
@@ -225,10 +227,11 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                     value={stage.kind === "pending" ? stage.request.name : draft.name}
                     onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                   />
-                </label>
-                <label className="text-default block text-sm font-medium">
-                  {labels.email}
+                </div>
+                <div>
+                  <Label htmlFor="booker-email">{labels.email}</Label>
                   <Input
+                    id="booker-email"
                     type="email"
                     name="email"
                     autoComplete="email"
@@ -240,7 +243,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                     value={stage.kind === "pending" ? stage.request.email : draft.email}
                     onChange={(event) => setDraft({ ...draft, email: event.target.value })}
                   />
-                </label>
+                </div>
                 {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
                 {error && <p role="alert">{error}</p>}
                 <div className="mt-auto flex justify-end space-x-2">
