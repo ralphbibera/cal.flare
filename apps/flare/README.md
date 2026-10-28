@@ -177,6 +177,10 @@ The same command then opens the built Flare calendar with matched event details,
 and fixed browser/Worker Date. It compares the initial card bounds and page background
 against the actual reference at 1280px and 390px, and checks the same nine UTC slots.
 The Worker clock override is confined to the test fixture and preserves native timers.
+The public page bundles the Latin Inter font served by the reference's Next font loader.
+Its served bytes and rendered title text metrics are compared with the actual reference.
+The existing Inter OFL notice applies. Characters outside that subset keep the inherited font fallback.
+This does not establish complete font or localization parity.
 The selected day's background, text, and Today marker use the pinned default booking palette
 and are checked against the actual light-theme reference. Shared component fixtures retain
 their existing theme. Public dark-mode controls and custom branding remain separate work.

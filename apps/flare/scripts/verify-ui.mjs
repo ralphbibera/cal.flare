@@ -39,6 +39,7 @@ await promisify(execFile)(
     "packages/config/theme",
     "packages/coss-ui/src/styles/globals.css",
     "apps/web/public/fonts/Inter-roman.var.woff2",
+    "apps/web/app/layout.tsx",
     "apps/web/public/avatar.svg",
     "packages/lib/constants.ts",
     "packages/lib/getBrandColours.tsx",

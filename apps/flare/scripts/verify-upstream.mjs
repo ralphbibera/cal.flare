@@ -23,6 +23,46 @@ async function measureSelectedDay(page) {
   }));
 }
 
+async function readFont(page) {
+  const url = await page.evaluate(() => {
+    const family = getComputedStyle(document.body).fontFamily.split(",")[0].replaceAll('"', "").trim();
+    for (const sheet of document.styleSheets) {
+      for (const rule of sheet.cssRules) {
+        if (
+          rule.type === CSSRule.FONT_FACE_RULE &&
+          rule.style.getPropertyValue("font-family").replaceAll('"', "") === family &&
+          (!rule.style.getPropertyValue("unicode-range") ||
+            rule.style.getPropertyValue("unicode-range").startsWith("U+0-FF,"))
+        ) {
+          const source = /url\("([^"]+)"\)/.exec(rule.style.getPropertyValue("src"));
+          if (source) return new URL(source[1], sheet.href).href;
+        }
+      }
+    }
+    throw new Error("Rendered body font has no Latin font asset");
+  });
+  const response = await page.request.get(url);
+  assert.equal(response.status(), 200, "Rendered font asset response");
+  return response.body();
+}
+
+async function measureTitle(page) {
+  return page.getByTestId("event-title").evaluate((title) => {
+    const range = document.createRange();
+    range.selectNodeContents(title);
+    const bounds = range.getBoundingClientRect();
+    const style = getComputedStyle(title);
+    return {
+      width: bounds.width,
+      height: bounds.height,
+      size: style.fontSize,
+      weight: style.fontWeight,
+      spacing: style.letterSpacing,
+      lineHeight: style.lineHeight,
+    };
+  });
+}
+
 async function ready(page, selector) {
   await page.locator(selector).first().waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -109,6 +149,8 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         );
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         const frame = await measureFrame(page);
+        const font = await readFont(page);
+        const title = await measureTitle(page);
         const selectedDay = await measureSelectedDay(page);
         assert.deepEqual(selectedDay, {
           background: "rgb(41, 41, 41)",
@@ -157,7 +199,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.deepEqual(errors, []);
         assert.deepEqual(failures, []);
         assert.deepEqual(consoleErrors, []);
-        captures.push({ name, calendar, form, frame, viewport, selectedDay });
+        captures.push({ name, calendar, form, frame, viewport, selectedDay, font, title });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
         try {
@@ -244,6 +286,8 @@ async function verifyFlareFrames(browser, captures, artifacts) {
         assert.equal(await page.getByTestId("time").count(), 9);
         assert.equal(await page.getByTestId("time").first().textContent(), "12:30pm");
         assert.equal(await page.getByTestId("time").last().textContent(), "4:30pm");
+        assert.ok((await readFont(page)).equals(reference.font), `${name} public served font bytes`);
+        assert.deepEqual(await measureTitle(page), reference.title, `${name} public title text metrics`);
         assert.deepEqual(await measureFrame(page), reference.frame, `${name} public calendar frame`);
         assert.deepEqual(
           await measureSelectedDay(page),
