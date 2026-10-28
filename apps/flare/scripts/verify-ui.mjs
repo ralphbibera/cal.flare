@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { verifyCalendar } from "./verify-calendar.mjs";
 import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
@@ -80,6 +80,9 @@ await promisify(execFile)(
     "apps/web/modules/bookings/components/AvailableTimesHeader.tsx",
     "packages/prisma/zod-utils.ts",
     "packages/lib/webstorage.ts",
+    "packages/features/bookings/components/TimeFormatToggle.tsx",
+    "packages/ui/components/form/toggleGroup/ToggleGroup.tsx",
+    "packages/lib/timeFormat.ts",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -99,6 +102,11 @@ const server = await createServer({
     {
       name: "pinned-reference-dictionary",
       resolveId(id) {
+        if (id === "@calcom/features/bookings/lib") return join(root, "calendar-boundaries.jsx");
+        if (id === "@calcom/ui/components/form")
+          return fileURLToPath(
+            new URL("../../../packages/ui/components/form/toggleGroup/ToggleGroup.tsx", import.meta.url)
+          );
         if (id.endsWith("/packages/i18n/locales/en/common.json")) return "\0pinned-reference-dictionary";
       },
       load(id) {
@@ -114,6 +122,7 @@ const server = await createServer({
       "tailwind-merge",
       "class-variance-authority",
       "@radix-ui/react-tooltip",
+      "@radix-ui/react-toggle-group",
       "dayjs",
       "zod",
       "framer-motion",
@@ -134,6 +143,15 @@ const server = await createServer({
   css: { postcss: fileURLToPath(new URL("../", import.meta.url)) },
   resolve: {
     alias: {
+      "../../tooltip/Tooltip": fileURLToPath(
+        new URL("../../../packages/ui/components/tooltip/Tooltip.tsx", import.meta.url)
+      ),
+      "@reference/time-format-toggle": fileURLToPath(
+        new URL("../../../packages/features/bookings/components/TimeFormatToggle.tsx", import.meta.url)
+      ),
+      "@calcom/lib/timeFormat": fileURLToPath(
+        new URL("../../../packages/lib/timeFormat.ts", import.meta.url)
+      ),
       "@reference/title": fileURLToPath(
         new URL("../../web/modules/bookings/components/event-meta/Title.tsx", import.meta.url)
       ),
@@ -269,6 +287,102 @@ try {
     await rm(privateDirectory, { recursive: true, force: true });
   }
   browser = await chromium.launch();
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      for (const twentyfour of [false, true]) {
+        const captures = { rest: [], focus: [], hover: [] };
+        for (const version of ["reference", "candidate"]) {
+          const context = await browser.newContext({ viewport, locale: "en-US" });
+          try {
+            const page = await context.newPage();
+            const errors = [];
+            page.on("pageerror", (error) => errors.push(error.message));
+            page.on("console", (message) => {
+              if (message.type() === "error") errors.push(message.text());
+            });
+            await page.goto(
+              `${origin}/format-toggle.html?theme=${theme}${twentyfour ? "&twentyfour" : ""}${version === "candidate" ? "&candidate" : ""}`
+            );
+            const groups = page.getByRole("radiogroup", { name: "Time format", exact: true });
+            await groups.first().waitFor();
+            await page.evaluate(() => document.fonts.ready);
+            await page.addStyleTag({
+              content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
+            });
+            assert.equal(await groups.count(), 2);
+            const initial = twentyfour ? "24h" : "12h";
+            assert.equal(await page.getByRole("radio", { checked: true }).count(), 2);
+            assert.equal(await groups.first().getByRole("radio", { checked: true }).textContent(), initial);
+            assert.equal(await groups.last().evaluate((node) => getComputedStyle(node).borderRadius), "0px");
+            assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+            for (const state of ["rest", "focus", "hover"]) {
+              if (state === "focus") {
+                await page.getByRole("button", { name: "Before", exact: true }).focus();
+                await page.keyboard.press("Tab");
+                assert.ok(
+                  await groups
+                    .first()
+                    .getByRole("radio", { name: initial })
+                    .evaluate((node) => document.activeElement === node)
+                );
+              }
+              if (state === "hover") {
+                await page.getByRole("radio", { checked: true }).first().blur();
+                await groups
+                  .first()
+                  .getByRole("radio", { name: twentyfour ? "12h" : "24h" })
+                  .hover();
+              }
+              captures[state].push(
+                Array.from(
+                  await page.screenshot({
+                    path: fileURLToPath(
+                      new URL(`${version}-format-${name}-${theme}-${initial}-${state}.png`, artifacts)
+                    ),
+                    fullPage: true,
+                  })
+                )
+              );
+            }
+            if (version === "candidate")
+              for (const state of ["rest", "focus", "hover"])
+                assert.equal(
+                  await page.evaluate(differentPixels, captures[state]),
+                  0,
+                  `${name}/${theme}/${initial}/${state} time-format pixels`
+                );
+            const twelve = groups.first().getByRole("radio", { name: "12h", exact: true });
+            const twentyfourControl = groups.first().getByRole("radio", { name: "24h", exact: true });
+            await twentyfourControl.click();
+            assert.equal(await page.getByLabel("Selected format").textContent(), "HH:mm");
+            await twentyfourControl.click();
+            assert.equal(await page.getByLabel("Selected format").textContent(), "HH:mm");
+            await twentyfourControl.press("ArrowLeft");
+            await expect(twelve).toBeFocused();
+            await twelve.press("Space");
+            assert.equal(await page.getByLabel("Selected format").textContent(), "h:mma");
+            await twelve.press("End");
+            await expect(twentyfourControl).toBeFocused();
+            await twentyfourControl.press("Enter");
+            assert.equal(await page.getByLabel("Selected format").textContent(), "HH:mm");
+            await twentyfourControl.press("Home");
+            await expect(twelve).toBeFocused();
+            await twelve.press("Enter");
+            assert.equal(await page.getByLabel("Selected format").textContent(), "h:mma");
+            assert.deepEqual(errors, []);
+          } finally {
+            await context.close();
+          }
+        }
+      }
+    }
+  }
+  console.log(
+    "PASS time-format controls match pinned source with zero different pixels in 24 rest/focus/hover comparisons, including selection, Tab and arrow/Home/End keyboard behavior."
+  );
   await verifyCalendar(browser, origin);
   await verifyPublic(browser);
   await verifyMeta(browser, origin, artifacts, differentPixels);

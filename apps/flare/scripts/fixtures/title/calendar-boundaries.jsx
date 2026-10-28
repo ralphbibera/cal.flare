@@ -19,6 +19,11 @@ export function useBookerStoreContext(selector) {
   if (state === null) return unavailable();
   return selector(state);
 }
+export function useTimePreferences(selector) {
+  const state = useContext(CalendarReferenceContext);
+  if (state === null) return unavailable();
+  return selector(state);
+}
 export function useSlotsViewOnSmallScreen() {
   const state = useContext(CalendarReferenceContext);
   if (state === null) return unavailable();
