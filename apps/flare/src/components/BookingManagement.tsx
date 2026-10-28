@@ -1,25 +1,13 @@
 import { useEffect, useState } from "react";
 import { BookerClient, type BookingAccess, type ChangeRequest, ErrorWithCode } from "../client/bookings.ts";
 import { ChangeAttempts } from "../client/change-attempt.ts";
-import { BookingCalendar, type BookingCalendarProps } from "./BookingCalendar.tsx";
+import { managementLink } from "../client/management-access.ts";
+import { BookingCalendar } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
+import type { bookingLabels } from "./booking-labels.ts";
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
-type Labels = BookingCalendarProps["labels"] & {
-  confirmed: string;
-  cancelled: string;
-  pending: string;
-  attention: string;
-  checkStatus: string;
-  bookingError: string;
-  storageError: string;
-  slotConflict: string;
-  back: string;
-  reschedule: string;
-  cancelEvent: string;
-  cancelPrompt: string;
-  confirm: string;
-};
+type Labels = typeof bookingLabels;
 type Stage =
   | { kind: "restore" | "actions" | "calendar" | "cancel" | "blocked" }
   | { kind: "move"; start: number }
@@ -42,6 +30,15 @@ export function BookingManagement({
   const [stage, setStage] = useState<Stage>({ kind: "restore" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [copy, setCopy] = useState<"ready" | "copied" | "failed">("ready");
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(managementLink(access, location.origin));
+      setCopy("copied");
+    } catch {
+      setCopy("failed");
+    }
+  }
   const store = () => new ChangeAttempts({ storage: sessionStorage, bookingId: access.id });
   function restore() {
     try {
@@ -191,7 +188,13 @@ export function BookingManagement({
           </Button>
         )}
         {stage.kind === "blocked" && <Button onClick={restore}>{labels.retry}</Button>}
+        <Button color="minimal" onClick={() => void copyLink()}>
+          {labels.copyLink}
+        </Button>
       </div>
+      {copy === "copied" && <p role="status">{labels.copied}</p>}
+      {copy === "failed" && <p role="alert">{labels.copyError}</p>}
+      <p className="text-subtle text-sm">{labels.linkAccess}</p>
     </div>
   );
 }
