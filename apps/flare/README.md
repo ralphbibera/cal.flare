@@ -39,6 +39,12 @@ does not retry provider operations. It renders without JavaScript. With JavaScri
 reloads its current status. A failed or lost response leaves an explicit retry available.
 Filters, pagination, other owner actions, and booking-list pixel parity remain migration work.
 
+Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the current weekly
+schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinute`, and
+`endMinute` within that local day. Multiple nonoverlapping ranges per day are supported;
+an empty rules array closes weekly availability. This update preserves event settings and
+dated overrides. The working-hours editor remains migration work.
+
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.
 The slug `api` is reserved for application routes.

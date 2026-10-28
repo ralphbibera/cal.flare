@@ -207,6 +207,7 @@ async function verifyWorker(fixture) {
   ])
     assert.ok(!JSON.stringify(owner).includes(secret));
   const tomorrow = Math.ceil((Date.now() + 24 * hour) / (24 * hour)) * 24 * hour;
+  await verifyWeeklySchedule(fixture, ownerHeaders, tomorrow);
   const slotsPath = `/api/slots?${new URLSearchParams({
     from: new Date(tomorrow).toISOString(),
     to: new Date(tomorrow + 24 * hour).toISOString(),
@@ -228,6 +229,60 @@ async function verifyWorker(fixture) {
   await verifyPublicIdentity(fixture);
   assert.deepEqual(fixture.upstreamFailures, [], "upstream fixture failures must not be swallowed");
   return { ownerHeaders };
+}
+
+async function verifyWeeklySchedule(fixture, owner, day) {
+  const { send, request, read, db, google } = fixture;
+  const original = {
+    ...settings,
+    schedule: {
+      ...settings.schedule,
+      overrides: [{ date: new Date(day + 24 * hour).toISOString().slice(0, 10), ranges: [] }],
+    },
+  };
+  await read(await send("/api/owner", original, owner, "PUT"));
+  const weekly = {
+    timeZone: "Asia/Kolkata",
+    rules: Array.from({ length: 7 }, (_, weekday) => [
+      { weekday, startMinute: 540, endMinute: 600 },
+      { weekday, startMinute: 630, endMinute: 660 },
+    ]).flat(),
+  };
+  await read(await send("/api/owner/schedule", weekly, {}, "PATCH"), 401);
+  await read(
+    await send("/api/owner/schedule", weekly, { ...owner, Origin: "https://foreign.example" }, "PATCH"),
+    403
+  );
+  await read(await send("/api/owner/schedule", { ...weekly, timeZone: "Invalid/Zone" }, owner, "PATCH"), 400);
+  await read(await send("/api/owner/schedule", weekly, owner, "PATCH"));
+  const expected = { ...original, schedule: { ...original.schedule, ...weekly } };
+  assert.deepEqual((await read(await request("/api/owner", { headers: owner }))).settings, expected);
+  assert.equal(
+    await db.prepare("SELECT json FROM organizer_settings WHERE id='owner'").first("json"),
+    JSON.stringify(expected)
+  );
+  const slots = (from) =>
+    request(
+      `/api/slots?${new URLSearchParams({
+        from: new Date(from).toISOString(),
+        to: new Date(from + 24 * hour).toISOString(),
+        timeZone: "UTC",
+      })}`
+    );
+  const result = await read(await slots(day));
+  assert.deepEqual(
+    result.slots,
+    [210, 240, 300].map((minute) => ({ start: day + minute * 60_000, end: day + (minute + 30) * 60_000 }))
+  );
+  assert.deepEqual(
+    await read(await slots(day + 24 * hour)),
+    { slots: [] },
+    "Preserved dated closures override the changed weekly hours"
+  );
+  await read(await send("/api/owner/schedule", { timeZone: "UTC", rules: [] }, owner, "PATCH"));
+  assert.deepEqual(await read(await slots(day)), { slots: [] });
+  assert.equal(google.writes.length, 0);
+  await read(await send("/api/owner", settings, owner, "PUT"));
 }
 
 async function verifyPublicIdentity(fixture) {

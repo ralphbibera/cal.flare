@@ -7,6 +7,114 @@ import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
+test("weekly updates preserve overrides and concurrent event edits, rejecting invalid or unauthorized input", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { send, request, ownerHeaders, db, calendar } = fixture;
+  const weekly = {
+    timeZone: "Asia/Kolkata",
+    rules: [
+      { weekday: 1, startMinute: 540, endMinute: 720 },
+      { weekday: 1, startMinute: 780, endMinute: 1020 },
+      { weekday: 2, startMinute: 0, endMinute: 1440 },
+    ],
+  };
+  const row = () =>
+    db
+      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
+      .first<{ json: string; version: number }>();
+  const before = await row();
+  assert.equal((await send("/api/owner/schedule", weekly, {}, "PATCH")).status, 401);
+  assert.equal(
+    (
+      await send(
+        "/api/owner/schedule",
+        weekly,
+        { ...ownerHeaders, Origin: "https://foreign.example" },
+        "PATCH"
+      )
+    ).status,
+    403
+  );
+  for (const value of [
+    null,
+    {},
+    { timeZone: "UTC" },
+    { rules: [] },
+    { ...weekly, timeZone: "Invalid/Zone" },
+    { ...weekly, overrides: [] },
+    { ...weekly, rules: [{ weekday: 7, startMinute: 0, endMinute: 1440 }] },
+    { ...weekly, rules: [{ weekday: 1, startMinute: 10, endMinute: 10 }] },
+    { ...weekly, rules: [{ weekday: 1, startMinute: "540", endMinute: 720 }] },
+    { ...weekly, rules: [...weekly.rules, { weekday: 1, startMinute: 600, endMinute: 800 }] },
+    {
+      ...weekly,
+      rules: Array.from({ length: 29 }, (_, index) => ({
+        weekday: 1,
+        startMinute: index * 2,
+        endMinute: index * 2 + 1,
+      })),
+    },
+  ]) {
+    const response = await send("/api/owner/schedule", value, ownerHeaders, "PATCH");
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "INVALID_SETTINGS" });
+  }
+  assert.deepEqual(await row(), before);
+  const original = parseSettings({
+    ...settings,
+    event: {
+      ...settings.event,
+      beforeMinutes: 10,
+      afterMinutes: 20,
+      disableCancelling: true,
+      disableRescheduling: false,
+    },
+    schedule: { ...settings.schedule, overrides: [{ date: "2030-01-04", ranges: [] }] },
+  });
+  assert.equal((await send("/api/owner", original, ownerHeaders, "PUT")).status, 200);
+  const details = {
+    slug: "updated-event",
+    title: "Retained event details",
+    description: "Keep me\udc00",
+    durationMinutes: 45,
+  };
+  const responses = await Promise.all([
+    send("/api/owner", details, ownerHeaders, "PATCH"),
+    send("/api/owner/schedule", weekly, ownerHeaders, "PATCH"),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [200, 200]
+  );
+  const expected = parseSettings({
+    ...original,
+    event: { ...original.event, ...details },
+    schedule: { ...original.schedule, ...weekly },
+  });
+  const owner = record(await (await request("/api/owner", { headers: ownerHeaders })).json());
+  assert.deepEqual(owner.settings, expected);
+  assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
+  const stored = await row();
+  assert.ok(stored && before);
+  assert.equal(stored.version, before.version + 3);
+  assert.equal(stored.json, JSON.stringify(expected));
+  assert.equal(
+    (await send("/api/owner/schedule", { timeZone: "UTC", rules: [] }, ownerHeaders, "PATCH")).status,
+    200
+  );
+  const closed = await request(
+    `/api/slots?${new URLSearchParams({ from: "2030-01-02T00:00:00Z", to: "2030-01-03T00:00:00Z", timeZone: "UTC" })}`
+  );
+  assert.equal(closed.status, 200);
+  assert.deepEqual(await closed.json(), { slots: [] });
+  await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
+  assert.equal((await send("/api/owner/schedule", weekly, ownerHeaders, "PATCH")).status, 200);
+  assert.equal((await row())?.json, JSON.stringify({ ...defaultSettings, schedule: weekly }));
+  assert.equal((await row())?.version, 1);
+  assert.equal(calendar.writes.length, 0);
+});
+
 test("owner listing preserves pending projections and does not process provider operations", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);
