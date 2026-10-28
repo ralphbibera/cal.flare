@@ -4806,5 +4806,12 @@
   "flare_booking_status_attention": "Needs organizer attention",
   "flare_owner_retry_pending": "Retry pending operation",
   "flare_owner_retry_javascript": "Enable JavaScript to retry this booking's pending calendar operation.",
+  "flare_working_hours": "Working hours",
+  "flare_working_day": "Day",
+  "flare_working_hours_invalid": "Check the time zone and working hours. Intervals must end after they start and must not overlap.",
+  "flare_working_hours_failed": "We couldn't save your working hours. Your draft is still here. Try saving again.",
+  "flare_working_hours_midnight": "An end time of 00:00 means midnight at the end of that day.",
+  "flare_working_hours_empty": "No weekly hours. Date overrides still apply.",
+  "flare_working_hours_javascript": "Enable JavaScript to edit weekly working hours.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

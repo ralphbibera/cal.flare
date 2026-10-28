@@ -43,7 +43,9 @@ Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the 
 schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinute`, and
 `endMinute` within that local day. Multiple nonoverlapping ranges per day are supported;
 an empty rules array closes weekly availability. This update preserves event settings and
-dated overrides. The working-hours editor remains migration work.
+dated overrides. The private working-hours editor uses this endpoint to add or remove ranges,
+change timezone, and close weekly availability. An end time of `00:00` represents minute 1440.
+Failed saves retain the draft. Date-override editing and full editor pixel parity remain migration work.
 
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.

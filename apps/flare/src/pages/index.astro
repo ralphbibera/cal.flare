@@ -4,6 +4,7 @@ import common from "../../../../packages/i18n/locales/en/common.json";
 import { Button } from "../components/Button.tsx";
 import OwnerBookings from "../components/OwnerBookings.astro";
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
+import { OwnerScheduleEditor } from "../components/OwnerScheduleEditor.tsx";
 import { getOwnerData } from "../server/app.ts";
 import "../styles/globals.css";
 
@@ -59,6 +60,17 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               duration: common.duration, minutes: common.minutes, save: common.save,
               saved: common.saved, preview: common.preview, invalid: common.flare_event_details_invalid,
               failed: common.flare_event_details_failed, javascript: common.flare_event_details_javascript,
+            }} />
+            <OwnerScheduleEditor client:load schedule={{ timeZone: state.data.settings.schedule.timeZone,
+              rules: state.data.settings.schedule.rules }} labels={{
+              heading: common.flare_working_hours, zone: common.flare_time_zone, day: common.flare_working_day,
+              interval: common.interval, start: common.start_time, end: common.end_time,
+              add: common.add, remove: common.remove, save: common.save, saved: common.saved,
+              invalid: common.flare_working_hours_invalid, failed: common.flare_working_hours_failed,
+              midnight: common.flare_working_hours_midnight, empty: common.flare_working_hours_empty,
+              javascript: common.flare_working_hours_javascript,
+              weekdays: [common.sunday, common.monday, common.tuesday, common.wednesday,
+                common.thursday, common.friday, common.saturday],
             }} />
             <OwnerBookings bookings={state.data.bookings} timeZone={state.data.settings.schedule.timeZone} />
             <form action="/api/auth/logout" method="post" class="mt-6">
