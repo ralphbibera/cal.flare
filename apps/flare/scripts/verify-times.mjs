@@ -14,11 +14,15 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
         "selected",
         "unavailable",
         "loading",
+        "format-twelve",
+        "format-twentyfour",
+        "format-custom",
         "skeleton-1",
         "skeleton-4",
         "skeleton-6",
       ]) {
         const skeletonCount = Number(scenario.split("-")[1]) || 0;
+        const formatHeader = scenario.startsWith("format-");
         const captures = [];
         for (const version of ["reference", "candidate"]) {
           const context = await browser.newContext({ viewport, locale: "en-US", timezoneId: "UTC" });
@@ -56,11 +60,11 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
             } else {
               await buttons.first().waitFor();
               let expected = ["9:00am", "12:30pm", "11:00pm"];
-              if (scenario === "twentyfour") expected = ["09:00", "12:30", "23:00"];
+              if (scenario.endsWith("twentyfour")) expected = ["09:00", "12:30", "23:00"];
               if (scenario === "zone") expected = ["2:30pm", "6:00pm", "4:30am"];
               assert.deepEqual(await buttons.allTextContents(), expected);
               assert.deepEqual(await page.locator("main header").allTextContents(), [
-                "Wed09",
+                formatHeader ? "Wed0912h24h" : "Wed09",
                 "Thu10",
                 "Fri11, January",
                 "Sat12",
@@ -71,6 +75,21 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
                 await page.locator('[data-testid="time"].border-brand-default').count(),
                 scenario === "selected" ? 1 : 0
               );
+              if (formatHeader) {
+                const group = page.locator("header").first().getByRole("radiogroup", { name: "Time format" });
+                assert.equal(await group.count(), 1);
+                assert.equal(
+                  await group.getByRole("radio", { checked: true }).textContent(),
+                  scenario.endsWith("twentyfour") ? "24h" : "12h"
+                );
+                const bounds = await group.evaluate((node) => ({
+                  right: node.getBoundingClientRect().right,
+                  headerRight: node.closest("header").getBoundingClientRect().right,
+                  radius: getComputedStyle(node).borderRadius,
+                }));
+                assert.equal(bounds.right, bounds.headerRight);
+                if (scenario === "format-custom") assert.equal(bounds.radius, "0px");
+              }
             }
             await page.addStyleTag({
               content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
@@ -97,6 +116,13 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
               await buttons.nth(1).evaluate((button) => button.click());
               assert.equal(await page.getByTestId("selection").textContent(), "none");
             }
+            if (formatHeader) {
+              const group = page.locator("header").first().getByRole("radiogroup", { name: "Time format" });
+              await group.getByRole("radio", { name: "24h", exact: true }).click();
+              assert.deepEqual(await buttons.allTextContents(), ["09:00", "12:30", "23:00"]);
+              await group.getByRole("radio", { name: "12h", exact: true }).click();
+              assert.deepEqual(await buttons.allTextContents(), ["9:00am", "12:30pm", "11:00pm"]);
+            }
             if (!skeletonCount && scenario !== "loading") {
               await buttons.first().click();
               assert.equal(await page.getByTestId("selection").textContent(), "2030-01-10T09:00:00Z");
@@ -113,6 +139,6 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
     }
   }
   console.log(
-    "PASS ordinary time rows, headings and one/four/six-row loading skeletons match pinned source with zero different pixels in 36 desktop/mobile and light/dark comparisons, including native selection and timezone/clock formatting."
+    "PASS ordinary time rows, headings with optional clock controls and loading skeletons match pinned source with zero different pixels in 48 desktop/mobile and light/dark comparisons, including native selection and timezone/clock formatting."
   );
 }

@@ -1,5 +1,6 @@
 import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
+import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import type { BookingAccess } from "../client/bookings.ts";
 import { useCalendarAvailability } from "../client/use-calendar-availability.ts";
@@ -12,6 +13,7 @@ import { TimeSlotsSkeleton } from "./TimeSlotsSkeleton.tsx";
 type BookingCalendarProps = {
   timeZone: string;
   timeFormat: "h:mma" | "HH:mm";
+  timeFormatToggle?: ReactElement;
   locale: string;
   weekStart?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   labels: {
@@ -31,6 +33,7 @@ type BookingCalendarProps = {
 function BookingCalendar({
   timeZone,
   timeFormat,
+  timeFormatToggle,
   locale,
   weekStart,
   labels,
@@ -105,6 +108,7 @@ function BookingCalendar({
                 )}
                 day={dayjs(selectedDate).format("DD")}
                 isToday={dayjs().isSame(dayjs(selectedDate), "day")}
+                timeFormatToggle={timeFormatToggle}
               />
               <TimeSlots
                 slots={times}

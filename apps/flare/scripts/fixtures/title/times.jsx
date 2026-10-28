@@ -18,12 +18,21 @@ window.localStorage.removeItem("overlayCalendarSwitchDefault");
 createRoot(document.getElementById("root")).render(
   <TimeCases
     Skeleton={AvailableTimesSkeleton}
-    Header={({ date, customClassNames, availableMonth }) => (
-      <CalendarReferenceContext.Provider value={{ layout: "month_view" }}>
+    Header={({
+      date,
+      customClassNames,
+      availableMonth,
+      showTimeFormatToggle = false,
+      timeFormat,
+      onFormatChange,
+      controlClassName,
+    }) => (
+      <CalendarReferenceContext.Provider
+        value={{ layout: "month_view", timeFormat, setTimeFormat: onFormatChange }}>
         <AvailableTimesHeader
           date={dayjs(date)}
-          showTimeFormatToggle={false}
-          customClassNames={customClassNames}
+          showTimeFormatToggle={showTimeFormatToggle}
+          customClassNames={{ ...customClassNames, availableTimeSlotsTimeFormatToggle: controlClassName }}
           availableMonth={availableMonth}
         />
       </CalendarReferenceContext.Provider>

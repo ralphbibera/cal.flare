@@ -186,7 +186,9 @@ const server = await createServer({
         new URL("../../web/modules/bookings/components/AvailableTimesHeader.tsx", import.meta.url)
       ),
       "@calcom/prisma/zod-utils": join(root, "time-boundaries.jsx"),
-      "@calcom/features/bookings/components/TimeFormatToggle": join(root, "time-boundaries.jsx"),
+      "@calcom/features/bookings/components/TimeFormatToggle": fileURLToPath(
+        new URL("../../../packages/features/bookings/components/TimeFormatToggle.tsx", import.meta.url)
+      ),
       "@calcom/lib/webstorage": fileURLToPath(
         new URL("../../../packages/lib/webstorage.ts", import.meta.url)
       ),
