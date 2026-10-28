@@ -20,6 +20,7 @@ export async function verifySubmission(browser, fixture, date) {
     });
     await page.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
     await page.getByTestId("time").first().click();
+    await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
     await page.getByLabel("Name", { exact: true }).fill("Fixture Guest");
     await page.getByLabel("Email", { exact: true }).fill("guest@example.test");
     return page;
@@ -63,6 +64,7 @@ export async function verifySubmission(browser, fixture, date) {
     assert.equal(fixture.google.writes.length, 1);
     assert.ok(await page.getByRole("button", { name: "Back", exact: true }).isDisabled());
     assert.ok(await page.getByLabel("Name", { exact: true }).evaluate((input) => input.readOnly));
+    assert.ok(await page.getByLabel("Email", { exact: true }).evaluate((input) => input.readOnly));
     await page.unroute("**/api/bookings");
     await page.reload();
     await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
