@@ -177,6 +177,9 @@ The same command then opens the built Flare calendar with matched event details,
 and fixed browser/Worker Date. It compares the initial card bounds and page background
 against the actual reference at 1280px and 390px, and checks the same nine UTC slots.
 The Worker clock override is confined to the test fixture and preserves native timers.
+The selected day's background, text, and Today marker use the pinned default booking palette
+and are checked against the actual light-theme reference. Shared component fixtures retain
+their existing theme. Public dark-mode controls and custom branding remain separate work.
 The month view follows the pinned 1040px document width at a 1024px viewport.
 Full-page pixels, other layouts, custom avatars, and organizer profile links remain separate work.
 
