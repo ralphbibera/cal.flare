@@ -1,7 +1,12 @@
 import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
-import { parseEventDetails, parseSettings, parseWeeklySchedule } from "../domain/settings.ts";
+import {
+  parseEventDetails,
+  parseScheduleOverrides,
+  parseSettings,
+  parseWeeklySchedule,
+} from "../domain/settings.ts";
 import type { AuthEnv } from "./auth.ts";
 import { beginLogin, finishLogin, logout, requireOwner } from "./auth.ts";
 import { BookingService } from "./bookings.ts";
@@ -9,7 +14,13 @@ import type { GoogleCalendar } from "./google.ts";
 import { GoogleCalendar as CalendarClient } from "./google.ts";
 import { bearer, body, ErrorWithCode, json, record, sameOrigin } from "./http.ts";
 import { hash } from "./secrets.ts";
-import { getSettings, saveEventDetails, saveSettings, saveWeeklySchedule } from "./settings.ts";
+import {
+  getSettings,
+  saveEventDetails,
+  saveScheduleOverrides,
+  saveSettings,
+  saveWeeklySchedule,
+} from "./settings.ts";
 
 type Dependencies = {
   env: AuthEnv;
@@ -126,6 +137,12 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     await owner(env, request);
     await getSettings(env.DB);
     await saveWeeklySchedule(env.DB, parseWeeklySchedule(await body(request)));
+    return json({ saved: true });
+  }
+  if (path === "/api/owner/overrides" && method === "PATCH") {
+    await owner(env, request);
+    await getSettings(env.DB);
+    await saveScheduleOverrides(env.DB, parseScheduleOverrides(await body(request)));
     return json({ saved: true });
   }
 

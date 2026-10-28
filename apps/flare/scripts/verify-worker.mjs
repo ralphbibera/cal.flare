@@ -279,6 +279,54 @@ async function verifyWeeklySchedule(fixture, owner, day) {
     { slots: [] },
     "Preserved dated closures override the changed weekly hours"
   );
+  const overrides = [
+    { date: new Date(day).toISOString().slice(0, 10), ranges: [{ startMinute: 660, endMinute: 720 }] },
+    ...original.schedule.overrides,
+  ];
+  await read(await send("/api/owner/overrides", { overrides }, {}, "PATCH"), 401);
+  await read(
+    await send(
+      "/api/owner/overrides",
+      { overrides },
+      {
+        ...owner,
+        Origin: "https://foreign.example",
+      },
+      "PATCH"
+    ),
+    403
+  );
+  await read(
+    await send(
+      "/api/owner/overrides",
+      {
+        overrides: [{ date: "2030-02-29", ranges: [] }],
+      },
+      owner,
+      "PATCH"
+    ),
+    400
+  );
+  await read(await send("/api/owner/overrides", { overrides }, owner, "PATCH"));
+  const overridden = { ...expected, schedule: { ...expected.schedule, overrides } };
+  assert.deepEqual((await read(await request("/api/owner", { headers: owner }))).settings, overridden);
+  assert.equal(
+    await db.prepare("SELECT json FROM organizer_settings WHERE id='owner'").first("json"),
+    JSON.stringify(overridden)
+  );
+  assert.deepEqual(
+    (await read(await slots(day))).slots,
+    [330, 360].map((minute) => ({ start: day + minute * 60_000, end: day + (minute + 30) * 60_000 }))
+  );
+  assert.deepEqual(await read(await slots(day + 24 * hour)), { slots: [] });
+  await read(await send("/api/owner/overrides", { overrides: [] }, owner, "PATCH"));
+  assert.deepEqual(
+    (await read(await slots(day + 24 * hour))).slots,
+    [210, 240, 300].map((minute) => ({
+      start: day + 24 * hour + minute * 60_000,
+      end: day + 24 * hour + (minute + 30) * 60_000,
+    }))
+  );
   await read(await send("/api/owner/schedule", { timeZone: "UTC", rules: [] }, owner, "PATCH"));
   assert.deepEqual(await read(await slots(day)), { slots: [] });
   assert.equal(google.writes.length, 0);
