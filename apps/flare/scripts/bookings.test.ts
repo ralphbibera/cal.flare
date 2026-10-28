@@ -419,6 +419,73 @@ test("booking service admits, manages and replays bookings safely across competi
     ]);
     assert.equal(commands.filter((result) => result.status === "fulfilled").length, 1);
     assert.equal(commands.filter((result) => result.status === "rejected").length, 1);
+
+    for (const offset of [-1, 0, 1]) {
+      clock = now;
+      const target = await service.create(input(now + (80 + offset) * day + 10 * hour));
+      const request = change(target, "cancel"),
+        writes = deleteTags.length;
+      clock = target.end + offset;
+      if (offset <= 0) {
+        const cancelled = await service.change(target.id, token(target), request);
+        assert.equal(cancelled.status, "cancelled");
+        clock = target.end + hour;
+        assert.deepEqual(await service.change(target.id, token(target), request), cancelled);
+        assert.equal(deleteTags.length, writes + 1);
+      } else {
+        const original = structuredClone(events.get(target.id));
+        const booking = await db.prepare("SELECT * FROM booking WHERE id=?").bind(target.id).first();
+        const reservations = await db
+          .prepare("SELECT * FROM booking_reservation WHERE booking_id=? ORDER BY role")
+          .bind(target.id)
+          .all();
+        await assert.rejects(service.change(target.id, token(target), request), /invalid_slot/);
+        assert.equal(
+          await db
+            .prepare("SELECT outcome FROM booking_command WHERE request_key=?")
+            .bind(request.requestKey)
+            .first("outcome"),
+          "invalid_slot"
+        );
+        clock = target.end - 1;
+        await assert.rejects(service.change(target.id, token(target), request), /invalid_slot/);
+        assert.deepEqual(
+          await db.prepare("SELECT * FROM booking WHERE id=?").bind(target.id).first(),
+          booking
+        );
+        assert.deepEqual(
+          (
+            await db
+              .prepare("SELECT * FROM booking_reservation WHERE booking_id=? ORDER BY role")
+              .bind(target.id)
+              .all()
+          ).results,
+          reservations.results
+        );
+        assert.deepEqual(events.get(target.id), original);
+        assert.equal(deleteTags.length, writes);
+        assert.equal((await service.view(target.id, token(target))).status, "confirmed");
+      }
+    }
+    clock = now;
+    const cutoff = await service.create(input(now + 84 * day + 10 * hour));
+    const cutoffRequest = change(cutoff, "cancel");
+    deleteGate = async () => {
+      throw new GoogleCalendarError("retryable", 503, "Temporary provider failure");
+    };
+    clock = cutoff.end - 1;
+    assert.equal((await service.change(cutoff.id, token(cutoff), cutoffRequest)).status, "attention");
+    deleteGate = undefined;
+    clock = cutoff.end + 1;
+    assert.equal((await service.change(cutoff.id, token(cutoff), cutoffRequest)).status, "cancelled");
+    assert.equal(events.has(cutoff.id), false);
+    assert.equal(
+      await db
+        .prepare("SELECT count(*) FROM booking_command WHERE booking_id=?")
+        .bind(cutoff.id)
+        .first("count(*)"),
+      2
+    );
   } finally {
     try {
       await platform?.dispose();
