@@ -58,6 +58,25 @@ test("numeric settings accept both bounds and reject invalid integers", () => {
   }
 });
 
+test("guest change policies preserve absent defaults and accept only explicit booleans", () => {
+  assert.equal(parseSettings(settings()).event.disableCancelling, undefined);
+  assert.equal(parseSettings(settings()).event.disableRescheduling, undefined);
+  for (const key of ["disableCancelling", "disableRescheduling"] as const) {
+    for (const value of [true, false]) {
+      assert.equal(
+        parseSettings({ ...settings(), event: { ...settings().event, [key]: value } }).event[key],
+        value
+      );
+    }
+    for (const value of [null, "false", "true", 0, 1, {}, []]) {
+      assert.throws(
+        () => parseSettings({ ...settings(), event: { ...settings().event, [key]: value } }),
+        SettingsError
+      );
+    }
+  }
+});
+
 test("text and object validation reject malformed payloads", () => {
   for (const value of [null, [], {}, { event: {}, schedule: {} }]) {
     assert.throws(() => parseSettings(value), SettingsError);

@@ -7,6 +7,8 @@ type EventSettings = {
   beforeMinutes: number;
   afterMinutes: number;
   noticeMinutes: number;
+  disableCancelling?: boolean;
+  disableRescheduling?: boolean;
 };
 
 type MinuteRange = { startMinute: number; endMinute: number };
@@ -109,6 +111,12 @@ function parseSettings(input: unknown): Settings {
     },
     schedule: { timeZone, rules },
   };
+  for (const key of ["disableCancelling", "disableRescheduling"] as const) {
+    if (event[key] !== undefined) {
+      if (typeof event[key] !== "boolean") throw new SettingsError(`${key} must be a boolean`);
+      result.event[key] = event[key];
+    }
+  }
   if (schedule.overrides !== undefined) {
     const dates = new Set<string>();
     result.schedule.overrides = list(schedule.overrides, "overrides", 366).map((input) => {

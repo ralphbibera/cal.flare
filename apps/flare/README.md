@@ -42,6 +42,11 @@ Use **Copy private booking link** to open the receipt in another browser without
 Anyone with this link can view or change the booking. The page removes the link fragment
 after it saves access in that browser tab. Cancellation reasons remain migration work.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
+The authenticated settings API accepts optional `event.disableCancelling` and
+`event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.
+Each flag refuses new requests for that action without changing accepted commands or their recovery.
+Refusals use the existing HTTP 409 `invalid_slot` outcome and remain stable on replay.
+Policy controls and explanations in the guest interface remain migration work.
 See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
 
 ## Verify the focused port
