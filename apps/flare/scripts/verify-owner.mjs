@@ -69,6 +69,12 @@ export async function verifyOwner(browser, fixture) {
         .getByRole("button", { name: "Save", exact: true })
         .isDisabled()
     );
+    assert.ok(
+      await page
+        .getByRole("form", { name: "Booking rules", exact: true })
+        .getByRole("button", { name: "Save", exact: true })
+        .isDisabled()
+    );
     assert.ok((await page.textContent("body")).includes("As soon as someone books a time with you"));
     const sessions = (await context.cookies(fixture.origin)).filter(
       (cookie) => cookie.name === "flare_session"
@@ -140,6 +146,7 @@ export async function verifyOwner(browser, fixture) {
   await verifyEventEditor(browser, fixture);
   await verifyWeeklyEditor(browser, fixture);
   await verifyOverridesEditor(browser, fixture);
+  await verifyBookingRulesEditor(browser, fixture);
 }
 
 async function verifyEventEditor(browser, fixture) {
@@ -777,6 +784,162 @@ async function verifyOverridesEditor(browser, fixture) {
       "PASS native date overrides, closures/ranges, duplicate/overlap rejection, failed-save retry, midnight reload, removal and exact public slots. Built Worker/local D1; Google is mocked."
     );
   } finally {
+    await context.close();
+  }
+}
+
+async function verifyBookingRulesEditor(browser, fixture) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
+  const id = "a".repeat(32);
+  try {
+    const owner = await fixture.login();
+    await context.addCookies([
+      { name: "flare_session", value: owner.Cookie.split("=")[1], url: fixture.origin },
+    ]);
+    const original = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    const now = new Date();
+    const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2);
+    const configured = {
+      ...original,
+      event: {
+        ...original.event,
+        durationMinutes: 30,
+        intervalMinutes: 30,
+        beforeMinutes: 0,
+        afterMinutes: 0,
+        noticeMinutes: 0,
+      },
+      schedule: {
+        timeZone: "UTC",
+        rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 0, endMinute: 1440 })),
+        overrides: [{ date: new Date(day + 7 * 86_400_000).toISOString().slice(0, 10), ranges: [] }],
+      },
+    };
+    await fixture.read(await fixture.send("/api/owner", configured, owner, "PUT"));
+    fixture.google.events.set(id, {
+      id,
+      etag: '"rules-busy"',
+      start: { dateTime: new Date(day + 9 * 3_600_000).toISOString() },
+      end: { dateTime: new Date(day + 10 * 3_600_000).toISOString() },
+    });
+    const page = await context.newPage();
+    const errors = [],
+      requests = [];
+    let fail = true;
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (
+        message.type() === "error" &&
+        !(
+          message.location().url === `${fixture.origin}/api/owner/booking-rules` &&
+          message.text().startsWith("Failed to load resource: the server responded with a status of 503")
+        )
+      )
+        errors.push(message.text());
+    });
+    await page.route("**/api/owner/booking-rules", async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      requests.push(route.request().postDataJSON());
+      if (fail)
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: '{"error":"private-rules-detail"}',
+        });
+      return route.continue();
+    });
+    await page.goto(fixture.origin);
+    const form = page.getByRole("form", { name: "Booking rules", exact: true });
+    const save = form.getByRole("button", { name: "Save", exact: true });
+    const field = (name) => form.getByRole("spinbutton", { name: `${name} (Minutes)`, exact: true });
+    const cancelling = form.getByRole("checkbox", { name: "Disable Cancelling", exact: true });
+    const rescheduling = form.getByRole("checkbox", { name: "Disable rescheduling", exact: true });
+    assert.equal(await cancelling.isChecked(), false);
+    assert.equal(await rescheduling.isChecked(), false);
+    await field("Time-slot intervals").fill("4");
+    await save.click();
+    assert.equal(requests.length, 0);
+    assert.ok(await field("Time-slot intervals").evaluate((input) => input.validity.rangeUnderflow));
+    for (const [label, value] of [
+      ["Time-slot intervals", "60"],
+      ["Before event", "15"],
+      ["After event", "20"],
+      ["Minimum notice", "0"],
+    ])
+      await field(label).fill(value);
+    await cancelling.check();
+    await save.click();
+    await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+    assert.equal(await field("Time-slot intervals").inputValue(), "60");
+    assert.equal(await cancelling.isChecked(), true);
+    assert.ok(!(await page.content()).includes("private-rules-detail"));
+    fail = false;
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    const rules = {
+      intervalMinutes: 60,
+      beforeMinutes: 15,
+      afterMinutes: 20,
+      noticeMinutes: 0,
+      disableCancelling: true,
+      disableRescheduling: false,
+    };
+    assert.deepEqual(requests, [rules, rules]);
+    await page.reload();
+    assert.equal(await field("Time-slot intervals").inputValue(), "60");
+    assert.equal(await cancelling.isChecked(), true);
+    assert.equal(await rescheduling.isChecked(), false);
+    const readSettings = async () =>
+      (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    assert.deepEqual(await readSettings(), { ...configured, event: { ...configured.event, ...rules } });
+    const slots = async () =>
+      (
+        await fixture.read(
+          await fixture.request(
+            `/api/slots?${new URLSearchParams({
+              from: new Date(day + 8 * 3_600_000).toISOString(),
+              to: new Date(day + 12 * 3_600_000).toISOString(),
+              timeZone: "UTC",
+            })}`
+          )
+        )
+      ).slots;
+    assert.deepEqual(
+      await slots(),
+      [8, 11].map((hours) => ({ start: day + hours * 3_600_000, end: day + hours * 3_600_000 + 30 * 60_000 }))
+    );
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await form.screenshot({
+      path: new URL("../.verification/booking-rules-mobile.png", import.meta.url).pathname,
+      animations: "disabled",
+    });
+    await field("Minimum notice").fill("43200");
+    await cancelling.uncheck();
+    await rescheduling.check();
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    await page.reload();
+    assert.equal(await cancelling.isChecked(), false);
+    assert.equal(await rescheduling.isChecked(), true);
+    assert.deepEqual(await readSettings(), {
+      ...configured,
+      event: {
+        ...configured.event,
+        ...rules,
+        noticeMinutes: 43200,
+        disableCancelling: false,
+        disableRescheduling: true,
+      },
+    });
+    assert.deepEqual(await slots(), []);
+    assert.equal(fixture.google.writes.length, 0);
+    assert.deepEqual(errors, []);
+    await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
+    console.log(
+      "PASS native booking rules, validation, failed-save retry, reload, explicit checkbox values, preserved settings and spacing/buffer/notice availability. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    fixture.google.events.delete(id);
     await context.close();
   }
 }

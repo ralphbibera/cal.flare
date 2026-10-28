@@ -60,7 +60,8 @@ and guest change rules. Send all six fields: `intervalMinutes`, `beforeMinutes`,
 `noticeMinutes`, `disableCancelling` and `disableRescheduling`. The last two fields require
 explicit booleans. Event details and all schedule fields stay unchanged. Accepted booking
 commands retain their original replay and recovery behavior after a rules change.
-The booking-rules editor remains migration work.
+The private booking-rules editor saves these fields explicitly and retains drafts after failed
+saves. Full editor pixel parity remains migration work.
 
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.

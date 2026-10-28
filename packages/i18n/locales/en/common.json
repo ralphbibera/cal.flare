@@ -4818,5 +4818,9 @@
   "flare_overrides_invalid": "Check dates and intervals. Dates must be unique, and intervals must end after they start without overlapping.",
   "flare_overrides_failed": "We couldn't save your date overrides. Your draft is still here. Try saving again.",
   "flare_overrides_javascript": "Enable JavaScript to edit date overrides.",
+  "flare_booking_rules": "Booking rules",
+  "flare_booking_rules_invalid": "Check the spacing, buffers and notice. Enter whole minutes within the shown limits.",
+  "flare_booking_rules_failed": "We couldn't save your booking rules. Your draft is still here. Try saving again.",
+  "flare_booking_rules_javascript": "Enable JavaScript to edit booking rules.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
