@@ -263,9 +263,41 @@ try {
     access: { id: "a".repeat(64), token: "b".repeat(43) },
   });
   assert.equal(receipt.attendeeRetained, false);
+  const changesModule = `/@fs${fileURLToPath(new URL("../src/client/change-attempt.ts", import.meta.url))}`;
+  for (const action of ["reschedule", "cancel"]) {
+    const change = await sessionPage.evaluate(
+      async ({ url, action }) => {
+        const { ChangeAttempts } = await import(url);
+        return new ChangeAttempts({ storage: sessionStorage, bookingId: "a".repeat(64) }).begin(
+          action === "cancel"
+            ? { action, version: 2 }
+            : { action, version: 1, start: Date.UTC(2030, 0, 1, 12) }
+        );
+      },
+      { url: changesModule, action }
+    );
+    await sessionPage.reload();
+    const recovered = await sessionPage.evaluate(async (url) => {
+      const { ChangeAttempts } = await import(url);
+      return new ChangeAttempts({ storage: sessionStorage, bookingId: "a".repeat(64) }).read();
+    }, changesModule);
+    assert.deepEqual(recovered, change);
+    assert.ok(!JSON.stringify(recovered).includes(receipt.saved.access.token));
+    assert.equal(
+      await sessionPage.evaluate(
+        async ({ url, requestKey }) => {
+          const { ChangeAttempts } = await import(url);
+          const store = new ChangeAttempts({ storage: sessionStorage, bookingId: "a".repeat(64) });
+          return store.acknowledge(requestKey) && store.read() === null;
+        },
+        { url: changesModule, requestKey: change.requestKey }
+      ),
+      true
+    );
+  }
   await sessionContext.close();
   console.log(
-    "PASS native session storage preserves the request across reload and replaces attendee data with a receipt."
+    "PASS native session storage preserves create/move/cancel requests across reload, removes acknowledged changes and replaces attendee data with a receipt."
   );
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
