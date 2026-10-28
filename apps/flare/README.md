@@ -111,6 +111,71 @@ UTC slot identity, receipt-based rescheduling and cancellation, and recovery aft
 It also checks private-link access, reloads, denied access, and storage failures.
 It does not establish full-page pixel parity or live invitation delivery.
 
+### Capture the pinned public page
+
+The optional upstream reference runs the actual Next.js route in a separate checkout.
+It uses the original dependency graph, Prisma and a disposable local PostgreSQL database.
+It does not add Next.js to the Flare workspace or provide another deployment path.
+Allow several GiB of disk space. Node 24.22.1, PostgreSQL tools and the existing Chromium
+installation are required. The commands below use loopback ports 18796 and 18800;
+both must be free. Do not point this fixture at an existing database or private configuration.
+
+From the Flare repository root, prepare a clean reference checkout:
+
+```sh
+export CALFLARE_REFERENCE_ROOT=$(mktemp -d /tmp/calflare-reference.XXXXXX)
+git worktree add --detach "$CALFLARE_REFERENCE_ROOT" 0f19cc46ef6b6426ee398c670575b3c96be7af9e
+(cd "$CALFLARE_REFERENCE_ROOT" && HUSKY=0 DO_NOT_TRACK=1 TURBO_TELEMETRY_DISABLED=1 \
+  mise exec node@24.22.1 -- node .yarn/releases/yarn-4.12.0.cjs install --immutable --mode=skip-build)
+reference_pg=$(mktemp -d /tmp/calflare-reference-pg.XXXXXX)
+initdb -D "$reference_pg/data" -U calflare_reference --auth-local=trust --auth-host=trust --no-locale -E UTF8
+pg_ctl -D "$reference_pg/data" -l "$reference_pg/postgres.log" \
+  -o "-h 127.0.0.1 -p 18796 -k $reference_pg" start
+createdb -h 127.0.0.1 -p 18796 -U calflare_reference calflare_reference
+(cd "$CALFLARE_REFERENCE_ROOT" && \
+  export DATABASE_URL=postgresql://calflare_reference@127.0.0.1:18796/calflare_reference && \
+  export DATABASE_DIRECT_URL=$DATABASE_URL && \
+  mise exec node@24.22.1 -- node .yarn/releases/yarn-4.12.0.cjs prisma migrate deploy && \
+  mise exec node@24.22.1 -- node .yarn/releases/yarn-4.12.0.cjs prisma generate)
+(cd "$CALFLARE_REFERENCE_ROOT/apps/web" && mise exec node@24.22.1 -- node scripts/copy-app-store-static.js)
+mise exec node@24.22.1 -- node apps/flare/scripts/fixtures/upstream/seed.cjs
+mise exec node@24.22.1 -- node apps/flare/scripts/fixtures/upstream/server.cjs build
+mise exec node@24.22.1 -- node apps/flare/scripts/fixtures/upstream/server.cjs start
+```
+
+The fixture checks the pin and clean tracked source, refuses private env files, and uses
+fresh synthetic secrets. Its reference profile sets the server timezone to UTC, fixes Date to January 9, 2030 at noon UTC,
+and preserves native timers. Next's selected-route compile mode builds the public page,
+its profile-prefetch target and required APIs, then the normal production server runs it.
+This targeted runtime build does not perform the complete upstream release build or type-check.
+Page components, styles, fonts, queries and form implementations remain unchanged.
+In another terminal, run the existing verifier against this server:
+
+```sh
+CALFLARE_REFERENCE_ORIGIN=http://127.0.0.1:18800 \
+  mise exec -- node .yarn/releases/yarn-4.12.0.cjs verify:ui
+```
+
+This captures desktop/mobile calendars and slot-selected attendee forms twice, including
+the native mobile dialog, using the same browser process as the component checks.
+The browser disables partial rasterization through Chromium's supported
+`--disable-partial-raster` switch. This selects
+[full-tile rasterization](https://raw.githubusercontent.com/chromium/chromium/143.0.7499.4/third_party/blink/renderer/platform/widget/compositing/layer_tree_settings.cc)
+for both reference and candidate captures, excluding cached partial-tile updates from this profile.
+The profile uses English, UTC, light theme, a 12-hour clock,
+fresh browser storage and Playwright's static `animations: "disabled"` screenshots.
+It waits for fonts, images, geometry and animation completion, then compares dimensions
+and every RGBA channel without tolerance. Captures are ignored under `.verification`.
+The initial day starts at 12:30pm under upstream's one-minute minimum notice fallback;
+selecting January 10 exposes all sixteen 9am–4:30pm starts.
+Temporary reservations are released through the original public cleanup API; no booking
+is confirmed. Uncaught errors, console errors and HTTP failures fail verification.
+This establishes the declared static reference profile, not candidate-page pixel equality,
+default-motion stability, historical runtime equivalence, or live-provider behavior.
+
+Stop the reference server with Ctrl-C and stop its database with
+`pg_ctl -D "$reference_pg/data" stop`. Remove only these disposable resources when finished.
+
 The D1 verifier applies the experimental SQL file with Wrangler into temporary local storage.
 The CI type-check accepts the inherited `--force` flag. Every invocation runs checks without a Turbo cache.
 It executes the shared submission SQL through `getPlatformProxy` and a real local workerd D1 binding.

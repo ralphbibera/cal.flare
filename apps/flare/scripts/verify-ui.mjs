@@ -3,13 +3,16 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
+import { differentPixels } from "./different-pixels.mjs";
 import { verifyCalendar } from "./verify-calendar.mjs";
 import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
 import { verifyTimes } from "./verify-times.mjs";
+import { verifyUpstream } from "./verify-upstream.mjs";
 
 const require = createRequire(import.meta.url);
 const { createServer } = await import(
@@ -20,30 +23,6 @@ const { default: react } = await import(
 );
 const root = fileURLToPath(new URL("fixtures/title/", import.meta.url));
 const artifacts = new URL("../.verification/", import.meta.url);
-async function differentPixels([expected, actual]) {
-  const pixels = async (bytes) => {
-    const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
-    const canvas = new OffscreenCanvas(image.width, image.height);
-    const context = canvas.getContext("2d");
-    context.drawImage(image, 0, 0);
-    const data = context.getImageData(0, 0, image.width, image.height).data;
-    image.close();
-    return { width: canvas.width, height: canvas.height, data };
-  };
-  const left = await pixels(expected);
-  const right = await pixels(actual);
-  if (left.width !== right.width || left.height !== right.height) return Infinity;
-  let count = 0;
-  for (let offset = 0; offset < left.data.length; offset += 4) {
-    for (let channel = 0; channel < 4; channel++) {
-      if (left.data[offset + channel] !== right.data[offset + channel]) {
-        count++;
-        break;
-      }
-    }
-  }
-  return count;
-}
 await promisify(execFile)(
   "git",
   [
@@ -288,7 +267,7 @@ try {
   } finally {
     await rm(privateDirectory, { recursive: true, force: true });
   }
-  browser = await chromium.launch();
+  browser = await chromium.launch({ args: ["--disable-partial-raster"] });
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
     ["mobile", { width: 390, height: 844 }],
@@ -973,6 +952,9 @@ try {
   console.log(
     "PASS month picker matches the pinned source with zero different pixels in eleven scenarios across desktop/mobile and light/dark, preserving offset-date boundaries, selection, navigation and next-month tooltip."
   );
+  if (process.env.CALFLARE_REFERENCE_ORIGIN) {
+    await verifyUpstream(browser, process.env.CALFLARE_REFERENCE_ORIGIN, artifacts, differentPixels);
+  }
 } finally {
   try {
     await browser?.close();
