@@ -60,6 +60,7 @@ await promisify(execFile)(
     "apps/web/public/icons/sprite.svg",
     "packages/ui/components/button/Button.tsx",
     "packages/ui/components/form/inputs/TextField.tsx",
+    "packages/ui/components/form/inputs/Input.tsx",
     "packages/ui/components/form/inputs/types.d.ts",
     "packages/ui/components/form/inputs/Label.tsx",
     "packages/features/calendars/components/DatePicker.tsx",
@@ -158,8 +159,17 @@ const server = await createServer({
       "@reference/input": fileURLToPath(
         new URL("../../../packages/ui/components/form/inputs/TextField.tsx", import.meta.url)
       ),
+      "@reference/textarea": fileURLToPath(
+        new URL("../../../packages/ui/components/form/inputs/Input.tsx", import.meta.url)
+      ),
+      "@reference/label": fileURLToPath(
+        new URL("../../../packages/ui/components/form/inputs/Label.tsx", import.meta.url)
+      ),
       "../../icon": join(root, "input-boundaries.jsx"),
       "./HintOrErrors": join(root, "input-boundaries.jsx"),
+      "react-hook-form": join(root, "input-boundaries.jsx"),
+      "../../alert": join(root, "input-boundaries.jsx"),
+      "../../tooltip": join(root, "input-boundaries.jsx"),
       "@reference/tooltip": fileURLToPath(
         new URL("../../../packages/ui/components/tooltip/Tooltip.tsx", import.meta.url)
       ),
@@ -230,7 +240,7 @@ try {
     ["mobile", { width: 390, height: 844 }],
   ]) {
     for (const theme of ["light", "dark"]) {
-      const captures = { rest: [], focus: [], hover: [] };
+      const captures = { rest: [], focus: [], hover: [], multiline: [] };
       for (const version of ["reference", "candidate"]) {
         const context = await browser.newContext({ viewport, locale: "en-US" });
         try {
@@ -251,6 +261,22 @@ try {
               "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }",
           });
           assert.equal(await page.locator("main input").count(), 8);
+          assert.equal(await page.locator("main textarea").count(), 4);
+          assert.equal(await field("Notes").evaluate((node) => node.getBoundingClientRect().height), 80);
+          assert.equal(
+            await field("Custom label").evaluate((node) => node.getBoundingClientRect().height),
+            96
+          );
+          assert.deepEqual(
+            await page
+              .locator('label[for="custom-notes"]')
+              .evaluate((node) => [
+                getComputedStyle(node).fontSize,
+                getComputedStyle(node).fontWeight,
+                getComputedStyle(node).marginBottom,
+              ]),
+            ["18px", "400", "0px"]
+          );
           assert.equal(await field("Small").evaluate((node) => node.getBoundingClientRect().height), 28);
           assert.equal(await field("Name").evaluate((node) => node.getBoundingClientRect().height), 32);
           assert.deepEqual(
@@ -263,12 +289,13 @@ try {
           );
           assert.ok(!(await field("Narrow").getAttribute("class")).split(" ").includes("w-full"));
           assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-          for (const state of ["rest", "focus", "hover"]) {
+          for (const state of ["rest", "focus", "hover", "multiline"]) {
             if (state === "focus") await field("Name").focus();
             if (state === "hover") {
               await field("Name").blur();
               await field("Small").hover();
             }
+            if (state === "multiline") await field("Notes").focus();
             captures[state].push([
               ...(await page.screenshot({
                 path: fileURLToPath(new URL(`${version}-input-${name}-${theme}-${state}.png`, artifacts)),
@@ -292,10 +319,26 @@ try {
           await field("Read only").focus();
           await field("Read only").press("x");
           assert.equal(await field("Read only").inputValue(), "Read only");
+          assert.ok(await field("Disabled notes").isDisabled());
+          assert.ok(!(await field("Read only notes").isEditable()));
+          await field("Read only notes").focus();
+          await field("Read only notes").press("x");
+          assert.equal(await field("Read only notes").inputValue(), "Read only\nSecond line");
+          await page.locator('label[for="notes"]').click();
+          assert.ok(await field("Notes").evaluate((node) => document.activeElement === node));
+          await page.getByRole("button", { name: "Focus notes", exact: true }).click();
+          assert.equal(await page.getByLabel("Multiline refs").textContent(), "LABEL/TEXTAREA");
+          assert.ok(await field("Notes").evaluate((node) => document.activeElement === node));
           await field("Count").fill("0");
           assert.equal(await field("Count").evaluate((node) => node.checkValidity()), false);
           await field("Count").fill("5");
           assert.equal(await field("Count").evaluate((node) => node.checkValidity()), true);
+          await field("Notes").fill("");
+          await field("Email").fill("guest@example.test");
+          await page.getByRole("button", { name: "Submit", exact: true }).click();
+          assert.equal(await page.getByLabel("Submissions").textContent(), "0");
+          await field("Notes").fill("Working notes\nSecond line");
+          assert.equal(await page.getByLabel("Notes value").textContent(), "Working notes\nSecond line");
           await field("Email").fill("invalid");
           await page.getByRole("button", { name: "Submit", exact: true }).click();
           assert.equal(await page.getByLabel("Submissions").textContent(), "0");
@@ -310,7 +353,7 @@ try {
     }
   }
   console.log(
-    "PASS native Input matches the pinned source with zero different pixels at desktop/mobile widths in light/dark across rest, focus and hover; typing, validation, sizing, disabled/read-only and refs pass."
+    "PASS native Input, Label and TextArea match the pinned source in 16 desktop/mobile, light/dark, rest/focus/hover/multiline comparisons with zero different pixels; label focus, typing, validation, sizing, disabled/read-only and refs pass."
   );
   const sessionContext = await browser.newContext();
   const sessionPage = await sessionContext.newPage();

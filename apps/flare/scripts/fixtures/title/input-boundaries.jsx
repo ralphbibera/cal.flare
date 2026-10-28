@@ -3,3 +3,6 @@ function unavailable() {
 }
 export const Icon = unavailable;
 export const HintsOrErrors = unavailable;
+export const useFormContext = unavailable;
+export const Alert = unavailable;
+export const Tooltip = unavailable;
