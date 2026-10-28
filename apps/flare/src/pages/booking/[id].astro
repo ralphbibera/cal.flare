@@ -1,0 +1,25 @@
+---
+import { bookingLabels } from "../../components/booking-labels.ts";
+import { PrivateBooking } from "../../components/PrivateBooking.tsx";
+import "../../styles/globals.css";
+
+const id = Astro.params.id ?? "";
+const valid = /^[0-9a-f]{64}$/.test(id);
+if (!valid) Astro.response.status = 404;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "no-referrer");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{bookingLabels.manageBooking}</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    {valid ? <PrivateBooking client:load id={id} labels={bookingLabels} /> : <main class="p-6"><h1>{bookingLabels.statusUnavailable}</h1></main>}
+    <noscript><p>{bookingLabels.javascriptRequired}</p></noscript>
+  </body>
+</html>

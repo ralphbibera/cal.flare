@@ -1,6 +1,7 @@
 ---
 import { env } from "cloudflare:workers";
 import common from "../../../../packages/i18n/locales/en/common.json";
+import { bookingLabels as labels } from "../components/booking-labels.ts";
 import { PublicBooker } from "../components/PublicBooker.tsx";
 import { getPublicBooking } from "../server/app.ts";
 import "../styles/globals.css";
@@ -19,38 +20,6 @@ Astro.response.headers.set("Cache-Control", "private, no-store");
 Astro.response.headers.set("Referrer-Policy", "no-referrer");
 Astro.response.headers.set("X-Content-Type-Options", "nosniff");
 const fallback = status === 404 ? common.flare_event_not_found : common.flare_event_unavailable;
-const labels = {
-  today: common.today,
-  previousMonth: common.flare_previous_month,
-  nextMonth: common.flare_next_month,
-  loading: common.loading,
-  error: common.flare_availability_error,
-  retry: common.retry,
-  empty: common.no_available_slots,
-  timeZone: common.flare_time_zone,
-  timeFormat: common.flare_time_format,
-  hour12: common.flare_hour_12,
-  hour24: common.flare_hour_24,
-  selectedTime: common.flare_selected_time,
-  minutes: common.flare_duration_minutes,
-  name: common.name,
-  email: common.email,
-  confirm: common.confirm,
-  back: common.back,
-  confirmed: common.meeting_is_scheduled,
-  cancelled: common.cancelled,
-  pending: common.flare_booking_pending,
-  attention: common.flare_booking_attention,
-  checkStatus: common.flare_booking_check_status,
-  bookingError: common.flare_booking_result_error,
-  storageError: common.flare_booking_storage_error,
-  slotConflict: common.flare_booking_slot_changed,
-  invalidInput: common.flare_booking_invalid_attendee,
-  statusUnavailable: common.flare_booking_status_unavailable,
-  reschedule: common.reschedule,
-  cancelEvent: common.cancel_event,
-  cancelPrompt: common.flare_booking_cancel_prompt,
-};
 ---
 <!doctype html>
 <html lang="en">

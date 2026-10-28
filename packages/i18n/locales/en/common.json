@@ -4792,5 +4792,8 @@
   "error_updating_user": "There was an error updating this user.",
   "please_reschedule": "Please reschedule.",
   "flare_booking_cancel_prompt": "Cancel this booking? The cancellation is sent after you confirm.",
+  "flare_booking_copy_link": "Copy private booking link",
+  "flare_booking_copy_error": "We couldn't copy this private link. Try again.",
+  "flare_booking_link_access": "Anyone with this private link can view or change this booking.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

@@ -38,7 +38,9 @@ The page distinguishes confirmed bookings from results needing recovery or organ
 From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes
 with uncertain provider outcomes expose status recovery instead of another mutation.
-Shareable management links and cancellation reasons remain migration work.
+Use **Copy private booking link** to open the receipt in another browser without an account.
+Anyone with this link can view or change the booking. The page removes the link fragment
+after it saves access in that browser tab. Cancellation reasons remain migration work.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
 See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
 
@@ -63,6 +65,7 @@ It compares shared components with pinned upstream rendering and drives the publ
 through the built local Worker. Provider responses are controlled fixtures.
 The page journey covers hydration, static assets, escaped event text, timezone selection,
 UTC slot identity, receipt-based rescheduling and cancellation, and recovery after lost responses.
+It also checks private-link access, reloads, denied access, and storage failures.
 It does not establish full-page pixel parity or live invitation delivery.
 
 The D1 verifier applies the experimental SQL file with Wrangler into temporary local storage.

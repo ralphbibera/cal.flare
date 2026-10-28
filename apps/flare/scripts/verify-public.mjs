@@ -110,11 +110,187 @@ export async function verifyPublic(browser) {
     );
     await verifySubmission(browser, fixture, browserDate);
     await verifyManagement(browser, fixture, browserDate);
+    await verifyPrivate(browser, fixture, browserDate);
+    const alias = { ...settings, event: { ...settings.event, slug: "booking" } };
+    assert.equal((await fixture.send("/api/owner", alias, owner, "PUT")).status, 200);
+    assert.equal((await fixture.request("/booking")).status, 200);
   } finally {
     try {
       await context?.close();
     } finally {
       await fixture.close();
     }
+  }
+}
+
+async function verifyPrivate(browser, fixture, date) {
+  const contexts = [],
+    errors = [],
+    consoles = [];
+  const open = async (options = {}) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      timezoneId: "UTC",
+      ...options,
+    });
+    contexts.push(context);
+    const page = await context.newPage();
+    await page.clock.install({ time: date });
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") consoles.push({ text: message.text(), url: message.location().url });
+    });
+    return page;
+  };
+  try {
+    const source = await open({ permissions: ["clipboard-read", "clipboard-write"] });
+    await source.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
+    await source.getByTestId("time").first().click();
+    await source.getByLabel("Name", { exact: true }).fill("Private Guest");
+    await source.getByLabel("Email", { exact: true }).fill("private@example.test");
+    const before = fixture.google.writes.length;
+    await source.getByRole("button", { name: "Confirm", exact: true }).click();
+    await source.getByRole("button", { name: "Copy private booking link", exact: true }).click();
+    await source.getByRole("status").filter({ hasText: "Link copied!" }).waitFor();
+    const link = await source.evaluate(() => navigator.clipboard.readText());
+    const parsed = new URL(link),
+      token = parsed.hash.slice("#token=".length),
+      id = parsed.pathname.split("/").at(-1);
+    assert.match(token, /^[A-Za-z0-9_-]{43}$/);
+    assert.match(id, /^[0-9a-f]{64}$/);
+    assert.equal(parsed.origin, fixture.origin);
+    assert.equal(parsed.pathname, `/booking/${id}`);
+    assert.ok(!(await source.content()).includes(token));
+    await source.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          writeText: async () => {
+            throw new Error("Clipboard denied");
+          },
+        },
+      })
+    );
+    await source.getByRole("button", { name: "Copy private booking link", exact: true }).click();
+    await source.getByRole("alert").filter({ hasText: "We couldn't copy this private link" }).waitFor();
+    const shell = await fixture.request(parsed.pathname),
+      html = await shell.text();
+    assert.equal(shell.status, 200);
+    assert.equal(shell.headers.get("cache-control"), "private, no-store");
+    assert.equal(shell.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(shell.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
+    for (const value of [token, "Private Guest", "private@example.test"]) assert.ok(!html.includes(value));
+    assert.equal((await fixture.request("/booking/invalid")).status, 404);
+    const guest = await open(),
+      requests = [];
+    guest.on("request", (request) => {
+      requests.push(request.url());
+      if (
+        new URL(request.url()).pathname === `/api/bookings/${id}` &&
+        request.headers().authorization !== `Bearer ${token}`
+      )
+        errors.push("Private view must use Bearer authorization");
+    });
+    await guest.goto(link);
+    await guest.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+    assert.equal(guest.url(), `${fixture.origin}${parsed.pathname}`);
+    assert.ok((await guest.textContent("body")).includes("private@example.test"));
+    assert.ok(!(await guest.content()).includes(token));
+    assert.deepEqual(
+      await guest.evaluate((id) => JSON.parse(sessionStorage.getItem(`calflare:manage:v1:${id}`)), id),
+      { id, token }
+    );
+    await guest.reload();
+    await guest.getByRole("button", { name: "Reschedule", exact: true }).click();
+    await guest.getByTestId("time").first().waitFor();
+    for (const width of [390, 768, 1024, 1280]) {
+      await guest.setViewportSize({ width, height: 900 });
+      assert.ok(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+    await guest.screenshot({
+      path: new URL("../.verification/private-calendar-desktop.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await guest.setViewportSize({ width: 390, height: 844 });
+    await guest.locator('[data-testid="day"]:not(:disabled)').last().click();
+    const time = guest.getByTestId("time").first();
+    await time.waitFor();
+    const selected = await time.getAttribute("data-time");
+    await time.click();
+    await guest.getByRole("button", { name: "Reschedule", exact: true }).click();
+    await guest.waitForFunction(
+      (selected) => document.querySelector("time")?.getAttribute("datetime") === selected,
+      selected
+    );
+    await guest.getByRole("button", { name: "Cancel event", exact: true }).click();
+    await guest.getByRole("button", { name: "Confirm", exact: true }).click();
+    await guest.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
+    await guest.reload();
+    await guest.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
+    assert.ok(requests.every((url) => !url.includes(token)));
+    assert.deepEqual(
+      fixture.google.writes.slice(before).map((write) => write.action),
+      ["insert", "update", "delete"]
+    );
+    await guest.screenshot({
+      path: new URL("../.verification/private-booking-mobile.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    for (const mode of ["missing", "malformed", "wrong", "storage", "corrupt"]) {
+      const denied = await open(),
+        lookups = [];
+      denied.on("request", (request) => {
+        if (new URL(request.url()).pathname.startsWith("/api/bookings/")) lookups.push(request.url());
+      });
+      if (mode === "storage")
+        await denied.addInitScript(() => {
+          Storage.prototype.setItem = () => {
+            throw new Error("Storage denied");
+          };
+        });
+      if (mode === "corrupt")
+        await denied.addInitScript(
+          ({ id, token }) => {
+            sessionStorage.setItem(`calflare:manage:v1:${id}`, JSON.stringify({ id: "b".repeat(64), token }));
+          },
+          { id, token }
+        );
+      const fragment =
+        mode === "missing" || mode === "corrupt"
+          ? ""
+          : mode === "malformed"
+            ? "#token=invalid"
+            : mode === "wrong"
+              ? `#token=${"A".repeat(43)}`
+              : parsed.hash;
+      await denied.goto(`${fixture.origin}${parsed.pathname}${fragment}`);
+      await denied
+        .getByRole("alert")
+        .filter({ hasText: "Booking status is currently unavailable." })
+        .waitFor();
+      assert.equal(new URL(denied.url()).hash, "");
+      const body = await denied.textContent("body");
+      for (const value of ["private@example.test", "Private Guest", token]) assert.ok(!body.includes(value));
+      assert.equal(lookups.length, mode === "wrong" ? 1 : 0);
+    }
+    assert.deepEqual(errors, []);
+    assert.deepEqual(
+      consoles.filter(
+        (error) =>
+          !(
+            error.url === `${fixture.origin}/api/bookings/${id}` &&
+            error.text.startsWith("Failed to load resource: the server responded with a status of 404")
+          )
+      ),
+      []
+    );
+    assert.deepEqual(fixture.upstreamFailures, []);
+    assert.deepEqual(fixture.google.denied, []);
+    console.log(
+      "PASS native copied private link, fresh-browser Bearer access, scrubbed URL, reload, reschedule/cancel and denied/storage-failure privacy. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    for (const context of contexts) await context.close();
   }
 }

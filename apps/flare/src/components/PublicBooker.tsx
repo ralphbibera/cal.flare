@@ -1,38 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
 import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
-import { BookingCalendar, type BookingCalendarProps } from "./BookingCalendar.tsx";
+import { BookingCalendar } from "./BookingCalendar.tsx";
 import { BookingManagement } from "./BookingManagement.tsx";
 import { Button } from "./Button.tsx";
+import type { bookingLabels } from "./booking-labels.ts";
 import { EventTitle } from "./EventTitle.tsx";
 import { Icon } from "./Icon.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
-  labels: BookingCalendarProps["labels"] & {
-    timeZone: string;
-    timeFormat: string;
-    hour12: string;
-    hour24: string;
-    selectedTime: string;
-    minutes: string;
-    name: string;
-    email: string;
-    confirm: string;
-    back: string;
-    confirmed: string;
-    cancelled: string;
-    pending: string;
-    attention: string;
-    checkStatus: string;
-    bookingError: string;
-    storageError: string;
-    slotConflict: string;
-    invalidInput: string;
-    statusUnavailable: string;
-    reschedule: string;
-    cancelEvent: string;
-    cancelPrompt: string;
-  };
+  labels: typeof bookingLabels;
 };
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
