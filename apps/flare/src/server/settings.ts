@@ -1,5 +1,11 @@
-import type { EventDetails, Settings } from "../domain/settings.ts";
-import { defaultSettings, parseEventDetails, parseSettings, SettingsError } from "../domain/settings.ts";
+import type { EventDetails, Settings, WeeklySchedule } from "../domain/settings.ts";
+import {
+  defaultSettings,
+  parseEventDetails,
+  parseSettings,
+  parseWeeklySchedule,
+  SettingsError,
+} from "../domain/settings.ts";
 
 export async function getSettings(db: D1Database): Promise<Settings> {
   const row = await db
@@ -42,5 +48,17 @@ export async function saveEventDetails(db: D1Database, input: EventDetails): Pro
       JSON.stringify(details.description),
       details.durationMinutes
     )
+    .run();
+}
+
+export async function saveWeeklySchedule(db: D1Database, input: WeeklySchedule): Promise<void> {
+  const weekly = parseWeeklySchedule(input);
+  const initial = parseSettings({ ...defaultSettings, schedule: weekly });
+  await db
+    .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
+    ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
+      '$.schedule.timeZone', json(?), '$.schedule.rules', json(?)),
+      version = organizer_settings.version + 1`)
+    .bind(JSON.stringify(initial), JSON.stringify(weekly.timeZone), JSON.stringify(weekly.rules))
     .run();
 }

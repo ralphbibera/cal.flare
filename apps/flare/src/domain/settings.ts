@@ -21,6 +21,7 @@ type Settings = {
     overrides?: { date: string; ranges: MinuteRange[] }[];
   };
 };
+type WeeklySchedule = Pick<Settings["schedule"], "timeZone" | "rules">;
 
 class SettingsError extends Error {
   readonly code = "INVALID_SETTINGS";
@@ -176,5 +177,17 @@ function parseEventDetails(input: unknown): EventDetails {
   return { slug, title, description, durationMinutes };
 }
 
-export type { EventDetails, EventSettings, Settings };
-export { defaultSettings, parseEventDetails, parseSettings, SettingsError };
+function parseWeeklySchedule(input: unknown): WeeklySchedule {
+  const value = object(input, "weekly schedule");
+  if (Object.keys(value).some((key) => !["timeZone", "rules"].includes(key))) {
+    throw new SettingsError("Weekly schedule contains an unsupported field");
+  }
+  const { timeZone, rules } = parseSettings({
+    ...defaultSettings,
+    schedule: { timeZone: value.timeZone, rules: value.rules },
+  }).schedule;
+  return { timeZone, rules };
+}
+
+export type { EventDetails, EventSettings, Settings, WeeklySchedule };
+export { defaultSettings, parseEventDetails, parseSettings, parseWeeklySchedule, SettingsError };
