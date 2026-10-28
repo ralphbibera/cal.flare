@@ -10,6 +10,7 @@ import { ErrorWithCode } from "./http.ts";
 import { base64url, encryptionKey, hash } from "./secrets.ts";
 
 type Options = { db: D1Database; calendar: Calendar; settings: Settings; secret: string; now?: () => number };
+type Pending = Pick<Command, "action" | "error">;
 const MINUTE = 60_000;
 const encoder = new TextEncoder();
 async function identity(context: string, value: string): Promise<string> {
@@ -227,17 +228,28 @@ export class BookingService {
     return this.render(await this.booking(id));
   }
   async ownerList(): Promise<BookingView[]> {
-    const rows = await this.db.prepare("SELECT * FROM booking ORDER BY rowid DESC LIMIT 1000").all<Booking>();
-    return Promise.all(rows.results.map((row) => this.render(row)));
+    const rows = await this.db
+      .prepare(`SELECT b.*, c.action AS pending_action, c.error AS pending_error
+      FROM booking b LEFT JOIN booking_command c ON c.id = b.pending_id
+      ORDER BY b.rowid DESC LIMIT 1000`)
+      .all<Booking & { pending_action: Action | null; pending_error: string | null }>();
+    return Promise.all(
+      rows.results.map((row) =>
+        this.render(row, row.pending_action ? { action: row.pending_action, error: row.pending_error } : null)
+      )
+    );
   }
-  private async render(booking: Booking): Promise<BookingView> {
+  private async render(booking: Booking, loadedPending?: Pending | null): Promise<BookingView> {
     const event = snapshot(booking.confirmed_json ?? booking.initial_json);
-    const pending = booking.pending_id
-      ? await this.db
-          .prepare("SELECT * FROM booking_command WHERE id=?")
-          .bind(booking.pending_id)
-          .first<Command>()
-      : null;
+    const pending =
+      loadedPending !== undefined
+        ? loadedPending
+        : booking.pending_id
+          ? await this.db
+              .prepare("SELECT * FROM booking_command WHERE id=?")
+              .bind(booking.pending_id)
+              .first<Command>()
+          : null;
     let status: BookingView["status"] = "confirmed";
     if (booking.state === "cancelled") status = "cancelled";
     if (pending?.action === "create") status = "pending";

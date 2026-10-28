@@ -1,0 +1,38 @@
+---
+import common from "../../../../packages/i18n/locales/en/common.json";
+import type { BookingView } from "../server/booking-model.ts";
+
+interface Props {
+  bookings: BookingView[];
+  timeZone: string;
+}
+const { bookings, timeZone } = Astro.props;
+const status: Record<BookingView["status"], string> = {
+  pending: common.pending,
+  confirmed: common.flare_booking_status_confirmed,
+  rescheduling: common.flare_booking_status_rescheduling,
+  cancelling: common.flare_booking_status_cancelling,
+  cancelled: common.cancelled,
+  attention: common.flare_booking_status_attention,
+};
+const date = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone });
+---
+<section aria-labelledby="owner-bookings-title" class="border-subtle border-t pt-6">
+  <h2 id="owner-bookings-title" class="text-emphasis mb-2 font-semibold">{common.bookings}</h2>
+  <p class="text-subtle mb-4 text-sm">{common.timezone}: {timeZone}</p>
+  {bookings.length === 0 ? <p class="text-subtle text-sm">{common.upcoming_bookings}</p> : (
+    <ul aria-label={common.bookings} class="space-y-4">
+      {bookings.map((booking) => (
+        <li class="border-subtle break-words rounded-md border p-4 text-sm">
+          <h3 class="text-emphasis font-semibold">{booking.title}</h3>
+          <p>{booking.name}</p>
+          <p>{booking.email}</p>
+          <time datetime={new Date(booking.start).toISOString()}>
+            {date.formatRange(booking.start, booking.end)}
+          </time>
+          <p>{status[booking.status]}</p>
+        </li>
+      ))}
+    </ul>
+  )}
+</section>

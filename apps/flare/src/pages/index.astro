@@ -2,19 +2,18 @@
 import { env } from "cloudflare:workers";
 import common from "../../../../packages/i18n/locales/en/common.json";
 import { Button } from "../components/Button.tsx";
+import OwnerBookings from "../components/OwnerBookings.astro";
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
-import type { Settings } from "../domain/settings.ts";
-import { requireOwner } from "../server/auth.ts";
-import { getSettings } from "../server/settings.ts";
+import { getOwnerData } from "../server/app.ts";
 import "../styles/globals.css";
 
 type State =
   | { kind: "anonymous" | "unavailable" }
-  | { kind: "owner"; identity: NonNullable<Awaited<ReturnType<typeof requireOwner>>>; settings: Settings };
+  | { kind: "owner"; data: NonNullable<Awaited<ReturnType<typeof getOwnerData>>> };
 let state: State = { kind: "unavailable" };
 try {
-  const identity = await requireOwner(env, Astro.request);
-  state = identity ? { kind: "owner", identity, settings: await getSettings(env.DB) } : { kind: "anonymous" };
+  const data = await getOwnerData(Astro.request, { env });
+  state = data ? { kind: "owner", data } : { kind: "anonymous" };
 } catch {
   state = { kind: "unavailable" };
 }
@@ -49,18 +48,19 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
           <div class="space-y-6">
             <div class="break-words">
               <h2 class="text-emphasis font-semibold">{common.organizer}</h2>
-              <p>{state.identity.name}</p>
-              <p class="text-subtle text-sm">{state.identity.email}</p>
+              <p>{state.data.owner.name}</p>
+              <p class="text-subtle text-sm">{state.data.owner.email}</p>
             </div>
             <OwnerEventEditor client:load details={{
-              title: state.settings.event.title, slug: state.settings.event.slug,
-              description: state.settings.event.description, durationMinutes: state.settings.event.durationMinutes,
+              title: state.data.settings.event.title, slug: state.data.settings.event.slug,
+              description: state.data.settings.event.description, durationMinutes: state.data.settings.event.durationMinutes,
             }} labels={{
               title: common.title, slug: common.slug, description: common.description,
               duration: common.duration, minutes: common.minutes, save: common.save,
               saved: common.saved, preview: common.preview, invalid: common.flare_event_details_invalid,
               failed: common.flare_event_details_failed, javascript: common.flare_event_details_javascript,
             }} />
+            <OwnerBookings bookings={state.data.bookings} timeZone={state.data.settings.schedule.timeZone} />
             <form action="/api/auth/logout" method="post" class="mt-6">
               <Button type="submit" color="secondary">{common.sign_out}</Button>
             </form>

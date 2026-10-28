@@ -1,5 +1,6 @@
 import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
+import type { Settings } from "../domain/settings.ts";
 import { parseEventDetails, parseSettings } from "../domain/settings.ts";
 import type { AuthEnv } from "./auth.ts";
 import { beginLogin, finishLogin, logout, requireOwner } from "./auth.ts";
@@ -89,6 +90,23 @@ function bookingResponse(value: Awaited<ReturnType<BookingService["view"]>>, cre
   return json(value);
 }
 
+function bookingService(dependencies: Dependencies, settings: Settings): BookingService {
+  return new BookingService({
+    db: dependencies.env.DB,
+    calendar: dependencies.calendar ?? new CalendarClient(dependencies.env),
+    settings,
+    secret: dependencies.env.TOKEN_ENCRYPTION_KEY,
+    now: dependencies.now,
+  });
+}
+
+export async function getOwnerData(request: Request, dependencies: Dependencies) {
+  const identity = await requireOwner(dependencies.env, request);
+  if (!identity) return null;
+  const settings = await getSettings(dependencies.env.DB);
+  return { owner: identity, settings, bookings: await bookingService(dependencies, settings).ownerList() };
+}
+
 export async function handleApi(request: Request, dependencies: Dependencies): Promise<Response> {
   const { env } = dependencies;
   const url = new URL(request.url);
@@ -99,18 +117,16 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   if (path === "/api/auth/callback" && method === "GET") return finishLogin(env, request);
   if (path === "/api/auth/logout" && method === "POST") return logout(env, request);
   if (path === "/api/public" && method === "GET") return json(await getPublicBooking(env));
+  if (path === "/api/owner" && method === "GET") {
+    const data = await getOwnerData(request, dependencies);
+    if (!data) throw new ErrorWithCode("unauthorized", 401);
+    return json(data);
+  }
 
   const settings = await getSettings(env.DB);
-  const service = new BookingService({
-    db: env.DB,
-    calendar: dependencies.calendar ?? new CalendarClient(env),
-    settings,
-    secret: env.TOKEN_ENCRYPTION_KEY,
-    now: dependencies.now,
-  });
+  const service = bookingService(dependencies, settings);
   if (path === "/api/owner") {
-    const identity = await owner(env, request);
-    if (method === "GET") return json({ owner: identity, settings, bookings: await service.ownerList() });
+    await owner(env, request);
     if (method === "PUT") {
       await saveSettings(env.DB, parseSettings(await body(request)));
       return json({ saved: true });

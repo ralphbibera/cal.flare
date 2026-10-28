@@ -2,9 +2,59 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BookerClient, type ChangeRequest, ErrorWithCode } from "../src/client/bookings.ts";
 import { defaultSettings, parseSettings } from "../src/domain/settings.ts";
+import { BookingService } from "../src/server/bookings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
+
+test("owner listing preserves pending projections and does not process provider operations", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { db, calendar, env, request, ownerHeaders } = fixture;
+  const service = new BookingService({
+    db,
+    calendar,
+    settings,
+    secret: env.TOKEN_ENCRYPTION_KEY,
+    now: fixture.now,
+  });
+  const expected = [];
+  for (let index = 0; index < 60; index++) {
+    calendar.cutAfter = "insert";
+    const { manageToken, ...view } = await service.create({
+      requestKey: crypto.randomUUID(),
+      start: fixture.now() + (10 + index) * hour,
+      name: `Guest ${index}`,
+      email: `guest${index}@example.test`,
+      timeZone: "UTC",
+    });
+    assert.ok(manageToken);
+    assert.equal(view.status, "attention");
+    expected.unshift(view);
+  }
+  const state = async () =>
+    Promise.all(
+      ["booking", "booking_command", "booking_reservation"].map(
+        async (table) => (await db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()).results
+      )
+    );
+  const before = await state(),
+    writes = calendar.writes.length;
+  calendar.busy = async () => {
+    throw new Error("Owner reads must not query Calendar");
+  };
+  calendar.get = async () => {
+    throw new Error("Owner reads must not reconcile Calendar");
+  };
+  const response = await request("/api/owner", { headers: ownerHeaders });
+  assert.equal(response.status, 200);
+  assert.deepEqual(record(await response.json()).bookings, expected);
+  assert.deepEqual(await state(), before);
+  assert.equal(calendar.writes.length, writes);
+  const denied = await request("/api/owner");
+  assert.equal(denied.status, 401);
+  assert.ok(!(await denied.text()).includes("guest0@example.test"));
+});
 
 test("owner detail edits preserve independent scheduling settings and require authorized valid input", async (t) => {
   const fixture = await apiFixture();
