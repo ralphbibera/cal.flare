@@ -5,8 +5,8 @@ import { BookingCalendar } from "./BookingCalendar.tsx";
 import { BookingManagement } from "./BookingManagement.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
+import { EventMetaBlock } from "./EventMetaBlock.tsx";
 import { EventTitle } from "./EventTitle.tsx";
-import { Icon } from "./Icon.tsx";
 import { Input } from "./Input.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
@@ -141,30 +141,26 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             </p>
           )}
           <div className="space-y-4 text-sm font-medium">
-            <p className="flex items-start">
-              <Icon name="clock" className="mr-2 mt-0.5 size-4 shrink-0" />
+            <EventMetaBlock icon="clock" className="items-center">
               {labels.minutes.replace("{{count}}", String(event.durationMinutes))}
-            </p>
-            <div className="flex items-start">
-              <Icon name="globe" className="mr-2 mt-0.5 size-4 shrink-0" />
-              <span className="min-w-0 flex-1">
-                <label htmlFor="booker-time-zone" className="sr-only">
-                  {labels.timeZone}
-                </label>
-                <select
-                  id="booker-time-zone"
-                  className="bg-default w-full min-w-0 text-sm"
-                  value={timeZone}
-                  disabled={stage.kind !== "calendar"}
-                  onChange={(change) => {
-                    setTimeZone(change.target.value);
-                  }}>
-                  {zones.map((zone) => (
-                    <option key={zone}>{zone}</option>
-                  ))}
-                </select>
-              </span>
-            </div>
+            </EventMetaBlock>
+            <EventMetaBlock icon="globe" contentClassName="min-w-0 flex-1">
+              <label htmlFor="booker-time-zone" className="sr-only">
+                {labels.timeZone}
+              </label>
+              <select
+                id="booker-time-zone"
+                className="bg-default w-full min-w-0 text-sm"
+                value={timeZone}
+                disabled={stage.kind !== "calendar"}
+                onChange={(change) => {
+                  setTimeZone(change.target.value);
+                }}>
+                {zones.map((zone) => (
+                  <option key={zone}>{zone}</option>
+                ))}
+              </select>
+            </EventMetaBlock>
             <div className="flex gap-1" role="group" aria-label={labels.timeFormat}>
               {(["h:mma", "HH:mm"] as const).map((value) => (
                 <Button
@@ -178,11 +174,11 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
               ))}
             </div>
             {selected && (
-              <p role="status">
+              <EventMetaBlock icon="calendar" role="status">
                 {labels.selectedTime}
                 <br />
                 <time dateTime={selected}>{selectedLabel}</time>
-              </p>
+              </EventMetaBlock>
             )}
           </div>
         </section>
