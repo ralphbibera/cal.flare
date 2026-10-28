@@ -6,6 +6,7 @@ import { useCalendarAvailability } from "../client/use-calendar-availability.ts"
 import { Button } from "./Button.tsx";
 import { MonthPicker } from "./MonthPicker.tsx";
 import { TimeSlots } from "./TimeSlots.tsx";
+import { TimeSlotsHeader } from "./TimeSlotsHeader.tsx";
 
 type BookingCalendarProps = {
   timeZone: string;
@@ -82,6 +83,13 @@ function BookingCalendar({
       </div>
       {result.status === "ready" && times.length > 0 && (
         <div className="border-subtle rtl:border-default flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 rtl:border-r ltr:md:border-l">
+          <TimeSlotsHeader
+            weekday={new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
+              dayjs(selectedDate).toDate()
+            )}
+            day={dayjs(selectedDate).format("DD")}
+            isToday={dayjs().isSame(dayjs(selectedDate), "day")}
+          />
           <TimeSlots
             slots={times}
             timeZone={timeZone}
