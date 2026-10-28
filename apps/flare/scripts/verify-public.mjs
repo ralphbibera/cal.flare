@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { verifyManagement } from "./verify-management.mjs";
+import { verifyOwner } from "./verify-owner.mjs";
 import { verifySubmission } from "./verify-submission.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
@@ -7,6 +8,7 @@ export async function verifyPublic(browser) {
   const fixture = await createWorkerFixture({ port: 8797 });
   let context;
   try {
+    await verifyOwner(browser, fixture);
     const owner = await fixture.login();
     const settings = {
       ...fixture.settings,

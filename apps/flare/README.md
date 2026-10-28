@@ -26,6 +26,11 @@ For a built Worker, run `build` followed by `preview` through the same bundled Y
 `preview` invokes local Wrangler against Astro's generated deployment configuration.
 No deploy command is provided by the root scripts.
 
+Open `/` to sign in with the Google account configured for this installation.
+The private organizer page links to the public event preview. Sign-out revokes the current
+session and returns to the sign-in page. These entry forms work without browser JavaScript.
+Event and schedule editing currently use the authenticated API.
+
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.
 The slug `api` is reserved for application routes.

@@ -1,0 +1,72 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../packages/i18n/locales/en/common.json";
+import { Button } from "../components/Button.tsx";
+import type { Settings } from "../domain/settings.ts";
+import { requireOwner } from "../server/auth.ts";
+import { getSettings } from "../server/settings.ts";
+import "../styles/globals.css";
+
+type State =
+  | { kind: "anonymous" | "unavailable" }
+  | { kind: "owner"; identity: NonNullable<Awaited<ReturnType<typeof requireOwner>>>; settings: Settings };
+let state: State = { kind: "unavailable" };
+try {
+  const identity = await requireOwner(env, Astro.request);
+  state = identity ? { kind: "owner", identity, settings: await getSettings(env.DB) } : { kind: "anonymous" };
+} catch {
+  state = { kind: "unavailable" };
+}
+Astro.response.status = state.kind === "unavailable" ? 503 : 200;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+// Native form POSTs need a non-null Origin for the existing CSRF check.
+Astro.response.headers.set("Referrer-Policy", "same-origin");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{common.organizer} | Cal.flare</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    <main class="relative flex min-h-screen items-center justify-center px-4 py-10">
+      <section class="bg-default border-subtle w-full max-w-md rounded-xl border p-10 shadow-sm">
+        <h1 class="text-emphasis mb-2 text-center text-xl font-bold">Cal.flare</h1>
+        {state.kind === "anonymous" && (
+          <>
+            <p class="text-subtle mb-8 text-center text-sm">{common.welcome_back_sign_in}</p>
+            <form action="/api/auth/login" method="get">
+              <Button type="submit" className="w-full">{common.signin_with_google}</Button>
+            </form>
+            <p class="text-subtle mt-4 text-sm">{common.flare_owner_signin_help}</p>
+          </>
+        )}
+        {state.kind === "owner" && (
+          <div class="space-y-6">
+            <div class="break-words">
+              <h2 class="text-emphasis font-semibold">{common.organizer}</h2>
+              <p>{state.identity.name}</p>
+              <p class="text-subtle text-sm">{state.identity.email}</p>
+            </div>
+            <div class="border-subtle space-y-2 border-t pt-6">
+              <h2 class="text-emphasis break-words font-semibold">{state.settings.event.title}</h2>
+              <a class="text-default underline" href={`/${state.settings.event.slug}`}>{common.preview}</a>
+            </div>
+            <form action="/api/auth/logout" method="post">
+              <Button type="submit" color="secondary">{common.sign_out}</Button>
+            </form>
+          </div>
+        )}
+        {state.kind === "unavailable" && (
+          <div class="space-y-4">
+            <p role="alert">{common.flare_owner_unavailable}</p>
+            <a class="text-default underline" href="/">{common.retry}</a>
+          </div>
+        )}
+      </section>
+    </main>
+  </body>
+</html>
