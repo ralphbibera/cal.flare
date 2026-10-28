@@ -132,6 +132,7 @@ export async function verifyOwner(browser, fixture) {
     await context.close();
   }
   await verifyEventEditor(browser, fixture);
+  await verifyWeeklyEditor(browser, fixture);
 }
 
 async function verifyEventEditor(browser, fixture) {
@@ -163,7 +164,7 @@ async function verifyEventEditor(browser, fixture) {
       return route.continue();
     });
     await page.goto(fixture.origin);
-    const save = page.getByRole("button", { name: "Save", exact: true });
+    const save = page.locator('form[action="/api/owner"]').getByRole("button", { name: "Save", exact: true });
     await save.waitFor();
     await page.getByLabel("Slug", { exact: true }).fill("api");
     await save.click();
@@ -477,6 +478,150 @@ async function verifyOwnerRecovery(browser, fixture, owner, booking) {
     });
     console.log(
       "PASS explicit owner recovery, authorization, lost-response replay and confirmed/canceled refresh without duplicate Calendar writes or new commands. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+async function verifyWeeklyEditor(browser, fixture) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
+  try {
+    const owner = await fixture.login();
+    await context.addCookies([
+      { name: "flare_session", value: owner.Cookie.split("=")[1], url: fixture.origin },
+    ]);
+    const original = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    const now = new Date();
+    const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2);
+    const weekday = new Date(day).getUTCDay();
+    const overrides = [{ date: new Date(day + 7 * 86_400_000).toISOString().slice(0, 10), ranges: [] }];
+    await fixture.read(
+      await fixture.send(
+        "/api/owner",
+        { ...original, schedule: { ...original.schedule, overrides } },
+        owner,
+        "PUT"
+      )
+    );
+    const page = await context.newPage();
+    const errors = [],
+      requests = [];
+    let fail = true;
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (
+        message.type() === "error" &&
+        !(
+          message.location().url === `${fixture.origin}/api/owner/schedule` &&
+          message.text().startsWith("Failed to load resource: the server responded with a status of 503")
+        )
+      )
+        errors.push(message.text());
+    });
+    await page.route("**/api/owner/schedule", async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      requests.push(route.request().postDataJSON());
+      if (fail)
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: '{"error":"private-schedule-detail"}',
+        });
+      return route.continue();
+    });
+    await page.goto(fixture.origin);
+    const form = page.getByRole("form", { name: "Working hours", exact: true });
+    const save = form.getByRole("button", { name: "Save", exact: true });
+    const remove = form.getByRole("button", { name: "Remove", exact: true });
+    while (await remove.count()) await remove.first().click();
+    const zone = form.getByLabel("Time zone", { exact: true });
+    const india = await zone.evaluate((select) =>
+      ["Asia/Kolkata", "Asia/Calcutta"].find((name) =>
+        [...select.options].some((option) => option.value === name)
+      )
+    );
+    assert.ok(india);
+    await zone.selectOption(india);
+    const add = form.getByRole("button", { name: "Add", exact: true });
+    const fill = async (index, dayNumber, start, end) => {
+      const row = form.getByRole("group", { name: `Interval ${index}`, exact: true });
+      await row.getByLabel("Day", { exact: true }).selectOption(String(dayNumber));
+      await row.getByLabel("Start time", { exact: true }).fill(start);
+      await row.getByLabel("End time", { exact: true }).fill(end);
+    };
+    await add.click();
+    await fill(1, weekday, "09:00", "10:00");
+    await add.click();
+    await fill(2, weekday, "09:30", "11:00");
+    await save.click();
+    await form.getByRole("alert").waitFor();
+    assert.equal(requests.length, 0, "Invalid overlapping hours cannot reach HTTP");
+    await fill(2, weekday, "10:30", "11:00");
+    await add.click();
+    await fill(3, (weekday + 1) % 7, "00:00", "00:00");
+    await save.click();
+    await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+    assert.equal(await zone.inputValue(), india);
+    assert.equal(
+      await form
+        .getByRole("group", { name: "Interval 2", exact: true })
+        .getByLabel("Start time")
+        .inputValue(),
+      "10:30"
+    );
+    assert.ok(!(await page.content()).includes("private-schedule-detail"));
+    fail = false;
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    const weekly = {
+      timeZone: india,
+      rules: [
+        { weekday, startMinute: 540, endMinute: 600 },
+        { weekday, startMinute: 630, endMinute: 660 },
+        { weekday: (weekday + 1) % 7, startMinute: 0, endMinute: 1440 },
+      ],
+    };
+    assert.deepEqual(requests, [weekly, weekly]);
+    await page.reload();
+    assert.equal(await zone.inputValue(), india);
+    assert.equal(
+      await form.getByRole("group", { name: "Interval 3", exact: true }).getByLabel("End time").inputValue(),
+      "00:00"
+    );
+    const persisted = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    assert.deepEqual(persisted, { ...original, schedule: { ...original.schedule, ...weekly, overrides } });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await form.screenshot({
+      path: new URL("../.verification/working-hours-mobile.png", import.meta.url).pathname,
+      animations: "disabled",
+    });
+    const publicPage = await context.newPage();
+    await publicPage.goto(`${fixture.origin}/${original.event.slug}`);
+    await publicPage.getByTestId("time").first().waitFor();
+    assert.deepEqual(
+      await publicPage
+        .getByTestId("time")
+        .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("data-time"))),
+      [210, 240, 300, ...Array.from({ length: 11 }, (_, index) => 1110 + index * 30)].map((minute) =>
+        new Date(day + minute * 60_000).toISOString()
+      )
+    );
+    await publicPage.close();
+    while (await remove.count()) await remove.first().click();
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    const closed = await fixture.read(
+      await fixture.request(
+        `/api/slots?${new URLSearchParams({ from: new Date(day).toISOString(), to: new Date(day + 86_400_000).toISOString(), timeZone: "UTC" })}`
+      )
+    );
+    assert.deepEqual(closed, { slots: [] });
+    assert.equal(fixture.google.writes.length, 0);
+    assert.deepEqual(errors, []);
+    await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
+    console.log(
+      "PASS working-hours editor, interval add/remove, overlap rejection, failed-save draft retention/retry, timezone and midnight reload, preserved overrides and public availability. Built Worker/local D1; Google is mocked."
     );
   } finally {
     await context.close();
