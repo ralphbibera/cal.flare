@@ -21,6 +21,14 @@ export async function verifySubmission(browser, fixture, date) {
     await page.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
     await page.getByTestId("time").first().click();
     await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
+    await page.locator('label[for="booker-email"]').click();
+    assert.ok(
+      await page.getByLabel("Email", { exact: true }).evaluate((node) => document.activeElement === node)
+    );
+    await page.locator('label[for="booker-name"]').click();
+    assert.ok(
+      await page.getByLabel("Name", { exact: true }).evaluate((node) => document.activeElement === node)
+    );
     await page.getByLabel("Name", { exact: true }).fill("Fixture Guest");
     await page.getByLabel("Email", { exact: true }).fill("guest@example.test");
     return page;
