@@ -207,6 +207,7 @@ async function verifyWorker(fixture) {
   ])
     assert.ok(!JSON.stringify(owner).includes(secret));
   const tomorrow = Math.ceil((Date.now() + 24 * hour) / (24 * hour)) * 24 * hour;
+  await verifyBookingRules(fixture, ownerHeaders, tomorrow);
   await verifyWeeklySchedule(fixture, ownerHeaders, tomorrow);
   const slotsPath = `/api/slots?${new URLSearchParams({
     from: new Date(tomorrow).toISOString(),
@@ -229,6 +230,57 @@ async function verifyWorker(fixture) {
   await verifyPublicIdentity(fixture);
   assert.deepEqual(fixture.upstreamFailures, [], "upstream fixture failures must not be swallowed");
   return { ownerHeaders };
+}
+
+async function verifyBookingRules(fixture, owner, day) {
+  const { send, request, read, db, google } = fixture;
+  const rules = {
+    intervalMinutes: 60,
+    beforeMinutes: 15,
+    afterMinutes: 20,
+    noticeMinutes: 0,
+    disableCancelling: true,
+    disableRescheduling: false,
+  };
+  await read(await send("/api/owner/booking-rules", rules, {}, "PATCH"), 401);
+  await read(
+    await send("/api/owner/booking-rules", rules, { ...owner, Origin: "https://foreign.example" }, "PATCH"),
+    403
+  );
+  await read(
+    await send("/api/owner/booking-rules", { ...rules, disableCancelling: "true" }, owner, "PATCH"),
+    400
+  );
+  await read(await send("/api/owner/booking-rules", rules, owner, "PATCH"));
+  const expected = { ...settings, event: { ...settings.event, ...rules } };
+  assert.deepEqual((await read(await request("/api/owner", { headers: owner }))).settings, expected);
+  assert.equal(
+    await db.prepare("SELECT json FROM organizer_settings WHERE id='owner'").first("json"),
+    JSON.stringify(expected)
+  );
+  const id = "a".repeat(32);
+  google.events.set(id, {
+    id,
+    etag: '"rules-busy"',
+    start: { dateTime: new Date(day + 9 * hour).toISOString() },
+    end: { dateTime: new Date(day + 10 * hour).toISOString() },
+  });
+  const slots = () =>
+    request(
+      `/api/slots?${new URLSearchParams({ from: new Date(day + 8 * hour).toISOString(), to: new Date(day + 12 * hour).toISOString(), timeZone: "UTC" })}`
+    );
+  try {
+    assert.deepEqual(
+      (await read(await slots())).slots,
+      [8, 11].map((hours) => ({ start: day + hours * hour, end: day + hours * hour + 30 * 60_000 }))
+    );
+    await read(await send("/api/owner/booking-rules", { ...rules, noticeMinutes: 43200 }, owner, "PATCH"));
+    assert.deepEqual(await read(await slots()), { slots: [] });
+    assert.equal(google.writes.length, 0);
+  } finally {
+    google.events.delete(id);
+  }
+  await read(await send("/api/owner", settings, owner, "PUT"));
 }
 
 async function verifyWeeklySchedule(fixture, owner, day) {

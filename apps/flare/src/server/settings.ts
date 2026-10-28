@@ -1,6 +1,13 @@
-import type { EventDetails, ScheduleOverrides, Settings, WeeklySchedule } from "../domain/settings.ts";
+import type {
+  BookingRules,
+  EventDetails,
+  ScheduleOverrides,
+  Settings,
+  WeeklySchedule,
+} from "../domain/settings.ts";
 import {
   defaultSettings,
+  parseBookingRules,
   parseEventDetails,
   parseScheduleOverrides,
   parseSettings,
@@ -75,5 +82,29 @@ export async function saveScheduleOverrides(db: D1Database, input: ScheduleOverr
     ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
       '$.schedule.overrides', json(?)), version = organizer_settings.version + 1`)
     .bind(JSON.stringify(initial), JSON.stringify(overrides))
+    .run();
+}
+
+export async function saveBookingRules(db: D1Database, input: BookingRules): Promise<void> {
+  const rules = parseBookingRules(input);
+  const initial = parseSettings({ ...defaultSettings, event: { ...defaultSettings.event, ...rules } });
+  await db
+    .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
+    ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
+      '$.event.intervalMinutes', json(?), '$.event.beforeMinutes', json(?),
+      '$.event.afterMinutes', json(?), '$.event.noticeMinutes', json(?),
+      '$.event.disableCancelling', json(?), '$.event.disableRescheduling', json(?)),
+      version = organizer_settings.version + 1`)
+    .bind(
+      JSON.stringify(initial),
+      ...[
+        rules.intervalMinutes,
+        rules.beforeMinutes,
+        rules.afterMinutes,
+        rules.noticeMinutes,
+        rules.disableCancelling,
+        rules.disableRescheduling,
+      ].map((value) => JSON.stringify(value))
+    )
     .run();
 }

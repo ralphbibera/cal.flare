@@ -55,6 +55,13 @@ for every date. Event settings, timezone and weekly rules stay unchanged. The pr
 date-override editor supports dated closures and replacement intervals through this endpoint.
 Saves are explicit, and failed saves retain the draft. Full editor pixel parity remains open.
 
+Authenticated `PATCH /api/owner/booking-rules` replaces slot spacing, buffers, minimum notice
+and guest change rules. Send all six fields: `intervalMinutes`, `beforeMinutes`, `afterMinutes`,
+`noticeMinutes`, `disableCancelling` and `disableRescheduling`. The last two fields require
+explicit booleans. Event details and all schedule fields stay unchanged. Accepted booking
+commands retain their original replay and recovery behavior after a rules change.
+The booking-rules editor remains migration work.
+
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.
 The slug `api` is reserved for application routes.
