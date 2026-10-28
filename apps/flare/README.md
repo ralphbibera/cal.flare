@@ -51,8 +51,9 @@ Authenticated `PATCH /api/owner/overrides` replaces only the schedule's dated ov
 Send `{ overrides: [{ date: "YYYY-MM-DD", ranges: [{ startMinute, endMinute }] }] }`.
 Dates and minute ranges use the organizer's schedule timezone. Empty ranges close that date;
 nonempty ranges replace its weekly hours. Send `{ overrides: [] }` to restore weekly hours
-for every date. Event settings, timezone and weekly rules stay unchanged. A date-override
-editor remains migration work.
+for every date. Event settings, timezone and weekly rules stay unchanged. The private
+date-override editor supports dated closures and replacement intervals through this endpoint.
+Saves are explicit, and failed saves retain the draft. Full editor pixel parity remains open.
 
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.

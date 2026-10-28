@@ -4,6 +4,7 @@ import common from "../../../../packages/i18n/locales/en/common.json";
 import { Button } from "../components/Button.tsx";
 import OwnerBookings from "../components/OwnerBookings.astro";
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
+import { OwnerOverridesEditor } from "../components/OwnerOverridesEditor.tsx";
 import { OwnerScheduleEditor } from "../components/OwnerScheduleEditor.tsx";
 import { getOwnerData } from "../server/app.ts";
 import "../styles/globals.css";
@@ -71,6 +72,14 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               javascript: common.flare_working_hours_javascript,
               weekdays: [common.sunday, common.monday, common.tuesday, common.wednesday,
                 common.thursday, common.friday, common.saturday],
+            }} />
+            <OwnerOverridesEditor client:load overrides={state.data.settings.schedule.overrides ?? []} labels={{
+              heading: common.date_overrides, date: common.date, interval: common.interval,
+              start: common.start_time, end: common.end_time, addDate: common.add_an_override,
+              add: common.add, remove: common.remove, delete: common.delete, save: common.save, saved: common.saved,
+              invalid: common.flare_overrides_invalid, failed: common.flare_overrides_failed,
+              help: common.flare_overrides_help, empty: common.flare_overrides_empty, closed: common.unavailable,
+              midnight: common.flare_working_hours_midnight, javascript: common.flare_overrides_javascript,
             }} />
             <OwnerBookings bookings={state.data.bookings} timeZone={state.data.settings.schedule.timeZone} />
             <form action="/api/auth/logout" method="post" class="mt-6">
