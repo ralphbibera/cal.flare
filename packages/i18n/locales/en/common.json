@@ -4797,5 +4797,8 @@
   "flare_booking_link_access": "Anyone with this private link can view or change this booking.",
   "flare_owner_signin_help": "Sign in with the Google account configured for this installation.",
   "flare_owner_unavailable": "Organizer sign-in is currently unavailable. Please try again later.",
+  "flare_event_details_invalid": "Check the event details. The URL slug api is reserved.",
+  "flare_event_details_failed": "We couldn't save these event details. Your draft is still here. Try saving again.",
+  "flare_event_details_javascript": "Enable JavaScript to edit this event.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

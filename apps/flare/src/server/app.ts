@@ -1,6 +1,6 @@
 import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
-import { parseSettings } from "../domain/settings.ts";
+import { parseEventDetails, parseSettings } from "../domain/settings.ts";
 import type { AuthEnv } from "./auth.ts";
 import { beginLogin, finishLogin, logout, requireOwner } from "./auth.ts";
 import { BookingService } from "./bookings.ts";
@@ -8,7 +8,7 @@ import type { GoogleCalendar } from "./google.ts";
 import { GoogleCalendar as CalendarClient } from "./google.ts";
 import { bearer, body, ErrorWithCode, json, record, sameOrigin } from "./http.ts";
 import { hash } from "./secrets.ts";
-import { getSettings, saveSettings } from "./settings.ts";
+import { getSettings, saveEventDetails, saveSettings } from "./settings.ts";
 
 type Dependencies = {
   env: AuthEnv;
@@ -94,7 +94,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
-  if (["POST", "PUT", "DELETE"].includes(method)) sameOrigin(request, env.PUBLIC_ORIGIN);
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) sameOrigin(request, env.PUBLIC_ORIGIN);
   if (path === "/api/auth/login" && method === "GET") return beginLogin(env, request);
   if (path === "/api/auth/callback" && method === "GET") return finishLogin(env, request);
   if (path === "/api/auth/logout" && method === "POST") return logout(env, request);
@@ -113,6 +113,10 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (method === "GET") return json({ owner: identity, settings, bookings: await service.ownerList() });
     if (method === "PUT") {
       await saveSettings(env.DB, parseSettings(await body(request)));
+      return json({ saved: true });
+    }
+    if (method === "PATCH") {
+      await saveEventDetails(env.DB, parseEventDetails(await body(request)));
       return json({ saved: true });
     }
   }

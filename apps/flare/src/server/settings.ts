@@ -1,5 +1,5 @@
-import type { Settings } from "../domain/settings.ts";
-import { defaultSettings, parseSettings, SettingsError } from "../domain/settings.ts";
+import type { EventDetails, Settings } from "../domain/settings.ts";
+import { defaultSettings, parseEventDetails, parseSettings, SettingsError } from "../domain/settings.ts";
 
 export async function getSettings(db: D1Database): Promise<Settings> {
   const row = await db
@@ -24,5 +24,23 @@ export async function saveSettings(db: D1Database, settings: Settings): Promise<
        ON CONFLICT(id) DO UPDATE SET json = excluded.json, version = organizer_settings.version + 1`
     )
     .bind("owner", JSON.stringify(validated))
+    .run();
+}
+
+export async function saveEventDetails(db: D1Database, input: EventDetails): Promise<void> {
+  const details = parseEventDetails(input);
+  const initial = parseSettings({ ...defaultSettings, event: { ...defaultSettings.event, ...details } });
+  await db
+    .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
+      ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
+        '$.event.slug', ?, '$.event.title', json(?), '$.event.description', json(?), '$.event.durationMinutes', CAST(? AS INTEGER)),
+        version = organizer_settings.version + 1`)
+    .bind(
+      JSON.stringify(initial),
+      details.slug,
+      JSON.stringify(details.title),
+      JSON.stringify(details.description),
+      details.durationMinutes
+    )
     .run();
 }

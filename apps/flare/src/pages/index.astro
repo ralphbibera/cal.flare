@@ -2,6 +2,7 @@
 import { env } from "cloudflare:workers";
 import common from "../../../../packages/i18n/locales/en/common.json";
 import { Button } from "../components/Button.tsx";
+import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
 import type { Settings } from "../domain/settings.ts";
 import { requireOwner } from "../server/auth.ts";
 import { getSettings } from "../server/settings.ts";
@@ -51,11 +52,16 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               <p>{state.identity.name}</p>
               <p class="text-subtle text-sm">{state.identity.email}</p>
             </div>
-            <div class="border-subtle space-y-2 border-t pt-6">
-              <h2 class="text-emphasis break-words font-semibold">{state.settings.event.title}</h2>
-              <a class="text-default underline" href={`/${state.settings.event.slug}`}>{common.preview}</a>
-            </div>
-            <form action="/api/auth/logout" method="post">
+            <OwnerEventEditor client:load details={{
+              title: state.settings.event.title, slug: state.settings.event.slug,
+              description: state.settings.event.description, durationMinutes: state.settings.event.durationMinutes,
+            }} labels={{
+              title: common.title, slug: common.slug, description: common.description,
+              duration: common.duration, minutes: common.minutes, save: common.save,
+              saved: common.saved, preview: common.preview, invalid: common.flare_event_details_invalid,
+              failed: common.flare_event_details_failed, javascript: common.flare_event_details_javascript,
+            }} />
+            <form action="/api/auth/logout" method="post" class="mt-6">
               <Button type="submit" color="secondary">{common.sign_out}</Button>
             </form>
           </div>

@@ -1,8 +1,100 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BookerClient, type ChangeRequest, ErrorWithCode } from "../src/client/bookings.ts";
+import { defaultSettings, parseSettings } from "../src/domain/settings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
+import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
+
+test("owner detail edits preserve independent scheduling settings and require authorized valid input", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { send, request, db, ownerHeaders, calendar } = fixture;
+  const details = {
+    title: 'A "new" event ☀',
+    slug: "new-event",
+    description: "Line one\nLine two",
+    durationMinutes: 45,
+  };
+  const read = async () => {
+    const response = await request("/api/owner", { headers: ownerHeaders });
+    assert.equal(response.status, 200);
+    return parseSettings(record(await response.json()).settings);
+  };
+  const row = () =>
+    db
+      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
+      .first<{ json: string; version: number }>();
+  const before = await row();
+  assert.equal((await send("/api/owner", details, {}, "PATCH")).status, 401);
+  assert.equal(
+    (await send("/api/owner", details, { ...ownerHeaders, Origin: "https://foreign.example" }, "PATCH"))
+      .status,
+    403
+  );
+  for (const invalid of [
+    { ...details, slug: "api" },
+    { ...details, title: " " },
+    { ...details, durationMinutes: 4 },
+    { ...details, durationMinutes: "45" },
+    { ...details, noticeMinutes: 0 },
+    ...Object.keys(details).map((key) =>
+      Object.fromEntries(Object.entries(details).filter(([name]) => name !== key))
+    ),
+  ]) {
+    const response = await send("/api/owner", invalid, ownerHeaders, "PATCH");
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "INVALID_SETTINGS" });
+  }
+  assert.deepEqual(await row(), before);
+  const independent = parseSettings({
+    ...settings,
+    event: {
+      ...settings.event,
+      intervalMinutes: 15,
+      beforeMinutes: 10,
+      afterMinutes: 20,
+      noticeMinutes: 60,
+      disableCancelling: true,
+      disableRescheduling: false,
+    },
+    schedule: {
+      ...settings.schedule,
+      timeZone: "America/New_York",
+      overrides: [{ date: "2030-01-02", ranges: [] }],
+    },
+  });
+  const put = send("/api/owner", independent, ownerHeaders, "PUT");
+  assert.equal((await put).status, 200);
+  assert.equal((await send("/api/owner", details, ownerHeaders, "PATCH")).status, 200);
+  const expected = { ...independent, event: { ...independent.event, ...details } };
+  assert.deepEqual(await read(), expected);
+  const stored = await row();
+  assert.ok(stored && before);
+  assert.equal(stored.version, before.version + 2);
+  assert.equal(
+    stored.json,
+    JSON.stringify(expected),
+    "Detail updates retain canonical booking-admission JSON"
+  );
+  assert.deepEqual(record(await (await request("/api/public")).json()).event, expected.event);
+  for (const text of ["edge\ud800", "edge\udc00", "edge\u0000\n☀😀"]) {
+    const next = { ...details, title: text, description: text };
+    assert.equal((await send("/api/owner", next, ownerHeaders, "PATCH")).status, 200);
+    const roundTrip = { ...independent, event: { ...independent.event, ...next } };
+    assert.deepEqual(await read(), roundTrip, "PATCH must preserve every accepted text value");
+    assert.equal((await row())?.json, JSON.stringify(roundTrip));
+    assert.deepEqual(record(await (await request("/api/public")).json()).event, roundTrip.event);
+  }
+  await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
+  assert.equal((await send("/api/owner", details, ownerHeaders, "PATCH")).status, 200);
+  assert.deepEqual(await read(), {
+    ...defaultSettings,
+    event: { ...defaultSettings.event, ...details },
+  });
+  assert.equal((await row())?.version, 1);
+  assert.equal(calendar.writes.length, 0);
+});
 
 test("current event policy refuses new guest changes without revoking durable outcomes", async (t) => {
   const fixture = await apiFixture();
