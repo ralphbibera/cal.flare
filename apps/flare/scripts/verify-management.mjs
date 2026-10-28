@@ -35,6 +35,77 @@ export async function verifyManagement(browser, fixture, date) {
           errors.push("Missing management authorization");
       }
     });
+    const owner = await fixture.login();
+    const original = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    const configure = async (disableCancelling, disableRescheduling) => {
+      await fixture.read(
+        await fixture.send(
+          "/api/owner",
+          {
+            ...original,
+            event: { ...original.event, disableCancelling, disableRescheduling },
+          },
+          owner,
+          "PUT"
+        )
+      );
+    };
+    const privatePage = await context.newPage();
+    await privatePage.clock.install({ time: date });
+    privatePage.on("pageerror", (error) => errors.push(error.message));
+    privatePage.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    privatePage.on("request", (request) => {
+      if (new URL(request.url()).pathname === path && request.method() === "POST")
+        errors.push("Loading policy controls must not mutate the booking");
+    });
+    const policyWrites = fixture.google.writes.length;
+    for (const [disableCancelling, disableRescheduling] of [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ]) {
+      await configure(disableCancelling, disableRescheduling);
+      await page.reload();
+      if (privatePage.url() === "about:blank")
+        await privatePage.goto(
+          `${fixture.origin}/booking/${receipt.access.id}#token=${receipt.access.token}`
+        );
+      else await privatePage.reload();
+      for (const target of [page, privatePage]) {
+        await target.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+        await target.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
+        assert.equal(
+          await target.getByRole("button", { name: "Reschedule", exact: true }).count(),
+          disableRescheduling ? 0 : 1
+        );
+        assert.equal(
+          await target.getByRole("button", { name: "Cancel event", exact: true }).count(),
+          disableCancelling ? 0 : 1
+        );
+        assert.equal(
+          await target.getByRole("button", { name: "Copy private booking link", exact: true }).count(),
+          1
+        );
+        assert.ok(!(await target.content()).includes(receipt.access.token));
+      }
+      assert.equal(privatePage.url(), `${fixture.origin}/booking/${receipt.access.id}`);
+      assert.equal(requests.length, 0);
+      assert.equal(fixture.google.writes.length, policyWrites);
+    }
+    await privatePage.screenshot({
+      path: new URL("../.verification/management-policy-mobile.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await configure(false, false);
+    await page.getByRole("button", { name: "Check booking status", exact: true }).click();
+    await page.getByRole("button", { name: "Reschedule", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Cancel event", exact: true }).waitFor();
+    await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
+    await privatePage.close();
     const choose = async () => {
       const previous = await currentTime();
       await page.getByRole("button", { name: "Reschedule", exact: true }).click();
@@ -126,6 +197,7 @@ export async function verifyManagement(browser, fixture, date) {
         await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).count(),
         0
       );
+      await configure(true, true);
       await page.reload();
       await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
       assert.deepEqual(await saved(), pending);
@@ -151,7 +223,12 @@ export async function verifyManagement(browser, fixture, date) {
         fullPage: true,
         animations: "disabled",
       });
+      await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
       if (action === "reschedule") {
+        assert.equal(await page.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
+        assert.equal(await page.getByRole("button", { name: "Cancel event", exact: true }).count(), 0);
+        await page.getByRole("button", { name: "Check booking status", exact: true }).click();
+        await page.getByRole("button", { name: "Reschedule", exact: true }).waitFor();
         selected = await choose();
         assert.ok(selected);
         fixture.google.loseResponseAfter("update");
@@ -195,7 +272,7 @@ export async function verifyManagement(browser, fixture, date) {
     assert.deepEqual(fixture.upstreamFailures, []);
     assert.deepEqual(fixture.google.denied, []);
     console.log(
-      "PASS native receipt reschedule/cancel, confirmation, storage rejection and exact replay after lost responses/reloads without duplicate Calendar writes. Built Worker/local D1; Google is mocked."
+      "PASS native receipt/private policy controls, status refresh, saved retry after policy changes, reschedule/cancel and exact replay without duplicate Calendar writes. Built Worker/local D1; Google is mocked."
     );
   } finally {
     await context.close();

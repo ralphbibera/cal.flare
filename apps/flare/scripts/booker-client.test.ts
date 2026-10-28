@@ -178,6 +178,20 @@ test("booker client rejects inconsistent booking data and discards unknown field
   };
   const client = new BookerClient(async () => Response.json({ ...valid, credential: "private" }));
   assert.deepEqual(await client.view(access), valid);
+  for (const key of ["disableCancelling", "disableRescheduling"] as const) {
+    for (const value of [true, false]) {
+      const payload = { ...valid, [key]: value };
+      assert.deepEqual(await new BookerClient(async () => Response.json(payload)).view(access), payload);
+    }
+    for (const value of [null, "false", "true", 0, 1, [], {}]) {
+      const malformed = new BookerClient(async () => Response.json({ ...valid, [key]: value }));
+      await assert.rejects(
+        malformed.view(access),
+        (error: unknown) =>
+          error instanceof ErrorWithCode && error.code === "invalid_response" && error.retryable
+      );
+    }
+  }
   for (const change of [
     { status: "unknown" },
     { pendingAction: "create" },

@@ -46,7 +46,8 @@ The authenticated settings API accepts optional `event.disableCancelling` and
 `event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.
 Each flag refuses new requests for that action without changing accepted commands or their recovery.
 Refusals use the existing HTTP 409 `invalid_slot` outcome and remain stable on replay.
-Policy controls and explanations in the guest interface remain migration work.
+Receipts and private management pages hide each disabled action after loading or refreshing
+the booking. Existing saved attempts remain available for safe retry and reconciliation.
 See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
 
 ## Verify the focused port

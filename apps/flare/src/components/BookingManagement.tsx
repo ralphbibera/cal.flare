@@ -163,12 +163,16 @@ export function BookingManagement({
             </Button>
             {booking.status === "confirmed" && !error && (
               <>
-                <Button disabled={busy} onClick={() => setStage({ kind: "calendar" })}>
-                  {labels.reschedule}
-                </Button>
-                <Button color="secondary" disabled={busy} onClick={() => setStage({ kind: "cancel" })}>
-                  {labels.cancelEvent}
-                </Button>
+                {!booking.disableRescheduling && (
+                  <Button disabled={busy} onClick={() => setStage({ kind: "calendar" })}>
+                    {labels.reschedule}
+                  </Button>
+                )}
+                {!booking.disableCancelling && (
+                  <Button color="secondary" disabled={busy} onClick={() => setStage({ kind: "cancel" })}>
+                    {labels.cancelEvent}
+                  </Button>
+                )}
               </>
             )}
           </>
