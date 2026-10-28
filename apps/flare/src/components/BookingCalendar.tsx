@@ -7,6 +7,7 @@ import { Button } from "./Button.tsx";
 import { MonthPicker } from "./MonthPicker.tsx";
 import { TimeSlots } from "./TimeSlots.tsx";
 import { TimeSlotsHeader } from "./TimeSlotsHeader.tsx";
+import { TimeSlotsSkeleton } from "./TimeSlotsSkeleton.tsx";
 
 type BookingCalendarProps = {
   timeZone: string;
@@ -70,7 +71,11 @@ function BookingCalendar({
           isLoading={result.status === "loading"}
           skipAutomaticSelection={result.status !== "ready"}
         />
-        {result.status === "loading" && <p role="status">{labels.loading}</p>}
+        {result.status === "loading" && (
+          <p role="status" className="sr-only">
+            {labels.loading}
+          </p>
+        )}
         {result.status === "error" && (
           <div role="alert">
             <p>{labels.error}</p>
@@ -81,22 +86,35 @@ function BookingCalendar({
         )}
         {result.status === "ready" && Object.keys(days).length === 0 && <p role="status">{labels.empty}</p>}
       </div>
-      {result.status === "ready" && times.length > 0 && (
+      {(result.status === "loading" || (result.status === "ready" && times.length > 0)) && (
         <div className="border-subtle rtl:border-default flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 rtl:border-r ltr:md:border-l">
-          <TimeSlotsHeader
-            weekday={new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
-              dayjs(selectedDate).toDate()
-            )}
-            day={dayjs(selectedDate).format("DD")}
-            isToday={dayjs().isSame(dayjs(selectedDate), "day")}
-          />
-          <TimeSlots
-            slots={times}
-            timeZone={timeZone}
-            timeFormat={timeFormat}
-            onSelect={onTimeSelect}
-            selectedSlots={selectedTime ? [selectedTime] : []}
-          />
+          {result.status === "loading" ? (
+            <div aria-hidden="true">
+              <div className="flex">
+                <div className="mb-3 h-8" />
+              </div>
+              <div className="flex h-full w-full flex-row gap-4">
+                <TimeSlotsSkeleton />
+              </div>
+            </div>
+          ) : (
+            <>
+              <TimeSlotsHeader
+                weekday={new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
+                  dayjs(selectedDate).toDate()
+                )}
+                day={dayjs(selectedDate).format("DD")}
+                isToday={dayjs().isSame(dayjs(selectedDate), "day")}
+              />
+              <TimeSlots
+                slots={times}
+                timeZone={timeZone}
+                timeFormat={timeFormat}
+                onSelect={onTimeSelect}
+                selectedSlots={selectedTime ? [selectedTime] : []}
+              />
+            </>
+          )}
         </div>
       )}
     </Provider>

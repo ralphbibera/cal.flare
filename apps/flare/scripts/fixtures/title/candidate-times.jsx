@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { TimeSlots } from "../../../src/components/TimeSlots.tsx";
 import { TimeSlotsHeader } from "../../../src/components/TimeSlotsHeader.tsx";
+import { TimeSlotsSkeleton } from "../../../src/components/TimeSlotsSkeleton.tsx";
 import "./candidate.css";
 import { TimeCases } from "./time-cases.jsx";
 
@@ -8,4 +9,6 @@ document.documentElement.classList.toggle(
   "dark",
   new URLSearchParams(location.search).get("theme") === "dark"
 );
-createRoot(document.getElementById("root")).render(<TimeCases Times={TimeSlots} Header={TimeSlotsHeader} />);
+createRoot(document.getElementById("root")).render(
+  <TimeCases Times={TimeSlots} Header={TimeSlotsHeader} Skeleton={TimeSlotsSkeleton} />
+);

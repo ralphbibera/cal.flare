@@ -106,8 +106,28 @@ export async function verifyPublic(browser) {
       await staticContext.close();
       assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
     }
-    await page.goto(`${fixture.origin}/${settings.event.slug}`);
+    const releaseSlots = Promise.withResolvers();
+    const holdSlots = (route) => releaseSlots.promise.then(() => route.continue());
+    await page.route("**/api/slots?**", holdSlots, { times: 1 });
+    try {
+      const request = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/slots");
+      await page.goto(`${fixture.origin}/${settings.event.slug}`);
+      await request;
+      await page.getByRole("status").filter({ hasText: "Loading" }).waitFor();
+      const placeholders = page.locator('[aria-hidden="true"] span.animate-pulse');
+      assert.ok((await placeholders.count()) >= 1 && (await placeholders.count()) <= 6);
+      assert.equal(await page.getByTestId("time").count(), 0);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({
+        path: new URL("../.verification/public-times-loading-mobile.png", import.meta.url).pathname,
+        fullPage: true,
+        animations: "disabled",
+      });
+    } finally {
+      releaseSlots.resolve();
+    }
     await page.getByTestId("time").first().waitFor();
+    assert.equal(await page.locator('[aria-hidden="true"] span.animate-pulse').count(), 0);
     assert.equal(
       await page.locator("header").textContent(),
       `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(browserDate)}01`

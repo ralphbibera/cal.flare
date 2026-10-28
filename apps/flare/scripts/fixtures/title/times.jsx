@@ -1,5 +1,5 @@
 import dayjs from "@calcom/dayjs";
-import { AvailableTimes } from "@reference/times";
+import { AvailableTimes, AvailableTimesSkeleton } from "@reference/times";
 import { AvailableTimesHeader } from "@reference/times-header";
 import { createRoot } from "react-dom/client";
 import inter from "../../../../web/public/fonts/Inter-roman.var.woff2?url";
@@ -17,6 +17,7 @@ document.head.append(fonts);
 window.localStorage.removeItem("overlayCalendarSwitchDefault");
 createRoot(document.getElementById("root")).render(
   <TimeCases
+    Skeleton={AvailableTimesSkeleton}
     Header={({ date, customClassNames, availableMonth }) => (
       <CalendarReferenceContext.Provider value={{ layout: "month_view" }}>
         <AvailableTimesHeader

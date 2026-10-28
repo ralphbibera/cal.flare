@@ -9,6 +9,7 @@ import { chromium } from "@playwright/test";
 import { verifyCalendar } from "./verify-calendar.mjs";
 import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
+import { verifyTimes } from "./verify-times.mjs";
 
 const require = createRequire(import.meta.url);
 const { createServer } = await import(
@@ -473,81 +474,7 @@ try {
   console.log(
     "PASS native session storage preserves create/move/cancel requests across reload, removes acknowledged changes and replaces attendee data with a receipt."
   );
-  for (const [name, viewport] of [
-    ["desktop", { width: 1440, height: 900 }],
-    ["mobile", { width: 390, height: 844 }],
-  ]) {
-    for (const theme of ["light", "dark"]) {
-      for (const scenario of ["twelve", "twentyfour", "zone", "selected", "unavailable", "loading"]) {
-        const captures = [];
-        for (const version of ["reference", "candidate"]) {
-          const context = await browser.newContext({ viewport, locale: "en-US", timezoneId: "UTC" });
-          const page = await context.newPage();
-          const errors = [];
-          page.on("pageerror", (error) => errors.push(error.message));
-          page.on("console", (message) => {
-            if (message.type() === "error") errors.push(message.text());
-          });
-          await page.clock.install({ time: new Date("2030-01-09T12:00:00Z") });
-          const entry = version === "reference" ? "times.html" : "candidate-times.html";
-          await page.goto(`${origin}/${entry}?case=${scenario}&theme=${theme}`);
-          const buttons = page.getByTestId("time");
-          await buttons.first().waitFor();
-          await page.addStyleTag({
-            content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
-          });
-          await page.evaluate(() => document.fonts.ready);
-          let expected = ["9:00am", "12:30pm", "11:00pm"];
-          if (scenario === "twentyfour") expected = ["09:00", "12:30", "23:00"];
-          if (scenario === "zone") expected = ["2:30pm", "6:00pm", "4:30am"];
-          assert.deepEqual(await buttons.allTextContents(), expected);
-          assert.deepEqual(await page.locator("main header").allTextContents(), [
-            "Wed09",
-            "Thu10",
-            "Fri11, January",
-            "Sat12",
-          ]);
-          assert.equal(await buttons.nth(1).isDisabled(), ["loading", "unavailable"].includes(scenario));
-          assert.equal(await buttons.first().isDisabled(), scenario === "loading");
-          assert.equal(
-            await page.locator('[data-testid="time"].border-brand-default').count(),
-            scenario === "selected" ? 1 : 0
-          );
-          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-          captures.push(
-            Array.from(
-              await page.screenshot({
-                path: fileURLToPath(new URL(`${version}-times-${name}-${theme}-${scenario}.png`, artifacts)),
-                fullPage: true,
-              })
-            )
-          );
-          if (version === "candidate")
-            assert.equal(
-              await page.evaluate(differentPixels, captures),
-              0,
-              `times ${name}/${theme}/${scenario} pixels`
-            );
-          if (["loading", "unavailable"].includes(scenario)) {
-            await buttons.nth(1).evaluate((button) => button.click());
-            assert.equal(await page.getByTestId("selection").textContent(), "none");
-          }
-          if (scenario !== "loading") {
-            await buttons.first().click();
-            assert.equal(await page.getByTestId("selection").textContent(), "2030-01-10T09:00:00Z");
-            await buttons.nth(2).focus();
-            await buttons.nth(2).press("Enter");
-            assert.equal(await page.getByTestId("selection").textContent(), "2030-01-10T23:00:00Z");
-          }
-          assert.deepEqual(errors, []);
-          await context.close();
-        }
-      }
-    }
-  }
-  console.log(
-    "PASS ordinary time rows and month-view headings match pinned source with zero different pixels, native selection and timezone/clock formatting across six states and four width/theme combinations."
-  );
+  await verifyTimes(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
     ["mobile", { width: 390, height: 844 }],

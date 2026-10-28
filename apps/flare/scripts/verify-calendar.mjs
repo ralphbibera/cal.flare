@@ -64,8 +64,17 @@ async function verifyCalendar(browser, origin) {
     await first.promise;
     await page.getByRole("status").filter({ hasText: "Loading availability" }).waitFor();
     assert.equal(await page.getByTestId("time").count(), 0);
+    const placeholders = page.locator('[aria-hidden="true"] span.animate-pulse');
+    assert.ok((await placeholders.count()) >= 1 && (await placeholders.count()) <= 6);
+    assert.ok(
+      await placeholders.evaluateAll((nodes) =>
+        nodes.every((node) => node.getBoundingClientRect().height === 24)
+      )
+    );
+    assert.equal(await page.locator('[aria-hidden="true"] button').count(), 0);
     permit.resolve();
     await page.getByTestId("time").first().waitFor();
+    assert.equal(await placeholders.count(), 0);
     assert.deepEqual(await page.getByTestId("time").allTextContents(), ["11:00pm", "11:30pm"]);
     assert.equal(await page.locator("header").textContent(), "Tue01");
     await page.getByTestId("day").filter({ hasText: /^3$/ }).click();
