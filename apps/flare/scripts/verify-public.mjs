@@ -37,6 +37,41 @@ export async function verifyPublic(browser) {
     page.on("response", (response) => {
       if (new URL(response.url()).pathname.startsWith("/_astro/")) assets.push(response);
     });
+    const staticContext = await browser.newContext({ javaScriptEnabled: false });
+    try {
+      const staticPage = await staticContext.newPage();
+      for (const [durationMinutes, text] of [
+        [30, "30m"],
+        [60, "1h"],
+        [61, "1h 1m"],
+        [90, "1h 30m"],
+        [480, "8h"],
+      ]) {
+        assert.equal(
+          (
+            await fixture.send(
+              "/api/owner",
+              { ...settings, event: { ...settings.event, durationMinutes } },
+              owner,
+              "PUT"
+            )
+          ).status,
+          200
+        );
+        assert.equal((await staticPage.goto(`${fixture.origin}/${settings.event.slug}`)).status(), 200);
+        assert.equal(
+          await staticPage.getByTestId("event-meta").getByText(text, { exact: true }).count(),
+          1,
+          `SSR duration for ${durationMinutes} minutes`
+        );
+        await page.goto(`${fixture.origin}/${settings.event.slug}`);
+        await page.waitForFunction(() => document.querySelector("#booker-time-zone")?.disabled === false);
+        assert.equal(await page.getByTestId("event-meta").getByText(text, { exact: true }).count(), 1);
+      }
+    } finally {
+      await staticContext.close();
+      assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
+    }
     await page.goto(`${fixture.origin}/${settings.event.slug}`);
     await page.getByTestId("time").first().waitFor();
     assert.equal(await page.getByTestId("event-title").textContent(), settings.event.title);
@@ -108,7 +143,7 @@ export async function verifyPublic(browser) {
     assert.deepEqual(fixture.google.denied, []);
     assert.equal(fixture.google.writes.length, 0);
     console.log(
-      "PASS public Astro page SSR, hydration, built assets, private-data omission, escaped description, timezone labels and UTC selection. Local workerd/D1; Google is mocked."
+      "PASS public Astro page SSR, compact durations, hydration, built assets, private-data omission, escaped description, timezone labels and UTC selection. Local workerd/D1; Google is mocked."
     );
     await verifySubmission(browser, fixture, browserDate);
     await verifyManagement(browser, fixture, browserDate);
