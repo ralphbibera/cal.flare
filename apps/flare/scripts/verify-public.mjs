@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyManagement } from "./verify-management.mjs";
 import { verifySubmission } from "./verify-submission.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
@@ -108,6 +109,7 @@ export async function verifyPublic(browser) {
       "PASS public Astro page SSR, hydration, built assets, private-data omission, escaped description, timezone labels and UTC selection. Local workerd/D1; Google is mocked."
     );
     await verifySubmission(browser, fixture, browserDate);
+    await verifyManagement(browser, fixture, browserDate);
   } finally {
     try {
       await context?.close();

@@ -35,7 +35,10 @@ The public page accepts attendee details and submits bookings with a saved reque
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
 The page distinguishes confirmed bookings from results needing recovery or organizer attention.
-Booking-management screens are not yet included.
+From that receipt, visitors can reschedule or cancel after confirmation.
+Pending changes keep their request identity across reloads. Server-accepted changes
+with uncertain provider outcomes expose status recovery instead of another mutation.
+Shareable management links and cancellation reasons remain migration work.
 See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
 
 ## Verify the focused port
@@ -58,7 +61,8 @@ CI installs it with `yarn workspace @calflare/web exec playwright install --with
 It compares shared components with pinned upstream rendering and drives the public Astro page
 through the built local Worker. Provider responses are controlled fixtures.
 The page journey covers hydration, static assets, escaped event text, timezone selection,
-and UTC slot identity. It does not establish full-page pixel parity or live invitation delivery.
+UTC slot identity, receipt-based rescheduling and cancellation, and recovery after lost responses.
+It does not establish full-page pixel parity or live invitation delivery.
 
 The D1 verifier applies the experimental SQL file with Wrangler into temporary local storage.
 The CI type-check accepts the inherited `--force` flag. Every invocation runs checks without a Turbo cache.
