@@ -173,6 +173,13 @@ is confirmed. Uncaught errors, console errors and HTTP failures fail verificatio
 This establishes the declared static reference profile, not candidate-page pixel equality,
 default-motion stability, historical runtime equivalence, or live-provider behavior.
 
+The same command then opens the built Flare calendar with matched event details, weekly hours,
+and fixed browser/Worker Date. It compares the initial card bounds and page background
+against the actual reference at 1280px and 390px, and checks the same nine UTC slots.
+The Worker clock override is confined to the test fixture and preserves native timers.
+The month view follows the pinned 1040px document width at a 1024px viewport.
+Full-page pixels, other layouts, custom avatars, and organizer profile links remain separate work.
+
 Stop the reference server with Ctrl-C and stop its database with
 `pg_ctl -D "$reference_pg/data" stop`. Remove only these disposable resources when finished.
 

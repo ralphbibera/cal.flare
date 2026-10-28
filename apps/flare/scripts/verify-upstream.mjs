@@ -1,5 +1,18 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { createWorkerFixture } from "./verify-worker.mjs";
+
+const fixedTime = Date.parse("2030-01-09T12:00:00Z");
+
+async function measureFrame(page) {
+  const bounds = await page.getByTestId("booker-container").boundingBox();
+  assert.ok(bounds);
+  return {
+    bounds,
+    documentWidth: await page.evaluate(() => document.documentElement.scrollWidth),
+    background: await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor),
+  };
+}
 
 async function ready(page, selector) {
   await page.locator(selector).first().waitFor();
@@ -61,7 +74,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
       const consoleErrors = [];
       try {
         const page = await context.newPage();
-        await page.clock.setFixedTime(new Date("2030-01-09T12:00:00Z"));
+        await page.clock.setFixedTime(new Date(fixedTime));
         page.on("pageerror", (error) => errors.push(error.message));
         page.on("response", (response) => {
           if (response.status() >= 400) failures.push(new URL(response.url()).pathname);
@@ -86,6 +99,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
           )
         );
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        const frame = await measureFrame(page);
         const calendar = [
           ...(await page.screenshot({
             path: fileURLToPath(new URL(`upstream-${name}-calendar-${take}.png`, artifacts)),
@@ -128,7 +142,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.deepEqual(errors, []);
         assert.deepEqual(failures, []);
         assert.deepEqual(consoleErrors, []);
-        captures.push({ name, calendar, form });
+        captures.push({ name, calendar, form, frame, viewport });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
         try {
@@ -163,5 +177,76 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
   }
   console.log(
     "PASS actual pinned public-page static reference repeats exactly at desktop/mobile, including slot selection, inline form and mobile dialog. No candidate-page parity is established."
+  );
+  await verifyFlareFrames(browser, captures, artifacts);
+}
+
+async function verifyFlareFrames(browser, captures, artifacts) {
+  const fixture = await createWorkerFixture({ port: 8797, fixedTime });
+  try {
+    const owner = await fixture.login();
+    const settings = {
+      ...fixture.settings,
+      event: {
+        ...fixture.settings.event,
+        title: "Intro call",
+        slug: "intro",
+        description: "A short conversation.",
+        durationMinutes: 30,
+        intervalMinutes: 30,
+        noticeMinutes: 1,
+        beforeMinutes: 0,
+        afterMinutes: 0,
+      },
+      schedule: {
+        timeZone: "UTC",
+        rules: Array.from({ length: 7 }, (_, weekday) => ({
+          weekday,
+          startMinute: 540,
+          endMinute: 1020,
+        })),
+      },
+    };
+    assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
+    for (const name of ["desktop", "mobile"]) {
+      const reference = captures.find((capture) => capture.name === name);
+      const context = await browser.newContext({
+        viewport: reference.viewport,
+        locale: "en-US",
+        timezoneId: "UTC",
+        colorScheme: "light",
+      });
+      try {
+        const page = await context.newPage();
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        page.on("console", (message) => {
+          if (message.type() === "error") errors.push(message.text());
+        });
+        await page.clock.setFixedTime(new Date(fixedTime));
+        assert.equal((await page.goto(`${fixture.origin}/intro`)).status(), 200);
+        await ready(page, '[data-testid="time"]');
+        assert.equal(await page.getByTestId("time").count(), 9);
+        assert.equal(await page.getByTestId("time").first().textContent(), "12:30pm");
+        assert.equal(await page.getByTestId("time").last().textContent(), "4:30pm");
+        assert.deepEqual(await measureFrame(page), reference.frame, `${name} public calendar frame`);
+        await page.screenshot({
+          path: fileURLToPath(new URL(`candidate-page-${name}-calendar.png`, artifacts)),
+          fullPage: true,
+          animations: "disabled",
+        });
+        assert.deepEqual(errors, []);
+      } finally {
+        await context.close();
+      }
+    }
+    assert.deepEqual(fixture.upstreamFailures, []);
+    assert.deepEqual(fixture.google.denied, []);
+    assert.equal(fixture.google.writes.length, 0);
+  } finally {
+    await fixture.close();
+  }
+  console.log(
+    "PASS built public calendar frame bounds and background match the actual pinned page at desktop/mobile with matched clocks, metadata and nine slots. Whole-page pixels remain unverified."
   );
 }

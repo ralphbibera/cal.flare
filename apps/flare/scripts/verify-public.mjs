@@ -134,7 +134,13 @@ export async function verifyPublic(browser) {
       `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(browserDate)}01`
     );
     assert.equal(await page.getByTestId("event-title").textContent(), settings.event.title);
-    assert.equal(await page.locator('[data-testid="event-meta"] img').count(), 0);
+    const avatar = page.getByTestId("event-meta").getByRole("img", { name: "Organizer", exact: true });
+    assert.equal(await avatar.count(), 1);
+    await avatar.evaluate((image) => image.decode());
+    assert.equal(
+      await page.getByRole("region", { name: "Description", exact: true }).locator("img").count(),
+      0
+    );
     assert.ok((await page.getByTestId("event-meta").textContent()).includes(settings.event.description));
     assert.ok(
       await page.evaluate(async () => {
@@ -193,7 +199,11 @@ export async function verifyPublic(browser) {
       { width: 1280, height: 900 },
     ]) {
       await page.setViewportSize(viewport);
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+        viewport.width === 1024 ? 1040 : viewport.width,
+        "Pinned month-view document width"
+      );
     }
     await page.screenshot({
       path: new URL("../.verification/public-booker-desktop.png", import.meta.url).pathname,
