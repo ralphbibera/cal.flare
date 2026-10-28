@@ -86,7 +86,11 @@ test("current event policy refuses new guest changes without revoking durable ou
     assert.equal(result.start, action === "cancel" ? created.start : created.start + 2 * hour);
     const acceptedWrites = calendar.writes.length;
     await configure(action === "cancel", action === "reschedule");
-    assert.deepEqual(await client.change(access, allowed), result);
+    assert.deepEqual(await client.change(access, allowed), {
+      ...result,
+      disableCancelling: action === "cancel",
+      disableRescheduling: action === "reschedule",
+    });
     assert.equal(calendar.writes.length, acceptedWrites, "Accepted replay survives a policy change");
     await configure(action !== "cancel", action !== "reschedule");
     const other = await client.create({

@@ -16,6 +16,8 @@ export type BookingView = {
   manageToken?: string;
   pendingAction?: Action;
   error?: string;
+  disableCancelling?: boolean;
+  disableRescheduling?: boolean;
 };
 export type Booking = {
   id: string;

@@ -254,6 +254,12 @@ export class BookingService {
       email: event.attendee.email,
       timeZone: event.timeZone,
       title: event.title,
+      ...(this.settings.event.disableCancelling === undefined
+        ? {}
+        : { disableCancelling: this.settings.event.disableCancelling }),
+      ...(this.settings.event.disableRescheduling === undefined
+        ? {}
+        : { disableRescheduling: this.settings.event.disableRescheduling }),
       ...(pending ? { pendingAction: pending.action } : {}),
       ...(pending?.error ? { error: pending.error } : {}),
     };

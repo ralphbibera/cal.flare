@@ -75,6 +75,12 @@ function booking(value: unknown): BookingView {
     title: text(data.title),
     timeZone: text(data.timeZone),
   };
+  for (const key of ["disableCancelling", "disableRescheduling"] as const) {
+    if (data[key] !== undefined) {
+      if (typeof data[key] !== "boolean") throw new Error();
+      result[key] = data[key];
+    }
+  }
   if (data.pendingAction !== undefined) {
     if (
       data.pendingAction !== "create" &&
