@@ -34,8 +34,10 @@ Saving these details preserves scheduling rules and booking policies. Other sett
 use the authenticated API. This editor is a functional checkpoint; upstream editor pixel parity remains open.
 The private home page also lists the latest 1,000 bookings, newest recorded first, with attendee
 details, times in the organizer's schedule timezone, and lifecycle status. Viewing this list
-does not retry provider operations. It renders without JavaScript. Filters, pagination, owner
-actions, and booking-list pixel parity remain migration work.
+does not retry provider operations. It renders without JavaScript. With JavaScript enabled,
+**Retry pending operation** explicitly resumes the booking's existing durable command and
+reloads its current status. A failed or lost response leaves an explicit retry available.
+Filters, pagination, other owner actions, and booking-list pixel parity remain migration work.
 
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.
