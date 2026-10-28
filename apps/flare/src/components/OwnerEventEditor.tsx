@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import type { EventDetails } from "../domain/settings.ts";
 import { parseEventDetails } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
+import { Input } from "./Input.tsx";
+import { Label } from "./Label.tsx";
+import { TextArea } from "./TextArea.tsx";
 
 type Labels = Record<
   | "title"
@@ -24,8 +27,6 @@ export function OwnerEventEditor({ details, labels }: { details: EventDetails; l
     "loading"
   );
   useEffect(() => setStatus("idle"), []);
-  const field =
-    "bg-default border-default text-default mt-1 block w-full rounded-md border px-3 py-2 text-sm";
   return (
     <div className="space-y-4 border-subtle border-t pt-6">
       <h2 className="break-words font-semibold text-emphasis">{saved.title}</h2>
@@ -77,23 +78,11 @@ export function OwnerEventEditor({ details, labels }: { details: EventDetails; l
           }
         }}>
         <fieldset disabled={status === "loading" || status === "saving"} className="space-y-4">
-          <label className="block text-sm" htmlFor="event-title">
-            {labels.title}
-          </label>
-          <input
-            id="event-title"
-            className={field}
-            name="title"
-            defaultValue={details.title}
-            required
-            maxLength={100}
-          />
-          <label className="block text-sm" htmlFor="event-slug">
-            {labels.slug}
-          </label>
-          <input
+          <Label htmlFor="event-title">{labels.title}</Label>
+          <Input id="event-title" name="title" defaultValue={details.title} required maxLength={100} />
+          <Label htmlFor="event-slug">{labels.slug}</Label>
+          <Input
             id="event-slug"
-            className={field}
             name="slug"
             defaultValue={details.slug}
             required
@@ -102,23 +91,19 @@ export function OwnerEventEditor({ details, labels }: { details: EventDetails; l
             autoCapitalize="none"
             spellCheck={false}
           />
-          <label className="block text-sm" htmlFor="event-description">
-            {labels.description}
-          </label>
-          <textarea
+          <Label htmlFor="event-description">{labels.description}</Label>
+          <TextArea
             id="event-description"
-            className={field}
             name="description"
             defaultValue={details.description}
             maxLength={2000}
             rows={4}
           />
-          <label className="block text-sm" htmlFor="event-duration">
+          <Label htmlFor="event-duration">
             {labels.duration} ({labels.minutes})
-          </label>
-          <input
+          </Label>
+          <Input
             id="event-duration"
-            className={field}
             name="durationMinutes"
             type="number"
             defaultValue={details.durationMinutes}

@@ -63,6 +63,7 @@ export async function verifyOwner(browser, fixture) {
     assert.equal(page.url(), `${fixture.origin}/`);
     assert.ok((await page.textContent("body")).includes(email));
     await page.getByRole("heading", { name: "Bookings", exact: true }).waitFor();
+    assert.ok(await page.getByLabel("Description", { exact: true }).isDisabled());
     assert.ok(
       await page
         .getByRole("form", { name: "Date overrides", exact: true })
@@ -180,6 +181,12 @@ async function verifyEventEditor(browser, fixture) {
     await page.goto(fixture.origin);
     const save = page.locator('form[action="/api/owner"]').getByRole("button", { name: "Save", exact: true });
     await save.waitFor();
+    await page.locator('label[for="event-description"]').click();
+    assert.ok(
+      await page
+        .getByLabel("Description", { exact: true })
+        .evaluate((node) => document.activeElement === node)
+    );
     await page.getByLabel("Slug", { exact: true }).fill("api");
     await save.click();
     await page.getByRole("alert").waitFor();
@@ -187,7 +194,7 @@ async function verifyEventEditor(browser, fixture) {
     const details = {
       title: "Edited organizer event",
       slug: "edited-event",
-      description: "A saved description",
+      description: "A saved description\nA second line",
       durationMinutes: 45,
     };
     await page.getByLabel("Title", { exact: true }).fill(details.title);
@@ -197,6 +204,7 @@ async function verifyEventEditor(browser, fixture) {
     await save.click();
     await page.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
     assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), details.title);
+    assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), details.description);
     assert.ok(!(await page.content()).includes("private-fixture-detail"));
     assert.equal(
       await page.getByRole("link", { name: "Preview", exact: true }).getAttribute("href"),
