@@ -310,6 +310,9 @@ export async function verifyOwnerBookings(browser, fixture) {
     await page.reload();
     const pendingRow = page.getByRole("listitem").filter({ hasText: "owner-list-pending@example.test" });
     assert.ok((await pendingRow.textContent()).includes("Needs organizer attention"));
+    assert.ok(
+      await pendingRow.getByRole("button", { name: "Retry pending operation", exact: true }).isDisabled()
+    );
     assert.equal(
       fixture.google.writes.length,
       writes,
@@ -352,10 +355,128 @@ export async function verifyOwnerBookings(browser, fixture) {
     assert.equal(unavailable.status, 503);
     assert.ok(!(await unavailable.text()).includes(input.email));
     await fixture.db.prepare("UPDATE booking SET initial_json=? WHERE id=?").bind(stored, pending.id).run();
+    await verifyOwnerRecovery(browser, fixture, owner, pending);
     assert.deepEqual(fixture.google.denied, []);
     assert.deepEqual(fixture.upstreamFailures, []);
     console.log(
       "PASS native private owner bookings, confirmed/moved/canceled/attention states, read-only viewing, anonymous privacy and corrupt-data redaction without JavaScript. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+async function verifyOwnerRecovery(browser, fixture, owner, booking) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    await context.addCookies([
+      { name: "flare_session", value: owner.Cookie.split("=")[1], url: fixture.origin },
+    ]);
+    const page = await context.newPage();
+    const errors = [],
+      requests = [],
+      statuses = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (
+        message.type() === "error" &&
+        !(
+          message.location().url === `${fixture.origin}/api/owner/retry` &&
+          message.text().startsWith("Failed to load resource: net::ERR_FAILED")
+        )
+      )
+        errors.push(message.text());
+    });
+    const email = "owner-list-pending@example.test";
+    const row = page.getByRole("listitem").filter({ hasText: email });
+    const retry = row.getByRole("button", { name: "Retry pending operation", exact: true });
+    const writes = fixture.google.writes.length;
+    const commandCount = () =>
+      fixture.db
+        .prepare("SELECT count(*) FROM booking_command WHERE booking_id=?")
+        .bind(booking.id)
+        .first("count(*)");
+    assert.equal((await fixture.send("/api/owner/retry", { id: booking.id })).status, 401);
+    assert.equal(
+      (
+        await fixture.send(
+          "/api/owner/retry",
+          { id: booking.id },
+          { ...owner, Origin: "https://foreign.example" }
+        )
+      ).status,
+      403
+    );
+    await page.goto(fixture.origin);
+    assert.equal(fixture.google.writes.length, writes);
+    assert.equal(await commandCount(), 1);
+    await retry.click();
+    await row.getByText("Confirmed", { exact: true }).waitFor();
+    assert.equal(await retry.count(), 0);
+    assert.equal(
+      fixture.google.writes.length,
+      writes,
+      "Reconcile the acknowledged insert without another provider write"
+    );
+    assert.equal(await commandCount(), 1);
+    const access = { Authorization: `Bearer ${booking.manageToken}` };
+    const current = await fixture.read(
+      await fixture.request(`/api/bookings/${booking.id}`, { headers: access })
+    );
+    fixture.google.loseResponseAfter("delete");
+    const pending = await fixture.read(
+      await fixture.send(
+        `/api/bookings/${booking.id}`,
+        {
+          action: "cancel",
+          requestKey: crypto.randomUUID(),
+          version: current.version,
+        },
+        access
+      ),
+      202
+    );
+    assert.equal(pending.status, "attention");
+    const afterDelete = fixture.google.writes.length;
+    assert.ok(!fixture.google.events.has(booking.id));
+    let lose = true;
+    await page.route("**/api/owner/retry", async (route) => {
+      requests.push(route.request().postDataJSON());
+      if (lose) {
+        lose = false;
+        const response = await route.fetch();
+        statuses.push(response.status());
+        await response.body();
+        await route.abort();
+        return;
+      }
+      await route.continue();
+    });
+    await page.reload();
+    await retry.click();
+    await row.getByRole("alert").waitFor();
+    assert.deepEqual(statuses, [200]);
+    assert.equal(
+      await fixture.db.prepare("SELECT state FROM booking WHERE id=?").bind(booking.id).first("state"),
+      "cancelled"
+    );
+    assert.equal(fixture.google.writes.length, afterDelete);
+    assert.equal(await commandCount(), 2);
+    await retry.click();
+    await row.getByText("Canceled", { exact: true }).waitFor();
+    assert.deepEqual(requests, [{ id: booking.id }, { id: booking.id }]);
+    assert.equal(await retry.count(), 0);
+    assert.equal(fixture.google.writes.length, afterDelete, "A repeated owner retry cannot delete twice");
+    assert.equal(await commandCount(), 2);
+    assert.ok(!(await page.content()).includes(booking.manageToken));
+    assert.deepEqual(errors, []);
+    await page.screenshot({
+      path: new URL("../.verification/owner-recovered-mobile.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    console.log(
+      "PASS explicit owner recovery, authorization, lost-response replay and confirmed/canceled refresh without duplicate Calendar writes or new commands. Built Worker/local D1; Google is mocked."
     );
   } finally {
     await context.close();

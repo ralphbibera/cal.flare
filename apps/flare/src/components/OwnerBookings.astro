@@ -1,6 +1,7 @@
 ---
 import common from "../../../../packages/i18n/locales/en/common.json";
 import type { BookingView } from "../server/booking-model.ts";
+import { OwnerBookingRecovery } from "./OwnerBookingRecovery.tsx";
 
 interface Props {
   bookings: BookingView[];
@@ -31,6 +32,10 @@ const date = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "sh
             {date.formatRange(booking.start, booking.end)}
           </time>
           <p>{status[booking.status]}</p>
+          {booking.pendingAction && <OwnerBookingRecovery client:load id={booking.id} labels={{
+            retry: common.flare_owner_retry_pending, failed: common.flare_booking_result_error,
+            javascript: common.flare_owner_retry_javascript,
+          }} />}
         </li>
       ))}
     </ul>

@@ -4804,5 +4804,7 @@
   "flare_booking_status_rescheduling": "Rescheduling",
   "flare_booking_status_cancelling": "Canceling",
   "flare_booking_status_attention": "Needs organizer attention",
+  "flare_owner_retry_pending": "Retry pending operation",
+  "flare_owner_retry_javascript": "Enable JavaScript to retry this booking's pending calendar operation.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
