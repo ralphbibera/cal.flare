@@ -37,6 +37,22 @@
   --cal-text: hsla(0, 0%, 83%, 1);
 }
 
+.public-booking {
+  --cal-brand: #292929;
+  --cal-brand-emphasis: #696969;
+  --cal-brand-subtle: #cacaca;
+  --cal-brand-text: #fff;
+  --cal-brand-accent: #fff;
+}
+
+.public-booking.dark {
+  --cal-brand: #fafafa;
+  --cal-brand-emphasis: #e1e1e1;
+  --cal-brand-subtle: #969696;
+  --cal-brand-text: #000;
+  --cal-brand-accent: #000;
+}
+
 body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

@@ -14,6 +14,15 @@ async function measureFrame(page) {
   };
 }
 
+async function measureSelectedDay(page) {
+  const day = page.getByTestId("day").filter({ hasText: /^9Today$/ });
+  return day.evaluate((button) => ({
+    background: getComputedStyle(button).backgroundColor,
+    text: getComputedStyle(button).color,
+    todayMarker: getComputedStyle(button.querySelector("span")).backgroundColor,
+  }));
+}
+
 async function ready(page, selector) {
   await page.locator(selector).first().waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -100,6 +109,12 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         );
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         const frame = await measureFrame(page);
+        const selectedDay = await measureSelectedDay(page);
+        assert.deepEqual(selectedDay, {
+          background: "rgb(41, 41, 41)",
+          text: "rgb(255, 255, 255)",
+          todayMarker: "rgb(255, 255, 255)",
+        });
         const calendar = [
           ...(await page.screenshot({
             path: fileURLToPath(new URL(`upstream-${name}-calendar-${take}.png`, artifacts)),
@@ -142,7 +157,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.deepEqual(errors, []);
         assert.deepEqual(failures, []);
         assert.deepEqual(consoleErrors, []);
-        captures.push({ name, calendar, form, frame, viewport });
+        captures.push({ name, calendar, form, frame, viewport, selectedDay });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
         try {
@@ -230,6 +245,11 @@ async function verifyFlareFrames(browser, captures, artifacts) {
         assert.equal(await page.getByTestId("time").first().textContent(), "12:30pm");
         assert.equal(await page.getByTestId("time").last().textContent(), "4:30pm");
         assert.deepEqual(await measureFrame(page), reference.frame, `${name} public calendar frame`);
+        assert.deepEqual(
+          await measureSelectedDay(page),
+          reference.selectedDay,
+          `${name} public selected-day colors`
+        );
         await page.screenshot({
           path: fileURLToPath(new URL(`candidate-page-${name}-calendar.png`, artifacts)),
           fullPage: true,
