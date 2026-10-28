@@ -13,7 +13,16 @@ export const bookingLabels = {
   hour12: common.flare_hour_12,
   hour24: common.flare_hour_24,
   selectedTime: common.flare_selected_time,
-  minutes: common.flare_duration_minutes,
+  duration: {
+    minute: {
+      one: common.minute_one_short,
+      other: common.multiple_duration_timeUnit_short.replace("$t({{unit}}_short)", common.minute_short),
+    },
+    hour: {
+      one: common.hour_one_short,
+      other: common.multiple_duration_timeUnit_short.replace("$t({{unit}}_short)", common.hour_short),
+    },
+  },
   name: common.name,
   email: common.email,
   confirm: common.confirm,

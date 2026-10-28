@@ -7,6 +7,7 @@ import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
 import { EventMetaBlock } from "./EventMetaBlock.tsx";
 import { EventTitle } from "./EventTitle.tsx";
+import { formatDuration } from "./format-duration.ts";
 import { Input } from "./Input.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
@@ -142,7 +143,9 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           )}
           <div className="space-y-4 text-sm font-medium">
             <EventMetaBlock icon="clock" className="items-center">
-              {labels.minutes.replace("{{count}}", String(event.durationMinutes))}
+              {formatDuration(event.durationMinutes, (count, unit) =>
+                labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
+              )}
             </EventMetaBlock>
             <EventMetaBlock icon="globe" contentClassName="min-w-0 flex-1">
               <label htmlFor="booker-time-zone" className="sr-only">
