@@ -7,6 +7,134 @@ import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
+test("dated override updates preserve independent settings and reject invalid or unauthorized input", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { send, request, ownerHeaders, db, calendar } = fixture;
+  const overrides = [
+    { date: "2030-01-02", ranges: [] },
+    {
+      date: "2030-01-03",
+      ranges: [
+        { startMinute: 0, endMinute: 720 },
+        { startMinute: 720, endMinute: 1440 },
+      ],
+    },
+    { date: "2032-02-29", ranges: [] },
+  ];
+  const row = () =>
+    db
+      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
+      .first<{ json: string; version: number }>();
+  const before = await row();
+  const patch = (value: unknown) => send("/api/owner/overrides", value, ownerHeaders, "PATCH");
+  assert.equal((await send("/api/owner/overrides", { overrides }, {}, "PATCH")).status, 401);
+  assert.equal(
+    (
+      await send(
+        "/api/owner/overrides",
+        { overrides },
+        {
+          ...ownerHeaders,
+          Origin: "https://foreign.example",
+        },
+        "PATCH"
+      )
+    ).status,
+    403
+  );
+  for (const value of [
+    null,
+    {},
+    { overrides: null },
+    { overrides: [], rules: [] },
+    { overrides: [{ date: "2030-02-29", ranges: [] }] },
+    { overrides: [{ date: "2030-1-02", ranges: [] }] },
+    { overrides: [overrides[0], overrides[0]] },
+    { overrides: [{ date: "2030-01-02", ranges: [{ startMinute: 720, endMinute: 720 }] }] },
+    { overrides: [{ date: "2030-01-02", ranges: [{ startMinute: "0", endMinute: 1440 }] }] },
+    {
+      overrides: [
+        {
+          date: "2030-01-02",
+          ranges: [
+            { startMinute: 0, endMinute: 100 },
+            { startMinute: 99, endMinute: 200 },
+          ],
+        },
+      ],
+    },
+    {
+      overrides: [
+        {
+          date: "2030-01-02",
+          ranges: Array.from({ length: 101 }, (_, i) => ({ startMinute: i, endMinute: i + 1 })),
+        },
+      ],
+    },
+    {
+      overrides: Array.from({ length: 367 }, (_, i) => ({
+        date: new Date(Date.UTC(2032, 0, i + 1)).toISOString().slice(0, 10),
+        ranges: [],
+      })),
+    },
+  ]) {
+    const response = await patch(value);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "INVALID_SETTINGS" });
+  }
+  assert.deepEqual(await row(), before);
+  const original = parseSettings({
+    ...settings,
+    event: { ...settings.event, beforeMinutes: 10, disableCancelling: true },
+    schedule: { ...settings.schedule, overrides: [{ date: "2030-01-01", ranges: [] }] },
+  });
+  assert.equal((await send("/api/owner", original, ownerHeaders, "PUT")).status, 200);
+  const details = {
+    slug: "override-event",
+    title: "Retained\ud800",
+    description: "Keep\udc00",
+    durationMinutes: 45,
+  };
+  const weekly = { timeZone: "Asia/Kolkata", rules: [{ weekday: 1, startMinute: 540, endMinute: 1020 }] };
+  const responses = await Promise.all([
+    patch({ overrides }),
+    send("/api/owner", details, ownerHeaders, "PATCH"),
+    send("/api/owner/schedule", weekly, ownerHeaders, "PATCH"),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [200, 200, 200]
+  );
+  const expected = parseSettings({
+    ...original,
+    event: { ...original.event, ...details },
+    schedule: { ...weekly, overrides },
+  });
+  assert.deepEqual(
+    record(await (await request("/api/owner", { headers: ownerHeaders })).json()).settings,
+    expected
+  );
+  assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
+  const stored = await row();
+  assert.ok(stored && before);
+  assert.equal(stored.version, before.version + 4);
+  assert.equal(stored.json, JSON.stringify(expected));
+  assert.equal((await patch({ overrides: [] })).status, 200);
+  assert.equal(
+    (await row())?.json,
+    JSON.stringify({ ...expected, schedule: { ...expected.schedule, overrides: [] } })
+  );
+  await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
+  assert.equal((await patch({ overrides })).status, 200);
+  assert.equal(
+    (await row())?.json,
+    JSON.stringify({ ...defaultSettings, schedule: { ...defaultSettings.schedule, overrides } })
+  );
+  assert.equal((await row())?.version, 1);
+  assert.equal(calendar.writes.length, 0);
+});
+
 test("weekly updates preserve overrides and concurrent event edits, rejecting invalid or unauthorized input", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);

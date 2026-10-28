@@ -1,7 +1,8 @@
-import type { EventDetails, Settings, WeeklySchedule } from "../domain/settings.ts";
+import type { EventDetails, ScheduleOverrides, Settings, WeeklySchedule } from "../domain/settings.ts";
 import {
   defaultSettings,
   parseEventDetails,
+  parseScheduleOverrides,
   parseSettings,
   parseWeeklySchedule,
   SettingsError,
@@ -60,5 +61,19 @@ export async function saveWeeklySchedule(db: D1Database, input: WeeklySchedule):
       '$.schedule.timeZone', json(?), '$.schedule.rules', json(?)),
       version = organizer_settings.version + 1`)
     .bind(JSON.stringify(initial), JSON.stringify(weekly.timeZone), JSON.stringify(weekly.rules))
+    .run();
+}
+
+export async function saveScheduleOverrides(db: D1Database, input: ScheduleOverrides): Promise<void> {
+  const { overrides } = parseScheduleOverrides(input);
+  const initial = parseSettings({
+    ...defaultSettings,
+    schedule: { ...defaultSettings.schedule, overrides },
+  });
+  await db
+    .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
+    ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
+      '$.schedule.overrides', json(?)), version = organizer_settings.version + 1`)
+    .bind(JSON.stringify(initial), JSON.stringify(overrides))
     .run();
 }

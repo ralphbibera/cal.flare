@@ -22,6 +22,7 @@ type Settings = {
   };
 };
 type WeeklySchedule = Pick<Settings["schedule"], "timeZone" | "rules">;
+type ScheduleOverrides = { overrides: NonNullable<Settings["schedule"]["overrides"]> };
 
 class SettingsError extends Error {
   readonly code = "INVALID_SETTINGS";
@@ -189,5 +190,24 @@ function parseWeeklySchedule(input: unknown): WeeklySchedule {
   return { timeZone, rules };
 }
 
-export type { EventDetails, EventSettings, Settings, WeeklySchedule };
-export { defaultSettings, parseEventDetails, parseSettings, parseWeeklySchedule, SettingsError };
+function parseScheduleOverrides(input: unknown): ScheduleOverrides {
+  const value = object(input, "schedule overrides");
+  if (Object.keys(value).some((key) => key !== "overrides") || !Array.isArray(value.overrides)) {
+    throw new SettingsError("Schedule overrides require only an overrides array");
+  }
+  const { overrides = [] } = parseSettings({
+    ...defaultSettings,
+    schedule: { ...defaultSettings.schedule, overrides: value.overrides },
+  }).schedule;
+  return { overrides };
+}
+
+export type { EventDetails, EventSettings, ScheduleOverrides, Settings, WeeklySchedule };
+export {
+  defaultSettings,
+  parseEventDetails,
+  parseScheduleOverrides,
+  parseSettings,
+  parseWeeklySchedule,
+  SettingsError,
+};

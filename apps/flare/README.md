@@ -45,7 +45,14 @@ schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinu
 an empty rules array closes weekly availability. This update preserves event settings and
 dated overrides. The private working-hours editor uses this endpoint to add or remove ranges,
 change timezone, and close weekly availability. An end time of `00:00` represents minute 1440.
-Failed saves retain the draft. Date-override editing and full editor pixel parity remain migration work.
+Failed saves retain the draft. Full editor pixel parity remains migration work.
+
+Authenticated `PATCH /api/owner/overrides` replaces only the schedule's dated overrides.
+Send `{ overrides: [{ date: "YYYY-MM-DD", ranges: [{ startMinute, endMinute }] }] }`.
+Dates and minute ranges use the organizer's schedule timezone. Empty ranges close that date;
+nonempty ranges replace its weekly hours. Send `{ overrides: [] }` to restore weekly hours
+for every date. Event settings, timezone and weekly rules stay unchanged. A date-override
+editor remains migration work.
 
 After the organizer connects Google and configures the event through the authenticated API,
 open `/<event-slug>` to view its availability. The default slug is `intro`.
