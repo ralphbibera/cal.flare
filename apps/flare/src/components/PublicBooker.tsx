@@ -9,6 +9,7 @@ import { EventMetaBlock } from "./EventMetaBlock.tsx";
 import { EventTitle } from "./EventTitle.tsx";
 import { formatDuration } from "./format-duration.ts";
 import { Input } from "./Input.tsx";
+import { ScrollableWithGradients } from "./ScrollableWithGradients.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
   labels: typeof bookingLabels;
@@ -137,9 +138,13 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           <p className="text-subtle text-sm font-medium">{organizer.name}</p>
           <EventTitle className="my-2">{event.title}</EventTitle>
           {event.description && (
-            <p className="mb-8 max-h-[180px] overflow-y-auto whitespace-pre-wrap break-words text-sm">
-              {event.description}
-            </p>
+            <EventMetaBlock contentClassName="mb-8">
+              <ScrollableWithGradients
+                className="wrap-break-word scroll-bar max-h-[180px] max-w-full overflow-y-auto whitespace-pre-wrap break-words pr-4"
+                ariaLabel={labels.description}>
+                {event.description}
+              </ScrollableWithGradients>
+            </EventMetaBlock>
           )}
           <div className="space-y-4 text-sm font-medium">
             <EventMetaBlock icon="clock" className="items-center">

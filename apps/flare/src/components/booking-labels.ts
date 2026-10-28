@@ -13,6 +13,7 @@ export const bookingLabels = {
   hour12: common.flare_hour_12,
   hour24: common.flare_hour_24,
   selectedTime: common.flare_selected_time,
+  description: common.description,
   duration: {
     minute: {
       one: common.minute_one_short,

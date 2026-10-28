@@ -68,6 +68,40 @@ export async function verifyPublic(browser) {
         await page.waitForFunction(() => document.querySelector("#booker-time-zone")?.disabled === false);
         assert.equal(await page.getByTestId("event-meta").getByText(text, { exact: true }).count(), 1);
       }
+      const description = Array.from({ length: 30 }, (_, index) => `Description line ${index + 1}`).join(
+        "\n"
+      );
+      assert.equal(
+        (
+          await fixture.send(
+            "/api/owner",
+            { ...settings, event: { ...settings.event, description } },
+            owner,
+            "PUT"
+          )
+        ).status,
+        200
+      );
+      await staticPage.goto(`${fixture.origin}/${settings.event.slug}`);
+      const staticDescription = staticPage.getByRole("region", { name: "Description", exact: true });
+      assert.equal(await staticDescription.textContent(), description);
+      assert.equal(await staticDescription.getAttribute("tabindex"), "0");
+      await page.goto(`${fixture.origin}/${settings.event.slug}`);
+      await page.waitForFunction(() => document.querySelector("#booker-time-zone")?.disabled === false);
+      const region = page.getByRole("region", { name: "Description", exact: true });
+      assert.equal(await region.textContent(), description);
+      assert.ok(await region.evaluate((node) => node.scrollHeight > node.clientHeight));
+      await region.focus();
+      await page.keyboard.press("End");
+      await page.waitForFunction(() => {
+        const node = document.querySelector('[role="region"][aria-label="Description"]');
+        return node.scrollTop > 0 && node.scrollTop === node.scrollHeight - node.clientHeight;
+      });
+      await page.screenshot({
+        path: new URL("../.verification/public-description-mobile.png", import.meta.url).pathname,
+        fullPage: true,
+        animations: "disabled",
+      });
     } finally {
       await staticContext.close();
       assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);

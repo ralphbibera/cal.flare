@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { chromium } from "@playwright/test";
 import { verifyCalendar } from "./verify-calendar.mjs";
+import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
 
 const require = createRequire(import.meta.url);
@@ -52,6 +53,7 @@ await promisify(execFile)(
     "apps/web/modules/bookings/components/event-meta/Title.tsx",
     "apps/web/modules/bookings/components/event-meta/Details.tsx",
     "apps/web/modules/bookings/components/event-meta/Duration.tsx",
+    "apps/web/modules/bookings/components/ScrollableWithGradients.tsx",
     "packages/ui/classNames.ts",
     "apps/web/styles",
     "packages/config/theme",
@@ -137,6 +139,9 @@ const server = await createServer({
       ),
       "@reference/duration": fileURLToPath(
         new URL("../../web/modules/bookings/components/event-meta/Duration.tsx", import.meta.url)
+      ),
+      "@reference/scroll": fileURLToPath(
+        new URL("../../web/modules/bookings/components/ScrollableWithGradients.tsx", import.meta.url)
       ),
       "@calcom/web/modules/apps/components/AllApps": join(root, "meta-boundaries.jsx"),
       "@calcom/ui/components/icon": fileURLToPath(
@@ -258,80 +263,7 @@ try {
   browser = await chromium.launch();
   await verifyCalendar(browser, origin);
   await verifyPublic(browser);
-  for (const [name, viewport] of [
-    ["desktop", { width: 1440, height: 900 }],
-    ["mobile", { width: 390, height: 844 }],
-  ]) {
-    for (const theme of ["light", "dark"]) {
-      const captures = [];
-      for (const version of ["reference", "candidate"]) {
-        const context = await browser.newContext({ viewport });
-        try {
-          const page = await context.newPage();
-          const errors = [];
-          page.on("pageerror", (error) => errors.push(error.message));
-          page.on("console", (message) => {
-            if (message.type() === "error") errors.push(message.text());
-          });
-          await page.goto(`${origin}/meta.html?theme=${theme}${version === "candidate" ? "&candidate" : ""}`);
-          await page.getByTestId("props").waitFor();
-          await page.evaluate(() => document.fonts.ready);
-          await page.waitForFunction(
-            () =>
-              [...document.querySelectorAll("main svg")].every((icon) => icon.getBBox().width > 0) &&
-              [...document.querySelectorAll("main img")].every(
-                (image) => image.complete && image.naturalWidth > 0
-              )
-          );
-          assert.equal(await page.getByTestId("empty").count(), 0);
-          assert.equal(await page.getByTestId("zero").textContent(), "0");
-          assert.equal(await page.locator("main > div").count(), 18);
-          for (const [index, text] of [
-            null,
-            null,
-            "1m",
-            "30m",
-            "59m",
-            "1h",
-            "1h 1m",
-            "1h 30m",
-            "2h",
-            "2h 1m",
-            "8h",
-          ].entries()) {
-            const duration = page.getByTestId(`duration-${index}`);
-            if (text === null) assert.equal(await duration.count(), 0);
-            else assert.equal(await duration.textContent(), text);
-          }
-          assert.equal(await page.locator("main img").count(), 3);
-          assert.equal(await page.getByTestId("custom").locator("svg").count(), 0);
-          assert.equal(
-            await page.getByRole("group", { name: "Metadata props" }).getAttribute("title"),
-            "Forwarded title"
-          );
-          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-          captures.push([
-            ...(await page.screenshot({
-              path: fileURLToPath(new URL(`${version}-meta-${name}-${theme}.png`, artifacts)),
-              fullPage: true,
-            })),
-          ]);
-          if (version === "candidate")
-            assert.equal(
-              await page.evaluate(differentPixels, captures),
-              0,
-              `${name}/${theme} metadata pixels`
-            );
-          assert.deepEqual(errors, []);
-        } finally {
-          await context.close();
-        }
-      }
-    }
-  }
-  console.log(
-    "PASS metadata blocks and compact duration text match pinned source with zero different pixels across desktop/mobile and light/dark, including hour boundaries, icons, wrapping, highlights, image filters, empty children and native props."
-  );
+  await verifyMeta(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
     ["mobile", { width: 390, height: 844 }],
