@@ -1,7 +1,125 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { BookerClient, type ChangeRequest, ErrorWithCode } from "../src/client/bookings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
+
+test("current event policy refuses new guest changes without revoking durable outcomes", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { request, send, calendar, db, ownerHeaders } = fixture;
+  const client = new BookerClient((path, init) =>
+    request(path, {
+      ...init,
+      headers: { Origin: fixture.env.PUBLIC_ORIGIN, ...init.headers },
+    })
+  );
+  let reads = 0;
+  const busy = calendar.busy.bind(calendar),
+    get = calendar.get.bind(calendar);
+  calendar.busy = async (...args) => {
+    reads++;
+    return busy(...args);
+  };
+  calendar.get = async (...args) => {
+    reads++;
+    return get(...args);
+  };
+  const configure = async (disableCancelling: boolean, disableRescheduling: boolean) => {
+    const next = { ...settings, event: { ...settings.event, disableCancelling, disableRescheduling } };
+    const response = await send("/api/owner", next, ownerHeaders, "PUT");
+    assert.equal(response.status, 200, await response.text());
+    assert.deepEqual((await client.publicData()).event, next.event);
+  };
+  const state = async (id: string) => ({
+    booking: await db.prepare("SELECT * FROM booking WHERE id=?").bind(id).first(),
+    reservations: (
+      await db.prepare("SELECT * FROM booking_reservation WHERE booking_id=? ORDER BY role").bind(id).all()
+    ).results,
+    event: structuredClone(calendar.events.get(id)),
+  });
+  for (const [index, action] of ["cancel", "reschedule"].entries()) {
+    assert.ok(action === "cancel" || action === "reschedule");
+    await configure(false, false);
+    const created = await client.create({
+      requestKey: crypto.randomUUID(),
+      start: fixture.now() + (10 + index * 24) * hour,
+      name: "Guest",
+      email: "guest@example.test",
+      timeZone: "UTC",
+    });
+    assert.ok(created.manageToken);
+    const access = { id: created.id, token: created.manageToken };
+    const change: ChangeRequest =
+      action === "cancel"
+        ? { action, requestKey: crypto.randomUUID(), version: created.version }
+        : {
+            action,
+            requestKey: crypto.randomUUID(),
+            version: created.version,
+            start: created.start + 2 * hour,
+          };
+    await configure(action === "cancel", action === "reschedule");
+    const before = await state(created.id),
+      beforeReads = reads,
+      writes = calendar.writes.length;
+    const denied = (error: unknown) =>
+      error instanceof ErrorWithCode && error.status === 409 && error.code === "invalid_slot";
+    await assert.rejects(client.change(access, change), denied);
+    assert.equal(reads, beforeReads, "Disabled changes must not read Calendar");
+    assert.equal(calendar.writes.length, writes);
+    assert.deepEqual(await state(created.id), before);
+    assert.equal(
+      await db
+        .prepare("SELECT outcome FROM booking_command WHERE request_key=?")
+        .bind(change.requestKey)
+        .first("outcome"),
+      "invalid_slot"
+    );
+    await configure(false, false);
+    await assert.rejects(client.change(access, change), denied);
+    assert.equal(reads, beforeReads, "Re-enabling cannot change a persisted refusal");
+    assert.deepEqual(await state(created.id), before);
+    const allowed = { ...change, requestKey: crypto.randomUUID() };
+    const result = await client.change(access, allowed);
+    assert.equal(result.status, action === "cancel" ? "cancelled" : "confirmed");
+    assert.equal(result.start, action === "cancel" ? created.start : created.start + 2 * hour);
+    const acceptedWrites = calendar.writes.length;
+    await configure(action === "cancel", action === "reschedule");
+    assert.deepEqual(await client.change(access, allowed), result);
+    assert.equal(calendar.writes.length, acceptedWrites, "Accepted replay survives a policy change");
+    await configure(action !== "cancel", action !== "reschedule");
+    const other = await client.create({
+      requestKey: crypto.randomUUID(),
+      start: fixture.now() + (18 + index * 24) * hour,
+      name: "Other guest",
+      email: "other@example.test",
+      timeZone: "UTC",
+    });
+    assert.ok(other.manageToken);
+    const otherChange: ChangeRequest =
+      action === "cancel"
+        ? { action, requestKey: crypto.randomUUID(), version: other.version }
+        : { action, requestKey: crypto.randomUUID(), version: other.version, start: other.start + 2 * hour };
+    const otherAccess = { id: other.id, token: other.manageToken };
+    calendar.cutAfter = action === "cancel" ? "delete" : "update";
+    assert.equal(
+      (await client.change(otherAccess, otherChange)).status,
+      "attention",
+      "The other policy must not prevent admission or provider dispatch"
+    );
+    const afterDispatch = calendar.writes.length;
+    await configure(true, true);
+    const recovered = await client.change(otherAccess, otherChange);
+    assert.equal(recovered.status, action === "cancel" ? "cancelled" : "confirmed");
+    assert.equal(recovered.start, action === "cancel" ? other.start : other.start + 2 * hour);
+    assert.equal(
+      calendar.writes.length,
+      afterDispatch,
+      "An accepted uncertain change reconciles after policy changes without another write"
+    );
+  }
+});
 
 test("migrated booking flow runs over HTTP with local D1 and fixture Calendar", async (t) => {
   const fixture = await apiFixture();

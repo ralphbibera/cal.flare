@@ -141,8 +141,10 @@ export class BookingService {
       ...(start === undefined ? {} : { start, end: start + original.end - original.start }),
       privateMetadata: { ...original.privateMetadata, operation: commandId },
     };
+    const disabled =
+      action === "cancel" ? this.settings.event.disableCancelling : this.settings.event.disableRescheduling;
     const precondition =
-      action === "cancel" && original.end < this.now()
+      disabled || (action === "cancel" && original.end < this.now())
         ? "invalid_slot"
         : action === "cancel" ||
             booking.pending_id ||
