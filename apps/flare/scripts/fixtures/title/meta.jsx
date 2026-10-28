@@ -1,5 +1,6 @@
 import { getDurationFormatted } from "@reference/duration";
 import { EventMetaBlock } from "@reference/meta";
+import { ScrollableWithGradients } from "@reference/scroll";
 import { createRoot } from "react-dom/client";
 import inter from "../../../../web/public/fonts/Inter-roman.var.woff2?url";
 import sprite from "../../../../web/public/icons/sprite.svg?raw";
@@ -18,6 +19,7 @@ document.head.append(fonts);
 createRoot(document.getElementById("root")).render(
   <MetaCases
     Block={EventMetaBlock}
+    Scrollable={ScrollableWithGradients}
     duration={(minutes) => getDurationFormatted(minutes, translateDuration)}
   />
 );

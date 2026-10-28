@@ -1,6 +1,9 @@
+import { useState } from "react";
+
 const image = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>')}`;
 
-export function MetaCases({ Block, duration }) {
+export function MetaCases({ Block, duration, Scrollable }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <main className="mx-auto w-full max-w-[280px] space-y-4 rounded-xl border border-default bg-default p-6 text-default">
       <Block data-testid="empty" />
@@ -43,6 +46,19 @@ export function MetaCases({ Block, duration }) {
           {duration(minutes)}
         </Block>
       ))}
+      <div>
+        <Scrollable className="text-sm" ariaLabel="Short description">
+          Short description
+        </Scrollable>
+        <Scrollable
+          className={`overflow-y-auto whitespace-pre-wrap pr-4 text-sm ${expanded ? "max-h-none" : "max-h-[120px]"}`}
+          ariaLabel="Long description">
+          {Array.from({ length: 30 }, (_, index) => `Description line ${index + 1}`).join("\n")}
+        </Scrollable>
+        <button type="button" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Collapse description" : "Expand description"}
+        </button>
+      </div>
     </main>
   );
 }
