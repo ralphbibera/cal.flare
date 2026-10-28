@@ -4813,5 +4813,10 @@
   "flare_working_hours_midnight": "An end time of 00:00 means midnight at the end of that day.",
   "flare_working_hours_empty": "No weekly hours. Date overrides still apply.",
   "flare_working_hours_javascript": "Enable JavaScript to edit weekly working hours.",
+  "flare_overrides_help": "A date with no intervals is unavailable. Added intervals replace that date's weekly hours. Dates and times use the saved schedule time zone.",
+  "flare_overrides_empty": "No date overrides. Weekly hours apply.",
+  "flare_overrides_invalid": "Check dates and intervals. Dates must be unique, and intervals must end after they start without overlapping.",
+  "flare_overrides_failed": "We couldn't save your date overrides. Your draft is still here. Try saving again.",
+  "flare_overrides_javascript": "Enable JavaScript to edit date overrides.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

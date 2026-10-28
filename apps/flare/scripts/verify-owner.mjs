@@ -63,6 +63,12 @@ export async function verifyOwner(browser, fixture) {
     assert.equal(page.url(), `${fixture.origin}/`);
     assert.ok((await page.textContent("body")).includes(email));
     await page.getByRole("heading", { name: "Bookings", exact: true }).waitFor();
+    assert.ok(
+      await page
+        .getByRole("form", { name: "Date overrides", exact: true })
+        .getByRole("button", { name: "Save", exact: true })
+        .isDisabled()
+    );
     assert.ok((await page.textContent("body")).includes("As soon as someone books a time with you"));
     const sessions = (await context.cookies(fixture.origin)).filter(
       (cookie) => cookie.name === "flare_session"
@@ -133,6 +139,7 @@ export async function verifyOwner(browser, fixture) {
   }
   await verifyEventEditor(browser, fixture);
   await verifyWeeklyEditor(browser, fixture);
+  await verifyOverridesEditor(browser, fixture);
 }
 
 async function verifyEventEditor(browser, fixture) {
@@ -622,6 +629,152 @@ async function verifyWeeklyEditor(browser, fixture) {
     await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
     console.log(
       "PASS working-hours editor, interval add/remove, overlap rejection, failed-save draft retention/retry, timezone and midnight reload, preserved overrides and public availability. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+async function verifyOverridesEditor(browser, fixture) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
+  try {
+    const owner = await fixture.login();
+    await context.addCookies([
+      { name: "flare_session", value: owner.Cookie.split("=")[1], url: fixture.origin },
+    ]);
+    const original = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    const now = new Date();
+    const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2);
+    const dates = [day, day + 86_400_000].map((value) => new Date(value).toISOString().slice(0, 10));
+    const configured = {
+      ...original,
+      event: { ...original.event, intervalMinutes: 30, noticeMinutes: 0 },
+      schedule: {
+        timeZone: "UTC",
+        rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 540, endMinute: 600 })),
+        overrides: [],
+      },
+    };
+    await fixture.read(await fixture.send("/api/owner", configured, owner, "PUT"));
+    const page = await context.newPage();
+    const errors = [],
+      requests = [];
+    let fail = true;
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (
+        message.type() === "error" &&
+        !(
+          message.location().url === `${fixture.origin}/api/owner/overrides` &&
+          message.text().startsWith("Failed to load resource: the server responded with a status of 503")
+        )
+      )
+        errors.push(message.text());
+    });
+    await page.route("**/api/owner/overrides", async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      requests.push(route.request().postDataJSON());
+      if (fail)
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: '{"error":"private-override-detail"}',
+        });
+      return route.continue();
+    });
+    await page.goto(fixture.origin);
+    const form = page.getByRole("form", { name: "Date overrides", exact: true });
+    const save = form.getByRole("button", { name: "Save", exact: true });
+    const addDate = form.getByRole("button", { name: "Add an override", exact: true });
+    const row = (index) => form.getByRole("group", { name: `Date ${index}`, exact: true });
+    await addDate.click();
+    await row(1).getByLabel("Date", { exact: true }).fill(dates[0]);
+    await addDate.click();
+    await row(2).getByLabel("Date", { exact: true }).fill(dates[0]);
+    await save.click();
+    await form.getByRole("alert").waitFor();
+    assert.equal(requests.length, 0, "Duplicate dates cannot reach HTTP");
+    await row(2).getByLabel("Date", { exact: true }).fill(dates[1]);
+    const range = (index) => row(2).getByRole("group", { name: `Interval ${index}`, exact: true });
+    const fill = async (index, start, end) => {
+      await range(index).getByLabel("Start time", { exact: true }).fill(start);
+      await range(index).getByLabel("End time", { exact: true }).fill(end);
+    };
+    await row(2).getByRole("button", { name: "Add", exact: true }).click();
+    await fill(1, "09:00", "10:00");
+    await row(2).getByRole("button", { name: "Add", exact: true }).click();
+    await fill(2, "09:30", "11:00");
+    await save.click();
+    await form.getByRole("alert").waitFor();
+    assert.equal(requests.length, 0, "Overlapping override hours cannot reach HTTP");
+    await fill(2, "10:30", "11:00");
+    await row(2).getByRole("button", { name: "Add", exact: true }).click();
+    await fill(3, "23:00", "00:00");
+    await save.click();
+    await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+    assert.equal(await range(3).getByLabel("End time").inputValue(), "00:00");
+    assert.ok(!(await page.content()).includes("private-override-detail"));
+    fail = false;
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    const overrides = [
+      { date: dates[0], ranges: [] },
+      {
+        date: dates[1],
+        ranges: [
+          { startMinute: 540, endMinute: 600 },
+          { startMinute: 630, endMinute: 660 },
+          { startMinute: 1380, endMinute: 1440 },
+        ],
+      },
+    ];
+    assert.deepEqual(requests, [{ overrides }, { overrides }]);
+    await page.reload();
+    assert.equal(await row(1).getByLabel("Date", { exact: true }).inputValue(), dates[0]);
+    assert.equal(await range(3).getByLabel("End time").inputValue(), "00:00");
+    const readSettings = async () =>
+      (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    assert.deepEqual(await readSettings(), {
+      ...configured,
+      schedule: { ...configured.schedule, overrides },
+    });
+    const slots = async (from) =>
+      (
+        await fixture.read(
+          await fixture.request(
+            `/api/slots?${new URLSearchParams({
+              from: new Date(from).toISOString(),
+              to: new Date(from + 86_400_000).toISOString(),
+              timeZone: "UTC",
+            })}`
+          )
+        )
+      ).slots;
+    const expected = (from, minutes) =>
+      minutes.map((minute) => ({ start: from + minute * 60_000, end: from + (minute + 30) * 60_000 }));
+    assert.deepEqual(await slots(day), []);
+    assert.deepEqual(await slots(day + 86_400_000), expected(day + 86_400_000, [540, 570, 630, 1380, 1410]));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await form.screenshot({
+      path: new URL("../.verification/date-overrides-mobile.png", import.meta.url).pathname,
+      animations: "disabled",
+    });
+    await range(3).getByRole("button", { name: "Remove", exact: true }).click();
+    await row(1).getByRole("button", { name: "Delete", exact: true }).click();
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    assert.deepEqual(await slots(day), expected(day, [540, 570]));
+    assert.deepEqual(await slots(day + 86_400_000), expected(day + 86_400_000, [540, 570, 630]));
+    await row(1).getByRole("button", { name: "Delete", exact: true }).click();
+    await save.click();
+    await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    assert.deepEqual(await readSettings(), configured);
+    assert.deepEqual(await slots(day + 86_400_000), expected(day + 86_400_000, [540, 570]));
+    assert.equal(fixture.google.writes.length, 0);
+    assert.deepEqual(errors, []);
+    await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
+    console.log(
+      "PASS native date overrides, closures/ranges, duplicate/overlap rejection, failed-save retry, midnight reload, removal and exact public slots. Built Worker/local D1; Google is mocked."
     );
   } finally {
     await context.close();

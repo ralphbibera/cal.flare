@@ -1,0 +1,223 @@
+import { useEffect, useRef, useState } from "react";
+import type { ScheduleOverrides } from "../domain/settings.ts";
+import { parseScheduleOverrides } from "../domain/settings.ts";
+import { Button } from "./Button.tsx";
+
+type Range = { id: string; start: string; end: string };
+type Row = { id: string; date: string; ranges: Range[] };
+type Labels = Record<
+  | "heading"
+  | "date"
+  | "interval"
+  | "start"
+  | "end"
+  | "addDate"
+  | "add"
+  | "remove"
+  | "delete"
+  | "save"
+  | "saved"
+  | "invalid"
+  | "failed"
+  | "help"
+  | "empty"
+  | "closed"
+  | "midnight"
+  | "javascript",
+  string
+>;
+function clock(minute: number): string {
+  return `${String(Math.floor((minute % 1440) / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+}
+function minutes(value: string): number {
+  const [hour, minute] = value.split(":");
+  return Number(hour) * 60 + Number(minute);
+}
+
+export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & { labels: Labels }) {
+  const [rows, setRows] = useState<Row[]>(() =>
+    overrides.map((override, index) => ({
+      id: `override-${index}`,
+      date: override.date,
+      ranges: override.ranges.map((range, i) => ({
+        id: `override-${index}-range-${i}`,
+        start: clock(range.startMinute),
+        end: clock(range.endMinute),
+      })),
+    }))
+  );
+  const nextId = useRef(0);
+  const [status, setStatus] = useState<"loading" | "idle" | "saving" | "saved" | "invalid" | "failed">(
+    "loading"
+  );
+  useEffect(() => setStatus("idle"), []);
+  function update(id: string, change: Partial<Pick<Row, "date" | "ranges">>): void {
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...change } : row)));
+    setStatus("idle");
+  }
+  const field =
+    "bg-default border-default text-default block w-full min-w-0 rounded-md border px-2 py-2 text-sm";
+  return (
+    <section className="border-subtle border-t pt-6">
+      <h2 id="owner-overrides-title" className="text-emphasis mb-4 font-semibold">
+        {labels.heading}
+      </h2>
+      <form
+        aria-labelledby="owner-overrides-title"
+        action="/api/owner/overrides"
+        method="post"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          let input: ScheduleOverrides;
+          try {
+            input = parseScheduleOverrides({
+              overrides: rows.map((row) => ({
+                date: row.date,
+                ranges: row.ranges.map((range) => ({
+                  startMinute: minutes(range.start),
+                  endMinute: minutes(range.end) === 0 ? 1440 : minutes(range.end),
+                })),
+              })),
+            });
+          } catch {
+            setStatus("invalid");
+            return;
+          }
+          setStatus("saving");
+          try {
+            const response = await fetch("/api/owner/overrides", {
+              method: "PATCH",
+              credentials: "same-origin",
+              cache: "no-store",
+              redirect: "error",
+              signal: AbortSignal.timeout(30_000),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(input),
+            });
+            const result: unknown = await response.json();
+            if (
+              !response.ok ||
+              typeof result !== "object" ||
+              result === null ||
+              !("saved" in result) ||
+              result.saved !== true
+            )
+              throw new Error();
+            setStatus("saved");
+          } catch {
+            setStatus("failed");
+          }
+        }}>
+        <fieldset disabled={status === "loading" || status === "saving"} className="min-w-0 space-y-4">
+          <p className="text-subtle text-sm">{labels.help}</p>
+          <p className="text-subtle text-sm">{labels.midnight}</p>
+          {rows.length === 0 && <p className="text-subtle text-sm">{labels.empty}</p>}
+          {rows.map((row, index) => (
+            <fieldset key={row.id} className="border-subtle min-w-0 space-y-3 rounded-md border p-3">
+              <legend className="px-1 text-sm">
+                {labels.date} {index + 1}
+              </legend>
+              <label className="block text-sm" htmlFor={`${row.id}-date`}>
+                {labels.date}
+              </label>
+              <input
+                id={`${row.id}-date`}
+                className={field}
+                type="date"
+                required
+                value={row.date}
+                onChange={(event) => update(row.id, { date: event.currentTarget.value })}
+              />
+              {row.ranges.length === 0 && <p className="text-subtle text-sm">{labels.closed}</p>}
+              {row.ranges.map((range, i) => (
+                <fieldset key={range.id} className="min-w-0 space-y-2">
+                  <legend className="text-sm">
+                    {labels.interval} {i + 1}
+                  </legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["start", "end"] as const).map((key) => (
+                      <div key={key} className="min-w-0">
+                        <label className="block text-sm" htmlFor={`${range.id}-${key}`}>
+                          {labels[key]}
+                        </label>
+                        <input
+                          id={`${range.id}-${key}`}
+                          className={field}
+                          type="time"
+                          required
+                          step={60}
+                          value={range[key]}
+                          onChange={(event) =>
+                            update(row.id, {
+                              ranges: row.ranges.map((item) =>
+                                item.id === range.id ? { ...item, [key]: event.currentTarget.value } : item
+                              ),
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    color="minimal"
+                    onClick={() =>
+                      update(row.id, { ranges: row.ranges.filter((item) => item.id !== range.id) })
+                    }>
+                    {labels.remove}
+                  </Button>
+                </fieldset>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  color="secondary"
+                  disabled={row.ranges.length >= 100}
+                  onClick={() => {
+                    const id = `override-new-${nextId.current++}`;
+                    update(row.id, { ranges: [...row.ranges, { id, start: "09:00", end: "17:00" }] });
+                  }}>
+                  {labels.add}
+                </Button>
+                <Button
+                  color="minimal"
+                  onClick={() => {
+                    setRows((current) => current.filter((item) => item.id !== row.id));
+                    setStatus("idle");
+                  }}>
+                  {labels.delete}
+                </Button>
+              </div>
+            </fieldset>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              color="secondary"
+              disabled={rows.length >= 366}
+              onClick={() => {
+                const id = `override-new-${nextId.current++}`;
+                setRows((current) => [...current, { id, date: "", ranges: [] }]);
+                setStatus("idle");
+              }}>
+              {labels.addDate}
+            </Button>
+            <Button type="submit" loading={status === "saving"}>
+              {labels.save}
+            </Button>
+          </div>
+        </fieldset>
+        {status === "saved" && (
+          <p role="status" className="mt-4 text-sm">
+            {labels.saved}
+          </p>
+        )}
+        {(status === "invalid" || status === "failed") && (
+          <p role="alert" className="mt-4 text-sm">
+            {labels[status]}
+          </p>
+        )}
+        <noscript>
+          <p className="mt-4 text-sm">{labels.javascript}</p>
+        </noscript>
+      </form>
+    </section>
+  );
+}
