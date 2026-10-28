@@ -4795,5 +4795,7 @@
   "flare_booking_copy_link": "Copy private booking link",
   "flare_booking_copy_error": "We couldn't copy this private link. Try again.",
   "flare_booking_link_access": "Anyone with this private link can view or change this booking.",
+  "flare_owner_signin_help": "Sign in with the Google account configured for this installation.",
+  "flare_owner_unavailable": "Organizer sign-in is currently unavailable. Please try again later.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
