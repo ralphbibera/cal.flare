@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { BookingRules } from "../domain/settings.ts";
 import { parseBookingRules } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
+import { Input } from "./Input.tsx";
+import { Label } from "./Label.tsx";
 
 type Labels = Record<
   keyof BookingRules | "heading" | "minutes" | "save" | "saved" | "invalid" | "failed" | "javascript",
@@ -77,12 +79,12 @@ export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules
             ] as const
           ).map(([key, min, max]) => (
             <div key={key}>
-              <label className="block text-sm" htmlFor={`booking-rules-${key}`}>
+              <Label htmlFor={`booking-rules-${key}`}>
                 {labels[key]} ({labels.minutes})
-              </label>
-              <input
+              </Label>
+              <Input
                 id={`booking-rules-${key}`}
-                className="bg-default border-default text-default mt-1 block w-full min-w-0 rounded-md border px-3 py-2 text-sm"
+                className="min-w-0"
                 name={key}
                 type="number"
                 defaultValue={rules[key]}

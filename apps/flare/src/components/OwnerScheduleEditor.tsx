@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { WeeklySchedule } from "../domain/settings.ts";
 import { parseWeeklySchedule } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
+import { Input } from "./Input.tsx";
+import { Label } from "./Label.tsx";
 
 type Row = { id: string; weekday: string; start: string; end: string };
 type Labels = Record<
@@ -108,9 +110,7 @@ export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySche
           }
         }}>
         <fieldset disabled={status === "loading" || status === "saving"} className="min-w-0 space-y-4">
-          <label className="block text-sm" htmlFor="schedule-time-zone">
-            {labels.zone}
-          </label>
+          <Label htmlFor="schedule-time-zone">{labels.zone}</Label>
           <select id="schedule-time-zone" className={field} name="timeZone" defaultValue={schedule.timeZone}>
             {zones.map((zone) => (
               <option key={zone} value={zone}>
@@ -125,9 +125,7 @@ export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySche
               <legend className="px-1 text-sm">
                 {labels.interval} {index + 1}
               </legend>
-              <label className="block text-sm" htmlFor={`${row.id}-day`}>
-                {labels.day}
-              </label>
+              <Label htmlFor={`${row.id}-day`}>{labels.day}</Label>
               <select
                 id={`${row.id}-day`}
                 className={field}
@@ -141,12 +139,10 @@ export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySche
               </select>
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label className="block text-sm" htmlFor={`${row.id}-start`}>
-                    {labels.start}
-                  </label>
-                  <input
+                  <Label htmlFor={`${row.id}-start`}>{labels.start}</Label>
+                  <Input
                     id={`${row.id}-start`}
-                    className={field}
+                    className="min-w-0"
                     type="time"
                     required
                     step={60}
@@ -155,12 +151,10 @@ export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySche
                   />
                 </div>
                 <div className="min-w-0">
-                  <label className="block text-sm" htmlFor={`${row.id}-end`}>
-                    {labels.end}
-                  </label>
-                  <input
+                  <Label htmlFor={`${row.id}-end`}>{labels.end}</Label>
+                  <Input
                     id={`${row.id}-end`}
-                    className={field}
+                    className="min-w-0"
                     type="time"
                     required
                     step={60}

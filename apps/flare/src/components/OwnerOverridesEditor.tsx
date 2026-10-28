@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ScheduleOverrides } from "../domain/settings.ts";
 import { parseScheduleOverrides } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
+import { Input } from "./Input.tsx";
+import { Label } from "./Label.tsx";
 
 type Range = { id: string; start: string; end: string };
 type Row = { id: string; date: string; ranges: Range[] };
@@ -55,8 +57,6 @@ export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & 
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...change } : row)));
     setStatus("idle");
   }
-  const field =
-    "bg-default border-default text-default block w-full min-w-0 rounded-md border px-2 py-2 text-sm";
   return (
     <section className="border-subtle border-t pt-6">
       <h2 id="owner-overrides-title" className="text-emphasis mb-4 font-semibold">
@@ -117,12 +117,10 @@ export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & 
               <legend className="px-1 text-sm">
                 {labels.date} {index + 1}
               </legend>
-              <label className="block text-sm" htmlFor={`${row.id}-date`}>
-                {labels.date}
-              </label>
-              <input
+              <Label htmlFor={`${row.id}-date`}>{labels.date}</Label>
+              <Input
                 id={`${row.id}-date`}
-                className={field}
+                className="min-w-0"
                 type="date"
                 required
                 value={row.date}
@@ -137,12 +135,10 @@ export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & 
                   <div className="grid grid-cols-2 gap-2">
                     {(["start", "end"] as const).map((key) => (
                       <div key={key} className="min-w-0">
-                        <label className="block text-sm" htmlFor={`${range.id}-${key}`}>
-                          {labels[key]}
-                        </label>
-                        <input
+                        <Label htmlFor={`${range.id}-${key}`}>{labels[key]}</Label>
+                        <Input
                           id={`${range.id}-${key}`}
-                          className={field}
+                          className="min-w-0"
                           type="time"
                           required
                           step={60}
