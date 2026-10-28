@@ -185,6 +185,10 @@ The selected day's background, text, and Today marker use the pinned default boo
 and are checked against the actual light-theme reference. Shared component fixtures retain
 their existing theme. Public dark-mode controls and custom branding remain separate work.
 The month view follows the pinned 1040px document width at a 1024px viewport.
+Selecting a day with sixteen slots preserves the reference's desktop card and scroll-container
+bounds. Mobile keeps its natural list height and scrolls to the time panel on the first explicit
+day selection per mounted calendar. Native focus scrolls the final desktop slot into
+view, and Enter retains that slot's UTC identity when opening the attendee form.
 Full-page pixels, other layouts, custom avatars, and organizer profile links remain separate work.
 
 Stop the reference server with Ctrl-C and stop its database with

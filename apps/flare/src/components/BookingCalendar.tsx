@@ -1,7 +1,7 @@
 import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BookingAccess } from "../client/bookings.ts";
 import { useCalendarAvailability } from "../client/use-calendar-availability.ts";
 import { Button } from "./Button.tsx";
@@ -43,6 +43,8 @@ function BookingCalendar({
 }: BookingCalendarProps) {
   const [month, setMonth] = useState(() => dayjs().format("YYYY-MM"));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const timeList = useRef<HTMLDivElement>(null);
+  const scrolledToTimes = useRef(false);
   const { result, refresh } = useCalendarAvailability(month, timeZone, access);
   const days = result.status === "ready" ? result.days : {};
   const times = selectedDate ? (days[selectedDate] ?? []) : [];
@@ -73,6 +75,12 @@ function BookingCalendar({
           weekStart={weekStart}
           isLoading={result.status === "loading"}
           skipAutomaticSelection={result.status !== "ready"}
+          scrollToTimeSlots={() => {
+            if (!matchMedia("(max-width: 768px)").matches || scrolledToTimes.current || !timeList.current)
+              return;
+            timeList.current.scrollIntoView({ behavior: "smooth" });
+            scrolledToTimes.current = true;
+          }}
         />
         {result.status === "loading" && (
           <p role="status" className="sr-only">
@@ -90,7 +98,9 @@ function BookingCalendar({
         {result.status === "ready" && Object.keys(days).length === 0 && <p role="status">{labels.empty}</p>}
       </div>
       {(result.status === "loading" || (result.status === "ready" && times.length > 0)) && (
-        <div className="border-subtle rtl:border-default flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 rtl:border-r ltr:md:border-l">
+        <div
+          ref={timeList}
+          className="border-subtle rtl:border-default flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 rtl:border-r [@media(max-width:768px)]:sticky [@media(max-width:768px)]:top-0 min-[769px]:w-[var(--booker-timeslots-width,100%)] min-[769px]:overflow-hidden ltr:md:border-l">
           {result.status === "loading" ? (
             <div aria-hidden="true">
               <div className="flex">
@@ -102,21 +112,27 @@ function BookingCalendar({
             </div>
           ) : (
             <>
-              <TimeSlotsHeader
-                weekday={new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
-                  dayjs(selectedDate).toDate()
-                )}
-                day={dayjs(selectedDate).format("DD")}
-                isToday={dayjs().isSame(dayjs(selectedDate), "day")}
-                timeFormatToggle={timeFormatToggle}
-              />
-              <TimeSlots
-                slots={times}
-                timeZone={timeZone}
-                timeFormat={timeFormat}
-                onSelect={onTimeSelect}
-                selectedSlots={selectedTime ? [selectedTime] : []}
-              />
+              <div className="flex">
+                <TimeSlotsHeader
+                  weekday={new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
+                    dayjs(selectedDate).toDate()
+                  )}
+                  day={dayjs(selectedDate).format("DD")}
+                  isToday={dayjs().isSame(dayjs(selectedDate), "day")}
+                  timeFormatToggle={timeFormatToggle}
+                />
+              </div>
+              <div className="no-scrollbar flex h-full w-full flex-row gap-4 min-[769px]:block min-[769px]:h-[400px] min-[769px]:grow min-[769px]:overflow-auto">
+                <div className="no-scrollbar overflow-x-hidden! h-full w-full overflow-y-auto">
+                  <TimeSlots
+                    slots={times}
+                    timeZone={timeZone}
+                    timeFormat={timeFormat}
+                    onSelect={onTimeSelect}
+                    selectedSlots={selectedTime ? [selectedTime] : []}
+                  />
+                </div>
+              </div>
             </>
           )}
         </div>

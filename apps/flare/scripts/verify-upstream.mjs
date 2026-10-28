@@ -63,6 +63,27 @@ async function measureTitle(page) {
   });
 }
 
+async function measureTimeList(page) {
+  return page
+    .getByTestId("time")
+    .first()
+    .evaluate((button) => {
+      for (let node = button.parentElement; node; node = node.parentElement) {
+        if (!["auto", "scroll"].includes(getComputedStyle(node).overflowY)) continue;
+        const bounds = node.getBoundingClientRect();
+        return {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          clientHeight: node.clientHeight,
+          scrollHeight: node.scrollHeight,
+        };
+      }
+      throw new Error("Time list has no scroll container");
+    });
+}
+
 async function ready(page, selector) {
   await page.locator(selector).first().waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -169,6 +190,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         await ready(page, '[data-testid="time"]');
         assert.equal(await page.getByTestId("time").count(), 16);
         assert.equal(await page.getByTestId("time").first().textContent(), "9:00am");
+        const fullDay = { frame: await measureFrame(page), timeList: await measureTimeList(page) };
         const reserved = page.waitForResponse(
           (item) => new URL(item.url()).pathname === "/api/trpc/slots/reserveSlot"
         );
@@ -199,7 +221,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.deepEqual(errors, []);
         assert.deepEqual(failures, []);
         assert.deepEqual(consoleErrors, []);
-        captures.push({ name, calendar, form, frame, viewport, selectedDay, font, title });
+        captures.push({ name, calendar, form, frame, viewport, selectedDay, font, title, fullDay });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
         try {
@@ -299,6 +321,34 @@ async function verifyFlareFrames(browser, captures, artifacts) {
           fullPage: true,
           animations: "disabled",
         });
+        await page.getByRole("button", { name: "10", exact: true }).click();
+        await ready(page, '[data-testid="time"]');
+        assert.equal(await page.getByTestId("time").count(), 16);
+        assert.deepEqual(await measureFrame(page), reference.fullDay.frame, `${name} full-day frame`);
+        assert.deepEqual(await measureTimeList(page), reference.fullDay.timeList, `${name} time scroller`);
+        const last = page.getByTestId("time").last();
+        await last.focus();
+        assert.ok(await last.evaluate((button) => document.activeElement === button));
+        if (name === "desktop") {
+          assert.ok(
+            await last.evaluate((button) => {
+              for (let node = button.parentElement; node; node = node.parentElement) {
+                if (!["auto", "scroll"].includes(getComputedStyle(node).overflowY)) continue;
+                const viewport = node.getBoundingClientRect();
+                const bounds = button.getBoundingClientRect();
+                return node.scrollTop > 0 && bounds.top >= viewport.top && bounds.bottom <= viewport.bottom;
+              }
+              return false;
+            }),
+            "Native focus scrolls the final slot into the desktop time list"
+          );
+        }
+        await last.press("Enter");
+        await page.getByLabel("Name", { exact: true }).waitFor();
+        assert.equal(
+          await page.getByTestId("event-meta").locator("time").getAttribute("datetime"),
+          "2030-01-10T16:30:00.000Z"
+        );
         assert.deepEqual(errors, []);
       } finally {
         await context.close();
