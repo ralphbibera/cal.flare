@@ -7,6 +7,125 @@ import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
+test("booking rule updates preserve concurrent settings and change slot spacing, buffers and notice", async (t) => {
+  const fixture = await apiFixture();
+  t.after(fixture.close);
+  const { send, request, db, ownerHeaders, calendar } = fixture;
+  const rules = {
+    intervalMinutes: 60,
+    beforeMinutes: 15,
+    afterMinutes: 20,
+    noticeMinutes: 0,
+    disableCancelling: true,
+    disableRescheduling: false,
+  };
+  const patch = (value: unknown) => send("/api/owner/booking-rules", value, ownerHeaders, "PATCH");
+  const row = () =>
+    db
+      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
+      .first<{ json: string; version: number }>();
+  const before = await row();
+  assert.equal((await send("/api/owner/booking-rules", rules, {}, "PATCH")).status, 401);
+  assert.equal(
+    (
+      await send(
+        "/api/owner/booking-rules",
+        rules,
+        { ...ownerHeaders, Origin: "https://foreign.example" },
+        "PATCH"
+      )
+    ).status,
+    403
+  );
+  for (const value of [
+    null,
+    { ...rules, durationMinutes: 45 },
+    ...Object.keys(rules).map((key) =>
+      Object.fromEntries(Object.entries(rules).filter(([name]) => name !== key))
+    ),
+    ...["disableCancelling", "disableRescheduling"].flatMap((key) =>
+      [null, "false", 0].map((value) => ({ ...rules, [key]: value }))
+    ),
+    ...(
+      [
+        ["intervalMinutes", 5, 240],
+        ["beforeMinutes", 0, 120],
+        ["afterMinutes", 0, 120],
+        ["noticeMinutes", 0, 43200],
+      ] as const
+    ).flatMap(([key, min, max]) =>
+      [min - 1, max + 1, 30.5, "30"].map((value) => ({ ...rules, [key]: value }))
+    ),
+  ]) {
+    const response = await patch(value);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "INVALID_SETTINGS" });
+  }
+  assert.deepEqual(await row(), before);
+  const details = {
+    slug: "rules-event",
+    title: "Retained\ud800",
+    description: "Keep\udc00",
+    durationMinutes: 30,
+  };
+  const weekly = {
+    timeZone: "UTC",
+    rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 0, endMinute: 1440 })),
+  };
+  const overrides = [{ date: "2030-01-04", ranges: [] }];
+  const responses = await Promise.all([
+    patch(rules),
+    send("/api/owner", details, ownerHeaders, "PATCH"),
+    send("/api/owner/schedule", weekly, ownerHeaders, "PATCH"),
+    send("/api/owner/overrides", { overrides }, ownerHeaders, "PATCH"),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [200, 200, 200, 200]
+  );
+  const expected = parseSettings({
+    ...settings,
+    event: { ...settings.event, ...details, ...rules },
+    schedule: { ...weekly, overrides },
+  });
+  assert.deepEqual(
+    record(await (await request("/api/owner", { headers: ownerHeaders })).json()).settings,
+    expected
+  );
+  assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
+  const stored = await row();
+  assert.ok(stored && before);
+  assert.equal(stored.version, before.version + 4);
+  assert.equal(stored.json, JSON.stringify(expected));
+  const from = fixture.now() + 8 * hour;
+  calendar.busy = async () => [{ start: fixture.now() + 9 * hour, end: fixture.now() + 10 * hour }];
+  const slots = async () =>
+    record(
+      await (
+        await request(
+          `/api/slots?${new URLSearchParams({ from: new Date(from).toISOString(), to: new Date(from + 4 * hour).toISOString(), timeZone: "UTC" })}`
+        )
+      ).json()
+    ).slots;
+  assert.deepEqual(
+    await slots(),
+    [8, 11].map((hours) => ({
+      start: fixture.now() + hours * hour,
+      end: fixture.now() + hours * hour + 30 * 60_000,
+    }))
+  );
+  assert.equal((await patch({ ...rules, noticeMinutes: 43200 })).status, 200);
+  assert.deepEqual(await slots(), []);
+  await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
+  assert.equal((await patch(rules)).status, 200);
+  assert.equal(
+    (await row())?.json,
+    JSON.stringify({ ...defaultSettings, event: { ...defaultSettings.event, ...rules } })
+  );
+  assert.equal((await row())?.version, 1);
+  assert.equal(calendar.writes.length, 0);
+});
+
 test("dated override updates preserve independent settings and reject invalid or unauthorized input", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);
@@ -405,7 +524,19 @@ test("current event policy refuses new guest changes without revoking durable ou
   };
   const configure = async (disableCancelling: boolean, disableRescheduling: boolean) => {
     const next = { ...settings, event: { ...settings.event, disableCancelling, disableRescheduling } };
-    const response = await send("/api/owner", next, ownerHeaders, "PUT");
+    const response = await send(
+      "/api/owner/booking-rules",
+      {
+        intervalMinutes: settings.event.intervalMinutes,
+        beforeMinutes: settings.event.beforeMinutes,
+        afterMinutes: settings.event.afterMinutes,
+        noticeMinutes: settings.event.noticeMinutes,
+        disableCancelling,
+        disableRescheduling,
+      },
+      ownerHeaders,
+      "PATCH"
+    );
     assert.equal(response.status, 200, await response.text());
     assert.deepEqual((await client.publicData()).event, next.event);
   };

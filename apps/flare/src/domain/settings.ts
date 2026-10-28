@@ -13,6 +13,17 @@ type EventSettings = {
 
 type MinuteRange = { startMinute: number; endMinute: number };
 type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes">;
+type BookingRules = Required<
+  Pick<
+    EventSettings,
+    | "intervalMinutes"
+    | "beforeMinutes"
+    | "afterMinutes"
+    | "noticeMinutes"
+    | "disableCancelling"
+    | "disableRescheduling"
+  >
+>;
 type Settings = {
   event: EventSettings;
   schedule: {
@@ -202,9 +213,52 @@ function parseScheduleOverrides(input: unknown): ScheduleOverrides {
   return { overrides };
 }
 
-export type { EventDetails, EventSettings, ScheduleOverrides, Settings, WeeklySchedule };
+function parseBookingRules(input: unknown): BookingRules {
+  const value = object(input, "booking rules");
+  const { disableCancelling, disableRescheduling } = value;
+  if (
+    Object.keys(value).some(
+      (key) =>
+        ![
+          "intervalMinutes",
+          "beforeMinutes",
+          "afterMinutes",
+          "noticeMinutes",
+          "disableCancelling",
+          "disableRescheduling",
+        ].includes(key)
+    ) ||
+    typeof disableCancelling !== "boolean" ||
+    typeof disableRescheduling !== "boolean"
+  ) {
+    throw new SettingsError("Booking rules require timing fields and explicit policy booleans");
+  }
+  const event = parseSettings({
+    ...defaultSettings,
+    event: {
+      ...defaultSettings.event,
+      intervalMinutes: value.intervalMinutes,
+      beforeMinutes: value.beforeMinutes,
+      afterMinutes: value.afterMinutes,
+      noticeMinutes: value.noticeMinutes,
+      disableCancelling,
+      disableRescheduling,
+    },
+  }).event;
+  return {
+    intervalMinutes: event.intervalMinutes,
+    beforeMinutes: event.beforeMinutes,
+    afterMinutes: event.afterMinutes,
+    noticeMinutes: event.noticeMinutes,
+    disableCancelling,
+    disableRescheduling,
+  };
+}
+
+export type { BookingRules, EventDetails, EventSettings, ScheduleOverrides, Settings, WeeklySchedule };
 export {
   defaultSettings,
+  parseBookingRules,
   parseEventDetails,
   parseScheduleOverrides,
   parseSettings,

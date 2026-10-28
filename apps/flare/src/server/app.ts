@@ -2,6 +2,7 @@ import common from "../../../../packages/i18n/locales/en/common.json" with { typ
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
 import {
+  parseBookingRules,
   parseEventDetails,
   parseScheduleOverrides,
   parseSettings,
@@ -16,6 +17,7 @@ import { bearer, body, ErrorWithCode, json, record, sameOrigin } from "./http.ts
 import { hash } from "./secrets.ts";
 import {
   getSettings,
+  saveBookingRules,
   saveEventDetails,
   saveScheduleOverrides,
   saveSettings,
@@ -143,6 +145,12 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     await owner(env, request);
     await getSettings(env.DB);
     await saveScheduleOverrides(env.DB, parseScheduleOverrides(await body(request)));
+    return json({ saved: true });
+  }
+  if (path === "/api/owner/booking-rules" && method === "PATCH") {
+    await owner(env, request);
+    await getSettings(env.DB);
+    await saveBookingRules(env.DB, parseBookingRules(await body(request)));
     return json({ saved: true });
   }
 
