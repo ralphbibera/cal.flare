@@ -39,6 +39,7 @@ From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes
 with uncertain provider outcomes expose status recovery instead of another mutation.
 Shareable management links and cancellation reasons remain migration work.
+Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
 See [local configuration](SETUP.md) for the operator-owned OAuth requirements.
 
 ## Verify the focused port

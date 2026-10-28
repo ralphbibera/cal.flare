@@ -142,9 +142,14 @@ export class BookingService {
       privateMetadata: { ...original.privateMetadata, operation: commandId },
     };
     const precondition =
-      action === "cancel" || booking.pending_id || booking.version !== version || booking.state !== "active"
-        ? "accepted"
-        : await this.scheduler().condition(desired, id);
+      action === "cancel" && original.end < this.now()
+        ? "invalid_slot"
+        : action === "cancel" ||
+            booking.pending_id ||
+            booking.version !== version ||
+            booking.state !== "active"
+          ? "accepted"
+          : await this.scheduler().condition(desired, id);
     return this.admit({
       requestKey,
       payload,
