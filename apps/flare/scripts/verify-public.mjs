@@ -146,7 +146,8 @@ export async function verifyPublic(browser) {
       await page.evaluate(async () => {
         await document.fonts.ready;
         return (
-          document.fonts.check("14px Inter") && getComputedStyle(document.body).fontFamily.includes("Inter")
+          document.fonts.check('14px "Inter Booking"') &&
+          getComputedStyle(document.body).fontFamily.startsWith('"Inter Booking"')
         );
       })
     );

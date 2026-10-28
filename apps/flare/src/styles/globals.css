@@ -13,6 +13,17 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Inter Booking";
+  src: url("/fonts/Inter-booking-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range:
+    U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme inline {
   --font-sans: Inter, system-ui, sans-serif;
   --color-default: var(--cal-bg);
@@ -51,6 +62,10 @@
   --cal-brand-subtle: #969696;
   --cal-brand-text: #000;
   --cal-brand-accent: #000;
+}
+
+.public-booking body {
+  font-family: "Inter Booking", Inter, system-ui, sans-serif;
 }
 
 body {
