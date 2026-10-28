@@ -28,8 +28,8 @@ const fallback = status === 404 ? common.flare_event_not_found : common.flare_ev
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{booking ? `${booking.event.title} | ${booking.organizer.name}` : fallback}</title>
   </head>
-  <body class="bg-default text-default min-h-screen font-sans">
-    {booking ? <PublicBooker client:load organizer={booking.organizer} event={booking.event} labels={labels} /> : <main class="mx-auto max-w-xl p-6"><h1>{fallback}</h1></main>}
+  <body class="bg-subtle dark:bg-default text-default min-h-screen font-sans">
+    {booking ? <main class="flex h-full min-h-dvh items-center justify-center"><PublicBooker client:load organizer={booking.organizer} event={booking.event} labels={labels} /></main> : <main class="mx-auto max-w-xl p-6"><h1>{fallback}</h1></main>}
     <noscript><p>{common.flare_javascript_required}</p></noscript>
   </body>
 </html>

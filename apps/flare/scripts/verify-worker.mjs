@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -50,7 +50,7 @@ async function loginWithFixture(request, google, read) {
   return { Cookie: session.split(";")[0] };
 }
 
-async function createWorkerFixture({ port = 8794 } = {}) {
+async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   const temporary = await mkdtemp(join(tmpdir(), "calflare-worker-"));
   const google = createGoogleFixture(origin);
@@ -93,6 +93,34 @@ async function createWorkerFixture({ port = 8794 } = {}) {
       .filter((name) => name.endsWith(".mjs") || name.endsWith(".js"))
       .map((name) => ({ type: "ESModule", path: join(serverRoot, name) }));
     modules.sort((left, right) => Number(right.path === main) - Number(left.path === main));
+    if (fixedTime !== undefined) {
+      assert.ok(Number.isSafeInteger(fixedTime), "Use a fixed timestamp for the reference fixture");
+      modules.unshift({
+        type: "ESModule",
+        path: join(serverRoot, "fixture-clock.mjs"),
+        contents: `
+          const NativeDate = Date;
+          const nativeTimeout = setTimeout;
+          const nativePerformance = performance;
+          const time = ${JSON.stringify(fixedTime)};
+          globalThis.Date = new Proxy(NativeDate, {
+            apply() { return new NativeDate(time).toString(); },
+            construct(target, args, newTarget) {
+              return Reflect.construct(target, args.length ? args : [time], newTarget);
+            },
+            get(target, key, receiver) {
+              return key === "now" ? () => time : Reflect.get(target, key, receiver);
+            },
+          });
+          if (Date.now() !== time || new Date().getTime() !== time ||
+              setTimeout !== nativeTimeout || performance !== nativePerformance) {
+            throw new Error("Reference clock changed native timers");
+          }
+          const { default: worker } = await import(${JSON.stringify(`./${basename(main)}`)});
+          export default worker;
+        `,
+      });
+    }
     const bindings = {
       PUBLIC_ORIGIN: origin,
       GOOGLE_OWNER_EMAIL: "organizer@example.test",

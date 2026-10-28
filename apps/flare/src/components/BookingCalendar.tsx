@@ -56,7 +56,7 @@ function BookingCalendar({
   return (
     <Provider>
       <div
-        className="md:border-subtle -ml-px h-full shrink px-5 py-3 md:border-l lg:w-(--booker-main-width)"
+        className="h-full shrink px-5 py-3 min-[769px]:border-subtle min-[769px]:-ml-px min-[769px]:border-l lg:w-(--booker-main-width)"
         aria-busy={result.status === "loading"}>
         <MonthPicker
           locale={locale}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import avatar from "../../../web/public/avatar.svg?url";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
 import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
 import { BookingCalendar } from "./BookingCalendar.tsx";
@@ -25,6 +26,8 @@ type Stage =
   | { kind: "receipt"; receipt: CreationReceipt; booking?: Booking };
 const client = new BookerClient();
 const attempts = () => new CreateAttempts({ storage: sessionStorage, scope: location.pathname });
+const avatarClass =
+  "bg-emphasis relative inline-flex aspect-square items-center justify-center border align-top w-6 h-6 min-w-6 min-h-6 rounded-full";
 
 export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [timeZone, setTimeZone] = useState("UTC");
@@ -133,12 +136,19 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     : undefined;
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
   return (
-    <main className="main text-default my-20 flex min-h-full w-full flex-col items-center overflow-visible">
+    <div className="main text-default flex min-h-full w-full flex-col items-center overflow-visible min-[769px]:my-20">
       <div
         data-testid="booker-container"
-        className="bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start rounded-md border [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] md:w-auto md:grid-cols-[var(--booker-meta-width)_minmax(0,var(--booker-main-width))_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px] [&>[aria-busy]]:w-auto">
+        className="bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]">
         <section className="relative z-10 p-6" data-testid="event-meta">
-          <p className="text-subtle text-sm font-medium">{organizer.name}</p>
+          <ul className="border-muted flex items-center">
+            <li className="-mr-1 inline-block">
+              <span className={`${avatarClass} border-subtle overflow-hidden`}>
+                <img src={avatar} alt={organizer.name} className={`${avatarClass} border-default`} />
+              </span>
+            </li>
+          </ul>
+          <p className="text-subtle mt-2 text-sm font-semibold">{organizer.name}</p>
           <EventTitle className="my-2">{event.title}</EventTitle>
           {event.description && (
             <EventMetaBlock contentClassName="mb-8">
@@ -155,7 +165,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
               )}
             </EventMetaBlock>
-            <EventMetaBlock icon="globe" contentClassName="min-w-0 flex-1">
+            <EventMetaBlock icon="globe" contentClassName="-mt-[2px] h-6 min-w-0 flex-1">
               <label htmlFor="booker-time-zone" className="sr-only">
                 {labels.timeZone}
               </label>
@@ -283,6 +293,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           </section>
         )}
       </div>
-    </main>
+      <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />
+    </div>
   );
 }
