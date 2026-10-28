@@ -12,6 +12,7 @@ type EventSettings = {
 };
 
 type MinuteRange = { startMinute: number; endMinute: number };
+type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes">;
 type Settings = {
   event: EventSettings;
   schedule: {
@@ -157,5 +158,23 @@ const defaultSettings: Settings = {
   },
 };
 
-export type { EventSettings, Settings };
-export { defaultSettings, parseSettings, SettingsError };
+function parseEventDetails(input: unknown): EventDetails {
+  const value = object(input, "event details");
+  if (Object.keys(value).some((key) => !["slug", "title", "description", "durationMinutes"].includes(key))) {
+    throw new SettingsError("Event details contain an unsupported field");
+  }
+  const { slug, title, description, durationMinutes } = parseSettings({
+    ...defaultSettings,
+    event: {
+      ...defaultSettings.event,
+      slug: value.slug,
+      title: value.title,
+      description: value.description,
+      durationMinutes: value.durationMinutes,
+    },
+  }).event;
+  return { slug, title, description, durationMinutes };
+}
+
+export type { EventDetails, EventSettings, Settings };
+export { defaultSettings, parseEventDetails, parseSettings, SettingsError };

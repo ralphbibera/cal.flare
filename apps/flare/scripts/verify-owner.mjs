@@ -129,4 +129,89 @@ export async function verifyOwner(browser, fixture) {
   } finally {
     await context.close();
   }
+  await verifyEventEditor(browser, fixture);
+}
+
+async function verifyEventEditor(browser, fixture) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const owner = await fixture.login();
+    await context.addCookies([
+      { name: "flare_session", value: owner.Cookie.split("=")[1], url: fixture.origin },
+    ]);
+    const original = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+    const page = await context.newPage();
+    const errors = [],
+      attempts = [];
+    let fail = true;
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error" && !message.text().includes("503 (Service Unavailable)"))
+        errors.push(message.text());
+    });
+    await page.route("**/api/owner", async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      attempts.push(route.request().postDataJSON());
+      if (fail)
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: '{"error":"private-fixture-detail"}',
+        });
+      return route.continue();
+    });
+    await page.goto(fixture.origin);
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await save.waitFor();
+    await page.getByLabel("Slug", { exact: true }).fill("api");
+    await save.click();
+    await page.getByRole("alert").waitFor();
+    assert.equal(attempts.length, 0);
+    const details = {
+      title: "Edited organizer event",
+      slug: "edited-event",
+      description: "A saved description",
+      durationMinutes: 45,
+    };
+    await page.getByLabel("Title", { exact: true }).fill(details.title);
+    await page.getByLabel("Slug", { exact: true }).fill(details.slug);
+    await page.getByLabel("Description", { exact: true }).fill(details.description);
+    await page.getByLabel("Duration (Minutes)", { exact: true }).fill(String(details.durationMinutes));
+    await save.click();
+    await page.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+    assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), details.title);
+    assert.ok(!(await page.content()).includes("private-fixture-detail"));
+    assert.equal(
+      await page.getByRole("link", { name: "Preview", exact: true }).getAttribute("href"),
+      `/${original.event.slug}`
+    );
+    fail = false;
+    await save.click();
+    await page.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+    assert.deepEqual(attempts, [details, details]);
+    await page.reload();
+    assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), details.title);
+    assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), details.description);
+    assert.equal(await page.getByLabel("Duration (Minutes)", { exact: true }).inputValue(), "45");
+    assert.equal((await fixture.request(`/${original.event.slug}`)).status, 404);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({
+      path: new URL("../.verification/owner-editor-mobile.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.getByRole("link", { name: "Preview", exact: true }).click();
+    await page.getByTestId("event-title").waitFor();
+    assert.equal(await page.getByTestId("event-title").textContent(), details.title);
+    assert.ok((await page.getByTestId("event-meta").textContent()).includes("45"));
+    assert.ok((await page.getByTestId("event-meta").textContent()).includes(details.description));
+    assert.equal(fixture.google.writes.length, 0);
+    assert.deepEqual(errors, []);
+    assert.equal((await fixture.send("/api/owner", original, owner, "PUT")).status, 200);
+    console.log(
+      "PASS organizer details save, validation, failed-save draft retention, explicit retry, reload and public preview. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    await context.close();
+  }
 }
