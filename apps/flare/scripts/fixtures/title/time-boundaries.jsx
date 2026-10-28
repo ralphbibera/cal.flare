@@ -18,6 +18,7 @@ export function getQueryParam(key) {
 export const getPaymentAppData = unavailable;
 export const useIsPlatform = unavailable;
 export const CalendarX2Icon = unavailable;
+export const InfoIcon = unavailable;
 export const OutOfOfficeInSlots = unavailable;
 export const SeatsAvailabilityText = unavailable;
 export const Root = unavailable;

@@ -59,6 +59,9 @@ await promisify(execFile)(
     "packages/ui/components/icon/icon-names.ts",
     "apps/web/public/icons/sprite.svg",
     "packages/ui/components/button/Button.tsx",
+    "packages/ui/components/form/inputs/TextField.tsx",
+    "packages/ui/components/form/inputs/types.d.ts",
+    "packages/ui/components/form/inputs/Label.tsx",
     "packages/features/calendars/components/DatePicker.tsx",
     "packages/dayjs",
     "packages/ui/components/tooltip/Tooltip.tsx",
@@ -152,6 +155,11 @@ const server = await createServer({
       "@reference/button": fileURLToPath(
         new URL("../../../packages/ui/components/button/Button.tsx", import.meta.url)
       ),
+      "@reference/input": fileURLToPath(
+        new URL("../../../packages/ui/components/form/inputs/TextField.tsx", import.meta.url)
+      ),
+      "../../icon": join(root, "input-boundaries.jsx"),
+      "./HintOrErrors": join(root, "input-boundaries.jsx"),
       "@reference/tooltip": fileURLToPath(
         new URL("../../../packages/ui/components/tooltip/Tooltip.tsx", import.meta.url)
       ),
@@ -217,6 +225,93 @@ try {
   browser = await chromium.launch();
   await verifyCalendar(browser, origin);
   await verifyPublic(browser);
+  for (const [name, viewport] of [
+    ["desktop", { width: 1440, height: 900 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    for (const theme of ["light", "dark"]) {
+      const captures = { rest: [], focus: [], hover: [] };
+      for (const version of ["reference", "candidate"]) {
+        const context = await browser.newContext({ viewport, locale: "en-US" });
+        try {
+          const page = await context.newPage();
+          const errors = [];
+          page.on("pageerror", (error) => errors.push(error.message));
+          page.on("console", (message) => {
+            if (message.type() === "error") errors.push(message.text());
+          });
+          await page.goto(
+            `${origin}/inputs.html?theme=${theme}${version === "candidate" ? "&candidate" : ""}`
+          );
+          const field = (label) => page.getByLabel(label, { exact: true });
+          await field("Name").waitFor();
+          await page.evaluate(() => document.fonts.ready);
+          await page.addStyleTag({
+            content:
+              "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }",
+          });
+          assert.equal(await page.locator("main input").count(), 8);
+          assert.equal(await field("Small").evaluate((node) => node.getBoundingClientRect().height), 28);
+          assert.equal(await field("Name").evaluate((node) => node.getBoundingClientRect().height), 32);
+          assert.deepEqual(
+            await field("Override").evaluate((node) => [
+              node.getBoundingClientRect().width,
+              node.getBoundingClientRect().height,
+              getComputedStyle(node).borderRadius,
+            ]),
+            [160, 40, "0px"]
+          );
+          assert.ok(!(await field("Narrow").getAttribute("class")).split(" ").includes("w-full"));
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          for (const state of ["rest", "focus", "hover"]) {
+            if (state === "focus") await field("Name").focus();
+            if (state === "hover") {
+              await field("Name").blur();
+              await field("Small").hover();
+            }
+            captures[state].push([
+              ...(await page.screenshot({
+                path: fileURLToPath(new URL(`${version}-input-${name}-${theme}-${state}.png`, artifacts)),
+                fullPage: true,
+              })),
+            ]);
+            if (version === "candidate")
+              assert.equal(
+                await page.evaluate(differentPixels, captures[state]),
+                0,
+                `${name}/${theme}/${state} input pixels`
+              );
+          }
+          await page.getByRole("button", { name: "Focus name", exact: true }).click();
+          assert.equal(await page.getByLabel("Ref target").textContent(), "INPUT");
+          assert.ok(await field("Name").evaluate((node) => document.activeElement === node));
+          await field("Name").fill("Grace");
+          assert.equal(await page.getByLabel("Name value").textContent(), "Grace");
+          assert.ok(await field("Disabled").isDisabled());
+          assert.ok(!(await field("Read only").isEditable()));
+          await field("Read only").focus();
+          await field("Read only").press("x");
+          assert.equal(await field("Read only").inputValue(), "Read only");
+          await field("Count").fill("0");
+          assert.equal(await field("Count").evaluate((node) => node.checkValidity()), false);
+          await field("Count").fill("5");
+          assert.equal(await field("Count").evaluate((node) => node.checkValidity()), true);
+          await field("Email").fill("invalid");
+          await page.getByRole("button", { name: "Submit", exact: true }).click();
+          assert.equal(await page.getByLabel("Submissions").textContent(), "0");
+          await field("Email").fill("guest@example.test");
+          await page.getByRole("button", { name: "Submit", exact: true }).click();
+          assert.equal(await page.getByLabel("Submissions").textContent(), "1");
+          assert.deepEqual(errors, []);
+        } finally {
+          await context.close();
+        }
+      }
+    }
+  }
+  console.log(
+    "PASS native Input matches the pinned source with zero different pixels at desktop/mobile widths in light/dark across rest, focus and hover; typing, validation, sizing, disabled/read-only and refs pass."
+  );
   const sessionContext = await browser.newContext();
   const sessionPage = await sessionContext.newPage();
   await sessionPage.goto(origin);
