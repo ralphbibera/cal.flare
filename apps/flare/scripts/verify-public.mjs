@@ -171,7 +171,9 @@ export async function verifyPublic(browser) {
       await page.locator("header").textContent(),
       `${new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: india }).format(new Date(first))}02`
     );
-    await page.getByRole("button", { name: "24h", exact: true }).click();
+    const formatControl = page.getByRole("radiogroup", { name: "Time format", exact: true });
+    await formatControl.getByRole("radio", { name: "24h", exact: true }).click();
+    assert.equal(await formatControl.getByRole("radio", { name: "24h", checked: true }).count(), 1);
     await page.waitForFunction(() => document.querySelector('[data-testid="time"]')?.textContent === "04:30");
     await page.getByTestId("time").first().focus();
     await page.keyboard.press("Enter");

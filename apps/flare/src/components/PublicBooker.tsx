@@ -11,6 +11,7 @@ import { formatDuration } from "./format-duration.ts";
 import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
 import { ScrollableWithGradients } from "./ScrollableWithGradients.tsx";
+import { TimeFormatToggle } from "./TimeFormatToggle.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
   labels: typeof bookingLabels;
@@ -170,18 +171,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 ))}
               </select>
             </EventMetaBlock>
-            <div className="flex gap-1" role="group" aria-label={labels.timeFormat}>
-              {(["h:mma", "HH:mm"] as const).map((value) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  color="secondary"
-                  aria-pressed={format === value}
-                  onClick={() => setFormat(value)}>
-                  {value === "h:mma" ? labels.hour12 : labels.hour24}
-                </Button>
-              ))}
-            </div>
+            <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />
             {selected && (
               <EventMetaBlock icon="calendar" role="status">
                 {labels.selectedTime}
