@@ -165,66 +165,70 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
       }).format(new Date(selected))
     : undefined;
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
+  const metadata = (
+    <section className="relative z-10 p-6" data-testid="event-meta">
+      <ul className="border-muted flex items-center">
+        <li className="-mr-1 inline-block">
+          <span className={`${avatarClass} border-subtle overflow-hidden`}>
+            <img src={avatar} alt={organizer.name} className={`${avatarClass} border-default`} />
+          </span>
+        </li>
+      </ul>
+      <p className="text-subtle mt-2 text-sm font-semibold">{organizer.name}</p>
+      <EventTitle className="my-2">{event.title}</EventTitle>
+      {event.description && (
+        <EventMetaBlock contentClassName="mb-8">
+          <ScrollableWithGradients
+            className="wrap-break-word scroll-bar max-h-[180px] max-w-full overflow-y-auto whitespace-pre-wrap break-words pr-4"
+            ariaLabel={labels.description}>
+            {event.description}
+          </ScrollableWithGradients>
+        </EventMetaBlock>
+      )}
+      <div className="space-y-4 text-sm font-medium">
+        <EventMetaBlock icon="clock" className="items-center">
+          {formatDuration(event.durationMinutes, (count, unit) =>
+            labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
+          )}
+        </EventMetaBlock>
+        <EventMetaBlock
+          icon="globe"
+          className="cursor-pointer [&_.current-timezone:before]:focus-within:opacity-100 [&_.current-timezone:before]:hover:opacity-100"
+          contentClassName="relative max-w-[90%]">
+          {stage.kind === "calendar" || stage.kind === "loading" ? (
+            <span className="current-timezone before:bg-subtle min-w-32 -mt-[2px] flex h-6 max-w-full items-center justify-start before:absolute before:inset-0 before:bottom-[-3px] before:left-[-30px] before:top-[-3px] before:w-[calc(100%+35px)] before:rounded-md before:py-3 before:opacity-0 before:transition-opacity">
+              <TimezoneSelect
+                value={timeZone}
+                onChange={setTimeZone}
+                data={zones}
+                label={labels.timeZone}
+                disabled={stage.kind !== "calendar"}
+              />
+            </span>
+          ) : (
+            timeZone
+          )}
+        </EventMetaBlock>
+        {stage.kind !== "calendar" && timeFormatToggle}
+        {selected && (
+          <EventMetaBlock icon="calendar" role="status">
+            {labels.selectedTime}
+            <br />
+            <time dateTime={selected}>{selectedLabel}</time>
+          </EventMetaBlock>
+        )}
+      </div>
+    </section>
+  );
   return (
     <div className="main text-default flex min-h-full w-full flex-col items-center overflow-visible min-[769px]:my-20">
       <div
         data-testid="booker-container"
         className="bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]">
-        <section className="relative z-10 p-6" data-testid="event-meta">
-          <ul className="border-muted flex items-center">
-            <li className="-mr-1 inline-block">
-              <span className={`${avatarClass} border-subtle overflow-hidden`}>
-                <img src={avatar} alt={organizer.name} className={`${avatarClass} border-default`} />
-              </span>
-            </li>
-          </ul>
-          <p className="text-subtle mt-2 text-sm font-semibold">{organizer.name}</p>
-          <EventTitle className="my-2">{event.title}</EventTitle>
-          {event.description && (
-            <EventMetaBlock contentClassName="mb-8">
-              <ScrollableWithGradients
-                className="wrap-break-word scroll-bar max-h-[180px] max-w-full overflow-y-auto whitespace-pre-wrap break-words pr-4"
-                ariaLabel={labels.description}>
-                {event.description}
-              </ScrollableWithGradients>
-            </EventMetaBlock>
-          )}
-          <div className="space-y-4 text-sm font-medium">
-            <EventMetaBlock icon="clock" className="items-center">
-              {formatDuration(event.durationMinutes, (count, unit) =>
-                labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
-              )}
-            </EventMetaBlock>
-            <EventMetaBlock
-              icon="globe"
-              className="cursor-pointer [&_.current-timezone:before]:focus-within:opacity-100 [&_.current-timezone:before]:hover:opacity-100"
-              contentClassName="relative max-w-[90%]">
-              {stage.kind === "calendar" || stage.kind === "loading" ? (
-                <span className="current-timezone before:bg-subtle min-w-32 -mt-[2px] flex h-6 max-w-full items-center justify-start before:absolute before:inset-0 before:bottom-[-3px] before:left-[-30px] before:top-[-3px] before:w-[calc(100%+35px)] before:rounded-md before:py-3 before:opacity-0 before:transition-opacity">
-                  <TimezoneSelect
-                    value={timeZone}
-                    onChange={setTimeZone}
-                    data={zones}
-                    label={labels.timeZone}
-                    disabled={stage.kind !== "calendar"}
-                  />
-                </span>
-              ) : (
-                timeZone
-              )}
-            </EventMetaBlock>
-            {stage.kind !== "calendar" && timeFormatToggle}
-            {selected && (
-              <EventMetaBlock icon="calendar" role="status">
-                {labels.selectedTime}
-                <br />
-                <time dateTime={selected}>{selectedLabel}</time>
-              </EventMetaBlock>
-            )}
-          </div>
-        </section>
+        {stage.kind !== "calendar" && metadata}
         {stage.kind === "calendar" ? (
           <BookingCalendar
+            metadata={metadata}
             cursor={cursor}
             onCursorChange={setCursor}
             returnFocusTime={returnFocusTime}
