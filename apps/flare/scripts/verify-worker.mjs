@@ -580,31 +580,90 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
     (await read(await request(slotsPath))).slots.some((slot) => slot.start === value.start),
     false
   );
+  const rescheduleReason = "Need to move\r\n\n é 😀 <literal>",
+    moveKey = randomBytes(18).toString("hex");
+  const move = {
+    action: "reschedule",
+    version: view.version,
+    requestKey: moveKey,
+    start: slots.slots[3].start,
+    rescheduleReason,
+  };
+  const project = async (key, expected) => {
+    const privateView = await read(await request(`/api/bookings/${booking.id}`, { headers: auth(booking) }));
+    const ownerView = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
+      (row) => row.id === booking.id
+    );
+    assert.ok(ownerView);
+    for (const projection of [privateView, ownerView]) {
+      assert.equal(projection[key], expected);
+      assert.equal(Object.hasOwn(projection, key), expected !== undefined);
+      assert.ok(!JSON.stringify(projection).includes("Rejected private reason"));
+    }
+  };
+  const completedOnly = async (command, key, reason) => {
+    await project(key, reason);
+    for (const [execution, version] of [
+      ["queued", command.accepted_version],
+      ["sent", command.accepted_version],
+      ["done", command.accepted_version - 1],
+      ["done", command.accepted_version],
+    ]) {
+      await db
+        .prepare("UPDATE booking_command SET execution=?,accepted_version=? WHERE id=?")
+        .bind(execution, version, command.id)
+        .run();
+      await project(key, execution === "done" && version === command.accepted_version ? reason : undefined);
+    }
+  };
   const moved = await read(
     await send(
       `/api/bookings/${booking.id}`,
-      {
-        action: "reschedule",
-        version: view.version,
-        requestKey: randomBytes(18).toString("hex"),
-        start: slots.slots[3].start,
-      },
+      { ...move, rescheduleReason: ` \n${rescheduleReason}\t ` },
       auth(booking)
     )
   );
   assert.equal(moved.id, booking.id);
   assert.equal(moved.start, slots.slots[3].start);
+  assert.equal(moved.rescheduleReason, rescheduleReason);
+  const moveCommand = await db
+    .prepare("SELECT * FROM booking_command WHERE request_key=?")
+    .bind(moveKey)
+    .first();
+  assert.equal(
+    moveCommand.payload,
+    `{"action":"reschedule","id":"${booking.id}","requestKey":"${moveKey}","version":${view.version},"start":${moved.start},"rescheduleReason":${JSON.stringify(rescheduleReason)}}`
+  );
+  assert.deepEqual(JSON.parse(moveCommand.desired_json), {
+    ...JSON.parse(persisted.confirmed_json),
+    start: moved.start,
+    end: moved.end,
+    privateMetadata: { ...JSON.parse(persisted.confirmed_json).privateMetadata, operation: moveCommand.id },
+  });
+  assert.equal(
+    (
+      await read(
+        await send(`/api/bookings/${booking.id}`, { ...move, rescheduleReason: "Changed" }, auth(booking)),
+        409
+      )
+    ).error,
+    "idempotency_mismatch"
+  );
+  assert.deepEqual(
+    await db.prepare("SELECT * FROM booking_command WHERE request_key=?").bind(moveKey).first(),
+    moveCommand
+  );
+  await completedOnly(moveCommand, "rescheduleReason", rescheduleReason);
   assert.equal(Date.parse(google.events.get(booking.id).start.dateTime), moved.start);
   assert.equal(google.events.get(booking.id).description, description);
+  assert.doesNotMatch(JSON.stringify(google.events.get(booking.id)), /rescheduleReason|Need to move/);
   assert.deepEqual(google.events.get(booking.id).attendees, event.attendees);
-  assert.deepEqual(
-    JSON.parse(
-      await db
-        .prepare("SELECT confirmed_json FROM booking WHERE id=?")
-        .bind(booking.id)
-        .first("confirmed_json")
-    ).guests,
-    normalized
+  assert.equal(
+    await db
+      .prepare("SELECT confirmed_json FROM booking WHERE id=?")
+      .bind(booking.id)
+      .first("confirmed_json"),
+    moveCommand.desired_json
   );
   const cancellationReason = "Need to cancel\n\nFamily <literal> & plans\r\n é 😀";
   const cancellation = {
@@ -649,6 +708,7 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
     (await read(await send(`/api/bookings/${booking.id}`, rejected, auth(booking)), 409)).error,
     "stale"
   );
+  await project("rescheduleReason", rescheduleReason);
   const cancelled = await read(
     await send(
       `/api/bookings/${booking.id}`,
@@ -658,6 +718,13 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
   );
   assert.equal(cancelled.status, "cancelled");
   assert.equal(cancelled.id, booking.id);
+  await project("rescheduleReason", undefined);
+  assert.ok(
+    !Object.hasOwn(
+      await read(await send(`/api/bookings/${booking.id}`, move, auth(booking))),
+      "rescheduleReason"
+    )
+  );
   assert.equal(cancelled.cancellationReason, cancellationReason);
   assert.equal(
     (await read(await send(`/api/bookings/${booking.id}`, cancellation, auth(booking)))).cancellationReason,
@@ -711,33 +778,7 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
       .first(),
     command
   );
-  const project = async (expected) => {
-    const view = await read(await request(`/api/bookings/${booking.id}`, { headers: auth(booking) }));
-    const ownerView = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
-      (row) => row.id === booking.id
-    );
-    assert.ok(ownerView);
-    for (const value of [view, ownerView]) {
-      assert.equal(value.cancellationReason, expected);
-      assert.equal(Object.hasOwn(value, "cancellationReason"), expected !== undefined);
-      assert.ok(!JSON.stringify(value).includes(rejected.cancellationReason));
-    }
-  };
-  await project(cancellationReason);
-  for (const execution of ["queued", "sent"]) {
-    await db.prepare("UPDATE booking_command SET execution=? WHERE id=?").bind(execution, command.id).run();
-    await project(undefined);
-  }
-  await db
-    .prepare("UPDATE booking_command SET execution='done',accepted_version=accepted_version-1 WHERE id=?")
-    .bind(command.id)
-    .run();
-  await project(undefined);
-  await db
-    .prepare("UPDATE booking_command SET accepted_version=? WHERE id=?")
-    .bind(cancelled.version, command.id)
-    .run();
-  await project(cancellationReason);
+  await completedOnly(command, "cancellationReason", cancellationReason);
   for (const [path, headers, status] of [
     [`/api/bookings/${booking.id}`, {}, 401],
     [`/api/bookings/${booking.id}`, { Authorization: `Bearer ${"A".repeat(43)}` }, 404],
@@ -748,6 +789,8 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
     const value = await read(await request(path, { headers }), status);
     assert.ok(!JSON.stringify(value).includes("Need to cancel"));
     assert.ok(!Object.hasOwn(value, "cancellationReason"));
+    assert.ok(!JSON.stringify(value).includes("Need to move"));
+    assert.ok(!Object.hasOwn(value, "rescheduleReason"));
   }
   assert.equal(deletes, 1);
   google.fetch = beforeCancel;
@@ -851,7 +894,13 @@ async function verifyRecovery(fixture, slots, owner) {
   const recoveredView = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
   assert.equal(recoveredView.status, "confirmed");
   for (const { action, command, state, extra } of [
-    { action: "update", command: "reschedule", state: "active", extra: { start: slots.slots[9].start } },
+    {
+      action: "update",
+      command: "reschedule",
+      state: "active",
+      extra: { start: slots.slots[9].start, rescheduleReason: "Recovery <move>\r\nPreserved 😀" },
+    },
+    { action: "update", command: "reschedule", state: "active", extra: { start: slots.slots[11].start } },
     {
       action: "delete",
       command: "cancel",
@@ -881,15 +930,26 @@ async function verifyRecovery(fixture, slots, owner) {
     );
     assert.equal(blocked.error, "event_changed");
     assert.ok(!Object.hasOwn(blocked, "cancellationReason"));
+    assert.ok(!Object.hasOwn(blocked, "rescheduleReason"));
     const blockedOwner = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
       (row) => row.id === pending.id
     );
     assert.ok(!Object.hasOwn(blockedOwner, "cancellationReason"));
+    assert.ok(!Object.hasOwn(blockedOwner, "rescheduleReason"));
     assert.equal(google.writes.length, beforeWrites);
     google.events.set(pending.id, base);
     google.loseResponseAfter(action);
     const uncertain = await read(await send(`/api/bookings/${pending.id}/retry`, {}, auth(pending)), 202);
     assert.ok(!Object.hasOwn(uncertain, "cancellationReason"));
+    assert.ok(!Object.hasOwn(uncertain, "rescheduleReason"));
+    await read(
+      await send(
+        "/api/owner",
+        { ...settings, event: { ...settings.event, title: "Changed", durationMinutes: 60 } },
+        owner,
+        "PUT"
+      )
+    );
     const writes = google.writes.length;
     await recover(pending.id);
     const result = await db
@@ -899,15 +959,18 @@ async function verifyRecovery(fixture, slots, owner) {
     assert.deepEqual(result, { state, pending_id: null });
     const terminal = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
     assert.equal(terminal.cancellationReason, extra.cancellationReason);
+    assert.equal(terminal.rescheduleReason, extra.rescheduleReason);
+    const ownerProjection = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
+      (row) => row.id === pending.id
+    );
+    assert.equal(ownerProjection.rescheduleReason, extra.rescheduleReason);
+    assert.equal(ownerProjection.cancellationReason, extra.cancellationReason);
+    await read(await send("/api/owner", settings, owner, "PUT"));
     if (action === "delete") {
       assert.equal(
         (await read(await send(`/api/bookings/${pending.id}/retry`, {}, auth(pending)))).cancellationReason,
         extra.cancellationReason
       );
-      const ownerView = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
-        (row) => row.id === pending.id
-      );
-      assert.equal(ownerView.cancellationReason, extra.cancellationReason);
     }
     if (action === "update") {
       assert.equal(google.events.get(pending.id).description, remote.description);

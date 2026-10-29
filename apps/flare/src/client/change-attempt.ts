@@ -1,4 +1,5 @@
 import { parseCancellationReason } from "../domain/cancellation-reason.ts";
+import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import { type ChangeRequest, ErrorWithCode } from "./bookings.ts";
 
 type ChangeInput =
@@ -21,6 +22,7 @@ function decode(value: unknown): Readonly<ChangeRequest> {
     throw new Error();
   const { requestKey, version } = value;
   if (value.action === "cancel" && !("start" in value)) {
+    if ("rescheduleReason" in value) throw new Error();
     const cancellationReason = parseCancellationReason(
       "cancellationReason" in value ? value.cancellationReason : undefined
     );
@@ -42,7 +44,17 @@ function decode(value: unknown): Readonly<ChangeRequest> {
     value.start > Date.UTC(2100, 0, 1)
   )
     throw new Error();
-  return Object.freeze({ action: "reschedule", requestKey, version, start: value.start });
+  const rescheduleReason = parseRescheduleReason(
+    "rescheduleReason" in value ? value.rescheduleReason : undefined
+  );
+  if (rescheduleReason === null) throw new Error();
+  return Object.freeze({
+    action: "reschedule",
+    requestKey,
+    version,
+    start: value.start,
+    ...(rescheduleReason ? { rescheduleReason } : {}),
+  });
 }
 
 class ChangeAttempts {

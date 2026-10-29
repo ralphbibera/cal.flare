@@ -134,6 +134,37 @@ test("optional notes preserve legacy bytes and canonical literal content within 
   assert.throws(() => parseCreate({ ...create, notes, extra: true }), ErrorWithCode);
 });
 
+test("reschedule reasons preserve legacy bytes and enforce strict normalized literal content", () => {
+  const move = { action: "reschedule", requestKey: "move-request-00001", version: 1, start };
+  const legacy = `{"action":"reschedule","requestKey":"move-request-00001","version":1,"start":${start}}`;
+  for (const extra of [
+    {},
+    { rescheduleReason: undefined },
+    { rescheduleReason: "" },
+    { rescheduleReason: " \t\r\n " },
+  ])
+    assert.equal(JSON.stringify(parseChange({ ...move, ...extra })), legacy);
+  for (const reason of [
+    "Need to move",
+    "First\r\n\n é 😀 <literal>",
+    "x".repeat(1000),
+    "😀".repeat(500),
+    "\u0000".repeat(1000),
+  ]) {
+    const input = { rescheduleReason: ` \n${reason}\t `, ...move };
+    const expected = `${legacy.slice(0, -1)},"rescheduleReason":${JSON.stringify(reason)}}`;
+    assert.equal(JSON.stringify(parseChange(input)), expected);
+    assert.equal(JSON.stringify(parseChange(Object.fromEntries(Object.entries(input).reverse()))), expected);
+  }
+  for (const rescheduleReason of [null, 1, false, [], {}, "x".repeat(1001), `${"😀".repeat(500)}x`])
+    assert.throws(() => parseChange({ ...move, rescheduleReason }), ErrorWithCode);
+  for (const rescheduleReason of [undefined, "", " ", "reason"])
+    assert.throws(() =>
+      parseChange({ action: "cancel", requestKey: move.requestKey, version: 1, rescheduleReason })
+    );
+  assert.throws(() => parseChange({ ...move, rescheduleReason: "reason", extra: true }));
+});
+
 test("guests preserve ordered identity, strict native email rules and legacy bytes", () => {
   const legacy = JSON.stringify(parseCreate({ ...create, notes: "Note" }));
   for (const guests of [[], ["", ""]]) {
