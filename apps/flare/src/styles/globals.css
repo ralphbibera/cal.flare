@@ -14,6 +14,14 @@
 }
 
 @font-face {
+  font-family: "Cal Sans Booking";
+  src: url("/fonts/CalSans-SemiBold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+}
+
+@font-face {
   font-family: "Inter Booking";
   src: url("/fonts/Inter-booking-latin.woff2") format("woff2");
   font-style: normal;
@@ -49,6 +57,7 @@
 }
 
 .public-booking {
+  --font-cal: "Cal Sans Booking", sans-serif;
   --cal-brand: #292929;
   --cal-brand-emphasis: #696969;
   --cal-brand-subtle: #cacaca;

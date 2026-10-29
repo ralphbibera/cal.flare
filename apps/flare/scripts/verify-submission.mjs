@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { verifyDialogTypography } from "./verify-upstream.mjs";
 
 export async function verifySubmission(browser, fixture, date) {
   const contexts = [],
@@ -112,6 +114,14 @@ export async function verifySubmission(browser, fixture, date) {
     );
   try {
     const page = await open();
+    await verifyDialogTypography(page);
+    const license = await page.request.get(`${fixture.origin}/fonts/CalSans-OFL.txt`);
+    assert.equal(license.status(), 200, "Cal Sans distributed license response");
+    assert.equal(
+      await license.text(),
+      await readFile(new URL("../public/fonts/CalSans-OFL.txt", import.meta.url), "utf8"),
+      "Served Cal Sans full license and copyright notice"
+    );
     assert.equal(await page.getByRole("button", { name: "Add guests", exact: true }).count(), 1);
     await page.evaluate(() => {
       window.guestStorageWrites = 0;
@@ -309,6 +319,7 @@ export async function verifySubmission(browser, fixture, date) {
     await page.getByRole("radio", { name: "Switch to weekly view", exact: true }).click();
     await page.locator("[data-slot]").first().click();
     await dialog.waitFor();
+    await verifyDialogTypography(page);
     assert.equal(await note(page).inputValue(), notes);
     await page.screenshot({
       path: new URL("../.verification/booking-notes-week.png", import.meta.url).pathname,

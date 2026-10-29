@@ -219,6 +219,20 @@ The public page bundles the Latin Inter font served by the reference's Next font
 Its served bytes and rendered title text metrics are compared with the actual reference.
 The existing Inter OFL notice applies. Characters outside that subset keep the inherited font fallback.
 This does not establish complete font or localization parity.
+Public booking `font-cal` headings use the unmodified 40,932-byte CalSans-SemiBold asset
+from the pinned Next source, registered as `Cal Sans Booking` with normal style, weight 600,
+`display: block`, and a public-route preload. Heading CSS retains weight 400.
+The font remains under SIL OFL 1.1, with the entire historical copyright and commissioning
+notice in [`public/fonts/CalSans-OFL.txt`](public/fonts/CalSans-OFL.txt), copied verbatim from
+[calcom/sans at c7f20266](https://github.com/calcom/sans/blob/c7f20266c2f903821238fc3fe744ded53302a3b1/OFL.txt).
+The font SHA-256 is `d3e38c946c6c0299f321b6cf2c92f7f26e202530f49d6bc86d52e9fd74f393a2`.
+The actual Next comparison resolves each heading's first family through CSSOM, checks its
+loaded face and HTTP font bytes against the pinned source, and compares the mobile dialog
+heading's DOM Range dimensions and computed typography after fonts are ready.
+The default built-page submission journey checks the same served identity and observed
+native heading metrics without Next, including the shared wide week dialog, and serves the full notice.
+This establishes font identity and heading typography only. Dialog position, full composition,
+agreement/legal content, footer, and whole-dialog pixels remain separate work.
 The selected day's background, text, and Today marker use the pinned default booking palette
 and are checked against the actual light-theme reference. Shared component fixtures retain
 their existing theme. Public dark-mode controls and custom branding remain separate work.
@@ -239,7 +253,7 @@ dimension and every-RGBA-channel comparison requires zero differences.
 The public labels reuse `your_name` and `email_address`; generic labels remain available to other flows.
 Name keeps its existing autofocus, unlike the native desktop form. Its focus outline is outside
 the declared comparison. Agreement content, footer, metadata, toolbar, complete form and dialog
-pixels, mobile form composition, and Cal Sans registration remain separate work.
+pixels and mobile form composition remain separate work.
 No complete form, page, mobile, or live-provider parity follows from this partial comparison.
 
 Stop the reference server with Ctrl-C and stop its database with

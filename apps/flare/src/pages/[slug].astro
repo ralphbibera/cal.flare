@@ -26,6 +26,7 @@ const fallback = status === 404 ? common.flare_event_not_found : common.flare_ev
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preload" href="/fonts/CalSans-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
     <title>{booking ? `${booking.event.title} | ${booking.organizer.name}` : fallback}</title>
   </head>
   <body class="bg-subtle dark:bg-default text-default min-h-screen font-sans">
