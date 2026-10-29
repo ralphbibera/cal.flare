@@ -4827,5 +4827,8 @@
   "flare_booking_rules_invalid": "Check the spacing, buffers and notice. Enter whole minutes within the shown limits.",
   "flare_booking_rules_failed": "We couldn't save your booking rules. Your draft is still here. Try saving again.",
   "flare_booking_rules_javascript": "Enable JavaScript to edit booking rules.",
+  "flare_calendar_google": "Google",
+  "flare_calendar_outlook": "Microsoft Outlook",
+  "flare_calendar_office": "Microsoft Office",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

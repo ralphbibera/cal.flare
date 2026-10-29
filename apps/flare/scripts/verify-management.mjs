@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 export async function verifyManagement(browser, fixture, date) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
   const errors = [],
-    requests = [];
+    requests = [],
+    bookingPosts = [];
+  context.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/bookings") && request.method() === "POST")
+      bookingPosts.push(request.url());
+  });
   try {
     const page = await context.newPage();
     await page.clock.install({ time: date });
@@ -23,6 +29,7 @@ export async function verifyManagement(browser, fixture, date) {
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     const created = await (await creation).json();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+    assert.equal(await page.getByText("Add to calendar", { exact: true }).count(), 1);
     const canonicalDetails = async (target) => {
       assert.deepEqual(
         await target.locator("dl time").evaluateAll((nodes) => nodes.map((node) => node.dateTime)),
@@ -46,6 +53,96 @@ export async function verifyManagement(browser, fixture, date) {
     const receipt = await page.evaluate(() =>
       JSON.parse(sessionStorage.getItem(`calflare:create:v1:${encodeURIComponent(location.pathname)}`))
     );
+    const hiddenExports = async () =>
+      assert.equal(await page.getByText("Add to calendar", { exact: true }).count(), 0);
+    const verifyExports = async (target, booking = created) => {
+      await target.getByText("Add to calendar", { exact: true }).waitFor();
+      const names = ["Google", "Microsoft Outlook", "Microsoft Office", "Other"];
+      const links = target.locator("a[aria-label]");
+      assert.deepEqual(
+        await links.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
+        names
+      );
+      const compact = (value) => new Date(value).toISOString().replace(/[-:]|\.\d{3}/g, "");
+      for (const [index, name] of names.entries()) {
+        const link = target.getByRole("link", { name, exact: true });
+        if (index === 0) await link.focus();
+        else await target.keyboard.press("Tab");
+        assert.ok(await link.evaluate((node) => node === document.activeElement));
+        const href = await link.getAttribute("href");
+        for (const privateValue of [
+          receipt.access.token,
+          created.email,
+          created.name,
+          "/booking/",
+          "#token=",
+        ])
+          assert.ok(!decodeURIComponent(href).includes(privateValue));
+        if (index === 3) continue;
+        assert.equal(await link.getAttribute("target"), "_blank");
+        assert.equal(await link.getAttribute("rel"), "noopener noreferrer");
+        const url = new URL(href);
+        assert.equal(
+          url.origin + url.pathname,
+          [
+            "https://calendar.google.com/calendar/r/eventedit",
+            "https://outlook.live.com/calendar/0/deeplink/compose",
+            "https://outlook.office.com/calendar/0/deeplink/compose",
+          ][index]
+        );
+        assert.deepEqual(
+          Object.fromEntries(url.searchParams),
+          index === 0
+            ? {
+                dates: `${compact(booking.start)}/${compact(booking.end)}`,
+                text: booking.title,
+              }
+            : {
+                path: "/calendar/action/compose",
+                rru: "addevent",
+                startdt: new Date(booking.start).toISOString(),
+                enddt: new Date(booking.end).toISOString(),
+                subject: booking.title,
+              }
+        );
+      }
+      const writes = fixture.google.writes.length,
+        mutations = bookingPosts.length;
+      const downloadEvent = target.waitForEvent("download");
+      await target.keyboard.press("Enter");
+      const download = await downloadEvent;
+      assert.equal(download.suggestedFilename(), "booking.ics");
+      const bytes = await readFile(await download.path());
+      const ics = bytes.toString("utf8");
+      assert.ok(ics.startsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"));
+      assert.ok(ics.endsWith("END:VEVENT\r\nEND:VCALENDAR\r\n"));
+      for (const line of ics.split("\r\n")) assert.ok(Buffer.byteLength(line) <= 75);
+      const unfolded = ics.replace(/\r\n /g, "");
+      for (const line of [
+        `UID:${booking.id}@calflare.invalid`,
+        `SEQUENCE:${booking.version}`,
+        `SUMMARY:${booking.title}`,
+        `DTSTART:${compact(booking.start)}`,
+        `DTEND:${compact(booking.end)}`,
+      ])
+        assert.ok(unfolded.split("\r\n").includes(line));
+      assert.doesNotMatch(unfolded, /\r\n(?:METHOD|ATTENDEE|ORGANIZER|DESCRIPTION|LOCATION|URL):/);
+      for (const privateValue of [receipt.access.token, created.email, created.name, "/booking/", "#token="])
+        assert.ok(!unfolded.includes(privateValue));
+      assert.equal(bookingPosts.length, mutations);
+      assert.equal(fixture.google.writes.length, writes);
+    };
+    await verifyExports(page);
+    const composer = /https:\/\/(?:calendar\.google\.com|outlook\.(?:live|office)\.com)\//;
+    await context.route(composer, (route) => route.abort());
+    const popup = context.waitForEvent("page"),
+      navigation = context.waitForEvent("request", { predicate: (request) => composer.test(request.url()) });
+    const googleLink = page.getByRole("link", { name: "Google", exact: true });
+    const expectedComposer = await googleLink.getAttribute("href");
+    await googleLink.focus();
+    await page.keyboard.press("Enter");
+    assert.equal((await navigation).url(), expectedComposer);
+    await (await popup).close();
     const path = `/api/bookings/${receipt.access.id}`;
     const snapshot = () =>
       fixture.db
@@ -117,6 +214,7 @@ export async function verifyManagement(browser, fixture, date) {
         await target.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
         await target.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
         await canonicalDetails(target);
+        await verifyExports(target);
         assert.equal(await target.getByText("Changed after booking", { exact: true }).count(), 0);
         assert.equal(
           await target.getByRole("button", { name: "Reschedule", exact: true }).count(),
@@ -144,6 +242,7 @@ export async function verifyManagement(browser, fixture, date) {
       ]) {
         await target.setViewportSize({ width, height: 900 });
         assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await verifyExports(target);
         await target.getByRole("button", { name: "Copy private booking link", exact: true }).focus();
         assert.ok(
           await target
@@ -173,6 +272,7 @@ export async function verifyManagement(browser, fixture, date) {
     const choose = async () => {
       const previous = await currentTime();
       await page.getByRole("button", { name: "Reschedule", exact: true }).click();
+      await hiddenExports();
       const slots = page.getByTestId("time");
       await slots.first().waitFor();
       for (const width of [390, 768, 1024, 1280]) {
@@ -189,6 +289,7 @@ export async function verifyManagement(browser, fixture, date) {
         const time = await slots.nth(i).getAttribute("data-time");
         if (time !== previous) {
           await slots.nth(i).click();
+          await hiddenExports();
           return time;
         }
       }
@@ -212,6 +313,7 @@ export async function verifyManagement(browser, fixture, date) {
       const previousRequests = requests.length;
       if (action === "cancel") {
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+        await hiddenExports();
         await page.getByRole("button", { name: "Back", exact: true }).click();
         assert.equal(requests.length, previousRequests);
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
@@ -230,6 +332,7 @@ export async function verifyManagement(browser, fixture, date) {
           0
         );
         assert.equal(requests.length, previousRequests);
+        await hiddenExports();
         await page.reload();
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
       }
@@ -255,6 +358,7 @@ export async function verifyManagement(browser, fixture, date) {
       assert.equal(result.booking.status, action === "cancel" ? "cancelled" : "confirmed");
       assert.equal(result.booking.start, Date.parse(selected));
       await page.getByRole("alert").waitFor();
+      await hiddenExports();
       const pending = await saved(),
         writes = fixture.google.writes.length;
       assert.equal(pending.action, action);
@@ -270,9 +374,10 @@ export async function verifyManagement(browser, fixture, date) {
         new MutationObserver(() => {
           if (
             sessionStorage.getItem(`calflare:change:v1:${id}`) &&
-            [...document.querySelectorAll("h1, h2")].some(
+            ([...document.querySelectorAll("h1, h2")].some(
               (heading) => heading.textContent === "This meeting is scheduled"
-            )
+            ) ||
+              !!document.querySelector('a[aria-label="Google"]'))
           )
             window.confirmedWhileUnresolved = true;
         }).observe(document, { subtree: true, childList: true, characterData: true });
@@ -280,6 +385,7 @@ export async function verifyManagement(browser, fixture, date) {
       await configure(true, true);
       await page.reload();
       await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
+      await hiddenExports();
       assert.equal(
         await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).count(),
         0
@@ -298,6 +404,8 @@ export async function verifyManagement(browser, fixture, date) {
         .waitFor();
       assert.deepEqual(requests.at(-1), requests.at(-2));
       assert.equal(await saved(), null);
+      if (action === "reschedule") await verifyExports(page, result.booking);
+      else await hiddenExports();
       assert.equal(await currentTime(), selected);
       assert.equal(fixture.google.writes.length, writes);
       assert.ok(!(await page.content()).includes(receipt.access.token));
@@ -321,6 +429,7 @@ export async function verifyManagement(browser, fixture, date) {
         await page
           .getByRole("heading", { name: "This booking needs the organizer's attention.", exact: true })
           .waitFor();
+        await hiddenExports();
         const writes = fixture.google.writes.length;
         assert.equal(await saved(), null);
         assert.equal(
@@ -340,12 +449,16 @@ export async function verifyManagement(browser, fixture, date) {
     }
     await page.reload();
     await page.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
+    await hiddenExports();
     assert.equal(await page.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Cancel event", exact: true }).count(), 0);
     assert.deepEqual(
       fixture.google.writes.slice(before).map((write) => write.action),
       ["insert", "update", "update", "delete"]
     );
+    assert.equal(bookingPosts.filter((url) => new URL(url).pathname === "/api/bookings").length, 1);
+    assert.equal(bookingPosts.filter((url) => new URL(url).pathname === `${path}/retry`).length, 1);
+    assert.equal(bookingPosts.length, requests.length + 2);
     assert.equal(
       await fixture.db
         .prepare("SELECT count(*) FROM booking_command WHERE booking_id=?")
@@ -357,7 +470,7 @@ export async function verifyManagement(browser, fixture, date) {
     assert.deepEqual(fixture.upstreamFailures, []);
     assert.deepEqual(fixture.google.denied, []);
     console.log(
-      "PASS canonical receipt/private facts survive event changes, policy controls, status refresh, saved retry, reschedule/cancel and exact replay without duplicate Calendar writes. Built Worker/local D1; Google is mocked."
+      "PASS canonical receipt/private facts, keyboard composer links and actual ICS downloads survive event changes and rescheduling; exports hide during uncertain/change/cancelled stages. Aborted composer popup, privacy and exact replay without duplicate Calendar writes verified. Built Worker/local D1; Google is mocked."
     );
   } finally {
     await context.close();
