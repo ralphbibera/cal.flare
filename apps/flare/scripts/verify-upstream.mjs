@@ -193,18 +193,32 @@ async function verifyDialogTypography(page, family = "Cal Sans Booking") {
     "Pinned Cal Sans served identity"
   );
   const metrics = await measureTitle(page, heading);
-  assert.deepEqual(
-    metrics,
-    {
-      width: 176.84375,
-      height: 24,
-      size: "20px",
-      weight: "400",
-      spacing: "normal",
-      lineHeight: "20px",
-    },
-    "Actual Next dialog heading text metrics"
-  );
+  const source = await readFile(new URL("../../web/fonts/CalSans-SemiBold.woff2", import.meta.url));
+  assert.ok(font.equals(source), "Dialog font matches pinned source bytes");
+  const reference = await page.context().newPage();
+  try {
+    await reference.setContent(
+      '<h2 style="font-family: PinnedCalSans; font-size: 20px; font-weight: 400; letter-spacing: normal; line-height: 20px">Confirm your details</h2>'
+    );
+    await reference.evaluate(
+      async (bytes) => {
+        const face = new FontFace("PinnedCalSans", new Uint8Array(bytes), {
+          style: "normal",
+          weight: "600",
+          display: "block",
+        });
+        document.fonts.add(await face.load());
+      },
+      [...source]
+    );
+    assert.deepEqual(
+      metrics,
+      await measureTitle(reference, reference.getByRole("heading")),
+      "Dialog text metrics match independently loaded pinned Cal Sans in this browser"
+    );
+  } finally {
+    await reference.close();
+  }
   console.log(`PASS ${family} loaded dialog font: 40932 bytes; heading ${JSON.stringify(metrics)}`);
   return { font, metrics };
 }
@@ -355,8 +369,6 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         let dialog = null;
         if (name === "mobile") {
           dialog = await verifyDialogTypography(page, "calFont");
-          const source = await readFile(new URL("../../web/fonts/CalSans-SemiBold.woff2", import.meta.url));
-          assert.ok(dialog.font.equals(source), "Actual Next heading font matches pinned source bytes");
           await page.getByRole("heading", { name: "Confirm your details", exact: true }).screenshot({
             path: fileURLToPath(new URL(`upstream-mobile-heading-${take}.png`, artifacts)),
           });
