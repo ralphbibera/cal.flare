@@ -7,7 +7,7 @@ import { BookingAvailability } from "./booking-availability.ts";
 import { BookingDelivery } from "./booking-delivery.ts";
 import type { Action, Booking, BookingSnapshot, BookingView, Calendar, Command } from "./booking-model.ts";
 import { parseChange, parseCreate, snapshot } from "./booking-model.ts";
-import { ErrorWithCode } from "./http.ts";
+import { ErrorWithCode, record } from "./http.ts";
 import { base64url, encryptionKey, hash } from "./secrets.ts";
 
 type Options = { db: D1Database; calendar: Calendar; settings: Settings; secret: string; now?: () => number };
@@ -135,6 +135,9 @@ export class BookingService {
       requestKey,
       version,
       ...(start === undefined ? {} : { start }),
+      ...(data.action === "cancel" && data.cancellationReason
+        ? { cancellationReason: data.cancellationReason }
+        : {}),
     });
     const replay = await this.replay(requestKey, payload);
     if (replay) return replay;
@@ -233,17 +236,35 @@ export class BookingService {
   }
   async ownerList(): Promise<BookingView[]> {
     const rows = await this.db
-      .prepare(`SELECT b.*, c.action AS pending_action, c.error AS pending_error
+      .prepare(`SELECT b.*, c.action AS pending_action, c.error AS pending_error,
+      cancelled.payload AS cancellation_payload
       FROM booking b LEFT JOIN booking_command c ON c.id = b.pending_id
+      LEFT JOIN booking_command cancelled ON b.state='cancelled' AND cancelled.booking_id=b.id
+      AND cancelled.accepted_version=b.version AND cancelled.action='cancel'
+      AND cancelled.outcome='accepted' AND cancelled.terminal=1 AND cancelled.execution='done'
       ORDER BY b.rowid DESC LIMIT 1000`)
-      .all<Booking & { pending_action: Action | null; pending_error: string | null }>();
+      .all<
+        Booking & {
+          pending_action: Action | null;
+          pending_error: string | null;
+          cancellation_payload: string | null;
+        }
+      >();
     return Promise.all(
       rows.results.map((row) =>
-        this.render(row, row.pending_action ? { action: row.pending_action, error: row.pending_error } : null)
+        this.render(
+          row,
+          row.pending_action ? { action: row.pending_action, error: row.pending_error } : null,
+          row.cancellation_payload
+        )
       )
     );
   }
-  private async render(booking: Booking, loadedPending?: Pending | null): Promise<BookingView> {
+  private async render(
+    booking: Booking,
+    loadedPending?: Pending | null,
+    loadedCancellation?: string | null
+  ): Promise<BookingView> {
     const event = snapshot(booking.confirmed_json ?? booking.initial_json);
     const pending =
       loadedPending !== undefined
@@ -260,6 +281,27 @@ export class BookingService {
     if (pending?.action === "reschedule") status = "rescheduling";
     if (pending?.action === "cancel") status = "cancelling";
     if (pending?.error) status = "attention";
+    let cancellationReason: string | undefined;
+    if (status === "cancelled") {
+      const payload =
+        loadedCancellation !== undefined
+          ? loadedCancellation
+          : await this.db
+              .prepare(`SELECT payload FROM booking_command WHERE booking_id=?
+          AND accepted_version=? AND action='cancel' AND outcome='accepted'
+          AND terminal=1 AND execution='done'`)
+              .bind(booking.id, booking.version)
+              .first<string>("payload");
+      if (payload) {
+        try {
+          const { id, ...request } = record(JSON.parse(payload));
+          const data = parseChange(request);
+          if (id === booking.id && data.action === "cancel") cancellationReason = data.cancellationReason;
+        } catch {
+          cancellationReason = undefined;
+        }
+      }
+    }
     return {
       id: booking.id,
       status,
@@ -278,6 +320,7 @@ export class BookingService {
         : { disableRescheduling: this.settings.event.disableRescheduling }),
       ...(pending ? { pendingAction: pending.action } : {}),
       ...(pending?.error ? { error: pending.error } : {}),
+      ...(cancellationReason ? { cancellationReason } : {}),
     };
   }
   async availability(

@@ -1,3 +1,4 @@
+import { parseCancellationReason } from "../domain/cancellation-reason.ts";
 import type { Interval } from "../domain/scheduling.ts";
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
@@ -107,6 +108,11 @@ function booking(value: unknown): BookingView {
     const token = text(data.manageToken);
     if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new Error();
     result.manageToken = token;
+  }
+  if (Object.hasOwn(data, "cancellationReason")) {
+    const reason = parseCancellationReason(data.cancellationReason);
+    if (status !== "cancelled" || !reason || reason !== data.cancellationReason) throw new Error();
+    result.cancellationReason = reason;
   }
   return result;
 }
