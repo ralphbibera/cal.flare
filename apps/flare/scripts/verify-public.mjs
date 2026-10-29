@@ -402,8 +402,19 @@ async function verifyPrivate(browser, fixture, date) {
       selected
     );
     await guest.getByRole("button", { name: "Cancel event", exact: true }).click();
-    await guest.getByRole("button", { name: "Confirm", exact: true }).click();
+    await guest
+      .getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true })
+      .fill(" \n\t ");
+    const cancellationResponse = guest.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/bookings/${id}` && response.request().method() === "POST"
+    );
+    await guest.getByRole("button", { name: "Cancel event", exact: true }).click();
+    const cancellation = await cancellationResponse;
+    assert.ok(!Object.hasOwn(cancellation.request().postDataJSON(), "cancellationReason"));
+    assert.ok(!Object.hasOwn(await cancellation.json(), "cancellationReason"));
     await guest.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
+    assert.equal(await guest.locator("dt").getByText("Reason", { exact: true }).count(), 0);
     await guest.reload();
     await guest.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
     assert.ok(requests.every((url) => !url.includes(token)));

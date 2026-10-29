@@ -147,8 +147,14 @@ Cancellation requests accept optional `cancellationReason` text, trimmed and lim
 text are preserved. The immutable command retains the reason locally through replay and
 recovery. Authorized terminal booking views and the authenticated owner list return it
 after cancellation completes. Google DELETE requests remain unchanged and carry no reason
-body. This does not send a reason email or promise guest delivery. Reason entry and display
-in the UI remain migration work.
+body. Receipts and authorized private pages offer a three-row optional reason field during
+cancellation. **Nevermind** retains the draft in the mounted component without submitting it.
+**Cancel event** validates before saving a command; over-limit input stays editable.
+Unresolved cancellations show the frozen saved reason read-only through reload and exact retry.
+Completed cancellations show a literal, whitespace-preserving **Reason** row when present.
+The existing built Worker/local D1 browser journey checks these functional flows at 390px and
+1280px with mocked Google. Native intent and terminal-page pixel parity remain unverified.
+This does not send a reason email or promise guest delivery.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
 The authenticated settings API accepts optional `event.disableCancelling` and
 `event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.
