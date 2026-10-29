@@ -25,6 +25,7 @@ export type EventInput = {
   description: string;
   attendee: { name: string; email: string };
   privateMetadata: Record<string, string>;
+  guests?: readonly string[];
 };
 type EventTime = { dateTime: string; timeZone?: string } | { date: string; timeZone?: string };
 export type CalendarEvent = {
@@ -36,7 +37,15 @@ export type CalendarEvent = {
   transparency?: string;
   summary?: string;
   description?: string;
-  attendees: { email: string; displayName?: string; responseStatus?: string; self?: boolean }[];
+  attendees: {
+    email: string;
+    displayName?: string;
+    responseStatus?: string;
+    self?: boolean;
+    additionalGuests?: number;
+  }[];
+  attendeesOmitted?: boolean;
+  calendarOwnerEmail?: string;
   extendedProperties: { private: Record<string, string> };
 };
 const api = "https://www.googleapis.com/calendar/v3";
@@ -76,6 +85,11 @@ function event(value: unknown): CalendarEvent {
     extendedProperties: { private: {} },
   };
   match(result.etag);
+  if (data.attendeesOmitted !== undefined) {
+    if (typeof data.attendeesOmitted !== "boolean")
+      throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid attendee completeness");
+    result.attendeesOmitted = data.attendeesOmitted;
+  }
   for (const field of ["status", "transparency", "summary", "description"] as const) {
     if (data[field] !== undefined) {
       if (typeof data[field] !== "string") throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid event text");
@@ -87,7 +101,20 @@ function event(value: unknown): CalendarEvent {
     result.attendees = data.attendees.map((value: unknown) => {
       const attendee = object(value);
       const parsed: CalendarEvent["attendees"][number] = { email: nonempty(attendee.email) };
-      if (attendee.displayName !== undefined) parsed.displayName = nonempty(attendee.displayName);
+      if (attendee.displayName !== undefined) {
+        if (typeof attendee.displayName !== "string")
+          throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid attendee name");
+        parsed.displayName = attendee.displayName;
+      }
+      if (attendee.additionalGuests !== undefined) {
+        if (
+          typeof attendee.additionalGuests !== "number" ||
+          !Number.isSafeInteger(attendee.additionalGuests) ||
+          attendee.additionalGuests < 0
+        )
+          throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid additional guests");
+        parsed.additionalGuests = attendee.additionalGuests;
+      }
       if (attendee.responseStatus !== undefined) parsed.responseStatus = nonempty(attendee.responseStatus);
       if (attendee.self !== undefined) {
         if (typeof attendee.self !== "boolean")
@@ -166,7 +193,12 @@ function body(input: Omit<EventInput, "id">) {
     description: input.description,
     start: { dateTime: start, timeZone: input.timeZone },
     end: { dateTime: end, timeZone: input.timeZone },
-    attendees: [{ email: input.attendee.email, displayName: input.attendee.name }],
+    attendees: [
+      { email: input.attendee.email, displayName: input.attendee.name },
+      ...(input.guests ?? [])
+        .filter((email) => email.toLowerCase() !== input.attendee.email.toLowerCase())
+        .map((email) => ({ email })),
+    ],
     extendedProperties: { private: input.privateMetadata },
   };
 }
@@ -380,6 +412,7 @@ export class GoogleCalendar {
       if (data.status === "cancelled") return null;
       const parsed = event(value);
       if (parsed.id !== id) throw new Error();
+      parsed.calendarOwnerEmail = this.env.GOOGLE_OWNER_EMAIL;
       return parsed;
     });
   }

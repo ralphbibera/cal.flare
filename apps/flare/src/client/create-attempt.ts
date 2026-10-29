@@ -1,3 +1,4 @@
+import { parseGuests } from "../domain/guests.ts";
 import { isValidTimeZone } from "../domain/scheduling.ts";
 import type { BookingAccess, CreateRequest } from "./bookings.ts";
 import { ErrorWithCode } from "./bookings.ts";
@@ -41,7 +42,9 @@ function decode(value: unknown): CreationState {
     )
       throw new Error();
     const notes = normalizedNotes(request.notes);
-    return {
+    const guests = parseGuests(request.guests);
+    if (guests === null) throw new Error();
+    const pending: PendingCreate = {
       kind: "pending",
       request: Object.freeze({
         requestKey: key(request.requestKey),
@@ -50,8 +53,12 @@ function decode(value: unknown): CreationState {
         email: request.email,
         timeZone: request.timeZone,
         ...(notes ? { notes } : {}),
+        ...(guests ? { guests } : {}),
       }),
     };
+    if (new TextEncoder().encode(JSON.stringify(pending.request)).byteLength > 32768)
+      throw new ErrorWithCode("request_too_large", 413);
+    return pending;
   }
   if (data.kind === "receipt") {
     const access = object(data.access);
@@ -87,7 +94,7 @@ class CreateAttempts {
     }
     if (raw === null) return null;
     try {
-      if (raw.length > 16384) throw new Error();
+      if (raw.length > 65536) throw new Error();
       return decode(JSON.parse(raw));
     } catch {
       throw new ErrorWithCode("invalid_saved_attempt", 400);
@@ -104,12 +111,15 @@ class CreateAttempts {
   begin(input: Omit<CreateRequest, "requestKey">): PendingCreate {
     const current = this.read();
     const notes = normalizedNotes(input.notes);
+    const guests = parseGuests(input.guests);
+    if (guests === null) throw new ErrorWithCode("invalid_input", 400);
     const body = {
       start: input.start,
       name: input.name,
       email: input.email,
       timeZone: input.timeZone,
       ...(notes ? { notes } : {}),
+      ...(guests ? { guests } : {}),
     };
     if (current?.kind === "receipt") throw new ErrorWithCode("booking_receipt_exists", 409);
     if (current?.kind === "pending") {
@@ -120,7 +130,8 @@ class CreateAttempts {
     let next: CreationState;
     try {
       next = decode({ kind: "pending", request: { requestKey: crypto.randomUUID(), ...body } });
-    } catch {
+    } catch (error) {
+      if (error instanceof ErrorWithCode) throw error;
       throw new ErrorWithCode("invalid_input", 400);
     }
     if (next.kind !== "pending") throw new ErrorWithCode("invalid_input", 400);

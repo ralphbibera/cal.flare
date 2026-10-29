@@ -30,6 +30,61 @@ function session() {
 const body = { start: Date.UTC(2030, 0, 1, 10), name: "Guest", email: "guest@example.test", timeZone: "UTC" };
 const access = { id: "a".repeat(64), token: "b".repeat(43) };
 
+test("saved guests are immutable, restored, identity fenced and erased by acknowledgment", () => {
+  const tab = session(),
+    options = { storage: tab.storage, scope: "/guests" };
+  const store = new CreateAttempts(options);
+  const guests = ["Z@example.com", body.email];
+  const first = store.begin({ ...body, guests });
+  assert.deepEqual(first.request.guests, ["z@example.com", body.email]);
+  guests[0] = "changed@example.com";
+  assert.ok(Object.isFrozen(first.request.guests));
+  const restored = new CreateAttempts(options).read();
+  assert.deepEqual(restored, first);
+  assert.ok(restored?.kind === "pending" && Object.isFrozen(restored.request.guests));
+  assert.deepEqual(store.begin({ ...body, guests: ["Z@EXAMPLE.COM", body.email] }), first);
+  for (const guests of [[body.email, "z@example.com"], ["other@example.com"]])
+    assert.throws(
+      () => store.begin({ ...body, guests }),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "booking_in_progress"
+    );
+  store.acknowledge(first.request.requestKey, access);
+  assert.deepEqual(JSON.parse([...tab.values.values()][0] ?? "null"), {
+    kind: "receipt",
+    requestKey: first.request.requestKey,
+    access,
+  });
+});
+
+test("HTTP-sized guest attempts fit the saved reader and oversize writes preserve prior state", () => {
+  const tab = session(),
+    options = { storage: tab.storage, scope: "/large-guests" };
+  const store = new CreateAttempts(options);
+  const guests = Array.from({ length: 95 }, (_, i) => `${String(i).padStart(242, "a")}@example.com`);
+  const escaped = {
+    ...body,
+    name: "\u0000".repeat(200),
+    email: `${"\u0000".repeat(241)}@example.test`,
+    notes: `x${"\u0000".repeat(999)}`,
+  };
+  const oversized = { ...escaped, guests };
+  assert.throws(
+    () => store.begin(oversized),
+    (error: unknown) => error instanceof ErrorWithCode && error.code === "request_too_large"
+  );
+  assert.equal(tab.values.size, 0);
+  const first = store.begin({ ...escaped, guests: guests.slice(0, 90) });
+  assert.ok(JSON.stringify(first).length > 16384);
+  assert.ok(new TextEncoder().encode(JSON.stringify(first.request)).byteLength <= 32768);
+  assert.deepEqual(new CreateAttempts(options).read(), first);
+  for (const receipt of [false, true]) {
+    if (receipt) store.acknowledge(first.request.requestKey, access);
+    const before = [...tab.values.entries()];
+    assert.throws(() => store.begin(oversized), ErrorWithCode);
+    assert.deepEqual([...tab.values.entries()], before);
+  }
+});
+
 test("creation attempts preserve identity, attendee data and late-result fencing", () => {
   const tab = session();
   const options = { storage: tab.storage, scope: "/organizer/intro" };
@@ -105,7 +160,7 @@ test("notes survive reload canonically, fence changed retries and disappear from
   });
   const legacy = new CreateAttempts({ storage: tab.storage, scope: "/legacy" });
   const old = legacy.begin(body);
-  assert.deepEqual(legacy.begin({ ...body, notes: " \n " }), old);
+  assert.deepEqual(legacy.begin({ ...body, notes: " \n ", guests: ["", ""] }), old);
   const escaped = new CreateAttempts({ storage: tab.storage, scope: "/escaped" });
   const large = escaped.begin({
     ...body,
@@ -158,6 +213,17 @@ test("storage failures and corrupt state never authorize a replacement attempt",
     ...[null, 1, false, [], {}, "x".repeat(1001)].map((notes) =>
       JSON.stringify({ ...first, request: { ...first.request, notes } })
     ),
+    ...[null, "a@example.com", {}, [false], ["", "a@example.com"], ["A@example.com", "a@example.com"]].map(
+      (guests) => JSON.stringify({ ...first, request: { ...first.request, guests } })
+    ),
+    "x".repeat(65537),
+    JSON.stringify({
+      ...first,
+      request: {
+        ...first.request,
+        guests: Array.from({ length: 160 }, (_, i) => `${String(i).padStart(242, "a")}@example.com`),
+      },
+    }),
   ]) {
     tab.values.set(key, raw);
     assert.throws(

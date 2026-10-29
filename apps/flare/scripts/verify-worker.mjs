@@ -476,7 +476,13 @@ async function verifyTokenRefresh(fixture, slotsPath) {
 async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
   const { request, send, read, db, google } = fixture;
   const notes = "First line\nSecond line <plain> & text\nThird line 😀";
-  const value = { ...input(slots.slots[0].start), notes: ` \n${notes}\t ` };
+  const guests = [
+    "Z@example.com",
+    ...Array.from({ length: 21 }, (_, i) => `g${i}@example.com`),
+    "guest@example.test",
+  ];
+  const normalized = guests.map((email) => email.toLowerCase());
+  const value = { ...input(slots.slots[0].start), notes: ` \n${notes}\t `, guests };
   const commands = await db.prepare("SELECT count(*) AS n FROM booking_command").first("n");
   const writes = google.writes.length;
   for (const invalid of [null, 1, false, [], {}, "x".repeat(1001), `${"😀".repeat(500)}x`])
@@ -484,23 +490,59 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
       (await read(await send("/api/bookings", { ...value, notes: invalid }), 400)).error,
       "invalid_input"
     );
+  for (const guests of [
+    null,
+    "a@example.com",
+    {},
+    [1],
+    ["", "a@example.com"],
+    [" "],
+    ["A@example.com", "a@example.com"],
+  ])
+    assert.equal((await read(await send("/api/bookings", { ...value, guests }), 400)).error, "invalid_input");
+  assert.equal(
+    (
+      await read(
+        await send("/api/bookings", {
+          ...value,
+          guests: Array.from({ length: 2000 }, (_, i) => `g${i}@example.com`),
+        }),
+        413
+      )
+    ).error,
+    "request_too_large"
+  );
   assert.equal(await db.prepare("SELECT count(*) AS n FROM booking_command").first("n"), commands);
   assert.equal(google.writes.length, writes);
   await read(await send("/api/bookings", value, { Origin: "https://foreign.example" }), 403);
   const booking = await read(await send("/api/bookings", value), 201);
   assert.equal(booking.status, "confirmed");
-  const replay = await read(await send("/api/bookings", { ...value, notes }), 201);
+  const replay = await read(await send("/api/bookings", { ...value, notes, guests: normalized }), 201);
   assert.equal(replay.id, booking.id);
   assert.equal(
     (await read(await send("/api/bookings", { ...value, notes: `${notes}!` }), 409)).error,
     "idempotency_mismatch"
   );
+  for (const guests of [[...normalized].reverse(), ["different@example.com"]])
+    assert.equal(
+      (await read(await send("/api/bookings", { ...value, guests }), 409)).error,
+      "idempotency_mismatch"
+    );
   assert.equal(google.writes.length, 1);
   const event = google.events.get(booking.id);
   const description =
     "Meet the organizer\n\nAdditional notes:\nFirst line\nSecond line <plain> & text\nThird line 😀";
   assert.equal(event.description, description);
   assert.equal(event.attendees[0].email, value.email);
+  assert.deepEqual(event.attendees, [
+    { email: value.email, displayName: value.name },
+    ...normalized.slice(0, -1).map((email) => ({ email })),
+  ]);
+  const persisted = await db
+    .prepare("SELECT initial_json,confirmed_json FROM booking WHERE id=?")
+    .bind(booking.id)
+    .first();
+  for (const json of Object.values(persisted)) assert.deepEqual(JSON.parse(json).guests, normalized);
   assert.equal(Date.parse(event.start.dateTime), value.start);
   await read(await request(`/api/bookings/${booking.id}`), 401);
   await read(
@@ -511,16 +553,21 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
   const ownerData = await read(await request("/api/owner", { headers: owner }));
   for (const projection of [
     booking,
+    replay,
     view,
     ownerData,
     await read(await request("/api/public")),
     await read(await request(slotsPath)),
   ]) {
     assert.ok(!JSON.stringify(projection).includes("First line"));
+    for (const email of normalized.filter((email) => email !== value.email))
+      assert.ok(!JSON.stringify(projection).includes(email));
+    assert.ok(!Object.hasOwn(projection, "guests"));
   }
   for (const projection of [booking, view, ...ownerData.bookings]) {
     assert.ok(!Object.hasOwn(projection, "notes"));
     assert.ok(!Object.hasOwn(projection, "description"));
+    assert.ok(!Object.hasOwn(projection, "guests"));
   }
   const stored = await db
     .prepare("SELECT token_hash FROM booking WHERE id=?")
@@ -549,6 +596,16 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
   assert.equal(moved.start, slots.slots[3].start);
   assert.equal(Date.parse(google.events.get(booking.id).start.dateTime), moved.start);
   assert.equal(google.events.get(booking.id).description, description);
+  assert.deepEqual(google.events.get(booking.id).attendees, event.attendees);
+  assert.deepEqual(
+    JSON.parse(
+      await db
+        .prepare("SELECT confirmed_json FROM booking WHERE id=?")
+        .bind(booking.id)
+        .first("confirmed_json")
+    ).guests,
+    normalized
+  );
   const cancelled = await read(
     await send(
       `/api/bookings/${booking.id}`,
@@ -572,7 +629,7 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
   assert.deepEqual(race.map((response) => response.status).sort(), [201, 409]);
   const winner = rivals[race.findIndex((response) => response.status === 201)];
   await Promise.all(race.map((response) => response.arrayBuffer()));
-  const legacy = await read(await send("/api/bookings", { ...winner, notes: " \n " }), 201);
+  const legacy = await read(await send("/api/bookings", { ...winner, notes: " \n ", guests: ["", ""] }), 201);
   assert.equal((await read(await send("/api/bookings", { ...winner, notes: "" }), 201)).id, legacy.id);
   assert.equal(google.events.get(legacy.id).description, "Meet the organizer");
   assert.equal(google.events.size, 1);
@@ -588,6 +645,7 @@ async function verifyRecovery(fixture, slots, owner) {
     await send("/api/bookings", {
       ...input(slots.slots[7].start),
       notes: "Recovery <notes>\nSame invitation",
+      guests: ["recovery@example.com", "guest@example.test"],
     }),
     202
   );
@@ -607,12 +665,19 @@ async function verifyRecovery(fixture, slots, owner) {
       .run();
     await fixture.scheduled();
   };
-  google.events.set(pending.id, { ...remote, description: "Changed remotely" });
-  await recover(pending.id);
-  const mismatch = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
-  assert.equal(mismatch.status, "attention");
-  assert.equal(mismatch.error, "event_mismatch");
-  assert.equal(google.writes.filter((write) => write.action === "insert").length, inserts);
+  for (const change of [
+    { description: "Changed remotely" },
+    { attendees: remote.attendees.slice(0, 1) },
+    { attendees: [remote.attendees[0], { email: "substitute@example.com" }] },
+    { attendees: [...remote.attendees, { email: "extra@example.com", self: true, organizer: true }] },
+  ]) {
+    google.events.set(pending.id, { ...remote, ...change });
+    await recover(pending.id);
+    const mismatch = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
+    assert.equal(mismatch.status, "attention");
+    assert.equal(mismatch.error, "event_mismatch");
+    assert.equal(google.writes.filter((write) => write.action === "insert").length, inserts);
+  }
   google.events.set(pending.id, remote);
   await recover(pending.id);
   const recovered = await db
@@ -627,9 +692,14 @@ async function verifyRecovery(fixture, slots, owner) {
     { action: "update", command: "reschedule", state: "active", extra: { start: slots.slots[9].start } },
     { action: "delete", command: "cancel", state: "cancelled", extra: {} },
   ]) {
-    google.loseResponseAfter(action);
     const current = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
-    await read(
+    const base = google.events.get(pending.id),
+      beforeWrites = google.writes.length;
+    google.events.set(pending.id, {
+      ...base,
+      attendees: [...base.attendees, { email: "extra@example.com", self: true }],
+    });
+    const blocked = await read(
       await send(
         `/api/bookings/${pending.id}`,
         {
@@ -642,6 +712,11 @@ async function verifyRecovery(fixture, slots, owner) {
       ),
       202
     );
+    assert.equal(blocked.error, "event_changed");
+    assert.equal(google.writes.length, beforeWrites);
+    google.events.set(pending.id, base);
+    google.loseResponseAfter(action);
+    await read(await send(`/api/bookings/${pending.id}/retry`, {}, auth(pending)), 202);
     const writes = google.writes.length;
     await recover(pending.id);
     const result = await db
@@ -649,7 +724,10 @@ async function verifyRecovery(fixture, slots, owner) {
       .bind(pending.id)
       .first();
     assert.deepEqual(result, { state, pending_id: null });
-    if (action === "update") assert.equal(google.events.get(pending.id).description, remote.description);
+    if (action === "update") {
+      assert.equal(google.events.get(pending.id).description, remote.description);
+      assert.deepEqual(google.events.get(pending.id).attendees, remote.attendees);
+    }
     assert.equal(
       google.writes.length,
       writes,
