@@ -1,3 +1,4 @@
+import { parseGuests } from "../domain/guests.ts";
 import { isValidTimeZone } from "../domain/scheduling.ts";
 import type { CalendarEvent, EventInput, GoogleCalendar } from "./google.ts";
 import { ErrorWithCode, record } from "./http.ts";
@@ -85,10 +86,12 @@ function zone(value: unknown): string {
 }
 export function parseCreate(input: unknown) {
   const data = record(input);
-  exact(data, ["requestKey", "start", "name", "email", "timeZone", "notes"]);
+  exact(data, ["requestKey", "start", "name", "email", "timeZone", "notes", "guests"]);
   if (data.notes !== undefined && typeof data.notes !== "string") throw new ErrorWithCode("invalid_input");
   const notes = data.notes?.trim();
   if (notes && notes.length > 1000) throw new ErrorWithCode("invalid_input");
+  const guests = parseGuests(data.guests);
+  if (guests === null) throw new ErrorWithCode("invalid_input");
   return {
     action: "create" as const,
     requestKey: key(data.requestKey),
@@ -96,6 +99,7 @@ export function parseCreate(input: unknown) {
     ...guest(data),
     timeZone: zone(data.timeZone),
     ...(notes ? { notes } : {}),
+    ...(guests ? { guests } : {}),
   };
 }
 export function parseChange(input: unknown): ChangeRequest {
@@ -111,6 +115,8 @@ export function parseChange(input: unknown): ChangeRequest {
 }
 export function snapshot(json: string): BookingSnapshot {
   const data = record(JSON.parse(json));
+  const guests = parseGuests(data.guests);
+  if (guests === null) throw new ErrorWithCode("invalid_input");
   const start = timestamp(data.start),
     end = timestamp(data.end);
   if (end <= start || typeof data.description !== "string") throw new ErrorWithCode("invalid_input");
@@ -126,10 +132,20 @@ export function snapshot(json: string): BookingSnapshot {
     description: data.description,
     attendee: guest(record(data.attendee)),
     privateMetadata,
+    ...(guests ? { guests } : {}),
   };
 }
 export function matches(event: CalendarEvent, desired: BookingSnapshot): boolean {
+  const expected = new Set(
+    [desired.attendee.email, ...(desired.guests ?? [])].map((email) => email.toLowerCase())
+  );
+  const actual = new Set(event.attendees.map((attendee) => attendee.email.toLowerCase()));
+  const owner = event.calendarOwnerEmail?.toLowerCase();
   return (
+    !event.attendeesOmitted &&
+    event.attendees.every((attendee) => !attendee.additionalGuests) &&
+    [...expected].every((email) => actual.has(email)) &&
+    [...actual].every((email) => expected.has(email) || email === owner) &&
     event.id === desired.id &&
     event.status !== "cancelled" &&
     "dateTime" in event.start &&

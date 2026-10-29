@@ -37,6 +37,7 @@ const input: EventInput = {
   description: "Booked meeting",
   attendee: { name: "Guest", email: "guest@example.com" },
   privateMetadata: { bookingId: "booking-1" },
+  guests: ["extra@example.com", "GUEST@example.com"],
 };
 const failure = (kind: string, status: number) => (error: unknown) =>
   error instanceof GoogleCalendarError && error.kind === kind && error.status === status;
@@ -67,7 +68,10 @@ try {
     assert.equal(init?.method, "POST");
     const payload = JSON.parse(String(init?.body));
     assert.equal(payload.id, input.id, "Retries use a caller-assigned stable event ID");
-    assert.equal(payload.attendees.length, 1);
+    assert.deepEqual(payload.attendees, [
+      { email: "guest@example.com", displayName: "Guest" },
+      { email: "extra@example.com" },
+    ]);
     assert.equal(payload.attendees[0].email, "guest@example.com");
     assert.equal(
       payload.attendees[0].responseStatus,
@@ -84,6 +88,11 @@ try {
         `https://www.googleapis.com/calendar/v3/calendars/primary/events/${input.id}?sendUpdates=all`
       );
       assert.equal(init?.method, operation);
+      if (operation === "PATCH")
+        assert.deepEqual(JSON.parse(String(init?.body)).attendees, [
+          { email: input.attendee.email, displayName: input.attendee.name },
+          { email: "extra@example.com" },
+        ]);
       assert.equal(
         new Headers(init?.headers).get("If-Match"),
         '"v1"',
@@ -153,7 +162,34 @@ try {
     extendedProperties: { private: { bookingId: "booking-1" } },
   };
   handler = async () => Response.json(expected);
-  assert.deepEqual(await client.get(input.id), expected);
+  assert.deepEqual(await client.get(input.id), { ...expected, calendarOwnerEmail: env.GOOGLE_OWNER_EMAIL });
+  const attendees = [
+    { email: "extra@example.com", displayName: "", additionalGuests: 1 },
+    ...expected.attendees,
+  ];
+  handler = async () =>
+    Response.json({
+      ...expected,
+      attendees,
+      calendarOwnerEmail: "untrusted@example.com",
+      attendeesOmitted: true,
+    });
+  assert.deepEqual(await client.get(input.id), {
+    ...expected,
+    attendees,
+    attendeesOmitted: true,
+    calendarOwnerEmail: env.GOOGLE_OWNER_EMAIL,
+  });
+  for (const partial of [
+    { attendeesOmitted: "true" },
+    ...[-1, 0.5, "1", null].map((additionalGuests) => ({
+      attendees: [{ email: "extra@example.com", additionalGuests }],
+    })),
+    { attendees: [{ email: "extra@example.com", displayName: 1 }] },
+  ]) {
+    handler = async () => Response.json({ ...expected, ...partial });
+    await assert.rejects(client.get(input.id), failure("retryable", 200));
+  }
   handler = async () => new Response(null, { status: 404 });
   await assert.rejects(client.get(input.id), failure("definite", 404));
   handler = async (url) =>

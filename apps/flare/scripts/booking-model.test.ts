@@ -107,6 +107,61 @@ test("optional notes preserve legacy bytes and canonical literal content within 
   assert.throws(() => parseCreate({ ...create, notes, extra: true }), ErrorWithCode);
 });
 
+test("guests preserve ordered identity, strict native email rules and legacy bytes", () => {
+  const legacy = JSON.stringify(parseCreate({ ...create, notes: "Note" }));
+  for (const guests of [[], ["", ""]]) {
+    assert.equal(JSON.stringify(parseCreate({ ...create, notes: "Note", guests })), legacy);
+    assert.deepEqual(snapshot(JSON.stringify({ ...desired, guests })), desired);
+  }
+  const guests = ["Z@example.com", "a+tag@example.com", create.email];
+  const parsed = parseCreate({ ...create, notes: "Note", guests });
+  assert.deepEqual(parsed.guests, ["z@example.com", "a+tag@example.com", create.email]);
+  assert.equal(JSON.stringify(parsed), `${legacy.slice(0, -1)},"guests":${JSON.stringify(parsed.guests)}}`);
+  assert.ok(Object.isFrozen(parsed.guests));
+  assert.deepEqual(parseCreate({ ...create, guests: ["a_b+'c,d.e-f@example.com"] }).guests, [
+    "a_b+'c,d.e-f@example.com",
+  ]);
+  guests[0] = "changed@example.com";
+  assert.equal(parsed.guests?.[0], "z@example.com");
+  assert.equal(
+    parseCreate({ ...create, guests: [`${"a".repeat(242)}@example.com`] }).guests?.[0]?.length,
+    254
+  );
+  assert.equal(
+    parseCreate({ ...create, guests: Array.from({ length: 21 }, (_, i) => `g${i}@example.com`) }).guests
+      ?.length,
+    21
+  );
+  for (const guests of [
+    null,
+    "a@example.com",
+    {},
+    [1],
+    [undefined],
+    Array(2),
+    [null],
+    ["", "a@example.com"],
+    [" "],
+    [" a@example.com"],
+    ["a@example.com\n"],
+    [".a@example.com"],
+    ["a..b@example.com"],
+    ["a@b.c"],
+    ["é@example.com"],
+    [`${"a".repeat(243)}@example.com`],
+    ["A@example.com", "a@example.com"],
+  ]) {
+    assert.throws(() => parseCreate({ ...create, guests }), ErrorWithCode);
+    assert.throws(() => snapshot(JSON.stringify({ ...desired, guests })), ErrorWithCode);
+  }
+  const saved = snapshot(JSON.stringify({ ...desired, guests: ["Z@example.com", create.email] }));
+  assert.deepEqual(saved.guests, ["z@example.com", create.email]);
+  assert.ok(Object.isFrozen(saved.guests));
+  assert.throws(() =>
+    parseChange({ action: "cancel", requestKey: create.requestKey, version: 1, guests: [] })
+  );
+});
+
 test("persisted snapshots retain validated booking content and reject corrupt state", () => {
   assert.deepEqual(snapshot(JSON.stringify(desired)), desired);
   for (const change of [
@@ -148,4 +203,44 @@ test("calendar reconciliation tolerates RSVP and ETag changes while protecting b
   ])
     assert.equal(matches({ ...remote, ...change }, desired), false, JSON.stringify(change));
   assert.equal(matches(remote, desired), true);
+});
+
+test("reconciliation proves the entire recipient set with only a trusted owner exception", () => {
+  const expected = { ...desired, guests: ["z@example.com", "a@example.com", create.email] };
+  const attendees = [
+    { email: "A@example.com", displayName: "Any guest name", responseStatus: "declined" },
+    ...remote.attendees,
+    { email: "z@example.com", displayName: "" },
+    { email: "a@example.com" },
+  ];
+  assert.equal(matches({ ...remote, attendees }, expected), true);
+  for (const changed of [
+    attendees.slice(0, 2),
+    [...attendees, { email: "extra@example.com", self: true, organizer: true }],
+    attendees.map((row) => (row.email === "z@example.com" ? { email: "substitute@example.com" } : row)),
+  ])
+    assert.equal(matches({ ...remote, attendees: changed }, expected), false);
+  const owner = { email: "OWNER@example.com", self: true };
+  assert.equal(matches({ ...remote, attendees: [...attendees, owner] }, expected), false);
+  assert.equal(
+    matches(
+      { ...remote, attendees: [...attendees, owner], calendarOwnerEmail: "owner@example.com" },
+      expected
+    ),
+    true
+  );
+  assert.equal(matches({ ...remote, attendees: [...remote.attendees, owner] }, desired), false);
+  assert.equal(
+    matches({ ...remote, attendees: [...remote.attendees, owner], calendarOwnerEmail: owner.email }, desired),
+    true
+  );
+  assert.equal(
+    matches({ ...remote, attendees: [{ email: owner.email }], calendarOwnerEmail: owner.email }, desired),
+    false
+  );
+  for (const partial of [
+    { attendeesOmitted: true },
+    { attendees: [{ ...remote.attendees[0], email: create.email, additionalGuests: 1 }] },
+  ])
+    assert.equal(matches({ ...remote, ...partial }, desired), false);
 });

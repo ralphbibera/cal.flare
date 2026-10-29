@@ -107,6 +107,7 @@ export class BookingService {
       timeZone: data.timeZone,
       attendee: { name: data.name, email: data.email },
       privateMetadata: { application: "calflare", booking: id, operation: commandId },
+      ...(data.guests ? { guests: data.guests } : {}),
     };
     return this.admit(
       {
