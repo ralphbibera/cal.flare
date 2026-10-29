@@ -173,12 +173,14 @@ The initial day starts at 12:30pm under upstream's one-minute minimum notice fal
 selecting January 10 exposes all sixteen 9am–4:30pm starts.
 Temporary reservations are released through the original public cleanup API; no booking
 is confirmed. Uncaught errors, console errors and HTTP failures fail verification.
-This establishes the declared static reference profile, not candidate-page pixel equality,
-default-motion stability, historical runtime equivalence, or live-provider behavior.
+This establishes repeatability of the declared static reference profile. Default-motion
+stability, historical runtime equivalence, and live-provider behavior remain unverified.
 
 The same command then opens the built Flare calendar with matched event details, weekly hours,
 and fixed browser/Worker Date. It compares the initial card bounds and page background
 against the actual reference at 1280px and 390px, and checks the same nine UTC slots.
+It requires identical dimensions and zero differing RGBA pixels for both initial booking
+cards and the entire initial mobile page. Other full-page states remain migration work.
 The Worker clock override is confined to the test fixture and preserves native timers.
 The public page bundles the Latin Inter font served by the reference's Next font loader.
 Its served bytes and rendered title text metrics are compared with the actual reference.

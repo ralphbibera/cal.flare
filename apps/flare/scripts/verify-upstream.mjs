@@ -174,6 +174,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         const title = await measureTitle(page);
         const selectedDay = await measureSelectedDay(page);
         const timezone = [...(await page.locator(".current-timezone").screenshot())];
+        const card = [...(await page.getByTestId("booker-container").screenshot())];
         assert.deepEqual(selectedDay, {
           background: "rgb(41, 41, 41)",
           text: "rgb(255, 255, 255)",
@@ -222,7 +223,19 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.deepEqual(errors, []);
         assert.deepEqual(failures, []);
         assert.deepEqual(consoleErrors, []);
-        captures.push({ name, calendar, form, frame, viewport, selectedDay, font, title, fullDay, timezone });
+        captures.push({
+          name,
+          calendar,
+          form,
+          frame,
+          viewport,
+          selectedDay,
+          font,
+          title,
+          fullDay,
+          timezone,
+          card,
+        });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
         try {
@@ -314,6 +327,14 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
         assert.deepEqual(await measureFrame(page), reference.frame, `${name} public calendar frame`);
         assert.equal(
           await page.evaluate(differentPixels, [
+            reference.card,
+            [...(await page.getByTestId("booker-container").screenshot())],
+          ]),
+          0,
+          `${name} initial booking-card pixels`
+        );
+        assert.equal(
+          await page.evaluate(differentPixels, [
             reference.timezone,
             [...(await page.locator(".current-timezone").screenshot())],
           ]),
@@ -325,11 +346,19 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
           reference.selectedDay,
           `${name} public selected-day colors`
         );
-        await page.screenshot({
-          path: fileURLToPath(new URL(`candidate-page-${name}-calendar.png`, artifacts)),
-          fullPage: true,
-          animations: "disabled",
-        });
+        const calendar = [
+          ...(await page.screenshot({
+            path: fileURLToPath(new URL(`candidate-page-${name}-calendar.png`, artifacts)),
+            fullPage: true,
+            animations: "disabled",
+          })),
+        ];
+        if (name === "mobile")
+          assert.equal(
+            await page.evaluate(differentPixels, [reference.calendar, calendar]),
+            0,
+            "Initial mobile full-page pixels"
+          );
         await page.getByRole("button", { name: "10", exact: true }).click();
         await ready(page, '[data-testid="time"]');
         assert.equal(await page.getByTestId("time").count(), 16);
@@ -370,6 +399,6 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
     await fixture.close();
   }
   console.log(
-    "PASS built public calendar frame bounds and background match the actual pinned page at desktop/mobile with matched clocks, metadata and nine slots. Whole-page pixels remain unverified."
+    "PASS initial booking-card pixels match the actual pinned page at desktop/mobile, and the initial mobile full page matches with zero different pixels. Other full-page states remain unverified."
   );
 }

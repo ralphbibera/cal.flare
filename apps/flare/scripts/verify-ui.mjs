@@ -79,6 +79,7 @@ await promisify(execFile)(
     "packages/coss-ui/src/icons.tsx",
     "apps/web/modules/bookings/components/EventMeta.tsx",
     "apps/web/modules/timezone/components/TimezoneSelect.tsx",
+    "packages/features/bookings/Booker/hooks/useBookerLayout.ts",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
