@@ -109,6 +109,18 @@ Recipients persist with the immutable request and snapshot through replay and re
 Notes in the event description are shared with all provider invitation recipients, including guests.
 Guest entry grants no management access. Local provider fixtures do not prove live invitation arrival.
 The page distinguishes confirmed bookings from results needing recovery or organizer attention.
+Acknowledged receipts and authorized private details share a standalone What/When/Who card.
+It uses the stored booking title, full booking-zone date, start/end range, explicit timezone,
+and duration derived from the stored interval. Later event title or duration edits do not change
+these facts. Only the primary attendee name and email are shown.
+Stored unresolved changes, unavailable change storage, and provider uncertainty suppress the
+confirmed success heading and check. Loading details does not retry a provider operation.
+The built Worker/D1 browser journey verifies these facts after event edits, public and private
+reloads, and at 390px and 1280px. Google responses are mocked.
+The native confirmation route has no booked reference fixture, so confirmation and terminal-page
+pixel parity remain unverified. Host identity, location, invitation-delivery copy, calendar/export
+controls, and signup branding remain later port work. Source-backed layout does not establish
+native confirmation pixel parity or completion of the full port.
 From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes
 with uncertain provider outcomes expose status recovery instead of another mutation.

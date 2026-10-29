@@ -244,6 +244,31 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         : { kind: "column", count: width <= 1024 ? 2 : 6 };
   const wide = view.kind !== "month";
   const showCalendar = stage.kind === "calendar" || (wide && formActive);
+  if (stage.kind === "receipt") {
+    return (
+      <div className="text-default mx-auto min-h-full w-full px-4 py-8">
+        {stage.booking ? (
+          <BookingManagement
+            booking={stage.booking}
+            access={stage.receipt.access}
+            labels={labels}
+            timeFormat={format}
+            onUpdated={(booking) => setStage({ ...stage, booking })}
+          />
+        ) : (
+          <section className="border-subtle mx-auto max-w-xl space-y-4 rounded-lg border p-8">
+            <h1 className="text-emphasis text-2xl font-semibold" aria-live="polite">
+              {busy ? labels.loading : labels.statusUnavailable}
+            </h1>
+            {error && <p role="alert">{error}</p>}
+            <Button color="secondary" loading={busy} onClick={() => void loadReceipt(stage.receipt)}>
+              {labels.checkStatus}
+            </Button>
+          </section>
+        )}
+      </div>
+    );
+  }
   const layoutToggle = (
     <Provider>
       <ToggleGroup.Root
@@ -501,26 +526,6 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 </div>
               </form>
             )}
-            {stage.kind === "receipt" &&
-              (stage.booking ? (
-                <BookingManagement
-                  booking={stage.booking}
-                  access={stage.receipt.access}
-                  labels={labels}
-                  timeFormat={format}
-                  onUpdated={(booking) => setStage({ ...stage, booking })}
-                />
-              ) : (
-                <div className="space-y-4">
-                  <h2 className="text-emphasis text-xl font-semibold" aria-live="polite">
-                    {busy ? labels.loading : labels.statusUnavailable}
-                  </h2>
-                  {error && <p role="alert">{error}</p>}
-                  <Button color="secondary" loading={busy} onClick={() => void loadReceipt(stage.receipt)}>
-                    {labels.checkStatus}
-                  </Button>
-                </div>
-              ))}
             {stage.kind === "blocked" && (
               <>
                 <p role="alert">{error}</p>
