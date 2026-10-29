@@ -7,6 +7,213 @@ import { createWorkerFixture } from "./verify-worker.mjs";
 
 const fixedTime = Date.parse("2030-01-09T12:00:00Z");
 
+async function verifyDialogComposition(page) {
+  const dialog = page.getByRole("dialog", { name: "Confirm your details", exact: true });
+  assert.equal(await dialog.locator("form").count(), 1);
+  assert.equal(await dialog.locator("time").getAttribute("datetime"), "2030-01-10T09:00:00.000Z");
+  assert.equal(await dialog.locator("time").textContent(), "Thursday, January 10, 2030, 9:00 am");
+  assert.ok(await dialog.getByText("UTC", { exact: true }).isVisible());
+  assert.ok(await dialog.getByText("30m", { exact: true }).isVisible());
+  assert.ok(await dialog.getByRole("button", { name: "Add guests", exact: true }).isVisible());
+  const terms = dialog.getByRole("link", { name: "Terms", exact: true });
+  const privacy = dialog.getByRole("link", { name: "Privacy Policy", exact: true });
+  assert.equal(
+    await terms.evaluate((node) => node.parentElement.textContent),
+    "By proceeding, you agree to Cal.diy's Terms and Privacy Policy."
+  );
+  for (const [link, href] of [
+    [terms, "https://cal.com/terms"],
+    [privacy, "https://cal.com/privacy"],
+  ]) {
+    assert.equal(await link.getAttribute("href"), href);
+    assert.equal(await link.getAttribute("target"), "_blank");
+    assert.equal(await link.getAttribute("rel"), "noopener noreferrer");
+  }
+  const footer = dialog.getByRole("button", { name: "Back", exact: true }).locator("..");
+  assert.deepEqual(
+    await footer.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return [
+        style.position,
+        style.bottom,
+        style.backgroundColor,
+        style.borderTopWidth,
+        style.borderTopColor,
+        style.padding,
+        style.marginLeft,
+        style.marginRight,
+      ];
+    }),
+    ["sticky", "0px", "rgb(255, 255, 255)", "1px", "rgb(229, 231, 235)", "16px 32px", "-32px", "-32px"]
+  );
+  assert.ok(
+    await dialog.evaluate((node) => {
+      const nodes = [
+        node.querySelector('input[name="name"]'),
+        node.querySelector('input[name="email"]'),
+        node.querySelector("textarea"),
+        [...node.querySelectorAll("button")].find((n) => n.textContent === "Add guests"),
+        node.querySelector("a"),
+        node.querySelector('button[type="submit"]'),
+      ];
+      return (
+        nodes.every(
+          (item, index) =>
+            !index ||
+            Boolean(nodes[index - 1].compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING)
+        ) &&
+        node.scrollWidth <= node.clientWidth &&
+        document.documentElement.scrollWidth <= innerWidth
+      );
+    }),
+    "Fields, closed guests, agreement and actions keep logical order without horizontal overflow"
+  );
+}
+
+async function captureDialogRegions(page, artifacts, name) {
+  const dialog = page.getByRole("dialog");
+  const appointment = dialog.locator("h1 + div > div");
+  assert.deepEqual(await appointment.allTextContents(), ["Thursday, January 10, 2030, 9:00 am", "30m"]);
+  assert.deepEqual(
+    await dialog
+      .locator('input[name="name"], input[name="email"], textarea[name="notes"]')
+      .evaluateAll((nodes) => nodes.map((node) => node.value)),
+    ["", "", ""]
+  );
+  assert.equal(await dialog.getByRole("button", { name: "Add guests", exact: true }).count(), 1);
+  const agreement = dialog.getByRole("link", { name: "Terms", exact: true }).locator("..");
+  assert.equal(
+    await agreement.textContent(),
+    "By proceeding, you agree to Cal.diy's Terms and Privacy Policy."
+  );
+  const footer = dialog.getByRole("button", { name: "Back", exact: true }).locator("..");
+  const regions = {};
+  for (const [part, locator] of [
+    ["badges", appointment],
+    ["agreement", agreement],
+    ["footer", footer],
+  ]) {
+    const bounds = await locator.evaluateAll((nodes) => {
+      const rects = nodes.map((node) => node.getBoundingClientRect());
+      const x = Math.min(...rects.map((r) => r.x)),
+        y = Math.min(...rects.map((r) => r.y));
+      return {
+        x,
+        y,
+        width: Math.max(...rects.map((r) => r.right)) - x,
+        height: Math.max(...rects.map((r) => r.bottom)) - y,
+      };
+    });
+    const styles = await locator.evaluateAll(
+      (nodes, part) =>
+        nodes.map((node) => {
+          const s = getComputedStyle(node);
+          const pixel = document.createElement("canvas").getContext("2d");
+          const color = (value) => {
+            pixel.clearRect(0, 0, 1, 1);
+            pixel.fillStyle = value;
+            pixel.fillRect(0, 0, 1, 1);
+            return [...pixel.getImageData(0, 0, 1, 1).data];
+          };
+          return [
+            s.fontSize,
+            s.fontWeight,
+            s.lineHeight,
+            color(s.backgroundColor),
+            part === "footer"
+              ? [...node.querySelectorAll("button")].map((button) => color(getComputedStyle(button).color))
+              : color(s.color),
+            s.borderRadius,
+            s.padding,
+            s.borderTopWidth,
+          ];
+        }),
+      part
+    );
+    if (part === "badges")
+      assert.deepEqual(
+        styles.map((style) => [style[0], style[1], style[2], style[5], style[6]]),
+        [
+          ["14px", "500", "14px", "10px", "4px 6px"],
+          ["14px", "500", "14px", "10px", "4px 6px"],
+        ],
+        "Pinned large gray badge typography, radius and padding"
+      );
+    regions[part] = {
+      size: [bounds.width, bounds.height],
+      styles,
+      pixels: [
+        ...(await page.screenshot({
+          clip: bounds,
+          path: fileURLToPath(new URL(`${name}-${part}.png`, artifacts)),
+          animations: "disabled",
+        })),
+      ],
+    };
+  }
+  return regions;
+}
+
+async function verifyDefaultDialogs(browser) {
+  const fixture = await createWorkerFixture({ port: 8798, fixedTime });
+  try {
+    const owner = await fixture.login();
+    const settings = {
+      ...fixture.settings,
+      schedule: {
+        timeZone: "UTC",
+        rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 540, endMinute: 1020 })),
+      },
+    };
+    assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
+    for (const width of [390, 768, 900, 1280]) {
+      const context = await browser.newContext({
+        viewport: { width, height: 844 },
+        locale: "en-US",
+        timezoneId: "UTC",
+        colorScheme: "light",
+      });
+      try {
+        const page = await context.newPage();
+        await page.clock.setFixedTime(new Date(fixedTime));
+        await page.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
+        await page.getByRole("button", { name: "10", exact: true }).click();
+        if (width > 768)
+          await page
+            .getByRole("radio", {
+              name: width === 900 ? "Switch to weekly view" : "Switch to column view",
+              exact: true,
+            })
+            .click();
+        await (width === 900
+          ? page.locator('[data-slot="2030-01-10T09:00:00.000Z"]')
+          : page.getByTestId("time").first()
+        ).click();
+        await verifyDialogComposition(page);
+        assert.deepEqual(
+          await page.locator("form input, form textarea").evaluateAll((nodes) => nodes.map((n) => n.value)),
+          ["", "", ""]
+        );
+        await page.screenshot({
+          path: fileURLToPath(new URL(`../.verification/dialog-composition-${width}.png`, import.meta.url)),
+          fullPage: true,
+          animations: "disabled",
+        });
+      } finally {
+        await context.close();
+      }
+    }
+    assert.deepEqual(fixture.upstreamFailures, []);
+    assert.deepEqual(fixture.google.denied, []);
+    assert.equal(fixture.google.writes.length, 0);
+  } finally {
+    await fixture.close();
+  }
+  console.log(
+    "PASS default blank dialog composition at 390/768/900/1280, literal UTC appointment, duration, agreement links, logical order and sticky footer. Built Worker/local D1; Google is mocked."
+  );
+}
+
 async function captureAttendeeRegion(page, artifacts, name) {
   await ready(page, 'input[name="email"]');
   const guests = page.getByRole("button", { name: "Add guests", exact: true });
@@ -367,8 +574,10 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.ok((await page.locator("body").innerText()).includes("Thursday, January 10, 2030"));
         assert.equal(await page.getByRole("dialog").count(), name === "mobile" ? 1 : 0);
         let dialog = null;
+        let dialogRegions = null;
         if (name === "mobile") {
           dialog = await verifyDialogTypography(page, "calFont");
+          dialogRegions = await captureDialogRegions(page, artifacts, `upstream-mobile-${take}`);
           await page.getByRole("heading", { name: "Confirm your details", exact: true }).screenshot({
             path: fileURLToPath(new URL(`upstream-mobile-heading-${take}.png`, artifacts)),
           });
@@ -401,6 +610,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
           card,
           attendeeRegion,
           dialog,
+          dialogRegions,
         });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
@@ -558,6 +768,7 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
         const first = page.getByTestId("time").first();
         await first.focus();
         await first.press("Enter");
+        await page.mouse.move(0, 0);
         await page.getByLabel("Your name*", { exact: true }).waitFor();
         assert.equal(
           await page.getByTestId("event-meta").locator("time").getAttribute("datetime"),
@@ -587,6 +798,7 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
           );
         }
         if (name === "mobile") {
+          await verifyDialogComposition(page);
           const dialog = await verifyDialogTypography(page);
           assert.ok(
             dialog.font.equals(reference.dialog.font),
@@ -596,6 +808,19 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
             dialog.metrics,
             reference.dialog.metrics,
             "Public dialog typography matches actual Next"
+          );
+          const regions = await captureDialogRegions(page, artifacts, "candidate-mobile");
+          for (const [part, region] of Object.entries(regions)) {
+            assert.deepEqual(region.size, reference.dialogRegions[part].size, `${part} region size`);
+            assert.deepEqual(region.styles, reference.dialogRegions[part].styles, `${part} region styles`);
+            assert.equal(
+              await page.evaluate(differentPixels, [reference.dialogRegions[part].pixels, region.pixels]),
+              0,
+              `Mobile dialog PARTIAL ${part} region RGBA`
+            );
+          }
+          console.log(
+            "PASS PARTIAL mobile dialog badge union, agreement and sticky footer regions have zero different RGBA pixels. Explicit timezone, whole header and whole dialog equality are excluded."
           );
           await page.getByRole("heading", { name: "Confirm your details", exact: true }).screenshot({
             path: fileURLToPath(new URL("candidate-mobile-heading.png", artifacts)),
@@ -622,4 +847,4 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
   );
 }
 
-export { verifyDialogTypography };
+export { verifyDefaultDialogs, verifyDialogTypography };

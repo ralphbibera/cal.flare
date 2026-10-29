@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { verifyDialogTypography } from "./verify-upstream.mjs";
+import { verifyDefaultDialogs, verifyDialogTypography } from "./verify-upstream.mjs";
 
 export async function verifySubmission(browser, fixture, date) {
+  await verifyDefaultDialogs(browser);
   const contexts = [],
     errors = [],
     consoles = [];
@@ -233,20 +234,21 @@ export async function verifySubmission(browser, fixture, date) {
           "Guest email 3",
           "Remove guest 3",
           "Add another",
+          "Terms",
+          "Privacy Policy",
           "Back",
           "Confirm",
         ]) {
           await page.keyboard.press("Tab");
-          const control = [
-            "Confirm",
-            "Back",
-            "Add another",
-            "Remove guest 1",
-            "Remove guest 2",
-            "Remove guest 3",
-          ].includes(name)
-            ? page.getByRole("button", { name, exact: true })
-            : page.getByLabel(name, { exact: true });
+          let control = page.getByLabel(name, { exact: true });
+          if (["Terms", "Privacy Policy"].includes(name))
+            control = page.getByRole("link", { name, exact: true });
+          if (
+            ["Confirm", "Back", "Add another", "Remove guest 1", "Remove guest 2", "Remove guest 3"].includes(
+              name
+            )
+          )
+            control = page.getByRole("button", { name, exact: true });
           assert.ok(await control.evaluate((node) => document.activeElement === node), `Tab focuses ${name}`);
           assert.ok(
             await dialog.evaluate(
@@ -355,7 +357,24 @@ export async function verifySubmission(browser, fixture, date) {
       "Small-screen attendee dialog has bounded, scrollable content"
     );
     await page.getByRole("button", { name: "Confirm", exact: true }).focus();
-    assert.ok(await dialog.evaluate((node) => node.scrollTop > 0));
+    assert.ok(
+      await dialog.evaluate((node) => {
+        const footer = node.querySelector('button[type="submit"]').parentElement.getBoundingClientRect();
+        const bounds = node.getBoundingClientRect();
+        return footer.top >= bounds.top && footer.bottom <= bounds.bottom;
+      }),
+      "Sticky actions remain visible in a short viewport"
+    );
+    await page.getByLabel("Your name*", { exact: true }).focus();
+    assert.ok(
+      await page.getByLabel("Your name*", { exact: true }).evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        const dialog = node.closest("dialog");
+        const footer = dialog.querySelector(".modalsticky").getBoundingClientRect();
+        return bounds.top >= dialog.getBoundingClientRect().top && bounds.bottom <= footer.top;
+      }),
+      "Fields remain reachable above the sticky footer"
+    );
     await page.setViewportSize({ width: 390, height: 844 });
     await page.mouse.click(1, 1);
     await page.getByTestId("time").first().click();

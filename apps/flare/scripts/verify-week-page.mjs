@@ -161,7 +161,7 @@ export async function verifyWeekPage(browser) {
         const dialog = page.getByRole("dialog", { name: "Confirm your details" });
         await expect(dialog).toBeVisible();
         await expect(dialog.locator("time")).toHaveAttribute("datetime", "2030-01-10T09:00:00.000Z");
-        await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030 at 2:30 PM");
+        await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030, 2:30 pm");
         await expect(dialog).toContainText("Asia/Kolkata");
         await expect(page.locator("#booker-time-zone")).toBeDisabled();
         await dialog.getByLabel("Your name*", { exact: true }).fill("Week Guest");
@@ -176,7 +176,7 @@ export async function verifyWeekPage(browser) {
         for (const resized of [768, 769, 1024, 1025]) {
           await page.setViewportSize({ width: resized, height: 900 });
           await expect(dialog).toBeVisible();
-          await expect(page.locator('time[datetime="2030-01-10T09:00:00.000Z"]')).toHaveCount(1);
+          await expect(dialog.locator('time[datetime="2030-01-10T09:00:00.000Z"]')).toHaveCount(1);
           await expect(dialog.getByLabel("Your name*", { exact: true })).toHaveValue("Week Guest");
         }
         await page.keyboard.press("Escape");
@@ -289,7 +289,7 @@ export async function verifyWeekPage(browser) {
           await page.reload();
           await expect(dialog).toBeVisible();
           await expect(dialog).toContainText("Asia/Kolkata");
-          await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030 at 2:30 PM");
+          await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030, 2:30 pm");
           await dialog.getByRole("button", { name: "Retry", exact: true }).click();
           await expect(page.getByRole("heading", { name: "This meeting is scheduled" })).toBeVisible();
           assert.deepEqual(commands[1], commands[0]);
