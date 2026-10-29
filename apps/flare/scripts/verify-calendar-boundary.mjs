@@ -43,6 +43,10 @@ export async function verifyCalendarBoundary(browser) {
       });
       await page.goto(`${fixture.origin}/${settings.event.slug}?layout=column_view`);
       await page.getByTestId("time").first().waitFor();
+      assert.equal(
+        await page.locator('[class*="grid-area:main"] header').count(),
+        zone === "Asia/Tokyo" ? 2 : 1
+      );
       assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2099-12");
       const countBeforeNavigation = requests.length;
       await page.getByTestId("incrementMonth").click();
@@ -73,11 +77,17 @@ export async function verifyCalendarBoundary(browser) {
           "1:00am",
           "1:30am",
         ]);
+        await page.getByTestId("time").first().click();
+        const dialog = page.getByRole("dialog", { name: "Confirm your details" });
+        assert.equal(await dialog.locator("time").getAttribute("datetime"), "2099-12-31T15:00:00.000Z");
+        await dialog.getByRole("button", { name: "Back", exact: true }).click();
       } else {
         await page.getByRole("status").filter({ hasText: "No available" }).waitFor();
         assert.equal(await page.getByTestId("time").count(), 0);
         assert.equal(requests.length, countBeforeNavigation);
       }
+      assert.equal(await page.getByRole("button", { name: "Next Day", exact: true }).isDisabled(), true);
+      assert.equal(await page.getByRole("button", { name: "Previous Day", exact: true }).isEnabled(), true);
       assert.equal(await page.getByRole("alert").count(), 0);
       for (const query of requests) {
         assert.ok(Date.parse(query.searchParams.get("from")) >= Date.UTC(2000, 0, 1));

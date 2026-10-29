@@ -1,6 +1,11 @@
 import common from "../../../../packages/i18n/locales/en/common.json";
 
 export const bookingLabels = {
+  layout: common.layout,
+  monthView: common.switch_monthly,
+  columnView: common.switch_columnview,
+  previousDay: common.flare_previous_day,
+  nextDay: common.flare_next_day,
   today: common.today,
   previousMonth: common.flare_previous_month,
   nextMonth: common.flare_next_month,

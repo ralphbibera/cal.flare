@@ -76,6 +76,11 @@ At widths through 768px, selecting a time opens a named native attendee dialog. 
 forms stay inline. Fresh forms return to the browsing month and date with their draft and slot
 focus preserved. Pending submissions cannot be dismissed. The dialog uses the pinned heading
 and container styling; complete upstream attendee-form and dialog pixel parity remain open.
+Above 768px, visitors can switch between month and next-available-date columns. Columns show
+two dates through 1024px and six above it, with the compact calendar in the sidebar and a
+modal attendee form. The built-page verifier compares the initial main column region against
+the pinned Next page at 900px and 1280px with zero different pixels. Complete column-page
+and attendee-form pixel parity remain open.
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
 The page distinguishes confirmed bookings from results needing recovery or organizer attention.
