@@ -117,10 +117,11 @@ Stored unresolved changes, unavailable change storage, and provider uncertainty 
 confirmed success heading and check. Loading details does not retry a provider operation.
 The built Worker/D1 browser journey verifies these facts after event edits, public and private
 reloads, and at 390px and 1280px. Google responses are mocked.
-The native confirmation route has no booked reference fixture, so confirmation and terminal-page
-pixel parity remain unverified. Host identity, location, invitation-delivery copy, calendar/export
+The optional native confirmation fixture supplies a repeatable reference baseline.
+Candidate confirmation and terminal-page pixel parity remain unverified.
+Host identity, location, invitation-delivery copy, calendar/export
 controls, and signup branding remain later port work. Source-backed layout does not establish
-native confirmation pixel parity or completion of the full port.
+candidate confirmation pixel parity or completion of the full port.
 From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes
 with uncertain provider outcomes expose status recovery instead of another mutation.
@@ -200,6 +201,28 @@ and preserves native timers. Next's selected-route compile mode builds the publi
 its profile-prefetch target and required APIs, then the normal production server runs it.
 This targeted runtime build does not perform the complete upstream release build or type-check.
 Page components, styles, fonts, queries and form implementations remain unchanged.
+
+The seed retains `/reference/intro` and its daily 09:00–17:00 UTC availability.
+It also creates an isolated `confirmation-reference` organizer, schedule, and event, with
+one accepted, nonrecurring booking at January 10, 2030, 09:00–09:30 UTC.
+The fixed route is `/booking/calflare-confirmation-reference-20300110`.
+Its host is `confirmation-organizer@reference.invalid`; its sole attendee is `primary@example.invalid`.
+The event has no locations or provider credentials. The main organizer has no bookings.
+These are local fixture records, not production application data.
+
+To rerun the seed against an already prepared reference checkout, use its actual path:
+
+```sh
+CALFLARE_REFERENCE_ROOT=/private/tmp/calflare-upstream-0f19cc46-20261028 \
+  mise exec -- node apps/flare/scripts/fixtures/upstream/seed.cjs
+```
+
+The seed always targets the hardcoded loopback `calflare_reference` database on port 18796.
+It accepts an empty booking table or the exact known booking and attendee relations.
+Unknown users, foreign or changed bookings, and any provider credentials fail closed.
+A transaction rolls back incomplete runs. Repeated seeds retain two users, two events,
+two schedules, one attendee, and one booking without adding duplicates.
+
 In another terminal, run the existing verifier against this server:
 
 ```sh
@@ -224,7 +247,21 @@ is confirmed. Uncaught errors, console errors and HTTP failures fail verificatio
 This establishes repeatability of the declared static reference profile. Default-motion
 stability, historical runtime equivalence, and live-provider behavior remain unverified.
 
-The same command then opens the built Flare calendar with matched event details, weekly hours,
+The same optional path visits the native confirmation route from the unchanged
+`BookingsSingleView` at pin `0f19cc46ef6b6426ee398c670575b3c96be7af9e`.
+It captures the whole page twice in fresh contexts at 390px and 1280px and requires identical
+dimensions and zero differing RGBA pixels. It checks the scheduled heading, What/When/Who,
+UTC interval, identities, synthetic notes, and ordered Reschedule/Cancel actions without clicking them.
+This booking fixture has no images, so its focused readiness check waits for loaded fonts,
+stable geometry, and completed animations without changing the public-page image requirement.
+Read-only SQL checks preserve booking content and counts and require zero credentials after each visit.
+The browser permits only local reads and the source-backed session and feature-map queries.
+Visible email-sent wording is fixture UI content. No booking is created through the UI and no invitation is sent.
+This is reference baseline evidence only. Candidate confirmation parity and full-port completion remain unverified.
+Without `CALFLARE_REFERENCE_ORIGIN`, the existing verifier skips native checks.
+That default path needs no native Prisma graph or PostgreSQL connection.
+
+The same command also opens the built Flare calendar with matched event details, weekly hours,
 and fixed browser/Worker Date. It compares the initial card bounds and page background
 against the actual reference at 1280px and 390px, and checks the same nine UTC slots.
 It requires identical dimensions and zero differing RGBA pixels for both initial booking
