@@ -13,6 +13,7 @@ import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
 import { ScrollableWithGradients } from "./ScrollableWithGradients.tsx";
 import { TimeFormatToggle } from "./TimeFormatToggle.tsx";
+import { TimezoneSelect, timezoneAliases } from "./TimezoneSelect.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
   labels: typeof bookingLabels;
@@ -31,7 +32,7 @@ const avatarClass =
 
 export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [timeZone, setTimeZone] = useState("UTC");
-  const [zones, setZones] = useState(["UTC"]);
+  const [zones, setZones] = useState<{ label: string; timezone: string }[]>([]);
   const [format, setFormat] = useState<"h:mma" | "HH:mm">("h:mma");
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
   const [draft, setDraft] = useState({ name: "", email: "" });
@@ -71,7 +72,22 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   }
   useEffect(() => {
     const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setZones([...new Set(["UTC", local, ...Intl.supportedValuesOf("timeZone")])]);
+    setZones([
+      ...[
+        ...new Set([
+          "GMT",
+          local,
+          ...Intl.supportedValuesOf("timeZone"),
+          ...timezoneAliases.map((zone) => zone.timezone),
+        ]),
+      ]
+        .filter((zone) => zone !== "UTC")
+        .map((zone) => ({
+          label: zone === "GMT" ? "UTC" : (zone.split("/").at(-1)?.replaceAll("_", " ") ?? zone),
+          timezone: zone,
+        })),
+      ...timezoneAliases,
+    ]);
     setTimeZone(local);
     restore();
   }, []);
@@ -165,22 +181,23 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
               )}
             </EventMetaBlock>
-            <EventMetaBlock icon="globe" contentClassName="-mt-[2px] h-6 min-w-0 flex-1">
-              <label htmlFor="booker-time-zone" className="sr-only">
-                {labels.timeZone}
-              </label>
-              <select
-                id="booker-time-zone"
-                className="bg-default w-full min-w-0 text-sm"
-                value={timeZone}
-                disabled={stage.kind !== "calendar"}
-                onChange={(change) => {
-                  setTimeZone(change.target.value);
-                }}>
-                {zones.map((zone) => (
-                  <option key={zone}>{zone}</option>
-                ))}
-              </select>
+            <EventMetaBlock
+              icon="globe"
+              className="cursor-pointer [&_.current-timezone:before]:focus-within:opacity-100 [&_.current-timezone:before]:hover:opacity-100"
+              contentClassName="relative max-w-[90%]">
+              {stage.kind === "calendar" || stage.kind === "loading" ? (
+                <span className="current-timezone before:bg-subtle min-w-32 -mt-[2px] flex h-6 max-w-full items-center justify-start before:absolute before:inset-0 before:bottom-[-3px] before:left-[-30px] before:top-[-3px] before:w-[calc(100%+35px)] before:rounded-md before:py-3 before:opacity-0 before:transition-opacity">
+                  <TimezoneSelect
+                    value={timeZone}
+                    onChange={setTimeZone}
+                    data={zones}
+                    label={labels.timeZone}
+                    disabled={stage.kind !== "calendar"}
+                  />
+                </span>
+              ) : (
+                timeZone
+              )}
             </EventMetaBlock>
             {stage.kind !== "calendar" && timeFormatToggle}
             {selected && (

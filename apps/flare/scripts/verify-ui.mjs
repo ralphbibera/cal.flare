@@ -12,6 +12,7 @@ import { verifyCalendar } from "./verify-calendar.mjs";
 import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
 import { verifyTimes } from "./verify-times.mjs";
+import { verifyTimezone } from "./verify-timezone.mjs";
 import { verifyUpstream } from "./verify-upstream.mjs";
 
 const require = createRequire(import.meta.url);
@@ -70,6 +71,14 @@ await promisify(execFile)(
     "packages/features/bookings/components/TimeFormatToggle.tsx",
     "packages/ui/components/form/toggleGroup/ToggleGroup.tsx",
     "packages/lib/timeFormat.ts",
+    "packages/features/timezone/components/TimezoneSelectComponent.tsx",
+    "packages/lib/timezone.ts",
+    "packages/lib/isProblematicTimezone.ts",
+    "packages/ui/components/form/select/components.tsx",
+    "packages/ui/components/form/select/selectTheme.ts",
+    "packages/coss-ui/src/icons.tsx",
+    "apps/web/modules/bookings/components/EventMeta.tsx",
+    "apps/web/modules/timezone/components/TimezoneSelect.tsx",
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -88,8 +97,14 @@ const server = await createServer({
     react(),
     {
       name: "pinned-reference-dictionary",
-      resolveId(id) {
+      resolveId(id, importer) {
+        if (id === "@coss/ui/icons")
+          return importer?.endsWith("/form/select/components.tsx")
+            ? fileURLToPath(new URL("../../../packages/coss-ui/src/icons.tsx", import.meta.url))
+            : join(root, "time-boundaries.jsx");
         if (id === "@calcom/features/bookings/lib") return join(root, "calendar-boundaries.jsx");
+        if (id === "@calcom/ui/components/form" && importer?.includes("TimezoneSelectComponent"))
+          return join(root, "timezone-boundaries.jsx");
         if (id === "@calcom/ui/components/form")
           return fileURLToPath(
             new URL("../../../packages/ui/components/form/toggleGroup/ToggleGroup.tsx", import.meta.url)
@@ -110,6 +125,9 @@ const server = await createServer({
       "class-variance-authority",
       "@radix-ui/react-tooltip",
       "@radix-ui/react-toggle-group",
+      "react-select",
+      "react-timezone-select",
+      "lucide-react",
       "dayjs",
       "zod",
       "framer-motion",
@@ -130,6 +148,11 @@ const server = await createServer({
   css: { postcss: fileURLToPath(new URL("../", import.meta.url)) },
   resolve: {
     alias: {
+      "@reference/timezone": fileURLToPath(
+        new URL("../../../packages/features/timezone/components/TimezoneSelectComponent.tsx", import.meta.url)
+      ),
+      "@calcom/lib/timezone": fileURLToPath(new URL("../../../packages/lib/timezone.ts", import.meta.url)),
+      "../../badge": join(root, "timezone-boundaries.jsx"),
       "../../tooltip/Tooltip": fileURLToPath(
         new URL("../../../packages/ui/components/tooltip/Tooltip.tsx", import.meta.url)
       ),
@@ -186,7 +209,6 @@ const server = await createServer({
           "@calcom/features/bookings/Booker/hooks/useBookerTime",
           "@calcom/features/bookings/Booker/utils/query-param",
           "@calcom/features/bookings/lib/useCheckOverlapWithOverlay",
-          "@coss/ui/icons",
           "@radix-ui/react-hover-card",
           "./OutOfOfficeInSlots",
           "./SeatsAvailabilityText",
@@ -276,6 +298,7 @@ try {
     await rm(privateDirectory, { recursive: true, force: true });
   }
   browser = await chromium.launch({ args: ["--disable-partial-raster"] });
+  await verifyTimezone(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
     ["mobile", { width: 390, height: 844 }],

@@ -173,6 +173,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         const font = await readFont(page);
         const title = await measureTitle(page);
         const selectedDay = await measureSelectedDay(page);
+        const timezone = [...(await page.locator(".current-timezone").screenshot())];
         assert.deepEqual(selectedDay, {
           background: "rgb(41, 41, 41)",
           text: "rgb(255, 255, 255)",
@@ -221,7 +222,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.deepEqual(errors, []);
         assert.deepEqual(failures, []);
         assert.deepEqual(consoleErrors, []);
-        captures.push({ name, calendar, form, frame, viewport, selectedDay, font, title, fullDay });
+        captures.push({ name, calendar, form, frame, viewport, selectedDay, font, title, fullDay, timezone });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
         try {
@@ -257,10 +258,10 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
   console.log(
     "PASS actual pinned public-page static reference repeats exactly at desktop/mobile, including slot selection, inline form and mobile dialog. No candidate-page parity is established."
   );
-  await verifyFlareFrames(browser, captures, artifacts);
+  await verifyFlareFrames(browser, captures, artifacts, differentPixels);
 }
 
-async function verifyFlareFrames(browser, captures, artifacts) {
+async function verifyFlareFrames(browser, captures, artifacts, differentPixels) {
   const fixture = await createWorkerFixture({ port: 8797, fixedTime });
   try {
     const owner = await fixture.login();
@@ -311,6 +312,14 @@ async function verifyFlareFrames(browser, captures, artifacts) {
         assert.ok((await readFont(page)).equals(reference.font), `${name} public served font bytes`);
         assert.deepEqual(await measureTitle(page), reference.title, `${name} public title text metrics`);
         assert.deepEqual(await measureFrame(page), reference.frame, `${name} public calendar frame`);
+        assert.equal(
+          await page.evaluate(differentPixels, [
+            reference.timezone,
+            [...(await page.locator(".current-timezone").screenshot())],
+          ]),
+          0,
+          `${name} actual timezone control pixels`
+        );
         assert.deepEqual(
           await measureSelectedDay(page),
           reference.selectedDay,
