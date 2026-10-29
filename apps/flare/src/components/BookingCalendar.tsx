@@ -12,13 +12,14 @@ import { TimeSlotsHeader } from "./TimeSlotsHeader.tsx";
 import { TimeSlotsSkeleton } from "./TimeSlotsSkeleton.tsx";
 
 export type CalendarCursor = { month: string; date: string | null };
+export type CalendarView = { kind: "month" } | { kind: "column"; count: 2 | 6 };
 type CalendarControl =
   | { cursor: CalendarCursor; onCursorChange: (cursor: CalendarCursor) => void }
   | { cursor?: never; onCursorChange?: never };
 
 type BookingCalendarProps = CalendarControl & {
   metadata?: ReactNode;
-  columns?: 2 | 6;
+  view?: CalendarView;
   layoutToggle?: ReactElement;
   timeZone: string;
   timeFormat: "h:mma" | "HH:mm";
@@ -44,7 +45,7 @@ type BookingCalendarProps = CalendarControl & {
 
 function BookingCalendar({
   metadata,
-  columns,
+  view = { kind: "month" },
   layoutToggle,
   timeZone,
   timeFormat,
@@ -59,6 +60,8 @@ function BookingCalendar({
   returnFocusTime,
   onTimeSelect,
 }: BookingCalendarProps) {
+  const wide = view.kind !== "month";
+  const columns = view.kind === "column" ? view.count : undefined;
   const [localCursor, setLocalCursor] = useState<CalendarCursor>(() => ({
     month: dayjs().format("YYYY-MM"),
     date: null,
@@ -114,11 +117,11 @@ function BookingCalendar({
     changeCursor({ month: date.format("YYYY-MM"), date: date.format("YYYY-MM-DD") });
   }
   useEffect(() => {
-    if (columns || result.status !== "ready" || month !== dayjs().format("YYYY-MM")) return;
+    if (wide || result.status !== "ready" || month !== dayjs().format("YYYY-MM")) return;
     if (Object.keys(result.days).some((date) => date.startsWith(`${month}-`))) return;
     const next = dayjs(`${month}-01`).add(1, "month");
     changeCursor({ month: next.format("YYYY-MM"), date: next.format("YYYY-MM-DD") });
-  }, [result, month, changeCursor, columns]);
+  }, [result, month, changeCursor, wide]);
   useLayoutEffect(() => {
     focusReturned.current = false;
     if (!returnFocusTime) return;
@@ -139,18 +142,18 @@ function BookingCalendar({
   }, [returnFocusTime, result]);
   return (
     <Provider>
-      {!columns && metadata}
+      {!wide && metadata}
       <div
         ref={calendar}
         className={
-          columns
+          wide
             ? "[grid-area:meta]"
             : "h-full shrink px-5 py-3 [@media(max-width:768px)]:relative [@media(max-width:768px)]:z-1 min-[769px]:border-subtle min-[769px]:-ml-px min-[769px]:border-l lg:w-(--booker-main-width)"
         }
         aria-busy={result.status === "loading"}>
-        {columns && metadata}
+        {wide && metadata}
         <MonthPicker
-          className={columns ? "mt-auto px-5 py-3" : undefined}
+          className={wide ? "mt-auto px-5 py-3" : undefined}
           locale={locale}
           labels={labels}
           browsingDate={dayjs(`${month}-01`)}
@@ -158,15 +161,15 @@ function BookingCalendar({
           onChange={(date) => changeCursor({ month, date: date?.format("YYYY-MM-DD") ?? null })}
           onMonthChange={(date) => {
             const terminal = horizon.add(1, "day");
-            const target = columns && coverage && date.isAfter(terminal, "day") ? terminal : date;
+            const target = wide && coverage && date.isAfter(terminal, "day") ? terminal : date;
             changeCursor({ month: target.format("YYYY-MM"), date: target.format("YYYY-MM-DD") });
           }}
           includedDates={Object.keys(days)}
           slots={days}
           weekStart={weekStart}
           isLoading={result.status === "loading"}
-          isCompact={!!columns}
-          skipAutomaticSelection={result.status !== "ready" || !!columns}
+          isCompact={wide}
+          skipAutomaticSelection={result.status !== "ready" || wide}
           scrollToTimeSlots={() => {
             if (!matchMedia("(max-width: 768px)").matches || scrolledToTimes.current || !timeList.current)
               return;
@@ -189,7 +192,7 @@ function BookingCalendar({
         )}
         {result.status === "ready" && Object.keys(days).length === 0 && <p role="status">{labels.empty}</p>}
       </div>
-      {columns && (
+      {wide && (
         <>
           <div className="border-default relative z-10 flex border-b px-5 py-4 ltr:border-l rtl:border-r [grid-area:header]">
             <div className="flex items-center gap-5">
@@ -244,7 +247,7 @@ function BookingCalendar({
             <ColumnTimeSlots
               days={days}
               date={anchor.format("YYYY-MM-DD")}
-              count={columns}
+              count={view.count}
               locale={locale}
               loading={result.status === "loading"}
               timeZone={timeZone}
@@ -255,7 +258,7 @@ function BookingCalendar({
           </div>
         </>
       )}
-      {!columns && (result.status === "loading" || (result.status === "ready" && times.length > 0)) && (
+      {!wide && (result.status === "loading" || (result.status === "ready" && times.length > 0)) && (
         <div
           ref={timeList}
           className="border-subtle rtl:border-default flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 rtl:border-r [@media(max-width:768px)]:sticky [@media(max-width:768px)]:top-0 min-[769px]:w-[var(--booker-timeslots-width,100%)] min-[769px]:overflow-hidden ltr:md:border-l">
