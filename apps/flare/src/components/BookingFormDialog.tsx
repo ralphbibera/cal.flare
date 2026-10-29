@@ -12,6 +12,7 @@ export function BookingFormDialog({
   children,
   active,
   heading,
+  summary,
   locked,
   onBack,
   forceModal = false,
@@ -19,6 +20,7 @@ export function BookingFormDialog({
   children: ReactNode;
   active: boolean;
   heading: string;
+  summary?: ReactNode;
   locked: boolean;
   onBack: () => void;
   forceModal?: boolean;
@@ -50,8 +52,9 @@ export function BookingFormDialog({
   return (
     <dialog
       ref={dialog}
+      tabIndex={-1}
       aria-labelledby="booking-dialog-title"
-      className="bg-default text-default scroll-bar m-auto max-h-[80vh] w-[95vw] max-w-none overflow-y-auto rounded-2xl border-0 p-8 text-left shadow-xl sm:max-w-140 backdrop:bg-neutral-800/70"
+      className="scroll-bar fixed top-1/2 right-auto bottom-auto left-1/2 m-auto max-h-[80vh] w-[95vw] max-w-none -translate-x-1/2 -translate-y-1/2 overflow-y-auto scroll-pb-[65px] rounded-2xl border-0 bg-default p-8 pb-0 text-left text-default shadow-xl backdrop:bg-neutral-800/70 sm:max-w-140 [&_form]:contents [&_.modalsticky]:sticky [&_.modalsticky]:right-0 [&_.modalsticky]:bottom-0 [&_.modalsticky]:left-0 [&_.modalsticky]:-mx-8 [&_.modalsticky]:border-t [&_.modalsticky]:border-t-subtle [&_.modalsticky]:bg-default [&_.modalsticky]:px-8 [&_.modalsticky]:py-4"
       onCancel={(event) => {
         event.preventDefault();
         if (!locked) onBack();
@@ -67,9 +70,10 @@ export function BookingFormDialog({
         )
           onBack();
       }}>
-      <h1 id="booking-dialog-title" className="font-cal text-emphasis mb-4 text-xl leading-5">
+      <h1 id="booking-dialog-title" className="font-cal text-emphasis text-xl leading-5">
         {heading}
       </h1>
+      {summary}
       {children}
     </dialog>
   );

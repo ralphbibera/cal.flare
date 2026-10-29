@@ -217,6 +217,23 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         hour12: format === "h:mma",
       }).format(new Date(selected))
     : undefined;
+  const appointment = selected
+    ? {
+        date: new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: selectedZone }).format(
+          new Date(selected)
+        ),
+        time: new Intl.DateTimeFormat("en-US", {
+          timeStyle: "short",
+          timeZone: selectedZone,
+          hour12: format === "h:mma",
+        })
+          .format(new Date(selected))
+          .toLowerCase(),
+      }
+    : undefined;
+  const durationLabel = formatDuration(event.durationMinutes, (count, unit) =>
+    labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
+  );
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
   const formActive = stage.kind === "form" || stage.kind === "pending";
   const view: CalendarView =
@@ -278,9 +295,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
       )}
       <div className="space-y-4 text-sm font-medium">
         <EventMetaBlock icon="clock" className="items-center">
-          {formatDuration(event.durationMinutes, (count, unit) =>
-            labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
-          )}
+          {durationLabel}
         </EventMetaBlock>
         <EventMetaBlock
           icon="globe"
@@ -352,101 +367,131 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             active={formActive}
             forceModal={wide}
             heading={labels.confirmDetails}
+            summary={
+              selected && (
+                <div className="my-4 flex flex-wrap gap-2 rounded-md leading-none">
+                  <div className="inline-flex items-center justify-center gap-x-1 rounded-lg bg-gray-100 px-1.5 py-1 font-medium text-gray-800 text-sm leading-none dark:bg-darkgray-200 dark:text-darkgray-800">
+                    <Icon name="calendar" size={12} className="shrink-0 stroke-[3px]" />
+                    <time dateTime={selected} className="contents">
+                      {appointment?.date}, {appointment?.time}
+                    </time>
+                  </div>
+                  <div className="inline-flex items-center justify-center gap-x-1 rounded-lg bg-gray-100 px-1.5 py-1 font-medium text-gray-800 text-sm leading-none dark:bg-darkgray-200 dark:text-darkgray-800">
+                    <Icon name="clock" size={12} className="shrink-0 stroke-[3px]" />
+                    <span>{durationLabel}</span>
+                  </div>
+                  <span className="text-subtle w-full text-sm">{selectedZone}</span>
+                </div>
+              )
+            }
             locked={busy || stage.kind === "pending"}
             onBack={back}>
             {stage.kind === "loading" && <p role="status">{labels.loading}</p>}
             {(stage.kind === "form" || stage.kind === "pending") && (
               <form
                 noValidate
-                className="flex h-full flex-col gap-4"
+                className="flex h-full flex-col"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void submit();
                 }}>
-                {wide && selected && (
-                  <p>
-                    {labels.selectedTime} <time dateTime={selected}>{selectedLabel}</time> ({selectedZone})
-                  </p>
-                )}
-                <div>
-                  <Label htmlFor="booker-name">
-                    {labels.publicName}
-                    <span aria-hidden="true" className="text-default ml-1 font-medium">
-                      *
-                    </span>
-                  </Label>
-                  <Input
-                    ref={nameInput}
-                    className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
-                    id="booker-name"
-                    name="name"
-                    autoComplete="name"
-                    required
-                    maxLength={200}
-                    pattern=".*\S.*"
+                <div className="flex flex-col gap-4 pb-4">
+                  <div>
+                    <Label htmlFor="booker-name">
+                      {labels.publicName}
+                      <span aria-hidden="true" className="text-default ml-1 font-medium">
+                        *
+                      </span>
+                    </Label>
+                    <Input
+                      ref={nameInput}
+                      className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
+                      id="booker-name"
+                      name="name"
+                      autoComplete="name"
+                      required
+                      maxLength={200}
+                      pattern=".*\S.*"
+                      readOnly={busy || stage.kind === "pending"}
+                      value={stage.kind === "pending" ? stage.request.name : draft.name}
+                      onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="booker-email" className="flex w-fit items-center">
+                      <span>{labels.publicEmail}</span>
+                      <span
+                        aria-hidden="true"
+                        className="text-emphasis -mb-1 ml-1 text-sm font-medium leading-none">
+                        *
+                      </span>
+                    </Label>
+                    <Input
+                      ref={emailInput}
+                      className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
+                      id="booker-email"
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      required
+                      maxLength={254}
+                      readOnly={busy || stage.kind === "pending"}
+                      value={stage.kind === "pending" ? stage.request.email : draft.email}
+                      onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="notes" className="flex w-fit items-center">
+                      <span>{labels.notes}</span>
+                      <span aria-hidden="true" className="-mb-1 ml-1" />
+                    </Label>
+                    <TextArea
+                      id="notes"
+                      name="notes"
+                      rows={3}
+                      placeholder={labels.notesPlaceholder}
+                      className="mb-2 resize-y leading-5"
+                      readOnly={busy || stage.kind === "pending"}
+                      value={stage.kind === "pending" ? (stage.request.notes ?? "") : draft.notes}
+                      onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                    />
+                  </div>
+                  <GuestFields
+                    rows={
+                      stage.kind === "pending"
+                        ? (stage.request.guests ?? []).map((value) => ({ id: value, value }))
+                        : draft.guests
+                    }
+                    onChange={(guests) => {
+                      setDraft({ ...draft, guests });
+                      setGuestInvalid(false);
+                    }}
                     readOnly={busy || stage.kind === "pending"}
-                    value={stage.kind === "pending" ? stage.request.name : draft.name}
-                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                    invalid={guestInvalid}
+                    labels={labels}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="booker-email" className="flex w-fit items-center">
-                    <span>{labels.publicEmail}</span>
-                    <span
-                      aria-hidden="true"
-                      className="text-emphasis -mb-1 ml-1 text-sm font-medium leading-none">
-                      *
-                    </span>
-                  </Label>
-                  <Input
-                    ref={emailInput}
-                    className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
-                    id="booker-email"
-                    type="email"
-                    name="email"
-                    autoComplete="email"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    required
-                    maxLength={254}
-                    readOnly={busy || stage.kind === "pending"}
-                    value={stage.kind === "pending" ? stage.request.email : draft.email}
-                    onChange={(event) => setDraft({ ...draft, email: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="notes" className="flex w-fit items-center">
-                    <span>{labels.notes}</span>
-                    <span aria-hidden="true" className="-mb-1 ml-1" />
-                  </Label>
-                  <TextArea
-                    id="notes"
-                    name="notes"
-                    rows={3}
-                    placeholder={labels.notesPlaceholder}
-                    className="mb-2 resize-y leading-5"
-                    readOnly={busy || stage.kind === "pending"}
-                    value={stage.kind === "pending" ? (stage.request.notes ?? "") : draft.notes}
-                    onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
-                  />
-                </div>
-                <GuestFields
-                  rows={
-                    stage.kind === "pending"
-                      ? (stage.request.guests ?? []).map((value) => ({ id: value, value }))
-                      : draft.guests
-                  }
-                  onChange={(guests) => {
-                    setDraft({ ...draft, guests });
-                    setGuestInvalid(false);
-                  }}
-                  readOnly={busy || stage.kind === "pending"}
-                  invalid={guestInvalid}
-                  labels={labels}
-                />
                 {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
                 {error && <p role="alert">{error}</p>}
-                <div className="mt-auto flex justify-end space-x-2">
+                <div className="my-3 w-full text-subtle text-xs">
+                  {labels.agreement.split(/(<0>.*?<\/0>|<1>.*?<\/1>)/).map((part) =>
+                    part.startsWith("<0>") || part.startsWith("<1>") ? (
+                      <a
+                        key={part}
+                        className="text-emphasis hover:underline"
+                        href={part.startsWith("<0>") ? "https://cal.com/terms" : "https://cal.com/privacy"}
+                        target="_blank"
+                        rel="noopener noreferrer">
+                        {part.slice(3, -4)}
+                      </a>
+                    ) : (
+                      part
+                    )
+                  )}
+                </div>
+                <div className="modalsticky mt-auto flex justify-end space-x-2">
                   <Button color="minimal" disabled={busy || stage.kind === "pending"} onClick={back}>
                     {labels.back}
                   </Button>

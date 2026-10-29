@@ -81,7 +81,7 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
           width === 1280 ? "2030-01-14T16:30:00.000Z" : "2030-01-10T16:30:00.000Z"
         );
         await expect(dialog.locator("time")).toHaveText(
-          width === 1280 ? "Monday, January 14, 2030 at 4:30 PM" : "Thursday, January 10, 2030 at 4:30 PM"
+          width === 1280 ? "Monday, January 14, 2030, 4:30 pm" : "Thursday, January 10, 2030, 4:30 pm"
         );
         await expect(dialog).toContainText("UTC");
         await page.getByLabel("Your name*", { exact: true }).fill("Column Guest");
@@ -129,7 +129,7 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
           await page.reload();
           await expect(dialog).toBeVisible();
           await expect(dialog.locator("time")).toHaveAttribute("datetime", "2030-01-31T09:00:00.000Z");
-          await expect(dialog.locator("time")).toHaveText("Thursday, January 31, 2030 at 9:00 AM");
+          await expect(dialog.locator("time")).toHaveText("Thursday, January 31, 2030, 9:00 am");
           await expect(dialog).toContainText("UTC");
           const replay = page.waitForRequest("**/api/bookings");
           await dialog.getByRole("button", { name: "Retry", exact: true }).click();

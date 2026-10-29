@@ -46,6 +46,7 @@ export const bookingLabels = {
   requestTooLarge: common.flare_booking_request_too_large,
   confirm: common.confirm,
   confirmDetails: common.confirm_your_details,
+  agreement: common.signing_up_terms.replace("{{appName}}", "Cal.diy"),
   back: common.back,
   confirmed: common.meeting_is_scheduled,
   cancelled: common.cancelled,

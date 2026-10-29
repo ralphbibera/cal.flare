@@ -74,8 +74,11 @@ offsets. General city-database search and stored timezone preferences remain mig
 The public page accepts attendee details and submits bookings with a saved request identity.
 At widths through 768px, selecting a time opens a named native attendee dialog. Desktop month
 forms stay inline. Fresh forms return to the browsing month and date with their draft and slot
-focus preserved. Pending submissions cannot be dismissed. The dialog uses the pinned heading
-and container styling; complete upstream attendee-form and dialog pixel parity remain open.
+focus preserved. Pending submissions cannot be dismissed. The dialog shows appointment date,
+time, timezone, and duration above the fields. The timezone comes from the saved request during replay.
+The pinned agreement follows closed **Add guests** and links to the Cal.com Terms and Privacy Policy
+with the native Cal.diy wording. Back and Confirm use a sticky bordered footer in dialogs.
+Desktop month forms stay inline. Complete attendee-form and dialog pixel parity remain open.
 Above 768px, visitors can switch between month, consecutive-day week, and next-available-date columns. Columns show
 two dates through 1024px and six above it, with the compact calendar in the sidebar and a
 modal attendee form. The built-page verifier compares the initial main column region against
@@ -231,8 +234,16 @@ loaded face and HTTP font bytes against the pinned source, and compares the mobi
 heading's DOM Range dimensions and computed typography after fonts are ready.
 The default built-page submission journey checks the same served identity and observed
 native heading metrics without Next, including the shared wide week dialog, and serves the full notice.
-This establishes font identity and heading typography only. Dialog position, full composition,
-agreement/legal content, footer, and whole-dialog pixels remain separate work.
+This establishes font identity and heading typography only. Whole-dialog pixels remain separate work.
+The default built-page journey also checks blank attendee composition at 390, 768, 900, and 1280px,
+including literal January 10 at 09:00 UTC, duration, agreement text and links, logical order,
+and the sticky footer's computed border, background, and padding. The submission journey checks
+the agreement links in keyboard order and keeps fields and actions reachable at 390×240.
+The optional actual Next comparison requires zero differing RGBA pixels in three mobile regions.
+Those regions are the appointment badge union, the agreement content bounds, and the footer bounds.
+Content, region dimensions, and computed styles are checked before comparing pixels.
+Flare intentionally retains a visible timezone absent from the native badge header.
+These partial comparisons establish neither whole-header nor whole-dialog equality.
 The selected day's background, text, and Today marker use the pinned default booking palette
 and are checked against the actual light-theme reference. Shared component fixtures retain
 their existing theme. Public dark-mode controls and custom branding remain separate work.
@@ -252,8 +263,7 @@ input fonts, 760×450 booking card, 420×448 inline panel, and 371px form width 
 dimension and every-RGBA-channel comparison requires zero differences.
 The public labels reuse `your_name` and `email_address`; generic labels remain available to other flows.
 Name keeps its existing autofocus, unlike the native desktop form. Its focus outline is outside
-the declared comparison. Agreement content, footer, metadata, toolbar, complete form and dialog
-pixels and mobile form composition remain separate work.
+the declared comparison. Metadata, toolbar, complete form, and whole-dialog pixels remain separate work.
 No complete form, page, mobile, or live-provider parity follows from this partial comparison.
 
 Stop the reference server with Ctrl-C and stop its database with
