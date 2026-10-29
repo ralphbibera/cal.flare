@@ -76,11 +76,20 @@ At widths through 768px, selecting a time opens a named native attendee dialog. 
 forms stay inline. Fresh forms return to the browsing month and date with their draft and slot
 focus preserved. Pending submissions cannot be dismissed. The dialog uses the pinned heading
 and container styling; complete upstream attendee-form and dialog pixel parity remain open.
-Above 768px, visitors can switch between month and next-available-date columns. Columns show
+Above 768px, visitors can switch between month, consecutive-day week, and next-available-date columns. Columns show
 two dates through 1024px and six above it, with the compact calendar in the sidebar and a
 modal attendee form. The built-page verifier compares the initial main column region against
 the pinned Next page at 900px and 1280px with zero different pixels. Complete column-page
 and attendee-form pixel parity remain open.
+`?layout=week_view` selects week view. Week shows four civil dates through 1024px and seven
+above it, starting at the selected date. Its pager moves by that count, including closed dates.
+Widths through 768px use month view. Week uses the existing availability query and shared
+attendee dialog, with UTC selection, draft return, and saved pending-request replay.
+The default built-page journey checks these flows without a Next server, including month and
+year boundaries, loading and error recovery, sparse weeks, and Kolkata placement.
+With the reference origin supplied, the initial week main region matches the pinned Next
+page at 900px and 1280px with zero different pixels under the declared Chromium profile.
+Full week-page, toolbar, and dialog pixel parity remain unverified.
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
 The page distinguishes confirmed bookings from results needing recovery or organizer attention.

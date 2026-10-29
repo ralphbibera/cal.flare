@@ -3,6 +3,7 @@ import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
 import { verifyManagement } from "./verify-management.mjs";
 import { verifyOwner, verifyOwnerBookings } from "./verify-owner.mjs";
 import { verifySubmission } from "./verify-submission.mjs";
+import { verifyWeekPage } from "./verify-week-page.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
 export async function verifyPublic(browser) {
@@ -295,6 +296,7 @@ export async function verifyPublic(browser) {
     }
   }
   await verifyCalendarBoundary(browser);
+  await verifyWeekPage(browser);
 }
 
 async function verifyPrivate(browser, fixture, date) {

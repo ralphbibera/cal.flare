@@ -85,7 +85,7 @@ async function measureTimeList(page) {
     });
 }
 
-async function ready(page, selector) {
+export async function ready(page, selector) {
   await page.locator(selector).first().waitFor();
   await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(

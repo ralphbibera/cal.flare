@@ -10,9 +10,13 @@ import { MonthPicker } from "./MonthPicker.tsx";
 import { TimeSlots } from "./TimeSlots.tsx";
 import { TimeSlotsHeader } from "./TimeSlotsHeader.tsx";
 import { TimeSlotsSkeleton } from "./TimeSlotsSkeleton.tsx";
+import { WeekTimeGrid } from "./WeekTimeGrid.tsx";
 
 export type CalendarCursor = { month: string; date: string | null };
-export type CalendarView = { kind: "month" } | { kind: "column"; count: 2 | 6 };
+export type CalendarView =
+  | { kind: "month" }
+  | { kind: "column"; count: 2 | 6 }
+  | { kind: "week"; count: 4 | 7; duration: number };
 type CalendarControl =
   | { cursor: CalendarCursor; onCursorChange: (cursor: CalendarCursor) => void }
   | { cursor?: never; onCursorChange?: never };
@@ -85,6 +89,13 @@ function BookingCalendar({
   const days = result.status === "ready" ? result.days : {};
   const times = selectedDate ? (days[selectedDate] ?? []) : [];
   const anchor = dayjs(selectedDate ?? dayjs().format("YYYY-MM-DD"));
+  const empty =
+    view.kind === "week"
+      ? !Array.from(
+          { length: view.count },
+          (_, offset) => days[anchor.add(offset, "day").format("YYYY-MM-DD")]?.length
+        ).some(Boolean)
+      : Object.keys(days).length === 0;
   const available = Object.keys(days)
     .filter((date) => days[date].length > 0 && dayjs(date).diff(anchor, "day") >= 0)
     .sort();
@@ -94,8 +105,13 @@ function BookingCalendar({
   const addon = columns && pagination.length < columns ? (columns - pagination.length + 1) * 7 : 0;
   const last = slots.at(-1);
   const end = slots[slots.length === (columns ?? 0) + 1 ? slots.length - 2 : slots.length - 1];
-  const jump = last ? Math.abs(anchor.diff(last, "day")) + addon : 0;
-  const endDate = end ? anchor.add(Math.abs(anchor.diff(end, "day")) + addon, "day") : anchor;
+  const jump = view.kind === "week" ? view.count : last ? Math.abs(anchor.diff(last, "day")) + addon : 0;
+  const endDate =
+    view.kind === "week"
+      ? anchor.add(view.count - 1, "day")
+      : end
+        ? anchor.add(Math.abs(anchor.diff(end, "day")) + addon, "day")
+        : anchor;
   const today = dayjs().startOf("day");
   const coverage = result.status === "ready" ? result.coverage : undefined;
   function civilDay(epoch: number) {
@@ -107,13 +123,11 @@ function BookingCalendar({
   const forwardLimit = boundary.isBefore(horizon, "day") ? boundary : horizon;
   function move(amount: number) {
     const next = anchor.add(amount, "day");
-    const lower = first.subtract(1, "day").isAfter(today) ? first.subtract(1, "day") : today;
+    const lower =
+      view.kind === "column" && first.subtract(1, "day").isAfter(today) ? first.subtract(1, "day") : today;
+    const upper = view.kind === "week" ? horizon : forwardLimit;
     const date =
-      amount < 0 && next.isBefore(lower)
-        ? lower
-        : amount > 0 && next.isAfter(forwardLimit)
-          ? forwardLimit
-          : next;
+      amount < 0 && next.isBefore(lower) ? lower : amount > 0 && next.isAfter(upper) ? upper : next;
     changeCursor({ month: date.format("YYYY-MM"), date: date.format("YYYY-MM-DD") });
   }
   useEffect(() => {
@@ -133,8 +147,8 @@ function BookingCalendar({
     focusReturned.current = true;
     if (document.activeElement !== focusOrigin.current) return;
     const slot = Array.from(
-      timeList.current?.querySelectorAll<HTMLButtonElement>("button[data-time]") ?? []
-    ).find((button) => button.dataset.time === returnFocusTime);
+      timeList.current?.querySelectorAll<HTMLButtonElement>("button[data-time], button[data-slot]") ?? []
+    ).find((button) => (button.dataset.time ?? button.dataset.slot) === returnFocusTime);
     const target = slot ?? calendar.current?.querySelector<HTMLButtonElement>("button:not(:disabled)");
     if (target) {
       target.focus();
@@ -190,11 +204,11 @@ function BookingCalendar({
             </Button>
           </div>
         )}
-        {result.status === "ready" && Object.keys(days).length === 0 && <p role="status">{labels.empty}</p>}
+        {result.status === "ready" && empty && <p role="status">{labels.empty}</p>}
       </div>
       {wide && (
         <>
-          <div className="border-default relative z-10 flex border-b px-5 py-4 ltr:border-l rtl:border-r [grid-area:header]">
+          <div className="bg-default border-default sticky top-0 z-10 flex border-b px-5 py-4 ltr:border-l rtl:border-r [grid-area:header]">
             <div className="flex items-center gap-5">
               <h3 className="min-w-[150px] text-base font-semibold leading-4">
                 {anchor.format("MMM D")}
@@ -243,18 +257,35 @@ function BookingCalendar({
           <div
             ref={timeList}
             aria-busy={result.status === "loading"}
-            className="border-subtle flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 ltr:border-l [grid-area:main]">
-            <ColumnTimeSlots
-              days={days}
-              date={anchor.format("YYYY-MM-DD")}
-              count={view.count}
-              locale={locale}
-              loading={result.status === "loading"}
-              timeZone={timeZone}
-              timeFormat={timeFormat}
-              onSelect={onTimeSelect}
-              selectedSlots={selectedTime ? [selectedTime] : []}
-            />
+            className={
+              view.kind === "week"
+                ? "border-subtle sticky top-0 -ml-px h-full min-[769px]:border-l [grid-area:main] [--calendar-dates-sticky-offset:66px]"
+                : "border-subtle flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 ltr:border-l [grid-area:main]"
+            }>
+            {view.kind === "week" ? (
+              <WeekTimeGrid
+                {...(result.status === "ready" ? { status: "ready", days } : { status: result.status })}
+                date={anchor.format("YYYY-MM-DD")}
+                count={view.count}
+                duration={view.duration}
+                locale={locale}
+                timeZone={timeZone}
+                timeFormat={timeFormat}
+                onSelect={onTimeSelect}
+              />
+            ) : (
+              <ColumnTimeSlots
+                days={days}
+                date={anchor.format("YYYY-MM-DD")}
+                count={view.count}
+                locale={locale}
+                loading={result.status === "loading"}
+                timeZone={timeZone}
+                timeFormat={timeFormat}
+                onSelect={onTimeSelect}
+                selectedSlots={selectedTime ? [selectedTime] : []}
+              />
+            )}
           </div>
         </>
       )}
