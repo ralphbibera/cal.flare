@@ -32,6 +32,8 @@ export const bookingLabels = {
   },
   name: common.name,
   email: common.email,
+  notes: common.additional_notes,
+  notesPlaceholder: common.share_additional_notes,
   confirm: common.confirm,
   confirmDetails: common.confirm_your_details,
   back: common.back,

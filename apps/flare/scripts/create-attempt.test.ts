@@ -81,6 +81,42 @@ test("independent booking pages retain separate attempts in the same tab", () =>
   assert.deepEqual(second.read(), b);
 });
 
+test("notes survive reload canonically, fence changed retries and disappear from receipts", () => {
+  const tab = session(),
+    options = { storage: tab.storage, scope: "/notes" };
+  const store = new CreateAttempts(options);
+  const notes = "First line\nSecond line <plain> & text\nThird line 😀";
+  const first = store.begin({ ...body, notes: ` \n${notes}\t ` });
+  assert.equal(first.request.notes, notes);
+  const restored = new CreateAttempts(options).read();
+  assert.deepEqual(restored, first);
+  assert.ok(restored?.kind === "pending" && Object.isFrozen(restored.request));
+  assert.deepEqual(store.begin({ ...body, notes }), first);
+  assert.throws(
+    () => store.begin({ ...body, notes: `${notes}!` }),
+    (error: unknown) => error instanceof ErrorWithCode && error.code === "booking_in_progress"
+  );
+  assert.deepEqual(store.read(), first);
+  store.acknowledge(first.request.requestKey, access);
+  assert.deepEqual(JSON.parse([...tab.values.values()][0] ?? "null"), {
+    kind: "receipt",
+    requestKey: first.request.requestKey,
+    access,
+  });
+  const legacy = new CreateAttempts({ storage: tab.storage, scope: "/legacy" });
+  const old = legacy.begin(body);
+  assert.deepEqual(legacy.begin({ ...body, notes: " \n " }), old);
+  const escaped = new CreateAttempts({ storage: tab.storage, scope: "/escaped" });
+  const large = escaped.begin({
+    ...body,
+    name: "\u0000".repeat(200),
+    email: `${"\u0000".repeat(240)}@example.test`,
+    notes: `x${"\u0000".repeat(999)}`,
+  });
+  assert.ok(JSON.stringify(large).length > 8192);
+  assert.deepEqual(new CreateAttempts({ storage: tab.storage, scope: "/escaped" }).read(), large);
+});
+
 test("storage failures and corrupt state never authorize a replacement attempt", () => {
   const tab = session();
   const store = new CreateAttempts({ storage: tab.storage, scope: "/intro" });
@@ -91,7 +127,7 @@ test("storage failures and corrupt state never authorize a replacement attempt",
   );
   assert.equal(tab.values.size, 0);
   tab.resume();
-  const first = store.begin(body);
+  const first = store.begin({ ...body, notes: "Retain this pending note" });
   const before = [...tab.values.entries()];
   tab.fail();
   assert.throws(() => store.acknowledge(first.request.requestKey, access), ErrorWithCode);
@@ -118,7 +154,10 @@ test("storage failures and corrupt state never authorize a replacement attempt",
     "{",
     "null",
     JSON.stringify({ ...first, request: { ...first.request, requestKey: "invalid" } }),
-    "x".repeat(8193),
+    "x".repeat(16385),
+    ...[null, 1, false, [], {}, "x".repeat(1001)].map((notes) =>
+      JSON.stringify({ ...first, request: { ...first.request, notes } })
+    ),
   ]) {
     tab.values.set(key, raw);
     assert.throws(
@@ -140,7 +179,11 @@ test("a reloaded creation attempt recovers a lost HTTP acknowledgment without an
   const tab = session(),
     options = { storage: tab.storage, scope: "/intro" };
   const store = new CreateAttempts(options);
-  const first = store.begin({ ...body, start: fixture.now() + 10 * hour });
+  const first = store.begin({
+    ...body,
+    start: fixture.now() + 10 * hour,
+    notes: "Literal <notes>\nSecond line",
+  });
   await client.create(first.request);
   const reloaded = new CreateAttempts(options);
   const saved = reloaded.read();

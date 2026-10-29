@@ -1,3 +1,4 @@
+import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import type { Interval } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
 import { parseSettings } from "../domain/settings.ts";
@@ -100,7 +101,9 @@ export class BookingService {
       start: data.start,
       end: data.start + settings.event.durationMinutes * MINUTE,
       title: settings.event.title,
-      description: settings.event.description,
+      description: data.notes
+        ? `${settings.event.description ? `${settings.event.description}\n\n` : ""}${common.additional_notes}:\n${data.notes}`
+        : settings.event.description,
       timeZone: data.timeZone,
       attendee: { name: data.name, email: data.email },
       privateMetadata: { application: "calflare", booking: id, operation: commandId },

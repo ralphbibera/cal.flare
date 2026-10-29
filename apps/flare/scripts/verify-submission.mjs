@@ -5,6 +5,8 @@ export async function verifySubmission(browser, fixture, date) {
     errors = [],
     consoles = [];
   const requests = [];
+  const notes = "First line\nSecond line <plain> & text\nThird line";
+  const note = (page) => page.getByLabel("Additional notes", { exact: true });
   const open = async () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
     contexts.push(context);
@@ -31,6 +33,55 @@ export async function verifySubmission(browser, fixture, date) {
     );
     await page.getByLabel("Name", { exact: true }).fill("Fixture Guest");
     await page.getByLabel("Email", { exact: true }).fill("guest@example.test");
+    assert.equal(await page.locator("textarea").count(), 1);
+    assert.deepEqual(
+      await page.locator("form [name]").evaluateAll((nodes) => nodes.map((node) => node.name)),
+      ["name", "email", "notes"]
+    );
+    await page.locator('label[for="notes"]').click();
+    assert.deepEqual(
+      await note(page).evaluate((node) => {
+        const style = getComputedStyle(node);
+        return {
+          focused: document.activeElement === node,
+          id: node.id,
+          name: node.name,
+          rows: node.rows,
+          required: node.required,
+          max: node.getAttribute("maxlength"),
+          placeholder: node.placeholder,
+          font: style.fontSize,
+          line: style.lineHeight,
+          weight: style.fontWeight,
+          min: style.minHeight,
+          radius: style.borderRadius,
+          x: style.paddingLeft,
+          y: style.paddingTop,
+          resize: style.resize,
+        };
+      }),
+      {
+        focused: true,
+        id: "notes",
+        name: "notes",
+        rows: 3,
+        required: false,
+        max: null,
+        placeholder: "Please share anything that will help prepare for our meeting.",
+        font: "14px",
+        line: "20px",
+        weight: "400",
+        min: "80px",
+        radius: "10px",
+        x: "12px",
+        y: "8px",
+        resize: "vertical",
+      }
+    );
+    await note(page).fill("First line");
+    await note(page).press("Enter");
+    await page.keyboard.insertText("Second line <plain> & text\nThird line");
+    assert.equal(await note(page).inputValue(), notes);
     return page;
   };
   const saved = (page) =>
@@ -72,7 +123,33 @@ export async function verifySubmission(browser, fixture, date) {
       await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
       await page.getByTestId("time").first().click();
       assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
+      assert.equal(await note(page).inputValue(), notes);
     }
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByTestId("time").nth(1).click();
+    assert.equal(await note(page).inputValue(), notes);
+    await page.screenshot({
+      path: new URL("../.verification/booking-notes-desktop.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("radio", { name: "Switch to weekly view", exact: true }).click();
+    await page.locator("[data-slot]").first().click();
+    await dialog.waitFor();
+    assert.equal(await note(page).inputValue(), notes);
+    await page.screenshot({
+      path: new URL("../.verification/booking-notes-week.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+    await page.locator("[data-slot]").first().click();
+    assert.equal(await note(page).inputValue(), notes);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("radio", { name: "Switch to monthly view", exact: true }).click();
+    await page.getByTestId("time").first().click();
+    assert.equal(requests.length, 0);
     await page.setViewportSize({ width: 390, height: 240 });
     await dialog.waitFor();
     assert.ok(
@@ -88,6 +165,7 @@ export async function verifySubmission(browser, fixture, date) {
     await page.getByTestId("time").first().click();
     await dialog.waitFor();
     assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
+    assert.equal(await note(page).inputValue(), notes);
     await page.getByLabel("Email", { exact: true }).fill("invalid");
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     assert.equal(requests.length, 0);
@@ -116,6 +194,10 @@ export async function verifySubmission(browser, fixture, date) {
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     const original = await applied.promise;
     assert.equal(original.status, 201);
+    assert.equal(
+      fixture.google.events.get(original.booking.id).description,
+      `<img src="/unexpected-image" onerror="alert(1)">\n\nAdditional notes:\n${notes}`
+    );
     await page.keyboard.press("Escape");
     await page.mouse.click(1, 1);
     assert.ok(await dialog.isVisible());
@@ -126,10 +208,12 @@ export async function verifySubmission(browser, fixture, date) {
     const pending = await saved(page);
     assert.equal(pending.kind, "pending");
     assert.equal(pending.request.requestKey, requests[0].requestKey);
+    assert.equal(pending.request.notes, notes);
     assert.equal(fixture.google.writes.length, 1);
     assert.ok(await page.getByRole("button", { name: "Back", exact: true }).isDisabled());
     assert.ok(await page.getByLabel("Name", { exact: true }).evaluate((input) => input.readOnly));
     assert.ok(await page.getByLabel("Email", { exact: true }).evaluate((input) => input.readOnly));
+    assert.ok(await note(page).evaluate((input) => input.readOnly));
     await page.keyboard.press("Escape");
     await page.mouse.click(1, 1);
     assert.ok(await dialog.isVisible());
@@ -140,6 +224,8 @@ export async function verifySubmission(browser, fixture, date) {
     await page.reload();
     await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
     assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
+    assert.equal(await note(page).inputValue(), notes);
+    assert.ok(await note(page).evaluate((input) => input.readOnly));
     assert.deepEqual(await saved(page), pending);
     await page.keyboard.press("Escape");
     await page.mouse.click(1, 1);
@@ -154,6 +240,8 @@ export async function verifySubmission(browser, fixture, date) {
     assert.equal(receipt.access.id, original.booking.id);
     assert.ok(!JSON.stringify(receipt).includes("guest@example.test"));
     assert.ok(!JSON.stringify(receipt).includes("Fixture Guest"));
+    assert.ok(!JSON.stringify(receipt).includes("First line"));
+    assert.ok(!JSON.stringify(receipt).includes('"notes"'));
     await page.reload();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
     assert.equal(requests.length, 2);
@@ -217,6 +305,7 @@ export async function verifySubmission(browser, fixture, date) {
     await conflict.getByRole("button", { name: "Back", exact: true }).click();
     await conflict.getByTestId("time").first().click();
     assert.equal(await conflict.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
+    assert.equal(await note(conflict).inputValue(), notes);
     assert.equal(fixture.google.writes.length, 2);
     const before = requests.length;
     await conflict.evaluate(() => {

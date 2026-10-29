@@ -92,6 +92,11 @@ page at 900px and 1280px with zero different pixels under the declared Chromium 
 Full week-page, toolbar, and dialog pixel parity remain unverified.
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
+Optional **Additional notes** are trimmed and limited to 1,000 UTF-16 units after trimming.
+Interior whitespace and literal text are preserved in the immutable provider description,
+including through retries and rescheduling. Notes share the existing server retention and
+provider invitation recipients. Clearing the browser draft and pending storage does not erase
+server or provider records. Booking views and receipts do not return notes or the description.
 The page distinguishes confirmed bookings from results needing recovery or organizer attention.
 From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { BookingSnapshot } from "../src/server/booking-model.ts";
 import { matches, parseChange, parseCreate, snapshot, timestamp } from "../src/server/booking-model.ts";
 import type { CalendarEvent } from "../src/server/google.ts";
+import { ErrorWithCode } from "../src/server/http.ts";
 
 const start = Date.parse("2026-01-05T09:00:00Z");
 const create = {
@@ -83,6 +84,27 @@ test("booking request boundaries reject malformed fields and unsupported command
   assert.equal(timestamp(Date.UTC(2100, 0, 1)), Date.UTC(2100, 0, 1));
   for (const time of [Date.UTC(2000, 0, 1) - 1, Date.UTC(2100, 0, 1) + 1])
     assert.throws(() => timestamp(time));
+});
+
+test("optional notes preserve legacy bytes and canonical literal content within 1000 UTF-16 units", () => {
+  const legacy = `{"action":"create","requestKey":"create-request-0001","start":${start},"name":"Guest","email":"guest@example.com","timeZone":"Asia/Manila"}`;
+  assert.equal(JSON.stringify(parseCreate(create)), legacy);
+  for (const notes of ["", " \t\r\n "])
+    assert.equal(JSON.stringify(parseCreate({ ...create, notes })), legacy);
+  const notes = "First line\n\nSecond line <plain> & text\r\nThird line  é 😀";
+  const input = { notes: ` \n${notes}\t `, ...create };
+  assert.equal(
+    JSON.stringify(parseCreate(input)),
+    `${legacy.slice(0, -1)},"notes":${JSON.stringify(notes)}}`
+  );
+  assert.equal(parseCreate({ ...create, notes: ` ${"😀".repeat(500)} ` }).notes, "😀".repeat(500));
+  assert.equal(parseCreate({ ...create, notes: "x".repeat(1000) }).notes?.length, 1000);
+  for (const notes of [null, 1, false, [], {}, "x".repeat(1001), `${"😀".repeat(500)}x`])
+    assert.throws(
+      () => parseCreate({ ...create, notes }),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_input"
+    );
+  assert.throws(() => parseCreate({ ...create, notes, extra: true }), ErrorWithCode);
 });
 
 test("persisted snapshots retain validated booking content and reject corrupt state", () => {
