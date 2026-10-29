@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { verifyColumnPage } from "./verify-column-page.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
@@ -125,9 +127,12 @@ async function measureSelectedDay(page) {
   }));
 }
 
-async function readFont(page) {
-  const url = await page.evaluate(() => {
-    const family = getComputedStyle(document.body).fontFamily.split(",")[0].replaceAll('"', "").trim();
+async function readFont(page, locator = page.locator("body"), expectedFace) {
+  const asset = await locator.evaluate((node) => {
+    const family = getComputedStyle(node).fontFamily.split(",")[0].replaceAll('"', "").trim();
+    const loaded = [...document.fonts].some(
+      (font) => font.family.replaceAll('"', "") === family && font.status === "loaded"
+    );
     for (const sheet of document.styleSheets) {
       for (const rule of sheet.cssRules) {
         if (
@@ -137,19 +142,31 @@ async function readFont(page) {
             rule.style.getPropertyValue("unicode-range").startsWith("U+0-FF,"))
         ) {
           const source = /url\("([^"]+)"\)/.exec(rule.style.getPropertyValue("src"));
-          if (source) return new URL(source[1], sheet.href).href;
+          if (source)
+            return {
+              url: new URL(source[1], sheet.href || location.href).href,
+              loaded,
+              face: {
+                family,
+                style: rule.style.getPropertyValue("font-style") || "normal",
+                weight: rule.style.getPropertyValue("font-weight"),
+                display: rule.style.getPropertyValue("font-display"),
+              },
+            };
         }
       }
     }
-    throw new Error("Rendered body font has no Latin font asset");
+    throw new Error("Rendered first font family has no Latin font asset");
   });
-  const response = await page.request.get(url);
+  assert.ok(asset.loaded, "Rendered first font family has a loaded document.fonts face");
+  if (expectedFace) assert.deepEqual(asset.face, expectedFace, "Rendered font face recipe");
+  const response = await page.request.get(asset.url);
   assert.equal(response.status(), 200, "Rendered font asset response");
   return response.body();
 }
 
-async function measureTitle(page) {
-  return page.getByTestId("event-title").evaluate((title) => {
+async function measureTitle(page, locator = page.getByTestId("event-title")) {
+  return locator.evaluate((title) => {
     const range = document.createRange();
     range.selectNodeContents(title);
     const bounds = range.getBoundingClientRect();
@@ -163,6 +180,33 @@ async function measureTitle(page) {
       lineHeight: style.lineHeight,
     };
   });
+}
+
+async function verifyDialogTypography(page, family = "Cal Sans Booking") {
+  await page.evaluate(() => document.fonts.ready);
+  const heading = page.getByRole("heading", { name: "Confirm your details", exact: true });
+  const font = await readFont(page, heading, { family, style: "normal", weight: "600", display: "block" });
+  assert.equal(font.length, 40932, "Pinned Cal Sans served byte length");
+  assert.equal(
+    createHash("sha256").update(font).digest("hex"),
+    "d3e38c946c6c0299f321b6cf2c92f7f26e202530f49d6bc86d52e9fd74f393a2",
+    "Pinned Cal Sans served identity"
+  );
+  const metrics = await measureTitle(page, heading);
+  assert.deepEqual(
+    metrics,
+    {
+      width: 176.84375,
+      height: 24,
+      size: "20px",
+      weight: "400",
+      spacing: "normal",
+      lineHeight: "20px",
+    },
+    "Actual Next dialog heading text metrics"
+  );
+  console.log(`PASS ${family} loaded dialog font: 40932 bytes; heading ${JSON.stringify(metrics)}`);
+  return { font, metrics };
 }
 
 async function measureTimeList(page) {
@@ -308,12 +352,14 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         await ready(page, `[id=${JSON.stringify(await input.getAttribute("id"))}]`);
         assert.ok((await page.locator("body").innerText()).includes("Thursday, January 10, 2030"));
         assert.equal(await page.getByRole("dialog").count(), name === "mobile" ? 1 : 0);
+        let dialog = null;
         if (name === "mobile") {
-          assert.ok(
-            await page.evaluate(() =>
-              [...document.fonts].some((font) => font.family === "calFont" && font.status === "loaded")
-            )
-          );
+          dialog = await verifyDialogTypography(page, "calFont");
+          const source = await readFile(new URL("../../web/fonts/CalSans-SemiBold.woff2", import.meta.url));
+          assert.ok(dialog.font.equals(source), "Actual Next heading font matches pinned source bytes");
+          await page.getByRole("heading", { name: "Confirm your details", exact: true }).screenshot({
+            path: fileURLToPath(new URL(`upstream-mobile-heading-${take}.png`, artifacts)),
+          });
         }
         const attendeeRegion =
           name === "desktop"
@@ -342,6 +388,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
           timezone,
           card,
           attendeeRegion,
+          dialog,
         });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
@@ -527,6 +574,21 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
             "PASS PARTIAL FORM-REGION parity: desktop month Email address through closed Add guests, 371x236, zero different RGBA pixels. Name remains focused and is outside the comparison."
           );
         }
+        if (name === "mobile") {
+          const dialog = await verifyDialogTypography(page);
+          assert.ok(
+            dialog.font.equals(reference.dialog.font),
+            "Public dialog served font matches actual Next"
+          );
+          assert.deepEqual(
+            dialog.metrics,
+            reference.dialog.metrics,
+            "Public dialog typography matches actual Next"
+          );
+          await page.getByRole("heading", { name: "Confirm your details", exact: true }).screenshot({
+            path: fileURLToPath(new URL("candidate-mobile-heading.png", artifacts)),
+          });
+        }
         await page.screenshot({
           path: fileURLToPath(new URL(`candidate-page-${name}-form.png`, artifacts)),
           fullPage: true,
@@ -547,3 +609,5 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
     "PASS initial booking-card pixels match the actual pinned page at desktop/mobile, and the initial mobile full page matches with zero different pixels. Other full-page states remain unverified."
   );
 }
+
+export { verifyDialogTypography };
