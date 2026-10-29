@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import avatar from "../../../web/public/avatar.svg?url";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
 import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
-import type { CalendarCursor } from "./BookingCalendar.tsx";
+import type { CalendarCursor, CalendarView } from "./BookingCalendar.tsx";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { BookingFormDialog } from "./BookingFormDialog.tsx";
 import { BookingManagement } from "./BookingManagement.tsx";
@@ -184,18 +184,17 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     : undefined;
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
   const formActive = stage.kind === "form" || stage.kind === "pending";
-  const columns =
+  const view: CalendarView =
     layout === "column_view" && width > 768 && (stage.kind === "calendar" || formActive)
-      ? width <= 1024
-        ? 2
-        : 6
-      : undefined;
-  const showCalendar = stage.kind === "calendar" || (!!columns && formActive);
+      ? { kind: "column", count: width <= 1024 ? 2 : 6 }
+      : { kind: "month" };
+  const wide = view.kind !== "month";
+  const showCalendar = stage.kind === "calendar" || (wide && formActive);
   const layoutToggle = (
     <Provider>
       <ToggleGroup.Root
         type="single"
-        value={columns ? "column_view" : "month_view"}
+        value={wide ? "column_view" : "month_view"}
         aria-label={labels.layout}
         onValueChange={(next) => {
           if (next !== "month_view" && next !== "column_view") return;
@@ -269,7 +268,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           )}
         </EventMetaBlock>
         {!showCalendar && timeFormatToggle}
-        {selected && !columns && (
+        {selected && !wide && (
           <EventMetaBlock icon="calendar" role="status">
             {labels.selectedTime}
             <br />
@@ -281,19 +280,19 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   );
   return (
     <div
-      className={`main text-default flex min-h-full w-full flex-col items-center overflow-visible ${columns ? "" : "min-[769px]:my-20"}`}>
+      className={`main text-default flex min-h-full w-full flex-col items-center overflow-visible ${wide ? "" : "min-[769px]:my-20"}`}>
       <div className="fixed right-4 top-4 z-20 hidden min-[769px]:block">{layoutToggle}</div>
       <div
         data-testid="booker-container"
         className={
-          columns
+          wide
             ? "bg-default grid min-h-screen w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header'_'meta_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px]"
             : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
         }>
         {showCalendar ? (
           <BookingCalendar
             metadata={metadata}
-            columns={columns}
+            view={view}
             layoutToggle={layoutToggle}
             cursor={cursor}
             onCursorChange={setCursor}
@@ -316,7 +315,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         {stage.kind !== "calendar" && (
           <BookingFormDialog
             active={formActive}
-            column={!!columns}
+            forceModal={wide}
             heading={labels.confirmDetails}
             locked={busy || stage.kind === "pending"}
             onBack={back}>
@@ -328,7 +327,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   event.preventDefault();
                   void submit();
                 }}>
-                {columns && selected && (
+                {wide && selected && (
                   <p>
                     {labels.selectedTime} <time dateTime={selected}>{selectedLabel}</time> ({selectedZone})
                   </p>
@@ -405,7 +404,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           </BookingFormDialog>
         )}
       </div>
-      {!columns && <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />}
+      {!wide && <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />}
     </div>
   );
 }

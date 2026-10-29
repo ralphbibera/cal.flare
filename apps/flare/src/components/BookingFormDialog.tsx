@@ -14,21 +14,21 @@ export function BookingFormDialog({
   heading,
   locked,
   onBack,
-  column = false,
+  forceModal = false,
 }: {
   children: ReactNode;
   active: boolean;
   heading: string;
   locked: boolean;
   onBack: () => void;
-  column?: boolean;
+  forceModal?: boolean;
 }) {
   const mobile = useSyncExternalStore(
     subscribe,
     () => matchMedia(mobileQuery).matches,
     () => false
   );
-  const modal = active && (mobile || column);
+  const modal = active && (mobile || forceModal);
   const dialog = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
     if (!modal) return;
