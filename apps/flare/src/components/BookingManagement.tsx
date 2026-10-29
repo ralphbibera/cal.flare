@@ -1,18 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { BookerClient, type BookingAccess, type ChangeRequest, ErrorWithCode } from "../client/bookings.ts";
 import { ChangeAttempts } from "../client/change-attempt.ts";
 import { managementLink } from "../client/management-access.ts";
+import { parseCancellationReason } from "../domain/cancellation-reason.ts";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
 import { CalendarExport } from "./CalendarExport.tsx";
 import { formatDuration } from "./format-duration.ts";
 import { Icon } from "./Icon.tsx";
+import { Label } from "./Label.tsx";
+import { TextArea } from "./TextArea.tsx";
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
 type Labels = typeof bookingLabels;
 type Stage =
-  | { kind: "restore" | "actions" | "calendar" | "cancel" | "blocked" }
+  | { kind: "restore" | "actions" | "calendar" | "blocked" }
+  | { kind: "cancel"; invalid?: true }
   | { kind: "move"; start: number }
   | { kind: "pending"; request: Readonly<ChangeRequest> };
 const client = new BookerClient();
@@ -33,6 +37,8 @@ export function BookingManagement({
   const [stage, setStage] = useState<Stage>({ kind: "restore" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [cancellationDraft, setCancellationDraft] = useState("");
+  const reasonId = useId();
   const [copy, setCopy] = useState<"ready" | "copied" | "failed">("ready");
   async function copyLink() {
     try {
@@ -72,6 +78,12 @@ export function BookingManagement({
   }
   async function change() {
     if (busy || (stage.kind !== "pending" && stage.kind !== "move" && stage.kind !== "cancel")) return;
+    const cancellationReason =
+      stage.kind === "cancel" ? parseCancellationReason(cancellationDraft) : undefined;
+    if (cancellationReason === null) {
+      setStage({ kind: "cancel", invalid: true });
+      return;
+    }
     let request: Readonly<ChangeRequest>;
     try {
       request =
@@ -80,7 +92,11 @@ export function BookingManagement({
           : store().begin(
               stage.kind === "move"
                 ? { action: "reschedule", version: booking.version, start: stage.start }
-                : { action: "cancel", version: booking.version }
+                : {
+                    action: "cancel",
+                    version: booking.version,
+                    ...(cancellationReason ? { cancellationReason } : {}),
+                  }
             );
     } catch {
       setStage({ kind: "blocked" });
@@ -94,6 +110,7 @@ export function BookingManagement({
       const result = await client.change(access, request);
       if (!store().acknowledge(request.requestKey)) throw new ErrorWithCode("stale_attempt", 409);
       onUpdated(result);
+      if (request.action === "cancel") setCancellationDraft("");
       setStage({ kind: "actions" });
     } catch (failure) {
       try {
@@ -149,6 +166,8 @@ export function BookingManagement({
       : stage.kind === "pending" && stage.request.action === "reschedule"
         ? stage.request.start
         : undefined;
+  const savedCancellation =
+    stage.kind === "pending" && stage.request.action === "cancel" ? stage.request : undefined;
   return (
     <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 rounded-lg border p-8">
       {confirmed && (
@@ -183,6 +202,14 @@ export function BookingManagement({
           <p>{booking.name}</p>
           <p>{booking.email}</p>
         </dd>
+        {stage.kind === "actions" && booking.status === "cancelled" && booking.cancellationReason && (
+          <>
+            <dt className="font-medium">{labels.reason}</dt>
+            <dd className="col-span-2 min-w-0 whitespace-pre-wrap break-words">
+              {booking.cancellationReason}
+            </dd>
+          </>
+        )}
       </dl>
       {confirmed && stage.kind === "actions" && !busy && !error && (
         <CalendarExport booking={booking} labels={labels} />
@@ -211,6 +238,29 @@ export function BookingManagement({
         </div>
       )}
       {stage.kind === "cancel" && <p>{labels.cancelPrompt}</p>}
+      {(stage.kind === "cancel" || savedCancellation) && (
+        <div>
+          <Label htmlFor={reasonId}>{labels.cancellationReason}</Label>
+          <TextArea
+            id={reasonId}
+            rows={3}
+            placeholder={labels.cancellationReasonPlaceholder}
+            readOnly={!!savedCancellation}
+            value={savedCancellation ? (savedCancellation.cancellationReason ?? "") : cancellationDraft}
+            aria-invalid={stage.kind === "cancel" && !!stage.invalid}
+            aria-describedby={stage.kind === "cancel" && stage.invalid ? `${reasonId}-error` : undefined}
+            onChange={(event) => {
+              setCancellationDraft(event.target.value);
+              setStage({ kind: "cancel" });
+            }}
+          />
+          {stage.kind === "cancel" && stage.invalid && (
+            <p id={`${reasonId}-error`} role="alert" className="text-error text-sm">
+              {labels.cancellationReasonLimit}
+            </p>
+          )}
+        </div>
+      )}
       {error && <p role="alert">{error}</p>}
       <div className="flex flex-wrap gap-2">
         {stage.kind === "actions" && (
@@ -236,16 +286,19 @@ export function BookingManagement({
         )}
         {(stage.kind === "calendar" || stage.kind === "move" || stage.kind === "cancel") && (
           <Button color="minimal" disabled={busy} onClick={() => setStage({ kind: "actions" })}>
-            {labels.back}
+            {stage.kind === "cancel" ? labels.nevermind : labels.back}
           </Button>
         )}
         {(stage.kind === "move" || stage.kind === "cancel" || stage.kind === "pending") && (
-          <Button loading={busy} onClick={() => void change()}>
+          <Button
+            color={stage.kind === "cancel" ? "destructive" : "primary"}
+            loading={busy}
+            onClick={() => void change()}>
             {stage.kind === "pending"
               ? labels.retry
               : stage.kind === "move"
                 ? labels.reschedule
-                : labels.confirm}
+                : labels.cancelEvent}
           </Button>
         )}
         {stage.kind === "blocked" && <Button onClick={restore}>{labels.retry}</Button>}

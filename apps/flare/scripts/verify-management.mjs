@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+const cancellationReason = 'Plans changed\n\n<img src="/unexpected-reason" onerror="alert(1)"> é 😀\n'.padEnd(
+  1000,
+  "界"
+);
+const cancellationDraft = ` \n${cancellationReason}\t `;
+
 export async function verifyManagement(browser, fixture, date) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
   const errors = [],
@@ -29,6 +35,7 @@ export async function verifyManagement(browser, fixture, date) {
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     const created = await (await creation).json();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+    assert.equal(await page.locator("textarea").count(), 0);
     assert.equal(await page.getByText("Add to calendar", { exact: true }).count(), 1);
     const canonicalDetails = async (target) => {
       assert.deepEqual(
@@ -314,15 +321,66 @@ export async function verifyManagement(browser, fixture, date) {
       if (action === "cancel") {
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
         await hiddenExports();
-        await page.getByRole("button", { name: "Back", exact: true }).click();
+        const editor = page.getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true });
+        await editor.waitFor();
+        assert.equal(await page.locator("textarea").count(), 1);
+        assert.equal(await editor.getAttribute("rows"), "3");
+        assert.equal(await editor.getAttribute("placeholder"), "Why are you cancelling?");
+        assert.equal(await editor.getAttribute("maxlength"), null);
+        assert.equal(await editor.getAttribute("required"), null);
+        await editor.fill("Draft é 😀");
+        await page.keyboard.press("End");
+        await page.keyboard.press("Enter");
+        assert.equal(await editor.inputValue(), "Draft é 😀\n");
+        assert.ok(await editor.evaluate((node) => node === document.activeElement));
+        await page.evaluate(() => {
+          window.changeStorageWrites = 0;
+          const setItem = Storage.prototype.setItem;
+          Storage.prototype.setItem = function (key, value) {
+            if (key.startsWith("calflare:change:v1:")) window.changeStorageWrites++;
+            return setItem.call(this, key, value);
+          };
+        });
+        const unchangedStorage = await page.evaluate(() => JSON.stringify({ ...sessionStorage }));
+        const unchangedWrites = fixture.google.writes.length;
+        await page.keyboard.press("Tab");
+        assert.ok(
+          await page
+            .getByRole("button", { name: "Nevermind", exact: true })
+            .evaluate((node) => node === document.activeElement)
+        );
+        await page.keyboard.press("Enter");
+        await page.getByText("Add to calendar", { exact: true }).waitFor();
+        assert.equal(await page.locator("textarea").count(), 0);
+        assert.equal(await page.evaluate(() => JSON.stringify({ ...sessionStorage })), unchangedStorage);
         assert.equal(requests.length, previousRequests);
+        assert.equal(fixture.google.writes.length, unchangedWrites);
+        assert.equal(await page.evaluate(() => window.changeStorageWrites), 0);
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+        assert.equal(await editor.inputValue(), "Draft é 😀\n");
+        const invalid = " \n" + "😀".repeat(500) + "x\t ";
+        await editor.fill(invalid);
+        await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+        await page.getByRole("alert").filter({ hasText: "Must be 1000 or fewer characters long" }).waitFor();
+        assert.equal(await editor.getAttribute("aria-invalid"), "true");
+        assert.equal(
+          await editor.getAttribute("aria-describedby"),
+          await page.getByRole("alert").getAttribute("id")
+        );
+        assert.equal(await editor.inputValue(), invalid);
+        assert.ok(await editor.isEditable());
+        assert.equal(await page.evaluate(() => JSON.stringify({ ...sessionStorage })), unchangedStorage);
+        assert.equal(requests.length, previousRequests);
+        assert.equal(fixture.google.writes.length, unchangedWrites);
+        assert.equal(await page.evaluate(() => window.changeStorageWrites), 0);
+        await editor.fill(" \n" + "😀".repeat(500) + "\t ");
+        assert.equal(await editor.getAttribute("aria-invalid"), "false");
         await page.evaluate(() => {
           Storage.prototype.setItem = () => {
             throw new Error("Storage denied");
           };
         });
-        await page.getByRole("button", { name: "Confirm", exact: true }).click();
+        await page.getByRole("button", { name: "Cancel event", exact: true }).click();
         await page
           .getByRole("alert")
           .filter({ hasText: "We couldn't restore or save this booking safely" })
@@ -335,6 +393,17 @@ export async function verifyManagement(browser, fixture, date) {
         await hiddenExports();
         await page.reload();
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+        await editor.fill(cancellationDraft);
+        for (const width of [390, 1280]) {
+          await page.setViewportSize({ width, height: 900 });
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          await page.screenshot({
+            path: new URL(`../.verification/cancellation-intent-${width}.png`, import.meta.url).pathname,
+            fullPage: true,
+            animations: "disabled",
+          });
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
       }
       const applied = Promise.withResolvers();
       await page.route(`**${path}`, async (route) => {
@@ -351,7 +420,7 @@ export async function verifyManagement(browser, fixture, date) {
         }
       });
       await page
-        .getByRole("button", { name: action === "cancel" ? "Confirm" : "Reschedule", exact: true })
+        .getByRole("button", { name: action === "cancel" ? "Cancel event" : "Reschedule", exact: true })
         .click();
       const result = await applied.promise;
       assert.equal(result.status, 200);
@@ -363,6 +432,13 @@ export async function verifyManagement(browser, fixture, date) {
         writes = fixture.google.writes.length;
       assert.equal(pending.action, action);
       assert.deepEqual(pending, requests.at(-1));
+      if (action === "cancel") {
+        assert.equal(pending.cancellationReason, cancellationReason);
+        const editor = page.getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true });
+        assert.equal(await editor.inputValue(), cancellationReason);
+        assert.equal(await editor.getAttribute("readonly"), "");
+        assert.equal(await page.locator("dt").getByText("Reason", { exact: true }).count(), 0);
+      }
       assert.equal(await page.getByRole("button", { name: "Back", exact: true }).count(), 0);
       assert.equal(await page.getByRole("button", { name: "Cancel event", exact: true }).count(), 0);
       assert.equal(
@@ -391,6 +467,14 @@ export async function verifyManagement(browser, fixture, date) {
         0
       );
       assert.deepEqual(await saved(), pending);
+      if (action === "cancel") {
+        const editor = page.getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true });
+        assert.equal(await editor.inputValue(), cancellationReason);
+        assert.equal(await editor.getAttribute("readonly"), "");
+        assert.equal(await page.locator("dt").getByText("Reason", { exact: true }).count(), 0);
+        assert.equal(await page.getByRole("button", { name: "Nevermind", exact: true }).count(), 0);
+        assert.equal(await page.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
+      }
       assert.equal(await page.evaluate(() => window.confirmedWhileUnresolved), false);
       assert.equal(fixture.google.writes.length, writes);
       assert.equal(requests.length, previousRequests + 1);
@@ -450,6 +534,46 @@ export async function verifyManagement(browser, fixture, date) {
     await page.reload();
     await page.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
     await hiddenExports();
+    const cancelledContext = await browser.newContext({ timezoneId: "UTC" });
+    try {
+      const privateCancelled = await cancelledContext.newPage();
+      await privateCancelled.clock.install({ time: date });
+      privateCancelled.on("pageerror", (error) => errors.push(error.message));
+      privateCancelled.on("console", (message) => {
+        if (message.type() === "error") errors.push(message.text());
+      });
+      await privateCancelled.goto(
+        `${fixture.origin}/booking/${receipt.access.id}#token=${receipt.access.token}`
+      );
+      for (const width of [390, 1280]) {
+        for (const target of [page, privateCancelled]) {
+          await target.setViewportSize({ width, height: 900 });
+          await target.reload();
+          await target.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
+          await target.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
+          const reason = target.locator("dt").getByText("Reason", { exact: true });
+          assert.equal(await reason.count(), 1);
+          const value = reason.locator("xpath=following-sibling::dd[1]");
+          assert.equal(await value.textContent(), cancellationReason);
+          assert.equal(await value.evaluate((node) => getComputedStyle(node).whiteSpace), "pre-wrap");
+          assert.equal(await target.locator("dl img, dl script").count(), 0);
+          assert.equal(await target.locator("textarea").count(), 0);
+          assert.equal(await target.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
+          assert.equal(await target.getByRole("button", { name: "Cancel event", exact: true }).count(), 0);
+          assert.equal(await target.getByText("Add to calendar", { exact: true }).count(), 0);
+          assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          assert.ok(!decodeURIComponent(target.url()).includes(cancellationReason));
+          assert.ok(!(await target.content()).includes(receipt.access.token));
+        }
+        await privateCancelled.screenshot({
+          path: new URL(`../.verification/cancellation-reason-${width}.png`, import.meta.url).pathname,
+          fullPage: true,
+          animations: "disabled",
+        });
+      }
+    } finally {
+      await cancelledContext.close();
+    }
     assert.equal(await page.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Cancel event", exact: true }).count(), 0);
     assert.deepEqual(
