@@ -11,7 +11,10 @@ dayjs.extend(timezone);
 const client = new BookerClient();
 type Days = Record<string, { time: string }[]>;
 type Query = { month: string; timeZone: string; access?: BookingAccess };
-type Result = { query: Query } & ({ status: "loading" | "error" } | { status: "ready"; days: Days });
+type Result = { query: Query } & (
+  | { status: "loading" | "error" }
+  | { status: "ready"; days: Days; coverage: { from: number; to: number; horizon: number } }
+);
 
 function useCalendarAvailability(month: string, timeZone: string, access?: BookingAccess) {
   const id = access?.id,
@@ -40,17 +43,24 @@ function useCalendarAvailability(month: string, timeZone: string, access?: Booki
           return;
         }
         const year = Number(query.month.slice(0, 4));
+        const horizon = Math.max(EARLIEST, Math.min(Date.now() + 365 * 86_400_000, LATEST));
         if (year < new Date(EARLIEST).getUTCFullYear() - 1 || year > new Date(LATEST).getUTCFullYear()) {
-          if (!cancelled) setResult({ query, status: "ready", days: {} });
+          const boundary = year < new Date(EARLIEST).getUTCFullYear() - 1 ? EARLIEST : horizon;
+          if (!cancelled)
+            setResult({
+              query,
+              status: "ready",
+              days: {},
+              coverage: { from: boundary, to: boundary, horizon },
+            });
           return;
         }
-        const from = Math.max(dayjs.tz(`${query.month}-01`, query.timeZone).valueOf(), EARLIEST);
-        const endMonth = dayjs(`${query.month}-01`).add(2, "month").format("YYYY-MM-DD");
-        const to = Math.min(
-          dayjs.tz(endMonth, query.timeZone).valueOf(),
-          Date.now() + 365 * 86_400_000,
-          LATEST
+        const from = Math.min(
+          Math.max(dayjs.tz(`${query.month}-01`, query.timeZone).valueOf(), EARLIEST),
+          horizon
         );
+        const endMonth = dayjs(`${query.month}-01`).add(2, "month").format("YYYY-MM-DD");
+        const to = Math.max(from, Math.min(dayjs.tz(endMonth, query.timeZone).valueOf(), horizon));
         const slots =
           from < to
             ? await client.slots({
@@ -77,7 +87,7 @@ function useCalendarAvailability(month: string, timeZone: string, access?: Booki
           const key = `${fields.year}-${fields.month}-${fields.day}`;
           (days[key] ??= []).push({ time: new Date(slot.start).toISOString() });
         }
-        if (!cancelled) setResult({ query, status: "ready", days });
+        if (!cancelled) setResult({ query, status: "ready", days, coverage: { from, to, horizon } });
       } catch {
         if (!cancelled) setResult({ query, status: "error" });
       }

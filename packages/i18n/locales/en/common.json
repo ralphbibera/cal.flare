@@ -9,6 +9,8 @@
   "flare_booking_invalid_attendee": "Check your name and email address.",
   "flare_previous_month": "Previous month",
   "flare_next_month": "Next month",
+  "flare_previous_day": "Previous Day",
+  "flare_next_day": "Next Day",
   "flare_availability_error": "Availability could not be loaded. Please try again.",
   "flare_time_zone": "Time zone",
   "flare_time_format": "Time format",

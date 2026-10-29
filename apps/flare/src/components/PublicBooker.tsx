@@ -1,3 +1,5 @@
+import * as ToggleGroup from "@radix-ui/react-toggle-group";
+import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import avatar from "../../../web/public/avatar.svg?url";
@@ -12,17 +14,20 @@ import type { bookingLabels } from "./booking-labels.ts";
 import { EventMetaBlock } from "./EventMetaBlock.tsx";
 import { EventTitle } from "./EventTitle.tsx";
 import { formatDuration } from "./format-duration.ts";
+import { Icon } from "./Icon.tsx";
 import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
 import { ScrollableWithGradients } from "./ScrollableWithGradients.tsx";
 import { TimeFormatToggle } from "./TimeFormatToggle.tsx";
 import { TimezoneSelect, timezoneAliases } from "./TimezoneSelect.tsx";
+import { Tooltip } from "./Tooltip.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
   labels: typeof bookingLabels;
 };
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
+type BookerLayout = "month_view" | "column_view";
 type Stage =
   | { kind: "loading" | "calendar" | "blocked" }
   | { kind: "form"; start: number }
@@ -37,6 +42,8 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [timeZone, setTimeZone] = useState("UTC");
   const [zones, setZones] = useState<{ label: string; timezone: string }[]>([]);
   const [format, setFormat] = useState<"h:mma" | "HH:mm">("h:mma");
+  const [layout, setLayout] = useState<BookerLayout>("month_view");
+  const [width, setWidth] = useState(0);
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
   const [draft, setDraft] = useState({ name: "", email: "" });
   const [cursor, setCursor] = useState<CalendarCursor>(() => ({
@@ -78,6 +85,16 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
       setError(labels.storageError);
     }
   }
+  useEffect(() => {
+    const resize = () => setWidth(innerWidth);
+    resize();
+    window.addEventListener("resize", resize);
+    if (new URLSearchParams(location.search).get("layout") === "column_view") {
+      setLayout("column_view");
+      setCursor((previous) => ({ ...previous, date: previous.date ?? dayjs().format("YYYY-MM-DD") }));
+    }
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   useEffect(() => {
     const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setZones([
@@ -156,15 +173,57 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
       setBusy(false);
     }
   }
+  const selectedZone = stage.kind === "pending" ? stage.request.timeZone : timeZone;
   const selectedLabel = selected
     ? new Intl.DateTimeFormat("en-US", {
         dateStyle: "full",
         timeStyle: "short",
-        timeZone,
+        timeZone: selectedZone,
         hour12: format === "h:mma",
       }).format(new Date(selected))
     : undefined;
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
+  const formActive = stage.kind === "form" || stage.kind === "pending";
+  const columns =
+    layout === "column_view" && width > 768 && (stage.kind === "calendar" || formActive)
+      ? width <= 1024
+        ? 2
+        : 6
+      : undefined;
+  const showCalendar = stage.kind === "calendar" || (!!columns && formActive);
+  const layoutToggle = (
+    <Provider>
+      <ToggleGroup.Root
+        type="single"
+        value={columns ? "column_view" : "month_view"}
+        aria-label={labels.layout}
+        onValueChange={(next) => {
+          if (next !== "month_view" && next !== "column_view") return;
+          setLayout(next);
+          const url = new URL(location.href);
+          url.searchParams.set("layout", next);
+          history.replaceState(null, "", url);
+        }}
+        className="bg-muted inline-flex gap-0.5 rounded-[10px] p-0.5">
+        {(["month_view", "column_view"] as const).map((layout) => (
+          <Tooltip
+            key={layout}
+            content={layout === "month_view" ? labels.monthView : labels.columnView}
+            side="bottom"
+            sideOffset={12}>
+            <ToggleGroup.Item
+              value={layout}
+              className="aria-checked:bg-default aria-checked:border-subtle rounded-lg border border-transparent p-1.5 text-sm leading-none transition aria-checked:shadow-[0px_2px_3px_0px_rgba(0,0,0,0.03),0px_2px_2px_-1px_rgba(0,0,0,0.03)] text-default [&[aria-checked='false']]:hover:text-emphasis [&[aria-checked='false']]:hover:bg-subtle cursor-pointer">
+              <Icon name={layout === "month_view" ? "calendar" : "columns-3"} />
+              <span className="sr-only">
+                {layout === "month_view" ? labels.monthView : labels.columnView}
+              </span>
+            </ToggleGroup.Item>
+          </Tooltip>
+        ))}
+      </ToggleGroup.Root>
+    </Provider>
+  );
   const metadata = (
     <section className="relative z-10 p-6" data-testid="event-meta">
       <ul className="border-muted flex items-center">
@@ -195,7 +254,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           icon="globe"
           className="cursor-pointer [&_.current-timezone:before]:focus-within:opacity-100 [&_.current-timezone:before]:hover:opacity-100"
           contentClassName="relative max-w-[90%]">
-          {stage.kind === "calendar" || stage.kind === "loading" ? (
+          {showCalendar || stage.kind === "loading" ? (
             <span className="current-timezone before:bg-subtle min-w-32 -mt-[2px] flex h-6 max-w-full items-center justify-start before:absolute before:inset-0 before:bottom-[-3px] before:left-[-30px] before:top-[-3px] before:w-[calc(100%+35px)] before:rounded-md before:py-3 before:opacity-0 before:transition-opacity">
               <TimezoneSelect
                 value={timeZone}
@@ -209,8 +268,8 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             timeZone
           )}
         </EventMetaBlock>
-        {stage.kind !== "calendar" && timeFormatToggle}
-        {selected && (
+        {!showCalendar && timeFormatToggle}
+        {selected && !columns && (
           <EventMetaBlock icon="calendar" role="status">
             {labels.selectedTime}
             <br />
@@ -221,14 +280,21 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     </section>
   );
   return (
-    <div className="main text-default flex min-h-full w-full flex-col items-center overflow-visible min-[769px]:my-20">
+    <div
+      className={`main text-default flex min-h-full w-full flex-col items-center overflow-visible ${columns ? "" : "min-[769px]:my-20"}`}>
+      <div className="fixed right-4 top-4 z-20 hidden min-[769px]:block">{layoutToggle}</div>
       <div
         data-testid="booker-container"
-        className="bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]">
-        {stage.kind !== "calendar" && metadata}
-        {stage.kind === "calendar" ? (
+        className={
+          columns
+            ? "bg-default grid min-h-screen w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header'_'meta_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px]"
+            : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
+        }>
+        {showCalendar ? (
           <BookingCalendar
             metadata={metadata}
+            columns={columns}
+            layoutToggle={layoutToggle}
             cursor={cursor}
             onCursorChange={setCursor}
             returnFocusTime={returnFocusTime}
@@ -239,13 +305,18 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             labels={labels}
             selectedTime={selected}
             onTimeSelect={(value) => {
+              setReturnFocusTime(undefined);
               setError("");
               setStage({ kind: "form", start: Date.parse(value) });
             }}
           />
         ) : (
+          metadata
+        )}
+        {stage.kind !== "calendar" && (
           <BookingFormDialog
-            active={stage.kind === "form" || stage.kind === "pending"}
+            active={formActive}
+            column={!!columns}
             heading={labels.confirmDetails}
             locked={busy || stage.kind === "pending"}
             onBack={back}>
@@ -257,6 +328,11 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   event.preventDefault();
                   void submit();
                 }}>
+                {columns && selected && (
+                  <p>
+                    {labels.selectedTime} <time dateTime={selected}>{selectedLabel}</time> ({selectedZone})
+                  </p>
+                )}
                 <div>
                   <Label htmlFor="booker-name">{labels.name}</Label>
                   <Input
@@ -329,7 +405,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           </BookingFormDialog>
         )}
       </div>
-      <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />
+      {!columns && <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />}
     </div>
   );
 }

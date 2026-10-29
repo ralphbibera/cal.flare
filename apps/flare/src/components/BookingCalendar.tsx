@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { BookingAccess } from "../client/bookings.ts";
 import { useCalendarAvailability } from "../client/use-calendar-availability.ts";
 import { Button } from "./Button.tsx";
+import { ColumnTimeSlots } from "./ColumnTimeSlots.tsx";
 import { MonthPicker } from "./MonthPicker.tsx";
 import { TimeSlots } from "./TimeSlots.tsx";
 import { TimeSlotsHeader } from "./TimeSlotsHeader.tsx";
@@ -17,6 +18,8 @@ type CalendarControl =
 
 type BookingCalendarProps = CalendarControl & {
   metadata?: ReactNode;
+  columns?: 2 | 6;
+  layoutToggle?: ReactElement;
   timeZone: string;
   timeFormat: "h:mma" | "HH:mm";
   timeFormatToggle?: ReactElement;
@@ -26,6 +29,8 @@ type BookingCalendarProps = CalendarControl & {
     today: string;
     previousMonth: string;
     nextMonth: string;
+    previousDay?: string;
+    nextDay?: string;
     loading: string;
     error: string;
     retry: string;
@@ -39,6 +44,8 @@ type BookingCalendarProps = CalendarControl & {
 
 function BookingCalendar({
   metadata,
+  columns,
+  layoutToggle,
   timeZone,
   timeFormat,
   timeFormatToggle,
@@ -74,13 +81,46 @@ function BookingCalendar({
   const { result, refresh } = useCalendarAvailability(month, timeZone, access);
   const days = result.status === "ready" ? result.days : {};
   const times = selectedDate ? (days[selectedDate] ?? []) : [];
+  const anchor = dayjs(selectedDate ?? dayjs().format("YYYY-MM-DD"));
+  const available = Object.keys(days)
+    .filter((date) => days[date].length > 0 && dayjs(date).diff(anchor, "day") >= 0)
+    .sort();
+  const spansMonths = available.slice(0, columns).some((date) => !anchor.isSame(dayjs(date), "month"));
+  const pagination = spansMonths ? available : available.filter((date) => date.startsWith(`${month}-`));
+  const slots = pagination.slice(0, (columns ?? 0) + 1);
+  const addon = columns && pagination.length < columns ? (columns - pagination.length + 1) * 7 : 0;
+  const last = slots.at(-1);
+  const end = slots[slots.length === (columns ?? 0) + 1 ? slots.length - 2 : slots.length - 1];
+  const jump = last ? Math.abs(anchor.diff(last, "day")) + addon : 0;
+  const endDate = end ? anchor.add(Math.abs(anchor.diff(end, "day")) + addon, "day") : anchor;
+  const today = dayjs().startOf("day");
+  const coverage = result.status === "ready" ? result.coverage : undefined;
+  function civilDay(epoch: number) {
+    return dayjs(dayjs(epoch).tz(timeZone).format("YYYY-MM-DD"));
+  }
+  const first = coverage ? civilDay(coverage.from) : anchor;
+  const boundary = coverage ? civilDay(coverage.to) : anchor;
+  const horizon = coverage ? civilDay(coverage.horizon - 1) : anchor;
+  const forwardLimit = boundary.isBefore(horizon, "day") ? boundary : horizon;
+  function move(amount: number) {
+    const next = anchor.add(amount, "day");
+    const lower = first.subtract(1, "day").isAfter(today) ? first.subtract(1, "day") : today;
+    const date =
+      amount < 0 && next.isBefore(lower)
+        ? lower
+        : amount > 0 && next.isAfter(forwardLimit)
+          ? forwardLimit
+          : next;
+    changeCursor({ month: date.format("YYYY-MM"), date: date.format("YYYY-MM-DD") });
+  }
   useEffect(() => {
-    if (result.status !== "ready" || month !== dayjs().format("YYYY-MM")) return;
+    if (columns || result.status !== "ready" || month !== dayjs().format("YYYY-MM")) return;
     if (Object.keys(result.days).some((date) => date.startsWith(`${month}-`))) return;
     const next = dayjs(`${month}-01`).add(1, "month");
     changeCursor({ month: next.format("YYYY-MM"), date: next.format("YYYY-MM-DD") });
-  }, [result, month, changeCursor]);
+  }, [result, month, changeCursor, columns]);
   useLayoutEffect(() => {
+    focusReturned.current = false;
     if (!returnFocusTime) return;
     focusOrigin.current = calendar.current?.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? null;
     focusOrigin.current?.focus();
@@ -99,25 +139,34 @@ function BookingCalendar({
   }, [returnFocusTime, result]);
   return (
     <Provider>
-      {metadata}
+      {!columns && metadata}
       <div
         ref={calendar}
-        className="h-full shrink px-5 py-3 [@media(max-width:768px)]:relative [@media(max-width:768px)]:z-1 min-[769px]:border-subtle min-[769px]:-ml-px min-[769px]:border-l lg:w-(--booker-main-width)"
+        className={
+          columns
+            ? "[grid-area:meta]"
+            : "h-full shrink px-5 py-3 [@media(max-width:768px)]:relative [@media(max-width:768px)]:z-1 min-[769px]:border-subtle min-[769px]:-ml-px min-[769px]:border-l lg:w-(--booker-main-width)"
+        }
         aria-busy={result.status === "loading"}>
+        {columns && metadata}
         <MonthPicker
+          className={columns ? "mt-auto px-5 py-3" : undefined}
           locale={locale}
           labels={labels}
           browsingDate={dayjs(`${month}-01`)}
           selected={selectedDate ? dayjs(selectedDate) : null}
           onChange={(date) => changeCursor({ month, date: date?.format("YYYY-MM-DD") ?? null })}
           onMonthChange={(date) => {
-            changeCursor({ month: date.format("YYYY-MM"), date: date.format("YYYY-MM-DD") });
+            const terminal = horizon.add(1, "day");
+            const target = columns && coverage && date.isAfter(terminal, "day") ? terminal : date;
+            changeCursor({ month: target.format("YYYY-MM"), date: target.format("YYYY-MM-DD") });
           }}
           includedDates={Object.keys(days)}
           slots={days}
           weekStart={weekStart}
           isLoading={result.status === "loading"}
-          skipAutomaticSelection={result.status !== "ready"}
+          isCompact={!!columns}
+          skipAutomaticSelection={result.status !== "ready" || !!columns}
           scrollToTimeSlots={() => {
             if (!matchMedia("(max-width: 768px)").matches || scrolledToTimes.current || !timeList.current)
               return;
@@ -140,7 +189,73 @@ function BookingCalendar({
         )}
         {result.status === "ready" && Object.keys(days).length === 0 && <p role="status">{labels.empty}</p>}
       </div>
-      {(result.status === "loading" || (result.status === "ready" && times.length > 0)) && (
+      {columns && (
+        <>
+          <div className="border-default relative z-10 flex border-b px-5 py-4 ltr:border-l rtl:border-r [grid-area:header]">
+            <div className="flex items-center gap-5">
+              <h3 className="min-w-[150px] text-base font-semibold leading-4">
+                {anchor.format("MMM D")}
+                {!anchor.isSame(endDate, "year") && (
+                  <span className="text-subtle">, {anchor.format("YYYY")} </span>
+                )}
+                - {!anchor.isSame(endDate, "month") && `${endDate.format("MMM")} `}
+                {endDate.format("D")}, <span className="text-subtle">{endDate.format("YYYY")}</span>
+              </h3>
+              <div className="flex space-x-2">
+                <Button
+                  variant="icon"
+                  color="minimal"
+                  StartIcon="chevron-left"
+                  aria-label={labels.previousDay}
+                  disabled={result.status !== "ready"}
+                  onClick={() => move(-(jump || 7))}
+                />
+                <Button
+                  variant="icon"
+                  color="minimal"
+                  StartIcon="chevron-right"
+                  aria-label={labels.nextDay}
+                  disabled={result.status !== "ready" || !anchor.isBefore(horizon, "day")}
+                  onClick={() => move(jump || 7)}
+                />
+                {Math.abs(dayjs().diff(anchor, "day")) > 3 && (
+                  <Button
+                    color="secondary"
+                    className="capitalize ltr:ml-2"
+                    onClick={() =>
+                      changeCursor({ month: today.format("YYYY-MM"), date: today.format("YYYY-MM-DD") })
+                    }>
+                    {labels.today}
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="ml-auto flex gap-2">
+              {timeFormatToggle}
+              <div className="pointer-events-none opacity-0" aria-hidden inert>
+                {layoutToggle}
+              </div>
+            </div>
+          </div>
+          <div
+            ref={timeList}
+            aria-busy={result.status === "loading"}
+            className="border-subtle flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 ltr:border-l [grid-area:main]">
+            <ColumnTimeSlots
+              days={days}
+              date={anchor.format("YYYY-MM-DD")}
+              count={columns}
+              locale={locale}
+              loading={result.status === "loading"}
+              timeZone={timeZone}
+              timeFormat={timeFormat}
+              onSelect={onTimeSelect}
+              selectedSlots={selectedTime ? [selectedTime] : []}
+            />
+          </div>
+        </>
+      )}
+      {!columns && (result.status === "loading" || (result.status === "ready" && times.length > 0)) && (
         <div
           ref={timeList}
           className="border-subtle rtl:border-default flex h-full w-full flex-col overflow-x-auto px-5 py-3 pb-0 rtl:border-r [@media(max-width:768px)]:sticky [@media(max-width:768px)]:top-0 min-[769px]:w-[var(--booker-timeslots-width,100%)] min-[769px]:overflow-hidden ltr:md:border-l">

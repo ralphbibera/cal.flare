@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { verifyColumnPage } from "./verify-column-page.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
 const fixedTime = Date.parse("2030-01-09T12:00:00Z");
@@ -272,6 +273,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
     "PASS actual pinned public-page static reference repeats exactly at desktop/mobile, including slot selection, inline form and mobile dialog. No candidate-page parity is established."
   );
   await verifyFlareFrames(browser, captures, artifacts, differentPixels);
+  await verifyColumnPage(browser, origin, artifacts, differentPixels, ready);
 }
 
 async function verifyFlareFrames(browser, captures, artifacts, differentPixels) {
