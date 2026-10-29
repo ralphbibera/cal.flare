@@ -119,8 +119,22 @@ The built Worker/D1 browser journey verifies these facts after event edits, publ
 reloads, and at 390px and 1280px. Google responses are mocked.
 The optional native confirmation fixture supplies a repeatable reference baseline.
 Candidate confirmation and terminal-page pixel parity remain unverified.
-Host identity, location, invitation-delivery copy, calendar/export
-controls, and signup branding remain later port work. Source-backed layout does not establish
+Confirmed receipts and authorized private details offer **Add to calendar**, ordered Google,
+Microsoft Outlook, Microsoft Office, then Other. The first three open external composers with
+`noopener noreferrer`. Other downloads a local UTF-8 `text/calendar` file named `booking.ics`.
+Other uses the existing calendar icon and fixed filename; native uses an Outlook-shaped icon and event-title filename.
+Exports contain the stored title and UTC interval, plus ICS identity, version, and export timestamp.
+The stable UID survives rescheduling; a later download uses the canonical new interval and version.
+Exports omit attendee fields, notes, guests, private links, access tokens, description, and location.
+They hide during change selection, saved unresolved changes, blocked storage, provider uncertainty,
+status refresh, and cancellation. Manual export does not send invitations or retry provider writes.
+The existing browser journey decodes composer queries, aborts a keyboard-opened popup before external
+network access, and reads actual downloaded ICS bytes at 390px and 1280px on public and private views.
+It checks unchanged mock-provider write counts, event-setting edits, rescheduling, and hidden states.
+The native row's order, 40px controls, brand paths, hrefs, and ICS were observed on the isolated fixture.
+Its exports use current event metadata and description; this port uses only available canonical facts.
+Live external import, account event creation, invitation arrival, and automatic calendar sync remain unverified.
+Host identity, location, description, invitation-delivery copy, and signup branding remain later port work. Source-backed layout does not establish
 candidate confirmation pixel parity or completion of the full port.
 From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes

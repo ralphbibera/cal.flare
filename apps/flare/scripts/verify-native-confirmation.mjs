@@ -144,6 +144,47 @@ export async function verifyNativeConfirmation(browser, origin, artifacts, diffe
         const card = page.locator('[role="dialog"]');
         assert.equal(await page.locator("#modal-headline").innerText(), "This meeting is scheduled");
         assert.equal(await page.getByTestId("booking-title").innerText(), title);
+        const exports = card.locator('a[href*="/calendar/"], a[download]');
+        assert.deepEqual(await exports.allTextContents(), [
+          "Google",
+          "Microsoft Outlook",
+          "Microsoft Office",
+          "Other",
+        ]);
+        for (const [index, link] of (await exports.all()).entries()) {
+          const box = await link.boundingBox();
+          assert.equal(box.width, 40);
+          assert.equal(box.height, 40);
+          const href = await link.getAttribute("href");
+          if (index === 3) {
+            assert.equal(await link.getAttribute("download"), "Intro call.ics");
+            assert.ok(href.startsWith("data:text/calendar,"));
+            const ics = decodeURIComponent(href.slice(href.indexOf(",") + 1)).replace(/\r\n[ \t]/g, "");
+            for (const line of [
+              "VERSION:2.0",
+              `SUMMARY:${title}`,
+              "DTSTART:20300110T090000Z",
+              "DURATION:PT30M",
+              "DESCRIPTION:A short conversation.",
+            ])
+              assert.ok(ics.split("\r\n").includes(line));
+          } else {
+            assert.equal(await link.getAttribute("target"), "_blank");
+            const url = new URL(href);
+            assert.equal(
+              url.hostname,
+              ["calendar.google.com", "outlook.live.com", "outlook.office.com"][index]
+            );
+            assert.equal(url.searchParams.get(index === 0 ? "text" : "subject"), title);
+            assert.equal(url.searchParams.get(index === 0 ? "details" : "body"), "A short conversation.");
+            if (index === 0) assert.equal(url.searchParams.get("dates"), "20300110T090000Z/20300110T093000Z");
+            else {
+              assert.equal(url.searchParams.get("startdt"), "2030-01-10T09:00:00Z");
+              assert.equal(url.searchParams.get("enddt"), "2030-01-10T09:30:00Z");
+              assert.equal(decodeURIComponent(url.searchParams.get("path")), "/calendar/action/compose");
+            }
+          }
+        }
         for (const label of ["What", "When", "Who", "Additional notes"]) {
           assert.equal(await card.getByText(label, { exact: true }).count(), 1);
         }

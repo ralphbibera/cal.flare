@@ -5,6 +5,7 @@ import { managementLink } from "../client/management-access.ts";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
+import { CalendarExport } from "./CalendarExport.tsx";
 import { formatDuration } from "./format-duration.ts";
 import { Icon } from "./Icon.tsx";
 
@@ -183,6 +184,9 @@ export function BookingManagement({
           <p>{booking.email}</p>
         </dd>
       </dl>
+      {confirmed && stage.kind === "actions" && !busy && !error && (
+        <CalendarExport booking={booking} labels={labels} />
+      )}
       {proposed !== undefined && (
         <time dateTime={new Date(proposed).toISOString()}>
           {new Intl.DateTimeFormat("en-US", {
