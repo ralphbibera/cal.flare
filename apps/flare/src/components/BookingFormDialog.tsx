@@ -36,7 +36,17 @@ export function BookingFormDialog({
     node?.showModal();
     return () => node?.close();
   }, [modal]);
-  if (!modal) return <section className="border-subtle p-6 md:col-span-2 md:border-l">{children}</section>;
+  if (!modal)
+    return (
+      <section
+        className={
+          active
+            ? "border-subtle sticky top-0 h-full p-6 min-[769px]:-ml-px min-[769px]:w-[var(--booker-main-width)] min-[769px]:border-l"
+            : "border-subtle p-6 md:col-span-2 md:border-l"
+        }>
+        {children}
+      </section>
+    );
   return (
     <dialog
       ref={dialog}

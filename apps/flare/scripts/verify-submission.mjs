@@ -45,14 +45,16 @@ export async function verifySubmission(browser, fixture, date) {
     await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
     await page.locator('label[for="booker-email"]').click();
     assert.ok(
-      await page.getByLabel("Email", { exact: true }).evaluate((node) => document.activeElement === node)
+      await page
+        .getByLabel("Email address*", { exact: true })
+        .evaluate((node) => document.activeElement === node)
     );
     await page.locator('label[for="booker-name"]').click();
     assert.ok(
-      await page.getByLabel("Name", { exact: true }).evaluate((node) => document.activeElement === node)
+      await page.getByLabel("Your name*", { exact: true }).evaluate((node) => document.activeElement === node)
     );
-    await page.getByLabel("Name", { exact: true }).fill("Fixture Guest");
-    await page.getByLabel("Email", { exact: true }).fill("guest@example.test");
+    await page.getByLabel("Your name*", { exact: true }).fill("Fixture Guest");
+    await page.getByLabel("Email address*", { exact: true }).fill("guest@example.test");
     assert.equal(await page.locator("textarea").count(), 1);
     assert.deepEqual(
       await page.locator("form [name]").evaluateAll((nodes) => nodes.map((node) => node.name)),
@@ -128,7 +130,7 @@ export async function verifySubmission(browser, fixture, date) {
     assert.equal(requests.length, 0);
     assert.equal(await saved(page), null);
     assert.equal(await page.evaluate(() => window.guestStorageWrites), 0);
-    assert.ok(await page.getByLabel("Name", { exact: true }).isEditable());
+    assert.ok(await page.getByLabel("Your name*", { exact: true }).isEditable());
     assert.equal(await note(page).inputValue(), notes);
     for (let index = 140; index > 0; index--)
       await page.getByRole("button", { name: `Remove guest ${index}`, exact: true }).click();
@@ -200,7 +202,7 @@ export async function verifySubmission(browser, fixture, date) {
     await guest(page, 2).fill("first@example.test");
     await page.getByRole("button", { name: "Add another", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Confirm your details", exact: true });
-    for (const width of [390, 768, 769, 1280]) {
+    for (const width of [390, 768, 769, 1024, 1025, 1280]) {
       await page.getByRole("button", { name: "Back", exact: true }).click();
       await page.getByTestId("time").first().waitFor();
       await page.setViewportSize({ width, height: 844 });
@@ -211,8 +213,8 @@ export async function verifySubmission(browser, fixture, date) {
         await page.keyboard.press("Shift+Tab");
         assert.ok(await page.evaluate(() => document.activeElement === document.body));
         for (const name of [
-          "Name",
-          "Email",
+          "Your name*",
+          "Email address*",
           "Additional notes",
           "Guest email 1",
           "Remove guest 1",
@@ -252,7 +254,9 @@ export async function verifySubmission(browser, fixture, date) {
         );
         await page.keyboard.press("Tab");
         assert.ok(
-          await page.getByLabel("Name", { exact: true }).evaluate((node) => document.activeElement === node)
+          await page
+            .getByLabel("Your name*", { exact: true })
+            .evaluate((node) => document.activeElement === node)
         );
         await page.keyboard.press("Shift+Tab");
         assert.ok(await page.evaluate(() => document.activeElement === document.body));
@@ -275,14 +279,20 @@ export async function verifySubmission(browser, fixture, date) {
         await page.getByRole("button", { name: "Back", exact: true }).click();
       } else {
         assert.equal(await dialog.count(), 0);
+        assert.equal(
+          (await page.getByTestId("booker-container").boundingBox()).width,
+          width < 1024 ? 660 : 760
+        );
+        assert.equal((await page.locator("form").boundingBox()).width, 371);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.keyboard.press("Escape");
-        assert.ok(await page.getByLabel("Name", { exact: true }).isVisible());
+        assert.ok(await page.getByLabel("Your name*", { exact: true }).isVisible());
         await page.getByRole("button", { name: "Back", exact: true }).click();
       }
       await page.getByTestId("time").first().waitFor();
       await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
       await page.getByTestId("time").first().click();
-      assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
+      assert.equal(await page.getByLabel("Your name*", { exact: true }).inputValue(), "Fixture Guest");
       assert.equal(await note(page).inputValue(), notes);
       assert.deepEqual(await values(page), [...recipients, ""]);
     }
@@ -339,30 +349,34 @@ export async function verifySubmission(browser, fixture, date) {
     await page.mouse.click(1, 1);
     await page.getByTestId("time").first().click();
     await dialog.waitFor();
-    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
+    assert.equal(await page.getByLabel("Email address*", { exact: true }).inputValue(), "guest@example.test");
     assert.equal(await note(page).inputValue(), notes);
     assert.deepEqual(await values(page), [...recipients, ""]);
     await page.getByRole("button", { name: "Remove guest 3", exact: true }).click();
     for (const invalidName of ["", "   "]) {
-      await page.getByLabel("Name", { exact: true }).fill(invalidName);
+      await page.getByLabel("Your name*", { exact: true }).fill(invalidName);
       await page.getByRole("button", { name: "Confirm", exact: true }).click();
       assert.ok(
-        await page.getByLabel("Name", { exact: true }).evaluate((input) => document.activeElement === input)
+        await page
+          .getByLabel("Your name*", { exact: true })
+          .evaluate((input) => document.activeElement === input)
       );
       assert.equal(requests.length, 0);
     }
-    await page.getByLabel("Name", { exact: true }).fill("Fixture Guest");
-    await page.getByLabel("Email", { exact: true }).fill("invalid");
+    await page.getByLabel("Your name*", { exact: true }).fill("Fixture Guest");
+    await page.getByLabel("Email address*", { exact: true }).fill("invalid");
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     assert.equal(requests.length, 0);
     assert.ok(
-      await page.getByLabel("Email", { exact: true }).evaluate((input) => document.activeElement === input)
+      await page
+        .getByLabel("Email address*", { exact: true })
+        .evaluate((input) => document.activeElement === input)
     );
-    await page.getByLabel("Email", { exact: true }).fill("guest@example.test");
+    await page.getByLabel("Email address*", { exact: true }).fill("guest@example.test");
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByTestId("time").first().click();
-    assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
-    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
+    assert.equal(await page.getByLabel("Your name*", { exact: true }).inputValue(), "Fixture Guest");
+    assert.equal(await page.getByLabel("Email address*", { exact: true }).inputValue(), "guest@example.test");
     await page.screenshot({
       path: new URL("../.verification/booking-form-mobile.png", import.meta.url).pathname,
       fullPage: true,
@@ -412,9 +426,19 @@ export async function verifySubmission(browser, fixture, date) {
     assert.equal(await page.getByRole("button", { name: /^Remove guest/ }).count(), 0);
     assert.equal(fixture.google.writes.length, 1);
     assert.ok(await page.getByRole("button", { name: "Back", exact: true }).isDisabled());
-    assert.ok(await page.getByLabel("Name", { exact: true }).evaluate((input) => input.readOnly));
-    assert.ok(await page.getByLabel("Email", { exact: true }).evaluate((input) => input.readOnly));
+    assert.ok(await page.getByLabel("Your name*", { exact: true }).evaluate((input) => input.readOnly));
+    assert.ok(await page.getByLabel("Email address*", { exact: true }).evaluate((input) => input.readOnly));
     assert.ok(await note(page).evaluate((input) => input.readOnly));
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await dialog.waitFor({ state: "hidden" });
+    await page.getByLabel("Your name*", { exact: true }).waitFor();
+    assert.equal(await dialog.count(), 0);
+    assert.equal((await page.getByTestId("booker-container").boundingBox()).width, 760);
+    assert.equal((await page.locator("form").boundingBox()).width, 371);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.deepEqual(await saved(page), pending);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await dialog.waitFor();
     await page.keyboard.press("Escape");
     await page.mouse.click(1, 1);
     assert.ok(await dialog.isVisible());
@@ -424,7 +448,7 @@ export async function verifySubmission(browser, fixture, date) {
     await page.unroute("**/api/bookings");
     await page.reload();
     await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
-    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
+    assert.equal(await page.getByLabel("Email address*", { exact: true }).inputValue(), "guest@example.test");
     assert.equal(await note(page).inputValue(), notes);
     assert.deepEqual(await values(page), recipients);
     assert.ok(await guest(page, 2).evaluate((input) => input.readOnly));
@@ -535,7 +559,7 @@ export async function verifySubmission(browser, fixture, date) {
     assert.ok(await conflict.getByRole("button", { name: "Back", exact: true }).isEnabled());
     await conflict.getByRole("button", { name: "Back", exact: true }).click();
     await conflict.getByTestId("time").first().click();
-    assert.equal(await conflict.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
+    assert.equal(await conflict.getByLabel("Your name*", { exact: true }).inputValue(), "Fixture Guest");
     assert.equal(await note(conflict).inputValue(), notes);
     assert.deepEqual(await values(conflict), recipients);
     assert.equal(fixture.google.writes.length, 2);

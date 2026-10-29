@@ -13,8 +13,8 @@ export async function verifyManagement(browser, fixture, date) {
     });
     await page.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
     await page.getByTestId("time").first().click();
-    await page.getByLabel("Name", { exact: true }).fill("Management Guest");
-    await page.getByLabel("Email", { exact: true }).fill("management@example.test");
+    await page.getByLabel("Your name*", { exact: true }).fill("Management Guest");
+    await page.getByLabel("Email address*", { exact: true }).fill("management@example.test");
     const before = fixture.google.writes.length;
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();

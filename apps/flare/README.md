@@ -229,6 +229,19 @@ day selection per mounted calendar. Native focus scrolls the final desktop slot 
 view, and Enter retains that slot's UTC identity when opening the attendee form.
 Full-page pixels, other layouts, custom avatars, and organizer profile links remain separate work.
 
+The desktop month attendee check establishes **PARTIAL FORM-REGION parity** only.
+At 1280×900 it selects January 10, 2030 at 09:00 UTC with blank fields and closed guests.
+The union of the Email address label and input, Additional notes label and textarea,
+and closed Add guests button is exactly x625, y296, 371×236 in both actual Next and built Flare.
+Literal assertions check the scenario, labels, required markers, blank values, closed guests,
+input fonts, 760×450 booking card, 420×448 inline panel, and 371px form width before the
+dimension and every-RGBA-channel comparison requires zero differences.
+The public labels reuse `your_name` and `email_address`; generic labels remain available to other flows.
+Name keeps its existing autofocus, unlike the native desktop form. Its focus outline is outside
+the declared comparison. Agreement content, footer, metadata, toolbar, complete form and dialog
+pixels, mobile form composition, and Cal Sans registration remain separate work.
+No complete form, page, mobile, or live-provider parity follows from this partial comparison.
+
 Stop the reference server with Ctrl-C and stop its database with
 `pg_ctl -D "$reference_pg/data" stop`. Remove only these disposable resources when finished.
 

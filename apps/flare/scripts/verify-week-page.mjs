@@ -164,12 +164,12 @@ export async function verifyWeekPage(browser) {
         await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030 at 2:30 PM");
         await expect(dialog).toContainText("Asia/Kolkata");
         await expect(page.locator("#booker-time-zone")).toBeDisabled();
-        await dialog.getByLabel("Name", { exact: true }).fill("Week Guest");
-        await dialog.getByLabel("Email", { exact: true }).fill("week@example.test");
+        await dialog.getByLabel("Your name*", { exact: true }).fill("Week Guest");
+        await dialog.getByLabel("Email address*", { exact: true }).fill("week@example.test");
         await dialog.getByRole("button", { name: "Back", exact: true }).click();
         await expect(slot).toBeFocused();
         await page.keyboard.press("Space");
-        await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("Week Guest");
+        await expect(dialog.getByLabel("Your name*", { exact: true })).toHaveValue("Week Guest");
         await page.keyboard.press("Escape");
         await expect(slot).toBeFocused();
         await page.keyboard.press("Enter");
@@ -177,7 +177,7 @@ export async function verifyWeekPage(browser) {
           await page.setViewportSize({ width: resized, height: 900 });
           await expect(dialog).toBeVisible();
           await expect(page.locator('time[datetime="2030-01-10T09:00:00.000Z"]')).toHaveCount(1);
-          await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("Week Guest");
+          await expect(dialog.getByLabel("Your name*", { exact: true })).toHaveValue("Week Guest");
         }
         await page.keyboard.press("Escape");
         await expect(headers).toHaveCount(7);

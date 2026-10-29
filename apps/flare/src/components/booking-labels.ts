@@ -32,6 +32,8 @@ export const bookingLabels = {
   },
   name: common.name,
   email: common.email,
+  publicName: common.your_name,
+  publicEmail: common.email_address,
   notes: common.additional_notes,
   notesPlaceholder: common.share_additional_notes,
   guests: common.guests,
