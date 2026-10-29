@@ -5,6 +5,107 @@ import { createWorkerFixture } from "./verify-worker.mjs";
 
 const fixedTime = Date.parse("2030-01-09T12:00:00Z");
 
+async function captureAttendeeRegion(page, artifacts, name) {
+  await ready(page, 'input[name="email"]');
+  const guests = page.getByRole("button", { name: "Add guests", exact: true });
+  const metrics = await guests.evaluate((button) => {
+    const form = button.closest("form");
+    const name = form.querySelector('input[name="name"]');
+    const email = form.querySelector('input[name="email"]');
+    const notes = form.querySelector('textarea[name="notes"]');
+    const rect = (node) => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    const fields = [name, email, notes].map((node) => {
+      const label = node.labels[0];
+      const style = getComputedStyle(node);
+      return {
+        label: label.textContent,
+        labelBounds: rect(label),
+        bounds: rect(node),
+        value: node.value,
+        font: [style.fontSize, style.fontWeight, style.lineHeight],
+        marker: label.querySelector("span:last-child")?.textContent,
+      };
+    });
+    const rectangles = [email.labels[0], email, notes.labels[0], notes, button].map(rect);
+    const x = Math.min(...rectangles.map((item) => item.x));
+    const y = Math.min(...rectangles.map((item) => item.y));
+    return {
+      fields,
+      guests: rect(button),
+      guestInputs: form.querySelectorAll('input[name^="guests."]').length,
+      nameRequired: name.required,
+      card: rect(document.querySelector('[data-testid="booker-container"]')),
+      panel: rect(form.closest("section, [data-testid='booker-container'] > div")),
+      form: rect(form),
+      boundary: {
+        x,
+        y,
+        width: Math.max(...rectangles.map((item) => item.x + item.width)) - x,
+        height: Math.max(...rectangles.map((item) => item.y + item.height)) - y,
+      },
+    };
+  });
+  const pixels = [
+    ...(await page.screenshot({
+      path: fileURLToPath(new URL(`${name}-email-closed-guests.png`, artifacts)),
+      clip: metrics.boundary,
+      animations: "disabled",
+    })),
+  ];
+  assert.deepEqual(metrics.boundary, { x: 625, y: 296, width: 371, height: 236 }, `${name} partial boundary`);
+  assert.deepEqual(metrics.card, { x: 260, y: 201, width: 760, height: 450 });
+  assert.deepEqual(metrics.panel, { x: 600, y: 202, width: 420, height: 448 });
+  assert.deepEqual(metrics.form, { x: 625, y: 226, width: 371, height: 400 });
+  assert.deepEqual(
+    metrics.fields.map((field) => field.label),
+    ["Your name*", "Email address*", "Additional notes"]
+  );
+  assert.deepEqual(
+    metrics.fields.map((field) => field.value),
+    ["", "", ""]
+  );
+  assert.deepEqual(
+    metrics.fields.map((field) => field.marker),
+    ["*", "*", ""]
+  );
+  assert.deepEqual(
+    metrics.fields.map((field) => field.labelBounds.y),
+    [226, 296, 366]
+  );
+  assert.deepEqual(
+    metrics.fields.slice(1).map((field) => field.labelBounds.width),
+    [104.625, 112.296875]
+  );
+  assert.deepEqual(
+    metrics.fields.map((field) => field.bounds),
+    [
+      { x: 625, y: 248, width: 371, height: 32 },
+      { x: 625, y: 318, width: 371, height: 32 },
+      { x: 625, y: 388, width: 371, height: 80 },
+    ]
+  );
+  assert.deepEqual(
+    metrics.fields.map((field) => field.font),
+    [
+      ["14px", "500", "14px"],
+      ["14px", "500", "14px"],
+      ["14px", "400", "20px"],
+    ]
+  );
+  assert.deepEqual(metrics.guests, { x: 625, y: 498, width: 117.90625, height: 34 });
+  assert.equal(metrics.guestInputs, 0);
+  assert.equal(metrics.nameRequired, true);
+  assert.equal(await page.getByTestId("event-title").textContent(), "Intro call");
+  assert.equal(await page.getByText("A short conversation.", { exact: true }).count(), 1);
+  assert.ok((await page.getByText("Organizer", { exact: true }).count()) > 0);
+  assert.ok((await page.locator("body").innerText()).includes("Thursday, January 10, 2030"));
+  console.log(`PASS ${name} literal blank desktop month form geometry, labels, markers and fonts.`);
+  return pixels;
+}
+
 async function measureFrame(page) {
   const bounds = await page.getByTestId("booker-container").boundingBox();
   assert.ok(bounds);
@@ -214,6 +315,10 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
             )
           );
         }
+        const attendeeRegion =
+          name === "desktop"
+            ? await captureAttendeeRegion(page, artifacts, `upstream-desktop-${take}`)
+            : null;
         const form = [
           ...(await page.screenshot({
             path: fileURLToPath(new URL(`upstream-${name}-form-${take}.png`, artifacts)),
@@ -236,6 +341,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
           fullDay,
           timezone,
           card,
+          attendeeRegion,
         });
         console.log(`Reference ${name}/${take}: no uncaught errors, console errors or HTTP failures.`);
       } finally {
@@ -384,11 +490,48 @@ async function verifyFlareFrames(browser, captures, artifacts, differentPixels) 
           );
         }
         await last.press("Enter");
-        await page.getByLabel("Name", { exact: true }).waitFor();
+        await page.getByLabel("Your name*", { exact: true }).waitFor();
         assert.equal(
           await page.getByTestId("event-meta").locator("time").getAttribute("datetime"),
           "2030-01-10T16:30:00.000Z"
         );
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+        const first = page.getByTestId("time").first();
+        await first.focus();
+        await first.press("Enter");
+        await page.getByLabel("Your name*", { exact: true }).waitFor();
+        assert.equal(
+          await page.getByTestId("event-meta").locator("time").getAttribute("datetime"),
+          "2030-01-10T09:00:00.000Z"
+        );
+        if (name === "desktop") {
+          assert.ok(
+            await page
+              .getByRole("textbox", { name: "Your name", exact: true })
+              .evaluate(
+                (input) => document.activeElement === input && input.required && input.maxLength === 200
+              )
+          );
+          assert.ok(
+            await page
+              .getByRole("textbox", { name: "Email address", exact: true })
+              .evaluate((input) => input.required && input.maxLength === 254)
+          );
+          const region = await captureAttendeeRegion(page, artifacts, "candidate-desktop");
+          assert.equal(
+            await page.evaluate(differentPixels, [reference.attendeeRegion, region]),
+            0,
+            "Desktop month Email address through closed Add guests union pixels"
+          );
+          console.log(
+            "PASS PARTIAL FORM-REGION parity: desktop month Email address through closed Add guests, 371x236, zero different RGBA pixels. Name remains focused and is outside the comparison."
+          );
+        }
+        await page.screenshot({
+          path: fileURLToPath(new URL(`candidate-page-${name}-form.png`, artifacts)),
+          fullPage: true,
+          animations: "disabled",
+        });
         assert.deepEqual(errors, []);
       } finally {
         await context.close();

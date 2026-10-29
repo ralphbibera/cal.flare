@@ -157,7 +157,7 @@ export async function verifyPublic(browser) {
     assert.equal(await page.getByTestId("event-meta").getByRole("radiogroup").count(), 0);
     await page.getByTestId("time").first().click();
     assert.equal(await page.getByTestId("event-meta").locator("time").getAttribute("datetime"), first);
-    await page.getByLabel("Name", { exact: true }).waitFor();
+    await page.getByLabel("Your name*", { exact: true }).waitFor();
     assert.equal(await page.getByLabel("Time zone", { exact: true }).count(), 0);
     assert.equal(await page.getByTestId("event-meta").getByText("UTC", { exact: true }).count(), 1);
     assert.equal(await page.getByTestId("event-meta").getByRole("radiogroup").count(), 1);
@@ -226,8 +226,8 @@ export async function verifyPublic(browser) {
     const browsingDay = await page.locator("header > span").textContent();
     const browsingSlot = await page.getByTestId("time").first().getAttribute("data-time");
     await page.getByTestId("time").first().click();
-    await page.getByLabel("Name", { exact: true }).fill("Browsing Guest");
-    await page.getByLabel("Email", { exact: true }).fill("browsing@example.test");
+    await page.getByLabel("Your name*", { exact: true }).fill("Browsing Guest");
+    await page.getByLabel("Email address*", { exact: true }).fill("browsing@example.test");
     for (const dismiss of ["Back", "Escape"]) {
       if (dismiss === "Back") await page.getByRole("button", { name: "Back", exact: true }).click();
       else await page.keyboard.press("Escape");
@@ -239,8 +239,11 @@ export async function verifyPublic(browser) {
         browsingSlot
       );
       await page.getByTestId("time").first().click();
-      assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Browsing Guest");
-      assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "browsing@example.test");
+      assert.equal(await page.getByLabel("Your name*", { exact: true }).inputValue(), "Browsing Guest");
+      assert.equal(
+        await page.getByLabel("Email address*", { exact: true }).inputValue(),
+        "browsing@example.test"
+      );
       assert.equal(
         await page.getByTestId("event-meta").locator("time").getAttribute("datetime"),
         browsingSlot
@@ -322,8 +325,8 @@ async function verifyPrivate(browser, fixture, date) {
     const source = await open({ permissions: ["clipboard-read", "clipboard-write"] });
     await source.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
     await source.getByTestId("time").first().click();
-    await source.getByLabel("Name", { exact: true }).fill("Private Guest");
-    await source.getByLabel("Email", { exact: true }).fill("private@example.test");
+    await source.getByLabel("Your name*", { exact: true }).fill("Private Guest");
+    await source.getByLabel("Email address*", { exact: true }).fill("private@example.test");
     const before = fixture.google.writes.length;
     await source.getByRole("button", { name: "Confirm", exact: true }).click();
     await source.getByRole("button", { name: "Copy private booking link", exact: true }).click();

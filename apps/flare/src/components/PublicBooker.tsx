@@ -320,7 +320,9 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         className={
           wide
             ? "bg-default grid min-h-screen h-auto w-screen max-w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header_header'_'meta_main_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px] sm:transition-[width] sm:duration-300 sm:motion-reduce:transition-none"
-            : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
+            : formActive
+              ? "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:420px] [--booker-meta-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_var(--booker-main-width)] min-[769px]:grid-rows-[1fr_0fr] lg:[--booker-meta-width:340px]"
+              : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
         }>
         {showCalendar ? (
           <BookingCalendar
@@ -367,9 +369,15 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   </p>
                 )}
                 <div>
-                  <Label htmlFor="booker-name">{labels.name}</Label>
+                  <Label htmlFor="booker-name">
+                    {labels.publicName}
+                    <span aria-hidden="true" className="text-default ml-1 font-medium">
+                      *
+                    </span>
+                  </Label>
                   <Input
                     ref={nameInput}
+                    className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
                     id="booker-name"
                     name="name"
                     autoComplete="name"
@@ -382,9 +390,17 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="booker-email">{labels.email}</Label>
+                  <Label htmlFor="booker-email" className="flex w-fit items-center">
+                    <span>{labels.publicEmail}</span>
+                    <span
+                      aria-hidden="true"
+                      className="text-emphasis -mb-1 ml-1 text-sm font-medium leading-none">
+                      *
+                    </span>
+                  </Label>
                   <Input
                     ref={emailInput}
+                    className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
                     id="booker-email"
                     type="email"
                     name="email"
@@ -399,13 +415,16 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="notes">{labels.notes}</Label>
+                  <Label htmlFor="notes" className="flex w-fit items-center">
+                    <span>{labels.notes}</span>
+                    <span aria-hidden="true" className="-mb-1 ml-1" />
+                  </Label>
                   <TextArea
                     id="notes"
                     name="notes"
                     rows={3}
                     placeholder={labels.notesPlaceholder}
-                    className="resize-y leading-5"
+                    className="mb-2 resize-y leading-5"
                     readOnly={busy || stage.kind === "pending"}
                     value={stage.kind === "pending" ? (stage.request.notes ?? "") : draft.notes}
                     onChange={(event) => setDraft({ ...draft, notes: event.target.value })}

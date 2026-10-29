@@ -84,12 +84,12 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
           width === 1280 ? "Monday, January 14, 2030 at 4:30 PM" : "Thursday, January 10, 2030 at 4:30 PM"
         );
         await expect(dialog).toContainText("UTC");
-        await page.getByLabel("Name", { exact: true }).fill("Column Guest");
+        await page.getByLabel("Your name*", { exact: true }).fill("Column Guest");
         await dialog.getByRole("button", { name: "Back", exact: true }).click();
         await expect(dialog).toHaveCount(0);
         await expect(page.locator(`[data-time="${time}"]`)).toBeFocused();
         await page.keyboard.press("Enter");
-        await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Column Guest");
+        await expect(page.getByLabel("Your name*", { exact: true })).toHaveValue("Column Guest");
         await page.keyboard.press("Escape");
         await expect(dialog).toHaveCount(0);
         if (width === 900) {
@@ -111,7 +111,7 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
           const selected = region.getByTestId("time").first();
           const instant = await selected.getAttribute("data-time");
           await selected.click();
-          await page.getByLabel("Email", { exact: true }).fill("column@example.test");
+          await page.getByLabel("Email address*", { exact: true }).fill("column@example.test");
           const requests = [];
           await page.route("**/api/bookings", async (route) => {
             requests.push(route.request().postDataJSON());
