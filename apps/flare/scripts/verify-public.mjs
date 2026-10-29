@@ -398,7 +398,7 @@ async function verifyPrivate(browser, fixture, date) {
     await time.click();
     await guest.getByRole("button", { name: "Reschedule", exact: true }).click();
     await guest.waitForFunction(
-      (selected) => document.querySelector("time")?.getAttribute("datetime") === selected,
+      (selected) => document.querySelector("dl time")?.getAttribute("datetime") === selected,
       selected
     );
     await guest.getByRole("button", { name: "Cancel event", exact: true }).click();
@@ -451,6 +451,7 @@ async function verifyPrivate(browser, fixture, date) {
       assert.equal(new URL(denied.url()).hash, "");
       const body = await denied.textContent("body");
       for (const value of ["private@example.test", "Private Guest", token]) assert.ok(!body.includes(value));
+      assert.equal(await denied.locator("dl").count(), 0);
       assert.equal(lookups.length, mode === "wrong" ? 1 : 0);
     }
     assert.deepEqual(errors, []);

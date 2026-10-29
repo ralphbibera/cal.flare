@@ -16,18 +16,51 @@ export async function verifyManagement(browser, fixture, date) {
     await page.getByLabel("Your name*", { exact: true }).fill("Management Guest");
     await page.getByLabel("Email address*", { exact: true }).fill("management@example.test");
     const before = fixture.google.writes.length;
+    const creation = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/bookings" && response.request().method() === "POST"
+    );
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    const created = await (await creation).json();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+    const canonicalDetails = async (target) => {
+      assert.deepEqual(
+        await target.locator("dl time").evaluateAll((nodes) => nodes.map((node) => node.dateTime)),
+        [new Date(created.start).toISOString(), new Date(created.end).toISOString()]
+      );
+      for (const label of ["What", "When", "Who"])
+        assert.equal(await target.locator("dt").getByText(label, { exact: true }).count(), 1);
+      for (const value of [created.title, created.name, created.email, created.timeZone, "30m"])
+        assert.equal(await target.locator("dd").getByText(value, { exact: true }).count(), 1);
+      assert.equal(created.end - created.start, 30 * 60_000);
+      assert.equal(await target.getByTestId("event-meta").count(), 0);
+      assert.equal(
+        await target.locator("dd").nth(1).locator("p").first().textContent(),
+        new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: created.timeZone }).formatRange(
+          created.start,
+          created.end
+        )
+      );
+    };
+    await canonicalDetails(page);
     const receipt = await page.evaluate(() =>
       JSON.parse(sessionStorage.getItem(`calflare:create:v1:${encodeURIComponent(location.pathname)}`))
     );
     const path = `/api/bookings/${receipt.access.id}`;
+    const snapshot = () =>
+      fixture.db
+        .prepare("SELECT confirmed_json FROM booking WHERE id=?")
+        .bind(receipt.access.id)
+        .first("confirmed_json");
+    const immutable = await snapshot();
+    const storedBooking = JSON.parse(immutable);
+    for (const key of ["title", "start", "end", "timeZone"]) assert.equal(created[key], storedBooking[key]);
     const saved = () =>
       page.evaluate(
         (id) => JSON.parse(sessionStorage.getItem(`calflare:change:v1:${id}`)),
         receipt.access.id
       );
-    const currentTime = () => page.getByTestId("event-meta").locator("time").getAttribute("datetime");
+    const currentTime = () => page.locator("dl time").first().getAttribute("datetime");
     page.on("request", (request) => {
       if (new URL(request.url()).pathname === path && request.method() === "POST") {
         requests.push(request.postDataJSON());
@@ -43,7 +76,13 @@ export async function verifyManagement(browser, fixture, date) {
           "/api/owner",
           {
             ...original,
-            event: { ...original.event, disableCancelling, disableRescheduling },
+            event: {
+              ...original.event,
+              title: "Changed after booking",
+              durationMinutes: 90,
+              disableCancelling,
+              disableRescheduling,
+            },
           },
           owner,
           "PUT"
@@ -77,6 +116,8 @@ export async function verifyManagement(browser, fixture, date) {
       for (const target of [page, privatePage]) {
         await target.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
         await target.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
+        await canonicalDetails(target);
+        assert.equal(await target.getByText("Changed after booking", { exact: true }).count(), 0);
         assert.equal(
           await target.getByRole("button", { name: "Reschedule", exact: true }).count(),
           disableRescheduling ? 0 : 1
@@ -94,7 +135,30 @@ export async function verifyManagement(browser, fixture, date) {
       assert.equal(privatePage.url(), `${fixture.origin}/booking/${receipt.access.id}`);
       assert.equal(requests.length, 0);
       assert.equal(fixture.google.writes.length, policyWrites);
+      assert.equal(await snapshot(), immutable);
     }
+    for (const width of [390, 1280]) {
+      for (const [name, target] of [
+        ["receipt", page],
+        ["private", privatePage],
+      ]) {
+        await target.setViewportSize({ width, height: 900 });
+        assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await target.getByRole("button", { name: "Copy private booking link", exact: true }).focus();
+        assert.ok(
+          await target
+            .getByRole("button", { name: "Copy private booking link", exact: true })
+            .evaluate((node) => node === document.activeElement)
+        );
+        await target.screenshot({
+          path: new URL(`../.verification/confirmed-${name}-${width}.png`, import.meta.url).pathname,
+          fullPage: true,
+          animations: "disabled",
+        });
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await privatePage.setViewportSize({ width: 390, height: 844 });
     await privatePage.screenshot({
       path: new URL("../.verification/management-policy-mobile.png", import.meta.url).pathname,
       fullPage: true,
@@ -161,6 +225,10 @@ export async function verifyManagement(browser, fixture, date) {
           .getByRole("alert")
           .filter({ hasText: "We couldn't restore or save this booking safely" })
           .waitFor();
+        assert.equal(
+          await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).count(),
+          0
+        );
         assert.equal(requests.length, previousRequests);
         await page.reload();
         await page.getByRole("button", { name: "Cancel event", exact: true }).click();
@@ -197,10 +265,27 @@ export async function verifyManagement(browser, fixture, date) {
         await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).count(),
         0
       );
+      await page.addInitScript((id) => {
+        window.confirmedWhileUnresolved = false;
+        new MutationObserver(() => {
+          if (
+            sessionStorage.getItem(`calflare:change:v1:${id}`) &&
+            [...document.querySelectorAll("h1, h2")].some(
+              (heading) => heading.textContent === "This meeting is scheduled"
+            )
+          )
+            window.confirmedWhileUnresolved = true;
+        }).observe(document, { subtree: true, childList: true, characterData: true });
+      }, receipt.access.id);
       await configure(true, true);
       await page.reload();
       await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
+      assert.equal(
+        await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).count(),
+        0
+      );
       assert.deepEqual(await saved(), pending);
+      assert.equal(await page.evaluate(() => window.confirmedWhileUnresolved), false);
       assert.equal(fixture.google.writes.length, writes);
       assert.equal(requests.length, previousRequests + 1);
       await page.unroute(`**${path}`);
@@ -272,7 +357,7 @@ export async function verifyManagement(browser, fixture, date) {
     assert.deepEqual(fixture.upstreamFailures, []);
     assert.deepEqual(fixture.google.denied, []);
     console.log(
-      "PASS native receipt/private policy controls, status refresh, saved retry after policy changes, reschedule/cancel and exact replay without duplicate Calendar writes. Built Worker/local D1; Google is mocked."
+      "PASS canonical receipt/private facts survive event changes, policy controls, status refresh, saved retry, reschedule/cancel and exact replay without duplicate Calendar writes. Built Worker/local D1; Google is mocked."
     );
   } finally {
     await context.close();

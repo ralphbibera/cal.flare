@@ -5,6 +5,8 @@ import { managementLink } from "../client/management-access.ts";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
+import { formatDuration } from "./format-duration.ts";
+import { Icon } from "./Icon.tsx";
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
 type Labels = typeof bookingLabels;
@@ -106,16 +108,40 @@ export function BookingManagement({
       setBusy(false);
     }
   }
+  const confirmed =
+    booking.status === "confirmed" &&
+    stage.kind !== "restore" &&
+    stage.kind !== "blocked" &&
+    stage.kind !== "pending";
   const heading =
-    stage.kind === "pending"
-      ? labels.pending
-      : booking.status === "confirmed"
-        ? labels.confirmed
-        : booking.status === "cancelled"
-          ? labels.cancelled
-          : booking.status === "attention"
-            ? labels.attention
-            : labels.pending;
+    stage.kind === "restore"
+      ? labels.loading
+      : stage.kind === "blocked"
+        ? labels.statusUnavailable
+        : stage.kind === "pending"
+          ? labels.pending
+          : confirmed
+            ? labels.confirmed
+            : booking.status === "cancelled"
+              ? labels.cancelled
+              : booking.status === "attention"
+                ? labels.attention
+                : labels.pending;
+  const date = new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: booking.timeZone });
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeStyle: "short",
+    timeZone: booking.timeZone,
+    hour12: timeFormat === "h:mma",
+  });
+  const zone = new Intl.DateTimeFormat("en-US", {
+    timeZone: booking.timeZone,
+    timeZoneName: "long",
+  })
+    .formatToParts(booking.start)
+    .find((part) => part.type === "timeZoneName")?.value;
+  const duration = formatDuration((booking.end - booking.start) / 60_000, (count, unit) =>
+    labels.duration[unit][count === 1 ? "one" : "other"].replaceAll("{{count}}", String(count))
+  );
   const proposed =
     stage.kind === "move"
       ? stage.start
@@ -123,13 +149,40 @@ export function BookingManagement({
         ? stage.request.start
         : undefined;
   return (
-    <div className="space-y-4">
-      <h2 className="text-emphasis text-xl font-semibold" aria-live="polite">
+    <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 rounded-lg border p-8">
+      {confirmed && (
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+          <Icon name="check" size={20} className="text-green-600" />
+        </div>
+      )}
+      <h1 className="text-emphasis text-center text-2xl font-semibold leading-6" aria-live="polite">
         {heading}
-      </h2>
-      <p>{booking.title}</p>
-      <p>{booking.name}</p>
-      <p>{booking.email}</p>
+      </h1>
+      <dl className="border-subtle grid grid-cols-3 gap-x-4 gap-y-6 border-t pt-8 text-sm">
+        <dt className="font-medium">{labels.what}</dt>
+        <dd className="col-span-2 min-w-0 break-words">{booking.title}</dd>
+        <dt className="font-medium">{labels.when}</dt>
+        <dd className="col-span-2 min-w-0 space-y-1 break-words">
+          <p>{date.formatRange(booking.start, booking.end)}</p>
+          <p>
+            <time dateTime={new Date(booking.start).toISOString()}>
+              {time.format(booking.start).toLowerCase()}
+            </time>
+            {" – "}
+            <time dateTime={new Date(booking.end).toISOString()}>
+              {time.format(booking.end).toLowerCase()}
+            </time>
+          </p>
+          <p>{zone}</p>
+          <p>{booking.timeZone}</p>
+          <p>{duration}</p>
+        </dd>
+        <dt className="font-medium">{labels.who}</dt>
+        <dd className="col-span-2 min-w-0 break-words">
+          <p>{booking.name}</p>
+          <p>{booking.email}</p>
+        </dd>
+      </dl>
       {proposed !== undefined && (
         <time dateTime={new Date(proposed).toISOString()}>
           {new Intl.DateTimeFormat("en-US", {
@@ -199,6 +252,6 @@ export function BookingManagement({
       {copy === "copied" && <p role="status">{labels.copied}</p>}
       {copy === "failed" && <p role="alert">{labels.copyError}</p>}
       <p className="text-subtle text-sm">{labels.linkAccess}</p>
-    </div>
+    </section>
   );
 }

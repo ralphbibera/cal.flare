@@ -30,8 +30,10 @@ export function PrivateBooking({ id, labels }: { id: string; labels: typeof book
     void load();
   }, [id]);
   return (
-    <main className="text-default mx-auto max-w-5xl p-6">
-      <h1 className="text-emphasis mb-6 text-2xl font-semibold">{labels.manageBooking}</h1>
+    <main className="text-default mx-auto min-h-full w-full px-4 py-8">
+      {state.kind !== "ready" && (
+        <h1 className="text-emphasis mb-6 text-2xl font-semibold">{labels.manageBooking}</h1>
+      )}
       {state.kind === "loading" && <p role="status">{labels.loading}</p>}
       {state.kind === "unavailable" && (
         <div>
@@ -40,24 +42,13 @@ export function PrivateBooking({ id, labels }: { id: string; labels: typeof book
         </div>
       )}
       {state.kind === "ready" && (
-        <section className="border-subtle rounded-md border p-6">
-          <p className="mb-4">
-            <time dateTime={new Date(state.booking.start).toISOString()}>
-              {new Intl.DateTimeFormat("en-US", {
-                dateStyle: "full",
-                timeStyle: "short",
-                timeZone: state.booking.timeZone,
-              }).format(state.booking.start)}
-            </time>
-          </p>
-          <BookingManagement
-            access={state.access}
-            booking={state.booking}
-            labels={labels}
-            timeFormat="h:mma"
-            onUpdated={(booking) => setState({ ...state, booking })}
-          />
-        </section>
+        <BookingManagement
+          access={state.access}
+          booking={state.booking}
+          labels={labels}
+          timeFormat="h:mma"
+          onUpdated={(booking) => setState({ ...state, booking })}
+        />
       )}
     </main>
   );
