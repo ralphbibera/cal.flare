@@ -1,0 +1,20 @@
+.week-time-grid-pattern {
+  --disabled-gradient-background: #f8f9fb;
+  --disabled-gradient-foreground: #e6e7eb;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--disabled-gradient-background),
+    var(--disabled-gradient-background) 2.5px,
+    var(--disabled-gradient-foreground) 2.5px,
+    var(--disabled-gradient-foreground) 5px
+  );
+}
+
+.dark .week-time-grid-pattern {
+  --disabled-gradient-background: #262626;
+  --disabled-gradient-foreground: #393939;
+}
+
+.week-time-grid-slot:focus-visible {
+  z-index: 81;
+}

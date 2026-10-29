@@ -1,12 +1,22 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { useCalcomTheme } from "../../../../../packages/ui/styles/useCalcomTheme.tsx";
 import { WeekPreferences } from "./week-boundaries.jsx";
 
 const params = new URLSearchParams(location.search);
 const scenario = params.get("case") || "initial";
+const candidate = params.has("candidate");
 let Week;
-{
+let useTheme = () => {};
+if (candidate) {
+  await import("./candidate.css");
+  document.documentElement.style.setProperty("--cal-brand", "#292929");
+  document.documentElement.style.setProperty("--cal-brand-text", "#ffffff");
+  const { WeekTimeGrid } = await import("../../../src/components/WeekTimeGrid.tsx");
+  Week = ({ status, days, ...props }) => (
+    <WeekTimeGrid {...props} {...(status === "ready" ? { status, days } : { status })} />
+  );
+} else {
+  useTheme = (await import("../../../../../packages/ui/styles/useCalcomTheme.tsx")).useCalcomTheme;
   await import("../../../../web/styles/globals.css");
   const { default: inter } = await import("../../../../web/public/fonts/Inter-roman.var.woff2?url");
   const fonts = document.createElement("style");
@@ -39,7 +49,7 @@ let Week;
   );
 }
 function Fixture() {
-  useCalcomTheme({ root: { "cal-brand": "#292929", "cal-brand-text": "#ffffff" } });
+  useTheme({ root: { "cal-brand": "#292929", "cal-brand-text": "#ffffff" } });
   const [selected, setSelected] = useState(null);
   const count = innerWidth > 1024 ? 7 : 4;
   const date =
@@ -87,7 +97,7 @@ function Fixture() {
           date={date}
           count={count}
           days={scenario === "empty" ? {} : days}
-          duration={30}
+          duration={scenario === "duration" ? 60 : 30}
           status={status}
           timeZone={timeZone}
           timeFormat={timeFormat}
