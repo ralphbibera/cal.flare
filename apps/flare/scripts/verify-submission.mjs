@@ -5,10 +5,28 @@ export async function verifySubmission(browser, fixture, date) {
     errors = [],
     consoles = [];
   const requests = [];
+  const bodies = [];
   const notes = "First line\nSecond line <plain> & text\nThird line";
   const note = (page) => page.getByLabel("Additional notes", { exact: true });
+  const guest = (page, index) => page.getByLabel(`Guest email ${index}`, { exact: true });
+  const values = (page) =>
+    page.locator('input[name^="guests."]').evaluateAll((inputs) => inputs.map((input) => input.value));
+  const recipients = ["second@example.test", "first@example.test"];
+  const addGuests = async (page) => {
+    await page.getByRole("button", { name: "Add guests", exact: true }).press("Enter");
+    assert.ok(await guest(page, 1).evaluate((input) => document.activeElement === input));
+    await guest(page, 1).fill("  SECOND@EXAMPLE.TEST  ");
+    await page.getByRole("button", { name: "Add another", exact: true }).press("Enter");
+    assert.ok(await guest(page, 2).evaluate((input) => document.activeElement === input));
+    await guest(page, 2).fill("first@example.test");
+    assert.deepEqual(await values(page), recipients);
+  };
   const open = async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      timezoneId: "UTC",
+      extraHTTPHeaders: { "CF-Connecting-IP": "192.0.2.86" },
+    });
     contexts.push(context);
     const page = await context.newPage();
     await page.clock.install({ time: date });
@@ -17,8 +35,10 @@ export async function verifySubmission(browser, fixture, date) {
       if (message.type() === "error") consoles.push({ text: message.text(), url: message.location().url });
     });
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/bookings" && request.method() === "POST")
+      if (new URL(request.url()).pathname === "/api/bookings" && request.method() === "POST") {
         requests.push(request.postDataJSON());
+        bodies.push(request.postData());
+      }
     });
     await page.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
     await page.getByTestId("time").first().click();
@@ -90,6 +110,95 @@ export async function verifySubmission(browser, fixture, date) {
     );
   try {
     const page = await open();
+    assert.equal(await page.getByRole("button", { name: "Add guests", exact: true }).count(), 1);
+    await page.evaluate(() => {
+      window.guestStorageWrites = 0;
+      const write = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (...args) {
+        window.guestStorageWrites++;
+        return write.apply(this, args);
+      };
+    });
+    for (let index = 0; index < 140; index++) {
+      await page.getByRole("button", { name: index ? "Add another" : "Add guests", exact: true }).click();
+      await guest(page, index + 1).fill(`${"a".repeat(235)}${index}@example.test`);
+    }
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Remove some guest rows" }).waitFor();
+    assert.equal(requests.length, 0);
+    assert.equal(await saved(page), null);
+    assert.equal(await page.evaluate(() => window.guestStorageWrites), 0);
+    assert.ok(await page.getByLabel("Name", { exact: true }).isEditable());
+    assert.equal(await note(page).inputValue(), notes);
+    for (let index = 140; index > 0; index--)
+      await page.getByRole("button", { name: `Remove guest ${index}`, exact: true }).click();
+    await addGuests(page);
+    await page.getByRole("button", { name: "Add another", exact: true }).click();
+    await guest(page, 3).fill("last@example.test");
+    await page.getByRole("button", { name: "Remove guest 2", exact: true }).press("Enter");
+    assert.deepEqual(await values(page), ["second@example.test", "last@example.test"]);
+    assert.ok(await guest(page, 2).evaluate((input) => document.activeElement === input));
+    await page.getByRole("button", { name: "Remove guest 2", exact: true }).press("Enter");
+    assert.ok(await guest(page, 1).evaluate((input) => document.activeElement === input));
+    await guest(page, 1).fill("");
+    assert.deepEqual(await values(page), [""]);
+    await page.getByRole("button", { name: "Remove guest 1", exact: true }).press("Enter");
+    assert.ok(
+      await page
+        .getByRole("button", { name: "Add guests", exact: true })
+        .evaluate((button) => document.activeElement === button)
+    );
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByTestId("time").nth(1).click();
+    assert.deepEqual(await values(page), []);
+    assert.ok(await page.getByRole("button", { name: "Add guests", exact: true }).isVisible());
+    await addGuests(page);
+    assert.deepEqual(
+      await guest(page, 1).evaluate((input) => ({
+        type: input.type,
+        autocomplete: input.autocomplete,
+        mode: input.inputMode,
+        capitalize: input.autocapitalize,
+        required: input.required,
+        max: input.getAttribute("maxlength"),
+        height: input.getBoundingClientRect().height,
+        radius: getComputedStyle(input).borderRadius,
+        size: getComputedStyle(input).fontSize,
+        weight: getComputedStyle(input).fontWeight,
+      })),
+      {
+        type: "email",
+        autocomplete: "email",
+        mode: "email",
+        capitalize: "none",
+        required: false,
+        max: null,
+        height: 32,
+        radius: "10px",
+        size: "14px",
+        weight: "500",
+      }
+    );
+    for (const bad of ["second@example.test", "", "malformed", `${"a".repeat(243)}@example.test`]) {
+      await guest(page, 2).fill(bad);
+      await page.getByRole("button", { name: "Confirm", exact: true }).click();
+      assert.equal(await guest(page, 2).getAttribute("aria-invalid"), "true");
+      assert.equal(
+        await page.getByRole("group", { name: "Guests", exact: true }).getAttribute("aria-invalid"),
+        "true"
+      );
+      assert.ok(await page.getByRole("alert").isVisible());
+      if (bad === "malformed")
+        await page.screenshot({
+          path: new URL("../.verification/booking-guests-error.png", import.meta.url).pathname,
+          fullPage: true,
+          animations: "disabled",
+        });
+      assert.equal(await saved(page), null);
+      assert.equal(requests.length, 0);
+    }
+    await guest(page, 2).fill("first@example.test");
+    await page.getByRole("button", { name: "Add another", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Confirm your details", exact: true });
     for (const width of [390, 768, 769, 1280]) {
       await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -99,8 +208,34 @@ export async function verifySubmission(browser, fixture, date) {
       if (width <= 768) {
         await dialog.waitFor();
         await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
-        for (const key of ["Shift+Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab"]) {
-          await page.keyboard.press(key);
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(await page.evaluate(() => document.activeElement === document.body));
+        for (const name of [
+          "Name",
+          "Email",
+          "Additional notes",
+          "Guest email 1",
+          "Remove guest 1",
+          "Guest email 2",
+          "Remove guest 2",
+          "Guest email 3",
+          "Remove guest 3",
+          "Add another",
+          "Back",
+          "Confirm",
+        ]) {
+          await page.keyboard.press("Tab");
+          const control = [
+            "Confirm",
+            "Back",
+            "Add another",
+            "Remove guest 1",
+            "Remove guest 2",
+            "Remove guest 3",
+          ].includes(name)
+            ? page.getByRole("button", { name, exact: true })
+            : page.getByLabel(name, { exact: true });
+          assert.ok(await control.evaluate((node) => document.activeElement === node), `Tab focuses ${name}`);
           assert.ok(
             await dialog.evaluate(
               (node) => node.contains(document.activeElement) || document.activeElement === document.body
@@ -108,6 +243,31 @@ export async function verifySubmission(browser, fixture, date) {
             "Native modal keyboard navigation never reaches background controls"
           );
         }
+        await page.keyboard.press("Tab");
+        assert.ok(
+          await dialog.evaluate(
+            (node) => node.contains(document.activeElement) || document.activeElement === document.body
+          ),
+          "Native modal keyboard navigation never reaches background controls"
+        );
+        await page.keyboard.press("Tab");
+        assert.ok(
+          await page.getByLabel("Name", { exact: true }).evaluate((node) => document.activeElement === node)
+        );
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(await page.evaluate(() => document.activeElement === document.body));
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(
+          await page
+            .getByRole("button", { name: "Confirm", exact: true })
+            .evaluate((node) => document.activeElement === node)
+        );
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(
+          await page
+            .getByRole("button", { name: "Back", exact: true })
+            .evaluate((node) => document.activeElement === node)
+        );
         await page.keyboard.press("Escape");
         await page.getByTestId("time").first().waitFor();
         await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
@@ -124,10 +284,12 @@ export async function verifySubmission(browser, fixture, date) {
       await page.getByTestId("time").first().click();
       assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
       assert.equal(await note(page).inputValue(), notes);
+      assert.deepEqual(await values(page), [...recipients, ""]);
     }
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByTestId("time").nth(1).click();
     assert.equal(await note(page).inputValue(), notes);
+    assert.deepEqual(await values(page), [...recipients, ""]);
     await page.screenshot({
       path: new URL("../.verification/booking-notes-desktop.png", import.meta.url).pathname,
       fullPage: true,
@@ -146,6 +308,19 @@ export async function verifySubmission(browser, fixture, date) {
     await page.keyboard.press("Escape");
     await page.locator("[data-slot]").first().click();
     assert.equal(await note(page).inputValue(), notes);
+    assert.deepEqual(await values(page), [...recipients, ""]);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("radio", { name: "Switch to column view", exact: true }).click();
+    await page.getByTestId("time").first().click();
+    assert.deepEqual(await values(page), [...recipients, ""]);
+    await page.screenshot({
+      path: new URL("../.verification/booking-guests-column.png", import.meta.url).pathname,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.mouse.click(1, 1);
+    await page.getByTestId("time").first().click();
+    assert.deepEqual(await values(page), [...recipients, ""]);
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByRole("radio", { name: "Switch to monthly view", exact: true }).click();
     await page.getByTestId("time").first().click();
@@ -166,9 +341,23 @@ export async function verifySubmission(browser, fixture, date) {
     await dialog.waitFor();
     assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
     assert.equal(await note(page).inputValue(), notes);
+    assert.deepEqual(await values(page), [...recipients, ""]);
+    await page.getByRole("button", { name: "Remove guest 3", exact: true }).click();
+    for (const invalidName of ["", "   "]) {
+      await page.getByLabel("Name", { exact: true }).fill(invalidName);
+      await page.getByRole("button", { name: "Confirm", exact: true }).click();
+      assert.ok(
+        await page.getByLabel("Name", { exact: true }).evaluate((input) => document.activeElement === input)
+      );
+      assert.equal(requests.length, 0);
+    }
+    await page.getByLabel("Name", { exact: true }).fill("Fixture Guest");
     await page.getByLabel("Email", { exact: true }).fill("invalid");
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     assert.equal(requests.length, 0);
+    assert.ok(
+      await page.getByLabel("Email", { exact: true }).evaluate((input) => document.activeElement === input)
+    );
     await page.getByLabel("Email", { exact: true }).fill("guest@example.test");
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByTestId("time").first().click();
@@ -194,6 +383,14 @@ export async function verifySubmission(browser, fixture, date) {
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     const original = await applied.promise;
     assert.equal(original.status, 201);
+    assert.deepEqual(requests[0].guests, recipients);
+    assert.deepEqual(fixture.google.events.get(original.booking.id).attendees, [
+      { email: "guest@example.test", displayName: "Fixture Guest" },
+      { email: "second@example.test" },
+      { email: "first@example.test" },
+    ]);
+    assert.ok(!JSON.stringify(original.booking).includes("second@example.test"));
+    assert.ok(!Object.hasOwn(original.booking, "guests"));
     assert.equal(
       fixture.google.events.get(original.booking.id).description,
       `<img src="/unexpected-image" onerror="alert(1)">\n\nAdditional notes:\n${notes}`
@@ -209,6 +406,10 @@ export async function verifySubmission(browser, fixture, date) {
     assert.equal(pending.kind, "pending");
     assert.equal(pending.request.requestKey, requests[0].requestKey);
     assert.equal(pending.request.notes, notes);
+    assert.deepEqual(pending.request.guests, recipients);
+    assert.ok(await guest(page, 1).evaluate((input) => input.readOnly));
+    assert.equal(await page.getByRole("button", { name: "Add another", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: /^Remove guest/ }).count(), 0);
     assert.equal(fixture.google.writes.length, 1);
     assert.ok(await page.getByRole("button", { name: "Back", exact: true }).isDisabled());
     assert.ok(await page.getByLabel("Name", { exact: true }).evaluate((input) => input.readOnly));
@@ -225,15 +426,36 @@ export async function verifySubmission(browser, fixture, date) {
     await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
     assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
     assert.equal(await note(page).inputValue(), notes);
+    assert.deepEqual(await values(page), recipients);
+    assert.ok(await guest(page, 2).evaluate((input) => input.readOnly));
     assert.ok(await note(page).evaluate((input) => input.readOnly));
     assert.deepEqual(await saved(page), pending);
     await page.keyboard.press("Escape");
     await page.mouse.click(1, 1);
     assert.ok(await dialog.isVisible());
     assert.equal(requests.length, 1);
+    for (const method of ["getItem", "setItem"]) {
+      await page.evaluate((method) => {
+        window.restoreGuestStorage = Storage.prototype[method];
+        Storage.prototype[method] = () => {
+          throw new DOMException("Blocked", "SecurityError");
+        };
+      }, method);
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      await page.getByRole("alert").waitFor();
+      await page.evaluate((method) => {
+        Storage.prototype[method] = window.restoreGuestStorage;
+      }, method);
+      assert.deepEqual(await saved(page), pending);
+      assert.deepEqual(await values(page), recipients);
+      assert.ok(await guest(page, 1).evaluate((input) => input.readOnly));
+      assert.equal(fixture.google.writes.length, 1);
+    }
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
     assert.deepEqual(requests[1], requests[0]);
+    assert.equal(requests.length, 4);
+    for (const body of bodies) assert.equal(body, bodies[0]);
     assert.equal(fixture.google.writes.length, 1);
     const receipt = await saved(page);
     assert.deepEqual(Object.keys(receipt).sort(), ["access", "kind", "requestKey"]);
@@ -242,9 +464,14 @@ export async function verifySubmission(browser, fixture, date) {
     assert.ok(!JSON.stringify(receipt).includes("Fixture Guest"));
     assert.ok(!JSON.stringify(receipt).includes("First line"));
     assert.ok(!JSON.stringify(receipt).includes('"notes"'));
+    for (const email of recipients) assert.ok(!JSON.stringify(receipt).includes(email));
+    const projection = await fixture.request(`/api/bookings/${receipt.access.id}`, {
+      headers: { Authorization: `Bearer ${receipt.access.token}` },
+    });
+    assert.ok(!(await projection.text()).includes("second@example.test"));
     await page.reload();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 4);
     assert.equal(fixture.google.writes.length, 1);
     assert.ok(!(await page.content()).includes(receipt.access.token));
     assert.ok(!page.url().includes(receipt.access.token));
@@ -270,6 +497,8 @@ export async function verifySubmission(browser, fixture, date) {
     });
     assert.equal(await fixture.db.prepare("SELECT count(*) FROM booking").first("count(*)"), 1);
     const uncertain = await open();
+    await uncertain.getByRole("button", { name: "Add guests", exact: true }).click();
+    await uncertain.getByRole("button", { name: "Add another", exact: true }).click();
     fixture.google.loseResponseAfter("insert");
     await uncertain.getByRole("button", { name: "Confirm", exact: true }).click();
     await uncertain
@@ -281,6 +510,7 @@ export async function verifySubmission(browser, fixture, date) {
       0
     );
     assert.equal(fixture.google.writes.length, 2);
+    assert.ok(!Object.hasOwn(requests[4], "guests"));
     await uncertain.reload();
     await uncertain
       .getByRole("heading", { name: "This booking needs the organizer's attention.", exact: true })
@@ -289,6 +519,7 @@ export async function verifySubmission(browser, fixture, date) {
     await uncertain.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
     assert.equal(fixture.google.writes.length, 2);
     const conflict = await open();
+    await addGuests(conflict);
     const start = Date.parse(
       await conflict.getByTestId("event-meta").locator("time").getAttribute("datetime")
     );
@@ -306,6 +537,7 @@ export async function verifySubmission(browser, fixture, date) {
     await conflict.getByTestId("time").first().click();
     assert.equal(await conflict.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
     assert.equal(await note(conflict).inputValue(), notes);
+    assert.deepEqual(await values(conflict), recipients);
     assert.equal(fixture.google.writes.length, 2);
     const before = requests.length;
     await conflict.evaluate(() => {

@@ -97,8 +97,11 @@ Interior whitespace and literal text are preserved in the immutable provider des
 including through retries and rescheduling. Notes share the existing server retention and
 provider invitation recipients. Clearing the browser draft and pending storage does not erase
 server or provider records. Booking views and receipts do not return notes or the description.
-The existing create HTTP endpoint accepts optional ordered `guests` email rows. Guest entry UI
-remains deferred. Valid addresses are lowercased; duplicate guest rows and mixed blank rows fail.
+**Add guests** expands optional ordered email rows after notes. Draft rows survive browsing
+and dismissal. Added rows receive focus, and removing a row focuses the next row, previous row,
+or Add guests. Valid addresses are lowercased; duplicate guest rows and mixed blank rows fail.
+All-empty rows submit without guests. Oversized requests remain editable so rows can be removed.
+Unacknowledged attempts show frozen recipients through reload and retry without editing controls.
 Recipients persist with the immutable request and snapshot through replay and rescheduling.
 Notes in the event description are shared with all provider invitation recipients, including guests.
 Guest entry grants no management access. Local provider fixtures do not prove live invitation arrival.
