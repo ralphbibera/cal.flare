@@ -30,6 +30,7 @@
     "dayjs": "1.11.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "react-select": "5.10.2",
     "tailwind-merge": "1.13.2"
   },
   "devDependencies": {
@@ -41,8 +42,10 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "framer-motion": "10.12.8",
+    "lucide-react": "0.555.0",
     "oxc-transform-react": "0.145.0",
     "postcss": "8.5.6",
+    "react-timezone-select": "4.1.0",
     "tailwind-scrollbar": "4.0.2",
     "tailwindcss": "4.1.17",
     "tailwindcss-radix": "4.0.2",

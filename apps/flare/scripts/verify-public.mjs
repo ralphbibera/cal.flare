@@ -156,16 +156,31 @@ export async function verifyPublic(browser) {
     await page.getByTestId("time").first().click();
     assert.equal(await page.getByTestId("event-meta").locator("time").getAttribute("datetime"), first);
     await page.getByLabel("Name", { exact: true }).waitFor();
+    assert.equal(await page.getByLabel("Time zone", { exact: true }).count(), 0);
+    assert.equal(await page.getByTestId("event-meta").getByText("UTC", { exact: true }).count(), 1);
     assert.equal(await page.getByTestId("event-meta").getByRole("radiogroup").count(), 1);
     await page.getByRole("button", { name: "Back", exact: true }).click();
     const zoneSelect = page.getByLabel("Time zone", { exact: true });
-    const india = await zoneSelect.evaluate((select) =>
-      ["Asia/Kolkata", "Asia/Calcutta"].find((zone) =>
-        [...select.options].some((option) => option.value === zone)
-      )
-    );
-    assert.ok(india);
-    await zoneSelect.selectOption(india);
+    for (const [city, zone] of [
+      ["Paris", "Europe/Paris"],
+      ["Berlin", "Europe/Berlin"],
+      ["UTC", "GMT"],
+    ]) {
+      await zoneSelect.fill(city);
+      const queried = page.waitForRequest((request) => {
+        const url = new URL(request.url());
+        return url.pathname === "/api/slots" && url.searchParams.get("timeZone") === zone;
+      });
+      await page.getByRole("option", { name: new RegExp(`^${city} GMT `) }).click();
+      await queried;
+      await page.getByTestId("time").first().waitFor();
+      await page.getByText(zone, { exact: true }).waitFor();
+    }
+    const india = "Asia/Kolkata";
+    await zoneSelect.fill("Kolkata");
+    await page.getByRole("option", { name: "Kolkata GMT +05:30", exact: true }).waitFor();
+    await zoneSelect.press("ArrowDown");
+    await zoneSelect.press("Enter");
     await page.waitForFunction(
       () => document.querySelector('[data-testid="time"]')?.textContent === "4:30am"
     );

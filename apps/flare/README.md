@@ -68,6 +68,9 @@ open `/<event-slug>` to view its availability. The default slug is `intro`.
 The slug `api` is reserved for application routes.
 The page renders event details on the server, then loads the calendar in the browser.
 Visitors can change their time zone and time format and select a UTC-backed time.
+The searchable timezone control uses the browser's IANA catalogue and the pinned regional
+aliases. Keyboard selection preserves the chosen zone identifier, including zones with equal
+offsets. General city-database search and stored timezone preferences remain migration work.
 The public page accepts attendee details and submits bookings with a saved request identity.
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
