@@ -91,6 +91,15 @@ test("invalid or inaccessible change storage cannot authorize a replacement", as
       code("storage_unavailable")
     );
     assert.equal(posts, 0);
+    await assert.rejects(
+      async () =>
+        client.change(
+          { id: bookingId, token: "b".repeat(43) },
+          denied.begin({ ...input, rescheduleReason: "Private move" })
+        ),
+      code("storage_unavailable")
+    );
+    assert.equal(posts, 0);
     assert.equal(tab.values.size, 0);
   }
   const pending = store.begin(input),
@@ -173,12 +182,12 @@ test("saved move and cancellation recover lost HTTP acknowledgments without dupl
   const fixture = await apiFixture();
   t.after(fixture.close);
   let loseResponse = false;
-  const bodies: unknown[] = [];
+  const bodies: string[] = [];
   const client = new BookerClient(async (path, init) => {
     const headers = new Headers(init.headers);
     headers.set("Origin", fixture.env.PUBLIC_ORIGIN);
     const response = await fixture.request(path, { ...init, headers });
-    if (init.method === "POST" && path !== "/api/bookings") bodies.push(JSON.parse(String(init.body)));
+    if (init.method === "POST" && path !== "/api/bookings") bodies.push(String(init.body));
     if (loseResponse) {
       loseResponse = false;
       await response.arrayBuffer();
@@ -200,7 +209,12 @@ test("saved move and cancellation recover lost HTTP acknowledgments without dupl
     const store = new ChangeAttempts(options);
     const pending = store.begin(
       action === "reschedule"
-        ? { action, version: booking.version, start: fixture.now() + 12 * hour }
+        ? {
+            action,
+            version: booking.version,
+            start: fixture.now() + 12 * hour,
+            rescheduleReason: " \nNeed to move\t ",
+          }
         : { action, version: booking.version, cancellationReason: " \nNeed to cancel\t " }
     );
     loseResponse = true;
@@ -212,6 +226,7 @@ test("saved move and cancellation recover lost HTTP acknowledgments without dupl
     const result = await client.change(access, saved);
     assert.equal(result.status, action === "cancel" ? "cancelled" : "confirmed");
     assert.equal(result.cancellationReason, action === "cancel" ? "Need to cancel" : undefined);
+    assert.equal(result.rescheduleReason, action === "reschedule" ? "Need to move" : undefined);
     assert.equal(result.start, fixture.now() + 12 * hour);
     assert.equal(reloaded.acknowledge(saved.requestKey), true);
     assert.equal(reloaded.read(), null);
@@ -224,4 +239,49 @@ test("saved move and cancellation recover lost HTTP acknowledgments without dupl
   );
   assert.equal(fixture.calendar.events.size, 0);
   assert.equal(await fixture.db.prepare("SELECT count(*) FROM booking_command").first("count(*)"), 3);
+});
+
+test("saved moves freeze normalized reasons, restore legacy bytes and fail closed on invalid reasons", () => {
+  const tab = session(),
+    options = { storage: tab.storage, bookingId },
+    store = new ChangeAttempts(options);
+  const legacy = store.begin(input);
+  assert.equal(
+    JSON.stringify(legacy),
+    `{"action":"reschedule","requestKey":"${legacy.requestKey}","version":1,"start":${input.start}}`
+  );
+  assert.deepEqual(new ChangeAttempts(options).read(), legacy);
+  for (const rescheduleReason of ["", " \n\t "])
+    assert.deepEqual(store.begin({ ...input, rescheduleReason }), legacy);
+  store.acknowledge(legacy.requestKey);
+  const pending = store.begin({ ...input, rescheduleReason: " \nNeed to move\t " });
+  assert.equal(pending.action === "reschedule" && pending.rescheduleReason, "Need to move");
+  assert.ok(Object.isFrozen(pending));
+  assert.deepEqual(
+    new ChangeAttempts(options).begin({ ...input, rescheduleReason: "Need to move" }),
+    pending
+  );
+  assert.throws(() => store.begin({ ...input, rescheduleReason: "Changed" }), code("booking_in_progress"));
+  assert.deepEqual(store.read(), pending);
+  const key = [...tab.values.keys()][0];
+  assert.ok(key);
+  for (const rescheduleReason of [null, 1, false, [], {}, "x".repeat(1001), `${"😀".repeat(500)}x`]) {
+    const raw = JSON.stringify({ ...pending, rescheduleReason });
+    tab.values.set(key, raw);
+    assert.throws(() => store.begin(input), code("invalid_saved_attempt"));
+    assert.equal(tab.values.get(key), raw);
+  }
+  tab.values.clear();
+  for (const rescheduleReason of ["\u0000".repeat(1000), "😀".repeat(500), "First\r\n\n é <literal>"]) {
+    const saved = store.begin({ ...input, version: Number.MAX_SAFE_INTEGER, rescheduleReason });
+    assert.ok((tab.values.get(key)?.length ?? Infinity) <= 8192);
+    assert.deepEqual(new ChangeAttempts(options).read(), saved);
+    assert.equal(store.acknowledge(saved.requestKey), true);
+    assert.equal(store.read(), null);
+  }
+  tab.values.set(
+    key,
+    JSON.stringify({ action: "cancel", requestKey: pending.requestKey, version: 1, rescheduleReason: "" })
+  );
+  assert.throws(() => store.read(), code("invalid_saved_attempt"));
 });

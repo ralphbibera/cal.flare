@@ -1,4 +1,5 @@
 import { parseCancellationReason } from "../domain/cancellation-reason.ts";
+import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import type { Interval } from "../domain/scheduling.ts";
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
@@ -113,6 +114,11 @@ function booking(value: unknown): BookingView {
     const reason = parseCancellationReason(data.cancellationReason);
     if (status !== "cancelled" || !reason || reason !== data.cancellationReason) throw new Error();
     result.cancellationReason = reason;
+  }
+  if (Object.hasOwn(data, "rescheduleReason")) {
+    const reason = parseRescheduleReason(data.rescheduleReason);
+    if (status !== "confirmed" || !reason || reason !== data.rescheduleReason) throw new Error();
+    result.rescheduleReason = reason;
   }
   return result;
 }

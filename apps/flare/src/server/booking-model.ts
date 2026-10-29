@@ -1,5 +1,6 @@
 import { parseCancellationReason } from "../domain/cancellation-reason.ts";
 import { parseGuests } from "../domain/guests.ts";
+import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import { isValidTimeZone } from "../domain/scheduling.ts";
 import type { CalendarEvent, EventInput, GoogleCalendar } from "./google.ts";
 import { ErrorWithCode, record } from "./http.ts";
@@ -21,6 +22,7 @@ export type BookingView = {
   disableCancelling?: boolean;
   disableRescheduling?: boolean;
   cancellationReason?: string;
+  rescheduleReason?: string;
 };
 export type Booking = {
   id: string;
@@ -51,7 +53,7 @@ export type Command = {
 export type Calendar = Pick<GoogleCalendar, "busy" | "insert" | "get" | "update" | "delete">;
 export type BookingSnapshot = Omit<EventInput, "start" | "end"> & { start: number; end: number };
 type ChangeRequest =
-  | { action: "reschedule"; requestKey: string; version: number; start: number }
+  | { action: "reschedule"; requestKey: string; version: number; start: number; rescheduleReason?: string }
   | { action: "cancel"; requestKey: string; version: number; cancellationReason?: string };
 
 function text(value: unknown, max: number, min = 1): string {
@@ -106,15 +108,24 @@ export function parseCreate(input: unknown) {
 }
 export function parseChange(input: unknown): ChangeRequest {
   const data = record(input);
-  exact(data, ["action", "requestKey", "version", "start", "cancellationReason"]);
+  exact(data, ["action", "requestKey", "version", "start", "cancellationReason", "rescheduleReason"]);
   const action = data.action;
   if (action !== "reschedule" && action !== "cancel") throw new ErrorWithCode("invalid_input");
   const requestKey = key(data.requestKey),
     version = integer(data.version, 1);
   if (action === "reschedule") {
     if (Object.hasOwn(data, "cancellationReason")) throw new ErrorWithCode("invalid_input");
-    return { action, requestKey, version, start: timestamp(data.start) };
+    const rescheduleReason = parseRescheduleReason(data.rescheduleReason);
+    if (rescheduleReason === null) throw new ErrorWithCode("invalid_input");
+    return {
+      action,
+      requestKey,
+      version,
+      start: timestamp(data.start),
+      ...(rescheduleReason ? { rescheduleReason } : {}),
+    };
   }
+  if (Object.hasOwn(data, "rescheduleReason")) throw new ErrorWithCode("invalid_input");
   if (data.start !== undefined) throw new ErrorWithCode("invalid_input");
   const cancellationReason = parseCancellationReason(data.cancellationReason);
   if (cancellationReason === null) throw new ErrorWithCode("invalid_input");

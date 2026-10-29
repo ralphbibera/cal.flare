@@ -155,6 +155,13 @@ Completed cancellations show a literal, whitespace-preserving **Reason** row whe
 The existing built Worker/local D1 browser journey checks these functional flows at 390px and
 1280px with mocked Google. Native intent and terminal-page pixel parity remain unverified.
 This does not send a reason email or promise guest delivery.
+Rescheduling has a backend prerequisite for optional `rescheduleReason` with the same strict
+trimmed 1,000 UTF-16 unit limit. Blank text is omitted. The immutable command records the
+literal reason locally through replay and recovery. Authorized confirmed views and the owner
+list return only the completed reschedule reason for the current booking version. A later move
+without a reason or a cancellation removes that projection. Reasons do not enter provider
+snapshots, calendar descriptions, exports, or Google PATCH requests. The reschedule editor
+is deferred. This prerequisite does not send reason emails or prove native interactive parity.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
 The authenticated settings API accepts optional `event.disableCancelling` and
 `event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.

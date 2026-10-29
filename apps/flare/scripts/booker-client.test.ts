@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BookerClient, ErrorWithCode } from "../src/client/bookings.ts";
+import { calendarExport } from "../src/client/calendar-export.ts";
 import { apiFixture, hour } from "./fixtures/api.ts";
 
 test("calendar prefetch crosses months through HTTP/D1 and rejects oversized ranges before Calendar work", async (t) => {
@@ -100,10 +101,20 @@ test("booker client completes the booking lifecycle through HTTP and migrated D1
     requestKey: crypto.randomUUID(),
     version: view.version,
     start: start + 2 * hour,
+    rescheduleReason: "Private move <literal>\r\n é 😀",
   });
   assert.equal(moved.status, "confirmed");
   assert.equal(moved.start, start + 2 * hour);
   assert.equal(moved.id, access.id);
+  assert.equal(moved.rescheduleReason, "Private move <literal>\r\n é 😀");
+  for (const value of Object.values(calendarExport(moved, fixture.now())))
+    assert.ok(!decodeURIComponent(value).includes("Private move"));
+  assert.ok(!JSON.stringify(await client.publicData()).includes("Private move"));
+  assert.ok(
+    !JSON.stringify(await client.slots({ from: start, to: start + 4 * hour, timeZone: "UTC" })).includes(
+      "Private move"
+    )
+  );
   fixture.calendar.cutAfter = "delete";
   const cancelling = await client.change(access, {
     action: "cancel",
@@ -178,6 +189,44 @@ test("booker client rejects inconsistent booking data and discards unknown field
   };
   const client = new BookerClient(async () => Response.json({ ...valid, credential: "private" }));
   assert.deepEqual(await client.view(access), valid);
+  for (const rescheduleReason of [
+    "First\r\n\n é 😀 <literal>",
+    "x".repeat(1000),
+    "😀".repeat(500),
+    "\u0000".repeat(1000),
+  ]) {
+    const value = { ...valid, rescheduleReason };
+    assert.deepEqual(await new BookerClient(async () => Response.json(value)).view(access), value);
+  }
+  for (const rescheduleReason of [
+    null,
+    1,
+    false,
+    [],
+    {},
+    "",
+    " \n ",
+    " padded ",
+    "x".repeat(1001),
+    `${"😀".repeat(500)}x`,
+  ])
+    await assert.rejects(
+      new BookerClient(async () => Response.json({ ...valid, rescheduleReason })).view(access),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_response"
+    );
+  for (const change of [
+    { status: "cancelled" },
+    { status: "pending", pendingAction: "create" },
+    { status: "rescheduling", pendingAction: "reschedule" },
+    { status: "cancelling", pendingAction: "cancel" },
+    { status: "attention", pendingAction: "reschedule", error: "event_changed" },
+  ])
+    await assert.rejects(
+      new BookerClient(async () => Response.json({ ...valid, ...change, rescheduleReason: "Private" })).view(
+        access
+      ),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_response"
+    );
   const cancelled = { ...valid, status: "cancelled" };
   for (const extra of [
     {},
