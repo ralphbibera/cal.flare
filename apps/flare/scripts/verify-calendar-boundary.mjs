@@ -31,7 +31,12 @@ export async function verifyCalendarBoundary(browser) {
         providerQueries.push(url);
       return googleFetch(request);
     };
-    for (const zone of ["Asia/Tokyo", "UTC"]) {
+    for (const [zone, layout] of [
+      ["Asia/Tokyo", "column_view"],
+      ["UTC", "column_view"],
+      ["Asia/Tokyo", "week_view"],
+      ["UTC", "week_view"],
+    ]) {
       const context = await browser.newContext({ timezoneId: zone, locale: "en-US" });
       contexts.push(context);
       const page = await context.newPage();
@@ -41,11 +46,18 @@ export async function verifyCalendarBoundary(browser) {
         const url = new URL(request.url());
         if (url.pathname === "/api/slots") requests.push(url);
       });
-      await page.goto(`${fixture.origin}/${settings.event.slug}?layout=column_view`);
-      await page.getByTestId("time").first().waitFor();
+      const times = page.getByTestId(layout === "week_view" ? "calendar-empty-cell" : "time");
+      await page.goto(`${fixture.origin}/${settings.event.slug}?layout=${layout}`);
+      await times.first().waitFor();
       assert.equal(
-        await page.locator('[class*="grid-area:main"] header').count(),
-        zone === "Asia/Tokyo" ? 2 : 1
+        await page
+          .locator(
+            layout === "week_view"
+              ? ".auto-cols-fr > div:not(:first-child)"
+              : '[class*="grid-area:main"] header'
+          )
+          .count(),
+        layout === "week_view" ? 7 : zone === "Asia/Tokyo" ? 2 : 1
       );
       assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2099-12");
       const countBeforeNavigation = requests.length;
@@ -56,14 +68,14 @@ export async function verifyCalendarBoundary(browser) {
           "2100-01"
       );
       if (zone === "Asia/Tokyo") {
-        await page.getByTestId("time").first().waitFor();
+        await times.first().waitFor();
         const query = requests.at(-1);
         assert.equal(query.searchParams.get("from"), "2099-12-31T15:00:00.000Z");
         assert.equal(query.searchParams.get("to"), "2100-01-01T00:00:00.000Z");
         assert.deepEqual(
-          await page
-            .getByTestId("time")
-            .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-time"))),
+          await times.evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute("data-time") ?? node.getAttribute("data-slot"))
+          ),
           [
             "2099-12-31T15:00:00.000Z",
             "2099-12-31T15:30:00.000Z",
@@ -71,19 +83,17 @@ export async function verifyCalendarBoundary(browser) {
             "2099-12-31T16:30:00.000Z",
           ]
         );
-        assert.deepEqual(await page.getByTestId("time").allTextContents(), [
-          "12:00am",
-          "12:30am",
-          "1:00am",
-          "1:30am",
-        ]);
-        await page.getByTestId("time").first().click();
+        assert.deepEqual(
+          await times.locator(layout === "week_view" ? ".text-ellipsis" : ":scope").allTextContents(),
+          ["12:00am", "12:30am", "1:00am", "1:30am"]
+        );
+        await times.first().click();
         const dialog = page.getByRole("dialog", { name: "Confirm your details" });
         assert.equal(await dialog.locator("time").getAttribute("datetime"), "2099-12-31T15:00:00.000Z");
         await dialog.getByRole("button", { name: "Back", exact: true }).click();
       } else {
         await page.getByRole("status").filter({ hasText: "No available" }).waitFor();
-        assert.equal(await page.getByTestId("time").count(), 0);
+        assert.equal(await times.count(), 0);
         assert.equal(requests.length, countBeforeNavigation);
       }
       assert.equal(await page.getByRole("button", { name: "Next Day", exact: true }).isDisabled(), true);
@@ -102,7 +112,9 @@ export async function verifyCalendarBoundary(browser) {
     assert.equal(fixture.google.writes.length, 0);
     assert.deepEqual(fixture.google.denied, []);
     assert.deepEqual(fixture.upstreamFailures, []);
-    console.log("PASS public month boundary in Tokyo and UTC. Built Worker/local D1; Google is mocked.");
+    console.log(
+      "PASS public column/week final-domain boundary in Tokyo and UTC. Built Worker/local D1; Google is mocked."
+    );
   } finally {
     try {
       for (const context of contexts) await context.close();

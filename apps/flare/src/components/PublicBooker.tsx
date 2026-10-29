@@ -27,7 +27,12 @@ type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
 };
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
-type BookerLayout = "month_view" | "column_view";
+type BookerLayout = "month_view" | "week_view" | "column_view";
+const layouts = [
+  { value: "month_view", label: "monthView", icon: "calendar" },
+  { value: "week_view", label: "weekView", icon: "grid-3x3" },
+  { value: "column_view", label: "columnView", icon: "columns-3" },
+] as const;
 type Stage =
   | { kind: "loading" | "calendar" | "blocked" }
   | { kind: "form"; start: number }
@@ -89,8 +94,9 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     const resize = () => setWidth(innerWidth);
     resize();
     window.addEventListener("resize", resize);
-    if (new URLSearchParams(location.search).get("layout") === "column_view") {
-      setLayout("column_view");
+    const requested = new URLSearchParams(location.search).get("layout");
+    if (requested === "column_view" || requested === "week_view") {
+      setLayout(requested);
       setCursor((previous) => ({ ...previous, date: previous.date ?? dayjs().format("YYYY-MM-DD") }));
     }
     return () => window.removeEventListener("resize", resize);
@@ -185,38 +191,36 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
   const formActive = stage.kind === "form" || stage.kind === "pending";
   const view: CalendarView =
-    layout === "column_view" && width > 768 && (stage.kind === "calendar" || formActive)
-      ? { kind: "column", count: width <= 1024 ? 2 : 6 }
-      : { kind: "month" };
+    width <= 768 || (stage.kind !== "calendar" && !formActive) || layout === "month_view"
+      ? { kind: "month" }
+      : layout === "week_view"
+        ? { kind: "week", count: width <= 1024 ? 4 : 7, duration: event.durationMinutes }
+        : { kind: "column", count: width <= 1024 ? 2 : 6 };
   const wide = view.kind !== "month";
   const showCalendar = stage.kind === "calendar" || (wide && formActive);
   const layoutToggle = (
     <Provider>
       <ToggleGroup.Root
         type="single"
-        value={wide ? "column_view" : "month_view"}
+        value={wide ? layout : "month_view"}
         aria-label={labels.layout}
         onValueChange={(next) => {
-          if (next !== "month_view" && next !== "column_view") return;
+          if (next !== "month_view" && next !== "column_view" && next !== "week_view") return;
           setLayout(next);
+          if (next !== "month_view")
+            setCursor((previous) => ({ ...previous, date: previous.date ?? dayjs().format("YYYY-MM-DD") }));
           const url = new URL(location.href);
           url.searchParams.set("layout", next);
           history.replaceState(null, "", url);
         }}
         className="bg-muted inline-flex gap-0.5 rounded-[10px] p-0.5">
-        {(["month_view", "column_view"] as const).map((layout) => (
-          <Tooltip
-            key={layout}
-            content={layout === "month_view" ? labels.monthView : labels.columnView}
-            side="bottom"
-            sideOffset={12}>
+        {layouts.map(({ value, label, icon }) => (
+          <Tooltip key={value} content={labels[label]} side="bottom" sideOffset={12}>
             <ToggleGroup.Item
-              value={layout}
+              value={value}
               className="aria-checked:bg-default aria-checked:border-subtle rounded-lg border border-transparent p-1.5 text-sm leading-none transition aria-checked:shadow-[0px_2px_3px_0px_rgba(0,0,0,0.03),0px_2px_2px_-1px_rgba(0,0,0,0.03)] text-default [&[aria-checked='false']]:hover:text-emphasis [&[aria-checked='false']]:hover:bg-subtle cursor-pointer">
-              <Icon name={layout === "month_view" ? "calendar" : "columns-3"} />
-              <span className="sr-only">
-                {layout === "month_view" ? labels.monthView : labels.columnView}
-              </span>
+              <Icon name={icon} />
+              <span className="sr-only">{labels[label]}</span>
             </ToggleGroup.Item>
           </Tooltip>
         ))}
@@ -280,13 +284,13 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   );
   return (
     <div
-      className={`main text-default flex min-h-full w-full flex-col items-center overflow-visible ${wide ? "" : "min-[769px]:my-20"}`}>
+      className={`main text-default flex min-h-full w-full flex-col items-center ${wide ? "overflow-clip" : "overflow-visible min-[769px]:my-20"}`}>
       <div className="fixed right-4 top-4 z-20 hidden min-[769px]:block">{layoutToggle}</div>
       <div
         data-testid="booker-container"
         className={
           wide
-            ? "bg-default grid min-h-screen w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header'_'meta_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px]"
+            ? "bg-default grid min-h-screen h-auto w-screen max-w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header_header'_'meta_main_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px] sm:transition-[width] sm:duration-300 sm:motion-reduce:transition-none"
             : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
         }>
         {showCalendar ? (
