@@ -1,6 +1,6 @@
 import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BookingAccess } from "../client/bookings.ts";
 import { useCalendarAvailability } from "../client/use-calendar-availability.ts";
@@ -16,6 +16,7 @@ type CalendarControl =
   | { cursor?: never; onCursorChange?: never };
 
 type BookingCalendarProps = CalendarControl & {
+  metadata?: ReactNode;
   timeZone: string;
   timeFormat: "h:mma" | "HH:mm";
   timeFormatToggle?: ReactElement;
@@ -37,6 +38,7 @@ type BookingCalendarProps = CalendarControl & {
 };
 
 function BookingCalendar({
+  metadata,
   timeZone,
   timeFormat,
   timeFormatToggle,
@@ -97,6 +99,7 @@ function BookingCalendar({
   }, [returnFocusTime, result]);
   return (
     <Provider>
+      {metadata}
       <div
         ref={calendar}
         className="h-full shrink px-5 py-3 [@media(max-width:768px)]:relative [@media(max-width:768px)]:z-1 min-[769px]:border-subtle min-[769px]:-ml-px min-[769px]:border-l lg:w-(--booker-main-width)"
