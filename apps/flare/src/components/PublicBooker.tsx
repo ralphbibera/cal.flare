@@ -18,6 +18,7 @@ import { Icon } from "./Icon.tsx";
 import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
 import { ScrollableWithGradients } from "./ScrollableWithGradients.tsx";
+import { TextArea } from "./TextArea.tsx";
 import { TimeFormatToggle } from "./TimeFormatToggle.tsx";
 import { TimezoneSelect, timezoneAliases } from "./TimezoneSelect.tsx";
 import { Tooltip } from "./Tooltip.tsx";
@@ -50,7 +51,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [layout, setLayout] = useState<BookerLayout>("month_view");
   const [width, setWidth] = useState(0);
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
-  const [draft, setDraft] = useState({ name: "", email: "" });
+  const [draft, setDraft] = useState({ name: "", email: "", notes: "" });
   const [cursor, setCursor] = useState<CalendarCursor>(() => ({
     month: dayjs().format("YYYY-MM"),
     date: null,
@@ -163,13 +164,17 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         id: booking.id,
         token: booking.manageToken,
       });
-      setDraft({ name: "", email: "" });
+      setDraft({ name: "", email: "", notes: "" });
       setStage({ kind: "receipt", receipt, booking });
     } catch (failure) {
       try {
         if (attempts().reject(pending.request.requestKey, failure)) {
           setStage({ kind: "form", start: pending.request.start });
-          setDraft({ name: pending.request.name, email: pending.request.email });
+          setDraft({
+            name: pending.request.name,
+            email: pending.request.email,
+            notes: pending.request.notes ?? "",
+          });
           setError(labels.slotConflict);
         } else setError(labels.bookingError);
       } catch {
@@ -365,6 +370,19 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                     readOnly={busy || stage.kind === "pending"}
                     value={stage.kind === "pending" ? stage.request.email : draft.email}
                     onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="notes">{labels.notes}</Label>
+                  <TextArea
+                    id="notes"
+                    name="notes"
+                    rows={3}
+                    placeholder={labels.notesPlaceholder}
+                    className="resize-y leading-5"
+                    readOnly={busy || stage.kind === "pending"}
+                    value={stage.kind === "pending" ? (stage.request.notes ?? "") : draft.notes}
+                    onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
                   />
                 </div>
                 {stage.kind === "pending" && <p role="status">{labels.pending}</p>}

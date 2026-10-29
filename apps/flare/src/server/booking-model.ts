@@ -85,13 +85,17 @@ function zone(value: unknown): string {
 }
 export function parseCreate(input: unknown) {
   const data = record(input);
-  exact(data, ["requestKey", "start", "name", "email", "timeZone"]);
+  exact(data, ["requestKey", "start", "name", "email", "timeZone", "notes"]);
+  if (data.notes !== undefined && typeof data.notes !== "string") throw new ErrorWithCode("invalid_input");
+  const notes = data.notes?.trim();
+  if (notes && notes.length > 1000) throw new ErrorWithCode("invalid_input");
   return {
     action: "create" as const,
     requestKey: key(data.requestKey),
     start: timestamp(data.start),
     ...guest(data),
     timeZone: zone(data.timeZone),
+    ...(notes ? { notes } : {}),
   };
 }
 export function parseChange(input: unknown): ChangeRequest {

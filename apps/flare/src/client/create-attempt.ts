@@ -16,6 +16,11 @@ function key(value: unknown): string {
     throw new Error();
   return value;
 }
+function normalizedNotes(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim().length > 1000) throw new ErrorWithCode("invalid_input", 400);
+  return value.trim() || undefined;
+}
 function decode(value: unknown): CreationState {
   const data = object(value);
   if (data.kind === "pending") {
@@ -35,6 +40,7 @@ function decode(value: unknown): CreationState {
       !isValidTimeZone(request.timeZone)
     )
       throw new Error();
+    const notes = normalizedNotes(request.notes);
     return {
       kind: "pending",
       request: Object.freeze({
@@ -43,6 +49,7 @@ function decode(value: unknown): CreationState {
         name: request.name,
         email: request.email,
         timeZone: request.timeZone,
+        ...(notes ? { notes } : {}),
       }),
     };
   }
@@ -80,7 +87,7 @@ class CreateAttempts {
     }
     if (raw === null) return null;
     try {
-      if (raw.length > 8192) throw new Error();
+      if (raw.length > 16384) throw new Error();
       return decode(JSON.parse(raw));
     } catch {
       throw new ErrorWithCode("invalid_saved_attempt", 400);
@@ -96,7 +103,14 @@ class CreateAttempts {
   }
   begin(input: Omit<CreateRequest, "requestKey">): PendingCreate {
     const current = this.read();
-    const body = { start: input.start, name: input.name, email: input.email, timeZone: input.timeZone };
+    const notes = normalizedNotes(input.notes);
+    const body = {
+      start: input.start,
+      name: input.name,
+      email: input.email,
+      timeZone: input.timeZone,
+      ...(notes ? { notes } : {}),
+    };
     if (current?.kind === "receipt") throw new ErrorWithCode("booking_receipt_exists", 409);
     if (current?.kind === "pending") {
       const { requestKey: _, ...saved } = current.request;
