@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { differentPixels } from "./different-pixels.mjs";
 import { verifyCalendar } from "./verify-calendar.mjs";
+import { columnAliases, columnReferencePaths, verifyColumns } from "./verify-columns.mjs";
 import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
 import { verifyTimes } from "./verify-times.mjs";
@@ -80,6 +81,7 @@ await promisify(execFile)(
     "apps/web/modules/bookings/components/EventMeta.tsx",
     "apps/web/modules/timezone/components/TimezoneSelect.tsx",
     "packages/features/bookings/Booker/hooks/useBookerLayout.ts",
+    ...columnReferencePaths,
   ],
   { cwd: fileURLToPath(new URL("../../../", import.meta.url)) }
 );
@@ -149,6 +151,7 @@ const server = await createServer({
   css: { postcss: fileURLToPath(new URL("../", import.meta.url)) },
   resolve: {
     alias: {
+      ...columnAliases,
       "@reference/timezone": fileURLToPath(
         new URL("../../../packages/features/timezone/components/TimezoneSelectComponent.tsx", import.meta.url)
       ),
@@ -189,9 +192,6 @@ const server = await createServer({
           "./Duration",
           "./Occurences",
         ].map((name) => [name, join(root, "meta-boundaries.jsx")])
-      ),
-      "@reference/times": fileURLToPath(
-        new URL("../../web/modules/bookings/components/AvailableTimes.tsx", import.meta.url)
       ),
       "@reference/times-header": fileURLToPath(
         new URL("../../web/modules/bookings/components/AvailableTimesHeader.tsx", import.meta.url)
@@ -299,6 +299,7 @@ try {
     await rm(privateDirectory, { recursive: true, force: true });
   }
   browser = await chromium.launch({ args: ["--disable-partial-raster"] });
+  await verifyColumns(browser, origin, artifacts, differentPixels);
   await verifyTimezone(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
