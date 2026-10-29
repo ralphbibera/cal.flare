@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { verifyColumnPage } from "./verify-column-page.mjs";
+import { verifyNativeConfirmation } from "./verify-native-confirmation.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
 const fixedTime = Date.parse("2030-01-09T12:00:00Z");
@@ -649,6 +650,7 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
   );
   await verifyFlareFrames(browser, captures, artifacts, differentPixels);
   await verifyColumnPage(browser, origin, artifacts, differentPixels, ready);
+  await verifyNativeConfirmation(browser, origin, artifacts, differentPixels);
 }
 
 async function verifyFlareFrames(browser, captures, artifacts, differentPixels) {
