@@ -72,6 +72,10 @@ The searchable timezone control uses the browser's IANA catalogue and the pinned
 aliases. Keyboard selection preserves the chosen zone identifier, including zones with equal
 offsets. General city-database search and stored timezone preferences remain migration work.
 The public page accepts attendee details and submits bookings with a saved request identity.
+At widths through 768px, selecting a time opens a named native attendee dialog. Desktop month
+forms stay inline. Fresh forms return to the browsing month and date with their draft and slot
+focus preserved. Pending submissions cannot be dismissed. The dialog uses the pinned heading
+and container styling; complete upstream attendee-form and dialog pixel parity remain open.
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
 The page distinguishes confirmed bookings from results needing recovery or organizer attention.
@@ -112,6 +116,8 @@ through the built local Worker. Provider responses are controlled fixtures.
 The page journey covers hydration, static assets, escaped event text, timezone selection,
 UTC slot identity, receipt-based rescheduling and cancellation, and recovery after lost responses.
 It also checks private-link access, reloads, denied access, and storage failures.
+The attendee journey covers mobile dialog focus and dismissal, small-screen scrolling,
+desktop inline forms, browsing-cursor continuity, and locked pending replay after reload.
 It does not establish full-page pixel parity or live invitation delivery.
 
 ### Capture the pinned public page

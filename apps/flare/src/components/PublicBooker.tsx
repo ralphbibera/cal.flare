@@ -1,8 +1,11 @@
+import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import avatar from "../../../web/public/avatar.svg?url";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
 import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
+import type { CalendarCursor } from "./BookingCalendar.tsx";
 import { BookingCalendar } from "./BookingCalendar.tsx";
+import { BookingFormDialog } from "./BookingFormDialog.tsx";
 import { BookingManagement } from "./BookingManagement.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
@@ -36,6 +39,11 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [format, setFormat] = useState<"h:mma" | "HH:mm">("h:mma");
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
   const [draft, setDraft] = useState({ name: "", email: "" });
+  const [cursor, setCursor] = useState<CalendarCursor>(() => ({
+    month: dayjs().format("YYYY-MM"),
+    date: null,
+  }));
+  const [returnFocusTime, setReturnFocusTime] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nameInput = useRef<HTMLInputElement>(null);
@@ -103,6 +111,12 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
           ? stage.booking?.start
           : undefined;
   const selected = start === undefined ? undefined : new Date(start).toISOString();
+  function back() {
+    if (busy || stage.kind !== "form") return;
+    setReturnFocusTime(selected);
+    setError("");
+    setStage({ kind: "calendar" });
+  }
   async function submit() {
     if (busy || (stage.kind !== "form" && stage.kind !== "pending")) return;
     let pending: PendingCreate;
@@ -211,6 +225,9 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         </section>
         {stage.kind === "calendar" ? (
           <BookingCalendar
+            cursor={cursor}
+            onCursorChange={setCursor}
+            returnFocusTime={returnFocusTime}
             locale="en-US"
             timeZone={timeZone}
             timeFormat={format}
@@ -223,7 +240,11 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             }}
           />
         ) : (
-          <section className="border-subtle p-6 md:col-span-2 md:border-l">
+          <BookingFormDialog
+            active={stage.kind === "form" || stage.kind === "pending"}
+            heading={labels.confirmDetails}
+            locked={busy || stage.kind === "pending"}
+            onBack={back}>
             {stage.kind === "loading" && <p role="status">{labels.loading}</p>}
             {(stage.kind === "form" || stage.kind === "pending") && (
               <form
@@ -266,13 +287,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
                 {error && <p role="alert">{error}</p>}
                 <div className="mt-auto flex justify-end space-x-2">
-                  <Button
-                    color="minimal"
-                    disabled={busy || stage.kind === "pending"}
-                    onClick={() => {
-                      setError("");
-                      setStage({ kind: "calendar" });
-                    }}>
+                  <Button color="minimal" disabled={busy || stage.kind === "pending"} onClick={back}>
                     {labels.back}
                   </Button>
                   <Button type="submit" loading={busy}>
@@ -307,7 +322,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 <Button onClick={restore}>{labels.retry}</Button>
               </>
             )}
-          </section>
+          </BookingFormDialog>
         )}
       </div>
       <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />

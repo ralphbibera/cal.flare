@@ -217,6 +217,34 @@ export async function verifyPublic(browser) {
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await formatControl.waitFor();
     assert.equal(await formatControl.getByRole("radio", { name: "24h", checked: true }).count(), 1);
+    await page.getByTestId("incrementMonth").click();
+    await page.locator('[data-testid="day"]:not(:disabled)').nth(1).click();
+    await page.getByTestId("time").first().waitFor();
+    const browsingMonth = await page.getByTestId("selected-month-label").getAttribute("datetime");
+    const browsingDay = await page.locator("header > span").textContent();
+    const browsingSlot = await page.getByTestId("time").first().getAttribute("data-time");
+    await page.getByTestId("time").first().click();
+    await page.getByLabel("Name", { exact: true }).fill("Browsing Guest");
+    await page.getByLabel("Email", { exact: true }).fill("browsing@example.test");
+    for (const dismiss of ["Back", "Escape"]) {
+      if (dismiss === "Back") await page.getByRole("button", { name: "Back", exact: true }).click();
+      else await page.keyboard.press("Escape");
+      await page.getByTestId("time").first().waitFor();
+      assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), browsingMonth);
+      assert.equal(await page.locator("header > span").textContent(), browsingDay);
+      await page.waitForFunction(
+        (time) => document.activeElement?.getAttribute("data-time") === time,
+        browsingSlot
+      );
+      await page.getByTestId("time").first().click();
+      assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Browsing Guest");
+      assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "browsing@example.test");
+      assert.equal(
+        await page.getByTestId("event-meta").locator("time").getAttribute("datetime"),
+        browsingSlot
+      );
+    }
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     for (const viewport of [
       { width: 390, height: 844 },
       { width: 768, height: 900 },
