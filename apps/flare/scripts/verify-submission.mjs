@@ -39,6 +39,55 @@ export async function verifySubmission(browser, fixture, date) {
     );
   try {
     const page = await open();
+    const dialog = page.getByRole("dialog", { name: "Confirm your details", exact: true });
+    for (const width of [390, 768, 769, 1280]) {
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.getByTestId("time").first().waitFor();
+      await page.setViewportSize({ width, height: 844 });
+      await page.getByTestId("time").first().click();
+      if (width <= 768) {
+        await dialog.waitFor();
+        await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
+        for (const key of ["Shift+Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab"]) {
+          await page.keyboard.press(key);
+          assert.ok(
+            await dialog.evaluate(
+              (node) => node.contains(document.activeElement) || document.activeElement === document.body
+            ),
+            "Native modal keyboard navigation never reaches background controls"
+          );
+        }
+        await page.keyboard.press("Escape");
+        await page.getByTestId("time").first().waitFor();
+        await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
+        await page.getByTestId("time").first().click();
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+      } else {
+        assert.equal(await dialog.count(), 0);
+        await page.keyboard.press("Escape");
+        assert.ok(await page.getByLabel("Name", { exact: true }).isVisible());
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+      }
+      await page.getByTestId("time").first().waitFor();
+      await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
+      await page.getByTestId("time").first().click();
+      assert.equal(await page.getByLabel("Name", { exact: true }).inputValue(), "Fixture Guest");
+    }
+    await page.setViewportSize({ width: 390, height: 240 });
+    await dialog.waitFor();
+    assert.ok(
+      await dialog.evaluate(
+        (node) => node.clientHeight <= innerHeight * 0.8 && node.scrollHeight > node.clientHeight
+      ),
+      "Small-screen attendee dialog has bounded, scrollable content"
+    );
+    await page.getByRole("button", { name: "Confirm", exact: true }).focus();
+    assert.ok(await dialog.evaluate((node) => node.scrollTop > 0));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.mouse.click(1, 1);
+    await page.getByTestId("time").first().click();
+    await dialog.waitFor();
+    assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
     await page.getByLabel("Email", { exact: true }).fill("invalid");
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     assert.equal(requests.length, 0);
@@ -53,10 +102,12 @@ export async function verifySubmission(browser, fixture, date) {
       animations: "disabled",
     });
     const applied = Promise.withResolvers();
+    const acknowledge = Promise.withResolvers();
     await page.route("**/api/bookings", async (route) => {
       try {
         const response = await route.fetch();
         applied.resolve({ status: response.status(), booking: await response.json() });
+        await acknowledge.promise;
         await route.fulfill({ status: 200, contentType: "application/json", body: "truncated" });
       } catch (error) {
         applied.reject(error);
@@ -65,6 +116,12 @@ export async function verifySubmission(browser, fixture, date) {
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     const original = await applied.promise;
     assert.equal(original.status, 201);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(1, 1);
+    assert.ok(await dialog.isVisible());
+    assert.ok(await page.getByRole("button", { name: "Back", exact: true }).isDisabled());
+    assert.equal(requests.length, 1);
+    acknowledge.resolve();
     await page.getByRole("alert").waitFor();
     const pending = await saved(page);
     assert.equal(pending.kind, "pending");
@@ -73,11 +130,21 @@ export async function verifySubmission(browser, fixture, date) {
     assert.ok(await page.getByRole("button", { name: "Back", exact: true }).isDisabled());
     assert.ok(await page.getByLabel("Name", { exact: true }).evaluate((input) => input.readOnly));
     assert.ok(await page.getByLabel("Email", { exact: true }).evaluate((input) => input.readOnly));
+    await page.keyboard.press("Escape");
+    await page.mouse.click(1, 1);
+    assert.ok(await dialog.isVisible());
+    assert.deepEqual(await saved(page), pending);
+    assert.equal(await page.getByLabel("Time zone", { exact: true }).count(), 0);
+    assert.equal(await page.getByTestId("event-meta").getByText("UTC", { exact: true }).count(), 1);
     await page.unroute("**/api/bookings");
     await page.reload();
     await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
     assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "guest@example.test");
     assert.deepEqual(await saved(page), pending);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(1, 1);
+    assert.ok(await dialog.isVisible());
+    assert.equal(requests.length, 1);
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
     assert.deepEqual(requests[1], requests[0]);

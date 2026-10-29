@@ -27,6 +27,7 @@ export const bookingLabels = {
   name: common.name,
   email: common.email,
   confirm: common.confirm,
+  confirmDetails: common.confirm_your_details,
   back: common.back,
   confirmed: common.meeting_is_scheduled,
   cancelled: common.cancelled,

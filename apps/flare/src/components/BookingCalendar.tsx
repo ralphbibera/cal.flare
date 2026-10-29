@@ -1,7 +1,7 @@
 import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
 import type { ReactElement } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BookingAccess } from "../client/bookings.ts";
 import { useCalendarAvailability } from "../client/use-calendar-availability.ts";
 import { Button } from "./Button.tsx";
@@ -10,7 +10,12 @@ import { TimeSlots } from "./TimeSlots.tsx";
 import { TimeSlotsHeader } from "./TimeSlotsHeader.tsx";
 import { TimeSlotsSkeleton } from "./TimeSlotsSkeleton.tsx";
 
-type BookingCalendarProps = {
+export type CalendarCursor = { month: string; date: string | null };
+type CalendarControl =
+  | { cursor: CalendarCursor; onCursorChange: (cursor: CalendarCursor) => void }
+  | { cursor?: never; onCursorChange?: never };
+
+type BookingCalendarProps = CalendarControl & {
   timeZone: string;
   timeFormat: "h:mma" | "HH:mm";
   timeFormatToggle?: ReactElement;
@@ -27,6 +32,7 @@ type BookingCalendarProps = {
   };
   access?: BookingAccess;
   selectedTime?: string;
+  returnFocusTime?: string;
   onTimeSelect: (time: string) => void;
 };
 
@@ -39,10 +45,28 @@ function BookingCalendar({
   labels,
   access,
   selectedTime,
+  cursor,
+  onCursorChange,
+  returnFocusTime,
   onTimeSelect,
 }: BookingCalendarProps) {
-  const [month, setMonth] = useState(() => dayjs().format("YYYY-MM"));
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [localCursor, setLocalCursor] = useState<CalendarCursor>(() => ({
+    month: dayjs().format("YYYY-MM"),
+    date: null,
+  }));
+  const current = cursor ?? localCursor;
+  const { month, date: selectedDate } = current;
+  const changeCursor = useCallback(
+    (next: CalendarCursor) => {
+      if (next.month === current.month && next.date === current.date) return;
+      if (onCursorChange) onCursorChange(next);
+      else setLocalCursor(next);
+    },
+    [current, onCursorChange]
+  );
+  const calendar = useRef<HTMLDivElement>(null);
+  const focusOrigin = useRef<HTMLButtonElement | null>(null);
+  const focusReturned = useRef(false);
   const timeList = useRef<HTMLDivElement>(null);
   const scrolledToTimes = useRef(false);
   const { result, refresh } = useCalendarAvailability(month, timeZone, access);
@@ -52,12 +76,29 @@ function BookingCalendar({
     if (result.status !== "ready" || month !== dayjs().format("YYYY-MM")) return;
     if (Object.keys(result.days).some((date) => date.startsWith(`${month}-`))) return;
     const next = dayjs(`${month}-01`).add(1, "month");
-    setMonth(next.format("YYYY-MM"));
-    setSelectedDate(next.format("YYYY-MM-DD"));
-  }, [result, month]);
+    changeCursor({ month: next.format("YYYY-MM"), date: next.format("YYYY-MM-DD") });
+  }, [result, month, changeCursor]);
+  useLayoutEffect(() => {
+    if (!returnFocusTime) return;
+    focusOrigin.current = calendar.current?.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? null;
+    focusOrigin.current?.focus();
+  }, [returnFocusTime]);
+  useEffect(() => {
+    if (!returnFocusTime || focusReturned.current || result.status !== "ready") return;
+    focusReturned.current = true;
+    if (document.activeElement !== focusOrigin.current) return;
+    const slot = Array.from(
+      timeList.current?.querySelectorAll<HTMLButtonElement>("button[data-time]") ?? []
+    ).find((button) => button.dataset.time === returnFocusTime);
+    const target = slot ?? calendar.current?.querySelector<HTMLButtonElement>("button:not(:disabled)");
+    if (target) {
+      target.focus();
+    }
+  }, [returnFocusTime, result]);
   return (
     <Provider>
       <div
+        ref={calendar}
         className="h-full shrink px-5 py-3 [@media(max-width:768px)]:relative [@media(max-width:768px)]:z-1 min-[769px]:border-subtle min-[769px]:-ml-px min-[769px]:border-l lg:w-(--booker-main-width)"
         aria-busy={result.status === "loading"}>
         <MonthPicker
@@ -65,10 +106,9 @@ function BookingCalendar({
           labels={labels}
           browsingDate={dayjs(`${month}-01`)}
           selected={selectedDate ? dayjs(selectedDate) : null}
-          onChange={(date) => setSelectedDate(date?.format("YYYY-MM-DD") ?? null)}
+          onChange={(date) => changeCursor({ month, date: date?.format("YYYY-MM-DD") ?? null })}
           onMonthChange={(date) => {
-            setMonth(date.format("YYYY-MM"));
-            setSelectedDate(date.format("YYYY-MM-DD"));
+            changeCursor({ month: date.format("YYYY-MM"), date: date.format("YYYY-MM-DD") });
           }}
           includedDates={Object.keys(days)}
           slots={days}
