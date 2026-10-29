@@ -3,8 +3,10 @@ import { fileURLToPath } from "node:url";
 
 export async function verifyTimes(browser, origin, artifacts, differentPixels) {
   for (const [name, viewport] of [
-    ["desktop", { width: 1440, height: 900 }],
+    ["desktop", { width: 1280, height: 900 }],
     ["mobile", { width: 390, height: 844 }],
+    ["mobile-boundary", { width: 768, height: 900 }],
+    ["desktop-boundary", { width: 769, height: 900 }],
   ]) {
     for (const theme of ["light", "dark"]) {
       for (const scenario of [
@@ -21,6 +23,7 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
         "skeleton-4",
         "skeleton-6",
       ]) {
+        if (name.endsWith("boundary") && !["twelve", "format-custom"].includes(scenario)) continue;
         const skeletonCount = Number(scenario.split("-")[1]) || 0;
         const formatHeader = scenario.startsWith("format-");
         const captures = [];
@@ -33,7 +36,7 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
             page.on("console", (message) => {
               if (message.type() === "error") errors.push(message.text());
             });
-            await page.clock.install({ time: new Date("2030-01-09T12:00:00Z") });
+            await page.clock.setFixedTime(new Date("2030-01-09T12:00:00Z"));
             if (skeletonCount)
               await page.addInitScript((value) => {
                 Math.random = () => value;
@@ -68,7 +71,34 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
                 "Thu10",
                 "Fri11, January",
                 "Sat12",
+                "Sun13",
               ]);
+              const headingStyles = await page.locator("main header").evaluateAll((headers) =>
+                headers.map((header) =>
+                  [...header.querySelector("span").children].map((span) => {
+                    const style = getComputedStyle(span);
+                    return {
+                      fontSize: style.fontSize,
+                      lineHeight: style.lineHeight,
+                      color: style.color,
+                    };
+                  })
+                )
+              );
+              const mobile = viewport.width <= 768;
+              assert.equal(headingStyles[0][0].fontSize, "16px");
+              assert.equal(headingStyles[0][0].lineHeight, "24px");
+              assert.equal(headingStyles[0][1].fontSize, mobile ? "12px" : "14px");
+              assert.equal(headingStyles[0][1].lineHeight, mobile ? "16px" : "20px");
+              assert.equal(
+                headingStyles[0][1].color,
+                mobile ? headingStyles[1][0].color : headingStyles[0][0].color
+              );
+              assert.equal(headingStyles[3][0].fontSize, "12px");
+              assert.equal(headingStyles[3][1].fontSize, "12px");
+              assert.equal(headingStyles[4][0].fontSize, "18px");
+              assert.equal(headingStyles[4][1].fontSize, "18px");
+              assert.equal(headingStyles[4][1].color, headingStyles[4][0].color);
               assert.equal(await buttons.nth(1).isDisabled(), ["loading", "unavailable"].includes(scenario));
               assert.equal(await buttons.first().isDisabled(), scenario === "loading");
               assert.equal(
@@ -139,6 +169,6 @@ export async function verifyTimes(browser, origin, artifacts, differentPixels) {
     }
   }
   console.log(
-    "PASS ordinary time rows, headings with optional clock controls and loading skeletons match pinned source with zero different pixels in 48 desktop/mobile and light/dark comparisons, including native selection and timezone/clock formatting."
+    "PASS ordinary time rows, responsive headings with optional clock controls and loading skeletons match pinned source with zero different pixels in 56 desktop/mobile/boundary and light/dark comparisons, including native selection and timezone/clock formatting."
   );
 }

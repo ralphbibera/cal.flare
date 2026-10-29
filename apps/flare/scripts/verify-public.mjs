@@ -179,6 +179,15 @@ export async function verifyPublic(browser) {
     const india = "Asia/Kolkata";
     await zoneSelect.fill("Kolkata");
     await page.getByRole("option", { name: "Kolkata GMT +05:30", exact: true }).waitFor();
+    assert.ok(
+      await page.getByRole("option", { name: "Kolkata GMT +05:30", exact: true }).evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return node.contains(
+          document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+        );
+      }),
+      "Timezone menu remains above the mobile calendar"
+    );
     await zoneSelect.press("ArrowDown");
     await zoneSelect.press("Enter");
     await page.waitForFunction(

@@ -39,7 +39,8 @@ export function TimeSlotsHeader({
         <span
           className={twMerge(
             "inline-flex items-center justify-center rounded-3xl px-1 pt-0.5 font-medium",
-            `text-default text-sm ${customClassNames?.availableTimeSlotsTitle}`
+            "[:where(&)]:text-xs min-[769px]:[:where(&)]:text-default min-[769px]:[:where(&)]:text-sm",
+            customClassNames?.availableTimeSlotsTitle
           )}>
           {day}
           {availableMonth && `, ${availableMonth}`}

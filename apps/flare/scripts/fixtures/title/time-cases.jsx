@@ -36,6 +36,12 @@ export function TimeCases({ Times, Header, Skeleton }) {
           availableTimeSlotsTitle: "text-xs uppercase",
         }}
       />
+      <Header
+        date="2030-01-13"
+        weekday="Sun"
+        day="13"
+        customClassNames={{ availableTimeSlotsTitle: "text-lg text-subtle" }}
+      />
       <Times
         slots={times.map((time) => ({ time }))}
         timeZone={scenario === "zone" ? "Asia/Kolkata" : "UTC"}
