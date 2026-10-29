@@ -15,6 +15,7 @@ import { verifyPublic } from "./verify-public.mjs";
 import { verifyTimes } from "./verify-times.mjs";
 import { verifyTimezone } from "./verify-timezone.mjs";
 import { verifyUpstream } from "./verify-upstream.mjs";
+import { verifyWeek, weekPlugin } from "./verify-week.mjs";
 
 const require = createRequire(import.meta.url);
 const { createServer } = await import(
@@ -98,6 +99,7 @@ const server = await createServer({
   tsconfig: fileURLToPath(new URL("../tsconfig.json", import.meta.url)),
   plugins: [
     react(),
+    weekPlugin,
     {
       name: "pinned-reference-dictionary",
       resolveId(id, importer) {
@@ -247,7 +249,6 @@ const server = await createServer({
       "@calcom/dayjs": fileURLToPath(new URL("../../../packages/dayjs/index.ts", import.meta.url)),
       ...Object.fromEntries(
         [
-          "zustand/shallow",
           "@calcom/embed-core/embed-iframe",
           "@calcom/features/bookings/Booker/BookerStoreProvider",
           "@calcom/lib/hooks/useLocale",
@@ -299,6 +300,7 @@ try {
     await rm(privateDirectory, { recursive: true, force: true });
   }
   browser = await chromium.launch({ args: ["--disable-partial-raster"] });
+  await verifyWeek(browser, origin, artifacts, differentPixels);
   await verifyColumns(browser, origin, artifacts, differentPixels);
   await verifyTimezone(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
