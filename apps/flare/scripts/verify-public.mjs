@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
 import { verifyManagement } from "./verify-management.mjs";
 import { verifyOwner, verifyOwnerBookings } from "./verify-owner.mjs";
 import { verifySubmission } from "./verify-submission.mjs";
@@ -293,6 +294,7 @@ export async function verifyPublic(browser) {
       await fixture.close();
     }
   }
+  await verifyCalendarBoundary(browser);
 }
 
 async function verifyPrivate(browser, fixture, date) {

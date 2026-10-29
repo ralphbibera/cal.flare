@@ -201,5 +201,5 @@ function availableSlots(input: AvailabilityInput): Interval[] {
   return slots;
 }
 
-export { availableSlots, isValidTimeZone, MAX_QUERY_DAYS, overlaps };
+export { availableSlots, EARLIEST, isValidTimeZone, LATEST, MAX_QUERY_DAYS, overlaps };
 export type { AvailabilityInput, Interval, Schedule, SlotPolicy, WorkingRule };

@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import { useEffect, useMemo, useState } from "react";
-import { isValidTimeZone } from "../domain/scheduling.ts";
+import { EARLIEST, isValidTimeZone, LATEST } from "../domain/scheduling.ts";
 import type { BookingAccess } from "./bookings.ts";
 import { BookerClient } from "./bookings.ts";
 
@@ -35,16 +35,21 @@ function useCalendarAvailability(month: string, timeZone: string, access?: Booki
     );
     async function load() {
       try {
-        if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(query.month) || !isValidTimeZone(query.timeZone)) {
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(query.month) || !isValidTimeZone(query.timeZone)) {
           if (!cancelled) setResult({ query, status: "error" });
           return;
         }
-        const from = dayjs.tz(`${query.month}-01`, query.timeZone).valueOf();
+        const year = Number(query.month.slice(0, 4));
+        if (year < new Date(EARLIEST).getUTCFullYear() - 1 || year > new Date(LATEST).getUTCFullYear()) {
+          if (!cancelled) setResult({ query, status: "ready", days: {} });
+          return;
+        }
+        const from = Math.max(dayjs.tz(`${query.month}-01`, query.timeZone).valueOf(), EARLIEST);
         const endMonth = dayjs(`${query.month}-01`).add(2, "month").format("YYYY-MM-DD");
         const to = Math.min(
           dayjs.tz(endMonth, query.timeZone).valueOf(),
           Date.now() + 365 * 86_400_000,
-          Date.UTC(2100, 0, 1)
+          LATEST
         );
         const slots =
           from < to
