@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import avatar from "../../../web/public/avatar.svg?url";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
 import { CreateAttempts, type CreationReceipt, type PendingCreate } from "../client/create-attempt.ts";
+import { parseGuests } from "../domain/guests.ts";
 import type { CalendarCursor, CalendarView } from "./BookingCalendar.tsx";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { BookingFormDialog } from "./BookingFormDialog.tsx";
@@ -14,6 +15,8 @@ import type { bookingLabels } from "./booking-labels.ts";
 import { EventMetaBlock } from "./EventMetaBlock.tsx";
 import { EventTitle } from "./EventTitle.tsx";
 import { formatDuration } from "./format-duration.ts";
+import type { GuestRow } from "./GuestFields.tsx";
+import { GuestFields } from "./GuestFields.tsx";
 import { Icon } from "./Icon.tsx";
 import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
@@ -28,6 +31,7 @@ type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
 };
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
+type BookingDraft = { name: string; email: string; notes: string; guests: GuestRow[] };
 type BookerLayout = "month_view" | "week_view" | "column_view";
 const layouts = [
   { value: "month_view", label: "monthView", icon: "calendar" },
@@ -51,7 +55,8 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [layout, setLayout] = useState<BookerLayout>("month_view");
   const [width, setWidth] = useState(0);
   const [stage, setStage] = useState<Stage>({ kind: "loading" });
-  const [draft, setDraft] = useState({ name: "", email: "", notes: "" });
+  const [draft, setDraft] = useState<BookingDraft>({ name: "", email: "", notes: "", guests: [] });
+  const [guestInvalid, setGuestInvalid] = useState(false);
   const [cursor, setCursor] = useState<CalendarCursor>(() => ({
     month: dayjs().format("YYYY-MM"),
     date: null,
@@ -60,6 +65,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nameInput = useRef<HTMLInputElement>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
   async function loadReceipt(receipt: CreationReceipt) {
     setStage((previous) =>
       previous.kind === "receipt" && previous.receipt === receipt ? previous : { kind: "receipt", receipt }
@@ -139,16 +145,33 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     if (busy || stage.kind !== "form") return;
     setReturnFocusTime(selected);
     setError("");
+    setGuestInvalid(false);
     setStage({ kind: "calendar" });
   }
   async function submit() {
     if (busy || (stage.kind !== "form" && stage.kind !== "pending")) return;
+    if (stage.kind === "form") {
+      setError("");
+      if (!nameInput.current?.reportValidity() || !emailInput.current?.reportValidity()) return;
+      const invalid = parseGuests(draft.guests.map((row) => row.value)) === null;
+      setGuestInvalid(invalid);
+      if (invalid) return;
+    }
     let pending: PendingCreate;
     try {
       pending =
-        stage.kind === "pending" ? stage : attempts().begin({ start: stage.start, ...draft, timeZone });
+        stage.kind === "pending"
+          ? stage
+          : attempts().begin({
+              start: stage.start,
+              ...draft,
+              guests: draft.guests.map((row) => row.value),
+              timeZone,
+            });
     } catch (failure) {
       if (failure instanceof ErrorWithCode && failure.code === "invalid_input") setError(labels.invalidInput);
+      else if (failure instanceof ErrorWithCode && failure.code === "request_too_large")
+        setError(labels.requestTooLarge);
       else {
         setStage({ kind: "blocked" });
         setError(labels.storageError);
@@ -164,7 +187,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         id: booking.id,
         token: booking.manageToken,
       });
-      setDraft({ name: "", email: "", notes: "" });
+      setDraft({ name: "", email: "", notes: "", guests: [] });
       setStage({ kind: "receipt", receipt, booking });
     } catch (failure) {
       try {
@@ -174,6 +197,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             name: pending.request.name,
             email: pending.request.email,
             notes: pending.request.notes ?? "",
+            guests: (pending.request.guests ?? []).map((value) => ({ id: crypto.randomUUID(), value })),
           });
           setError(labels.slotConflict);
         } else setError(labels.bookingError);
@@ -331,6 +355,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
             {stage.kind === "loading" && <p role="status">{labels.loading}</p>}
             {(stage.kind === "form" || stage.kind === "pending") && (
               <form
+                noValidate
                 className="flex h-full flex-col gap-4"
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -359,6 +384,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                 <div>
                   <Label htmlFor="booker-email">{labels.email}</Label>
                   <Input
+                    ref={emailInput}
                     id="booker-email"
                     type="email"
                     name="email"
@@ -385,6 +411,20 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
                     onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
                   />
                 </div>
+                <GuestFields
+                  rows={
+                    stage.kind === "pending"
+                      ? (stage.request.guests ?? []).map((value) => ({ id: value, value }))
+                      : draft.guests
+                  }
+                  onChange={(guests) => {
+                    setDraft({ ...draft, guests });
+                    setGuestInvalid(false);
+                  }}
+                  readOnly={busy || stage.kind === "pending"}
+                  invalid={guestInvalid}
+                  labels={labels}
+                />
                 {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
                 {error && <p role="alert">{error}</p>}
                 <div className="mt-auto flex justify-end space-x-2">
