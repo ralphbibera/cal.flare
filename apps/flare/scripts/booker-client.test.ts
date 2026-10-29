@@ -178,6 +178,46 @@ test("booker client rejects inconsistent booking data and discards unknown field
   };
   const client = new BookerClient(async () => Response.json({ ...valid, credential: "private" }));
   assert.deepEqual(await client.view(access), valid);
+  const cancelled = { ...valid, status: "cancelled" };
+  for (const extra of [
+    {},
+    { cancellationReason: "First\r\n\n é 😀 <literal>" },
+    { cancellationReason: "x".repeat(1000) },
+  ]) {
+    const value = { ...cancelled, ...extra };
+    assert.deepEqual(await new BookerClient(async () => Response.json(value)).view(access), value);
+  }
+  for (const cancellationReason of [
+    null,
+    1,
+    false,
+    [],
+    {},
+    "",
+    " \n ",
+    " padded ",
+    "x".repeat(1001),
+    `${"😀".repeat(500)}x`,
+  ]) {
+    await assert.rejects(
+      new BookerClient(async () => Response.json({ ...cancelled, cancellationReason })).view(access),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_response"
+    );
+  }
+  for (const change of [
+    {},
+    { status: "pending", pendingAction: "create" },
+    { status: "rescheduling", pendingAction: "reschedule" },
+    { status: "cancelling", pendingAction: "cancel" },
+    { status: "attention", pendingAction: "cancel", error: "event_changed" },
+  ]) {
+    await assert.rejects(
+      new BookerClient(async () =>
+        Response.json({ ...valid, ...change, cancellationReason: "Private" })
+      ).view(access),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_response"
+    );
+  }
   for (const key of ["disableCancelling", "disableRescheduling"] as const) {
     for (const value of [true, false]) {
       const payload = { ...valid, [key]: value };

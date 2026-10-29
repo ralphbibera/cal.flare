@@ -1,3 +1,4 @@
+import { parseCancellationReason } from "../domain/cancellation-reason.ts";
 import { type ChangeRequest, ErrorWithCode } from "./bookings.ts";
 
 type ChangeInput =
@@ -19,10 +20,21 @@ function decode(value: unknown): Readonly<ChangeRequest> {
   )
     throw new Error();
   const { requestKey, version } = value;
-  if (value.action === "cancel" && !("start" in value))
-    return Object.freeze({ action: "cancel", requestKey, version });
+  if (value.action === "cancel" && !("start" in value)) {
+    const cancellationReason = parseCancellationReason(
+      "cancellationReason" in value ? value.cancellationReason : undefined
+    );
+    if (cancellationReason === null) throw new Error();
+    return Object.freeze({
+      action: "cancel",
+      requestKey,
+      version,
+      ...(cancellationReason ? { cancellationReason } : {}),
+    });
+  }
   if (
     value.action !== "reschedule" ||
+    "cancellationReason" in value ||
     !("start" in value) ||
     typeof value.start !== "number" ||
     !Number.isSafeInteger(value.start) ||
@@ -50,7 +62,7 @@ class ChangeAttempts {
     }
     if (raw === null) return null;
     try {
-      if (raw.length > 2048) throw new Error();
+      if (raw.length > 8192) throw new Error();
       return decode(JSON.parse(raw));
     } catch {
       throw new ErrorWithCode("invalid_saved_attempt", 400);

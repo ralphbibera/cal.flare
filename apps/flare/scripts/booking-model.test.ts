@@ -86,6 +86,33 @@ test("booking request boundaries reject malformed fields and unsupported command
     assert.throws(() => timestamp(time));
 });
 
+test("cancellation reasons normalize without changing legacy command bytes", () => {
+  const cancel = { action: "cancel", requestKey: "cancel-request-0001", version: 2 };
+  const legacy = '{"action":"cancel","requestKey":"cancel-request-0001","version":2}';
+  for (const extra of [{}, { cancellationReason: "" }, { cancellationReason: " \t\r\n " }])
+    assert.equal(JSON.stringify(parseChange({ ...cancel, ...extra })), legacy);
+  for (const reason of [
+    "Need to cancel",
+    "First\n\nSecond\r\n é 😀 <literal>",
+    "x".repeat(1000),
+    "😀".repeat(500),
+    "\u0000".repeat(1000),
+  ])
+    assert.equal(
+      JSON.stringify(parseChange({ cancellationReason: ` \n${reason}\t `, ...cancel })),
+      `${legacy.slice(0, -1)},"cancellationReason":${JSON.stringify(reason)}}`
+    );
+  for (const cancellationReason of [null, 1, false, [], {}, "x".repeat(1001), `${"😀".repeat(500)}x`])
+    assert.throws(() => parseChange({ ...cancel, cancellationReason }), ErrorWithCode);
+  for (const cancellationReason of ["", " ", "reason", undefined])
+    assert.throws(() => parseChange({ ...cancel, action: "reschedule", start, cancellationReason }));
+  assert.equal(
+    JSON.stringify(parseChange({ ...cancel, action: "reschedule", start })),
+    `{"action":"reschedule","requestKey":"cancel-request-0001","version":2,"start":${start}}`
+  );
+  assert.throws(() => parseChange({ ...cancel, cancellationReason: "reason", extra: true }));
+});
+
 test("optional notes preserve legacy bytes and canonical literal content within 1000 UTF-16 units", () => {
   const legacy = `{"action":"create","requestKey":"create-request-0001","start":${start},"name":"Guest","email":"guest@example.com","timeZone":"Asia/Manila"}`;
   assert.equal(JSON.stringify(parseCreate(create)), legacy);

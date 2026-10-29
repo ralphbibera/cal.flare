@@ -606,15 +606,151 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
     ).guests,
     normalized
   );
+  const cancellationReason = "Need to cancel\n\nFamily <literal> & plans\r\n é 😀";
+  const cancellation = {
+    action: "cancel",
+    version: moved.version,
+    requestKey: randomBytes(18).toString("hex"),
+    cancellationReason,
+  };
+  const confirmed = await db
+    .prepare("SELECT confirmed_json FROM booking WHERE id=?")
+    .bind(booking.id)
+    .first("confirmed_json");
+  const beforeCancel = google.fetch;
+  let deletes = 0;
+  google.fetch = async (request) => {
+    if (request.method === "DELETE") {
+      deletes++;
+      assert.equal(await request.clone().text(), "");
+      assert.equal(new URL(request.url).searchParams.get("sendUpdates"), "all");
+      assert.ok(request.headers.get("If-Match"));
+      assert.ok(!request.url.includes("cancellationReason"));
+    }
+    return beforeCancel(request);
+  };
+  for (const cancellationReason of [null, 1, [], {}, "x".repeat(1001)])
+    assert.equal(
+      (
+        await read(
+          await send(`/api/bookings/${booking.id}`, { ...cancellation, cancellationReason }, auth(booking)),
+          400
+        )
+      ).error,
+      "invalid_input"
+    );
+  const rejected = {
+    ...cancellation,
+    version: moved.version - 1,
+    requestKey: randomBytes(18).toString("hex"),
+    cancellationReason: "Rejected private reason",
+  };
+  assert.equal(
+    (await read(await send(`/api/bookings/${booking.id}`, rejected, auth(booking)), 409)).error,
+    "stale"
+  );
   const cancelled = await read(
     await send(
       `/api/bookings/${booking.id}`,
-      { action: "cancel", version: moved.version, requestKey: randomBytes(18).toString("hex") },
+      { ...cancellation, cancellationReason: ` \n${cancellationReason}\t ` },
       auth(booking)
     )
   );
   assert.equal(cancelled.status, "cancelled");
   assert.equal(cancelled.id, booking.id);
+  assert.equal(cancelled.cancellationReason, cancellationReason);
+  assert.equal(
+    (await read(await send(`/api/bookings/${booking.id}`, cancellation, auth(booking)))).cancellationReason,
+    cancellationReason
+  );
+  const command = await db
+    .prepare("SELECT * FROM booking_command WHERE request_key=?")
+    .bind(cancellation.requestKey)
+    .first();
+  assert.equal(
+    command.payload,
+    JSON.stringify({
+      action: "cancel",
+      id: booking.id,
+      requestKey: cancellation.requestKey,
+      version: moved.version,
+      cancellationReason,
+    })
+  );
+  assert.equal(command.terminal, 1);
+  assert.equal(command.execution, "done");
+  const storedCancellation = await db
+    .prepare("SELECT confirmed_json,pending_id FROM booking WHERE id=?")
+    .bind(booking.id)
+    .first();
+  assert.deepEqual(storedCancellation, { confirmed_json: confirmed, pending_id: null });
+  assert.ok(!command.desired_json.includes("Need to cancel"));
+  assert.ok(!Object.hasOwn(JSON.parse(command.desired_json), "cancellationReason"));
+  const original = JSON.parse(confirmed);
+  assert.deepEqual(JSON.parse(command.desired_json), {
+    ...original,
+    privateMetadata: { ...original.privateMetadata, operation: command.id },
+  });
+  assert.equal(
+    (
+      await read(
+        await send(
+          `/api/bookings/${booking.id}`,
+          { ...cancellation, cancellationReason: "Changed" },
+          auth(booking)
+        ),
+        409
+      )
+    ).error,
+    "idempotency_mismatch"
+  );
+  assert.deepEqual(
+    await db
+      .prepare("SELECT * FROM booking_command WHERE request_key=?")
+      .bind(cancellation.requestKey)
+      .first(),
+    command
+  );
+  const project = async (expected) => {
+    const view = await read(await request(`/api/bookings/${booking.id}`, { headers: auth(booking) }));
+    const ownerView = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
+      (row) => row.id === booking.id
+    );
+    assert.ok(ownerView);
+    for (const value of [view, ownerView]) {
+      assert.equal(value.cancellationReason, expected);
+      assert.equal(Object.hasOwn(value, "cancellationReason"), expected !== undefined);
+      assert.ok(!JSON.stringify(value).includes(rejected.cancellationReason));
+    }
+  };
+  await project(cancellationReason);
+  for (const execution of ["queued", "sent"]) {
+    await db.prepare("UPDATE booking_command SET execution=? WHERE id=?").bind(execution, command.id).run();
+    await project(undefined);
+  }
+  await db
+    .prepare("UPDATE booking_command SET execution='done',accepted_version=accepted_version-1 WHERE id=?")
+    .bind(command.id)
+    .run();
+  await project(undefined);
+  await db
+    .prepare("UPDATE booking_command SET accepted_version=? WHERE id=?")
+    .bind(cancelled.version, command.id)
+    .run();
+  await project(cancellationReason);
+  for (const [path, headers, status] of [
+    [`/api/bookings/${booking.id}`, {}, 401],
+    [`/api/bookings/${booking.id}`, { Authorization: `Bearer ${"A".repeat(43)}` }, 404],
+    ["/api/owner", {}, 401],
+    ["/api/public", {}, 200],
+    [slotsPath, {}, 200],
+  ]) {
+    const value = await read(await request(path, { headers }), status);
+    assert.ok(!JSON.stringify(value).includes("Need to cancel"));
+    assert.ok(!Object.hasOwn(value, "cancellationReason"));
+  }
+  assert.equal(deletes, 1);
+  google.fetch = beforeCancel;
   assert.equal(google.events.size, 0);
   assert.deepEqual(
     google.writes.map((write) => [write.action, write.id]),
@@ -633,6 +769,32 @@ async function verifyBookingJourney(fixture, slots, slotsPath, owner) {
   assert.equal((await read(await send("/api/bookings", { ...winner, notes: "" }), 201)).id, legacy.id);
   assert.equal(google.events.get(legacy.id).description, "Meet the organizer");
   assert.equal(google.events.size, 1);
+  const legacyCancel = {
+    action: "cancel",
+    requestKey: randomBytes(18).toString("hex"),
+    version: legacy.version,
+  };
+  const legacyResult = await read(await send(`/api/bookings/${legacy.id}`, legacyCancel, auth(legacy)));
+  assert.ok(!Object.hasOwn(legacyResult, "cancellationReason"));
+  for (const cancellationReason of ["", " \n\t "])
+    assert.deepEqual(
+      await read(
+        await send(`/api/bookings/${legacy.id}`, { ...legacyCancel, cancellationReason }, auth(legacy))
+      ),
+      legacyResult
+    );
+  assert.equal(
+    await db
+      .prepare("SELECT payload FROM booking_command WHERE request_key=?")
+      .bind(legacyCancel.requestKey)
+      .first("payload"),
+    JSON.stringify({
+      action: "cancel",
+      id: legacy.id,
+      requestKey: legacyCancel.requestKey,
+      version: legacy.version,
+    })
+  );
 }
 
 async function verifyRecovery(fixture, slots, owner) {
@@ -690,7 +852,12 @@ async function verifyRecovery(fixture, slots, owner) {
   assert.equal(recoveredView.status, "confirmed");
   for (const { action, command, state, extra } of [
     { action: "update", command: "reschedule", state: "active", extra: { start: slots.slots[9].start } },
-    { action: "delete", command: "cancel", state: "cancelled", extra: {} },
+    {
+      action: "delete",
+      command: "cancel",
+      state: "cancelled",
+      extra: { cancellationReason: "Recovery <reason>\r\nPreserved 😀" },
+    },
   ]) {
     const current = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
     const base = google.events.get(pending.id),
@@ -713,10 +880,16 @@ async function verifyRecovery(fixture, slots, owner) {
       202
     );
     assert.equal(blocked.error, "event_changed");
+    assert.ok(!Object.hasOwn(blocked, "cancellationReason"));
+    const blockedOwner = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
+      (row) => row.id === pending.id
+    );
+    assert.ok(!Object.hasOwn(blockedOwner, "cancellationReason"));
     assert.equal(google.writes.length, beforeWrites);
     google.events.set(pending.id, base);
     google.loseResponseAfter(action);
-    await read(await send(`/api/bookings/${pending.id}/retry`, {}, auth(pending)), 202);
+    const uncertain = await read(await send(`/api/bookings/${pending.id}/retry`, {}, auth(pending)), 202);
+    assert.ok(!Object.hasOwn(uncertain, "cancellationReason"));
     const writes = google.writes.length;
     await recover(pending.id);
     const result = await db
@@ -724,6 +897,18 @@ async function verifyRecovery(fixture, slots, owner) {
       .bind(pending.id)
       .first();
     assert.deepEqual(result, { state, pending_id: null });
+    const terminal = await read(await request(`/api/bookings/${pending.id}`, { headers: auth(pending) }));
+    assert.equal(terminal.cancellationReason, extra.cancellationReason);
+    if (action === "delete") {
+      assert.equal(
+        (await read(await send(`/api/bookings/${pending.id}/retry`, {}, auth(pending)))).cancellationReason,
+        extra.cancellationReason
+      );
+      const ownerView = (await read(await request("/api/owner", { headers: owner }))).bookings.find(
+        (row) => row.id === pending.id
+      );
+      assert.equal(ownerView.cancellationReason, extra.cancellationReason);
+    }
     if (action === "update") {
       assert.equal(google.events.get(pending.id).description, remote.description);
       assert.deepEqual(google.events.get(pending.id).attendees, remote.attendees);
