@@ -17,6 +17,8 @@ export class GoogleCalendarError extends ErrorWithCode {
   }
 }
 export type BusyRange = { start: number; end: number };
+type CountedBusyRanges = { ranges: BusyRange[]; received: number };
+type PrimaryBusyPage = CountedBusyRanges & { next: string | undefined };
 export type ConflictCalendar = { id: string; name: string; primary: boolean };
 const calendarId = z
   .string()
@@ -211,6 +213,82 @@ function midnight(date: string, zone: string, edge: "start" | "end"): number {
   const choices = exact.length ? exact : [...candidates];
   return edge === "start" ? Math.min(...choices) : Math.max(...choices);
 }
+function clipBusyRange(range: BusyRange, requested: BusyRange): BusyRange | null {
+  if (range.start >= requested.end || range.end <= requested.start) return null;
+  return { start: Math.max(range.start, requested.start), end: Math.min(range.end, requested.end) };
+}
+function calendarBusyPeriods(value: unknown): unknown[] {
+  const calendar = object(value);
+  if (calendar.errors !== undefined && (!Array.isArray(calendar.errors) || calendar.errors.length > 0))
+    throw new ErrorWithCode("CALENDAR_BUSY", "Google could not determine calendar availability");
+  if (!Array.isArray(calendar.busy)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing busy periods");
+  return calendar.busy;
+}
+function freeBusyRanges(value: unknown, ids: string[], requested: BusyRange): CountedBusyRanges {
+  const calendars = object(object(value).calendars);
+  const ranges: BusyRange[] = [];
+  let received = 0;
+  for (const id of ids) {
+    if (!Object.hasOwn(calendars, id)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing calendar");
+    const periods = calendarBusyPeriods(calendars[id]);
+    received += periods.length;
+    if (received > 10_000) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
+    for (const value of periods) {
+      const period = object(value);
+      const range = clipBusyRange(interval(nonempty(period.start), nonempty(period.end)), requested);
+      if (range) ranges.push(range);
+    }
+  }
+  return { ranges, received };
+}
+function primaryEventBusyRange(
+  value: unknown,
+  pageTimeZone: unknown,
+  excludeEventId: string | undefined
+): BusyRange | null {
+  const item = object(value),
+    id = nonempty(item.id);
+  const ownership = id === excludeEventId ? bookingOwnership.safeParse(item) : undefined;
+  if (
+    (ownership?.success && ownership.data.extendedProperties.private.booking === id) ||
+    item.status === "cancelled" ||
+    item.transparency === "transparent"
+  )
+    return null;
+  const start = time(item.start),
+    end = time(item.end);
+  if ("date" in start && "date" in end) {
+    const zone = nonempty(start.timeZone ?? end.timeZone ?? pageTimeZone);
+    const range = { start: midnight(start.date, zone, "start"), end: midnight(end.date, zone, "end") };
+    if (range.start >= range.end) throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid all-day interval");
+    return range;
+  }
+  if ("dateTime" in start && "dateTime" in end) return interval(start.dateTime, end.dateTime);
+  throw new ErrorWithCode("UPSTREAM_SHAPE", "Mixed event date and timestamp boundaries");
+}
+function primaryBusyPage(
+  value: unknown,
+  requested: BusyRange,
+  excludeEventId: string | undefined,
+  limit: number
+): PrimaryBusyPage {
+  const data = object(value);
+  if (!Array.isArray(data.items)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing event list");
+  const received = data.items.length;
+  if (received > limit) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
+  const ranges: BusyRange[] = [];
+  for (const value of data.items) {
+    const range = primaryEventBusyRange(value, data.timeZone, excludeEventId);
+    if (!range) continue;
+    const clipped = clipBusyRange(range, requested);
+    if (clipped) ranges.push(clipped);
+  }
+  return {
+    ranges,
+    received,
+    next: data.nextPageToken === undefined ? undefined : nonempty(data.nextPageToken),
+  };
+}
 function body(input: Omit<EventInput, "id">) {
   const start = typeof input.start === "number" ? new Date(input.start).toISOString() : input.start;
   const end = typeof input.end === "number" ? new Date(input.end).toISOString() : input.end;
@@ -400,11 +478,7 @@ export class GoogleCalendar {
   async freeBusy(fromISO: string, toISO: string, ids: string[] = ["primary"]): Promise<BusyRange[]> {
     return (await this.readFreeBusy(fromISO, toISO, ids)).ranges;
   }
-  private async readFreeBusy(
-    fromISO: string,
-    toISO: string,
-    ids: string[]
-  ): Promise<{ ranges: BusyRange[]; received: number }> {
+  private async readFreeBusy(fromISO: string, toISO: string, ids: string[]): Promise<CountedBusyRanges> {
     const requested = interval(fromISO, toISO);
     z.array(calendarId).max(50).parse(ids);
     if (!ids.length) return { ranges: [], received: 0 };
@@ -414,30 +488,7 @@ export class GoogleCalendar {
       calendarExpansionMax: 50,
       items: ids.map((id) => ({ id })),
     });
-    return this.parsed(response, false, (value) => {
-      const calendars = object(object(value).calendars);
-      const result: BusyRange[] = [];
-      let total = 0;
-      for (const id of ids) {
-        if (!Object.hasOwn(calendars, id)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing calendar");
-        const calendar = object(calendars[id]);
-        if (calendar.errors !== undefined && (!Array.isArray(calendar.errors) || calendar.errors.length > 0))
-          throw new ErrorWithCode("CALENDAR_BUSY", "Google could not determine calendar availability");
-        if (!Array.isArray(calendar.busy)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing busy periods");
-        total += calendar.busy.length;
-        if (total > 10_000) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
-        for (const value of calendar.busy) {
-          const range = object(value),
-            parsed = interval(nonempty(range.start), nonempty(range.end));
-          if (parsed.start < requested.end && parsed.end > requested.start)
-            result.push({
-              start: Math.max(parsed.start, requested.start),
-              end: Math.min(parsed.end, requested.end),
-            });
-        }
-      }
-      return { ranges: result, received: total };
-    });
+    return this.parsed(response, false, (value) => freeBusyRanges(value, ids, requested));
   }
   async busy(
     fromISO: string,
@@ -476,41 +527,10 @@ export class GoogleCalendar {
       });
       if (page) query.set("pageToken", page);
       const response = await this.request(`${events}?${query}`);
-      const parsed = await this.parsed(response, false, (value) => {
-        const data = object(value);
-        if (!Array.isArray(data.items)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing event list");
-        total += data.items.length;
-        if (total > limit) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
-        const ranges: BusyRange[] = [];
-        for (const value of data.items) {
-          const item = object(value),
-            id = nonempty(item.id);
-          const ownership = id === excludeEventId && bookingOwnership.safeParse(item);
-          if (
-            (ownership && ownership.success && ownership.data.extendedProperties.private.booking === id) ||
-            item.status === "cancelled" ||
-            item.transparency === "transparent"
-          )
-            continue;
-          const start = time(item.start),
-            end = time(item.end);
-          let range: BusyRange;
-          if ("date" in start && "date" in end) {
-            const zone = nonempty(start.timeZone ?? end.timeZone ?? data.timeZone);
-            range = { start: midnight(start.date, zone, "start"), end: midnight(end.date, zone, "end") };
-            if (range.start >= range.end)
-              throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid all-day interval");
-          } else if ("dateTime" in start && "dateTime" in end) {
-            range = interval(start.dateTime, end.dateTime);
-          } else throw new ErrorWithCode("UPSTREAM_SHAPE", "Mixed event date and timestamp boundaries");
-          if (range.start < requested.end && range.end > requested.start)
-            ranges.push({
-              start: Math.max(range.start, requested.start),
-              end: Math.min(range.end, requested.end),
-            });
-        }
-        return { ranges, next: data.nextPageToken === undefined ? undefined : nonempty(data.nextPageToken) };
-      });
+      const parsed = await this.parsed(response, false, (value) =>
+        primaryBusyPage(value, requested, excludeEventId, limit - total)
+      );
+      total += parsed.received;
       result.push(...parsed.ranges);
       if (!parsed.next) return result;
       if (seen.has(parsed.next))

@@ -545,6 +545,102 @@ try {
       });
     assert.equal((await client.busy(from, to, input.id, ["primary"])).length, 1);
   }
+  for (const overflow of [false, true]) {
+    let receivedPages = 0;
+    handler = async () => {
+      const page = receivedPages++;
+      return Response.json({
+        items:
+          page < 4
+            ? Array.from(
+                { length: 2500 },
+                (_, index) =>
+                  [
+                    { id: "cancelled", status: "cancelled", start: null, end: null },
+                    { id: "transparent", transparency: "transparent", start: null, end: null },
+                    {
+                      id: input.id,
+                      extendedProperties: { private: { application: "calflare", booking: input.id } },
+                      start: null,
+                      end: null,
+                    },
+                  ][index % 3]
+              )
+            : [{ id: "external", start: { dateTime: from }, end: { dateTime: to } }],
+        ...(page < (overflow ? 4 : 3) ? { nextPageToken: `busy-${page}` } : {}),
+      });
+    };
+    if (overflow) await assert.rejects(client.busy(from, to, input.id), failure("retryable", 200));
+    else assert.deepEqual(await client.busy(from, to, input.id), []);
+    assert.equal(receivedPages, overflow ? 5 : 4, "Ignored and owned rows consume the raw page budget");
+  }
+  for (const times of [
+    { start: { date: "2026-11-02" }, end: { dateTime: to } },
+    { start: { dateTime: from }, end: { date: "2026-11-03" } },
+    { start: { date: "2026-11-03" }, end: { date: "2026-11-02" } },
+    { start: { dateTime: to }, end: { dateTime: from } },
+  ]) {
+    handler = async () => Response.json({ timeZone: "UTC", items: [{ id: "invalid", ...times }] });
+    await assert.rejects(client.busy(from, to), failure("retryable", 200));
+  }
+  for (const incomplete of [
+    {},
+    { items: null },
+    { items: [{ status: "cancelled" }] },
+    { items: [], nextPageToken: " " },
+  ]) {
+    handler = async (url) =>
+      new URL(String(url)).searchParams.has("pageToken")
+        ? Response.json(incomplete)
+        : Response.json({
+            items: [{ id: "external", start: { dateTime: from }, end: { dateTime: to } }],
+            nextPageToken: "incomplete",
+          });
+    await assert.rejects(client.busy(from, to), failure("retryable", 200));
+  }
+  const unordered = [
+    { start: "2026-11-02T23:00:00Z", end: "2026-11-04T00:00:00Z" },
+    { start: "2026-11-01T00:00:00Z", end: from },
+    { start: to, end: "2026-11-04T00:00:00Z" },
+    { start: "2026-11-01T00:00:00Z", end: "2026-11-02T01:00:00Z" },
+  ];
+  for (const primary of [false, true]) {
+    handler = async () =>
+      Response.json(
+        primary
+          ? {
+              items: unordered.map((range, index) => ({
+                id: `external-${index}`,
+                start: { dateTime: range.start },
+                end: { dateTime: range.end },
+              })),
+            }
+          : { calendars: { secondary: { errors: [], busy: unordered } } }
+      );
+    assert.deepEqual(await client.busy(from, to, undefined, [primary ? "primary" : "secondary"]), [
+      { start: Date.parse("2026-11-02T23:00:00Z"), end: Date.parse(to) },
+      { start: Date.parse(from), end: Date.parse("2026-11-02T01:00:00Z") },
+    ]);
+  }
+  for (const boundary of ["start", "end", "page"]) {
+    handler = async () =>
+      Response.json({
+        timeZone: boundary === "page" ? "America/New_York" : "Pacific/Auckland",
+        items: [
+          {
+            id: "all-day-fallback",
+            start: { date: "2026-03-08", ...(boundary === "start" ? { timeZone: "America/New_York" } : {}) },
+            end: {
+              date: "2026-03-09",
+              ...(boundary !== "page" ? { timeZone: boundary === "end" ? "America/New_York" : "UTC" } : {}),
+            },
+          },
+        ],
+      });
+    assert.deepEqual(await client.busy("2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z"), [
+      { start: Date.parse("2026-03-08T05:00:00Z"), end: Date.parse("2026-03-09T04:00:00Z") },
+    ]);
+  }
   handler = async () =>
     Response.json({
       timeZone: "America/New_York",
