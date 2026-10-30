@@ -1,11 +1,25 @@
 # Cal.flare's first Cloudflare booking flow
 
-This is a bounded migration plan with a local Astro/Workers foundation and experimental reservation checks.
-It does not establish a complete booking application or Cloudflare Free deployment.
+This document records the original bounded migration plan and reservation experiments.
+The current application and operator instructions are in the [development guide](../../apps/flare/README.md)
+and [setup guide](../../apps/flare/SETUP.md).
 The inspected baseline is Cal.diy commit `0f19cc46ef6b6426ee398c670575b3c96be7af9e`.
 Cal.flare remains an independent MIT fork of [Cal.diy](https://github.com/calcom/cal.diy).
 Retain the root [copyright and permission notice](../../LICENSE) when extracting code.
 Bayanihan.dev and ralphbibera.com are the first intended users, not the product boundary.
+
+## Current local checkpoint
+
+The active Astro/Workers application supports one configured organizer and event.
+It includes owner sign-in and settings, working hours and overrides, rolling booking limits,
+selected conflict calendars, public booking, attendee and owner changes, calendar exports, and durable recovery.
+Event operations use the primary Google calendar. Selected secondary calendars can block availability.
+The local Worker/D1 and browser checks exercise these flows through the Google adapter with mocked responses.
+
+Live Google consent, selected-calendar access, and invitation arrival still require operator-backed verification.
+Deployment and production resource measurements require separate authorization and execution.
+The local checkpoint establishes neither full Cal.diy parity nor suitability for a Cloudflare plan.
+The proposals and increment descriptions below retain their original planning context.
 
 ## Reuse rules and replace application adapters
 
@@ -77,6 +91,9 @@ FreeBusy plus insertion cannot exclude simultaneous writes by unrelated Google c
 
 ## Sequence small, verifiable increments
 
+This sequence records the original dependency order. The current local flow implements the functionality
+in steps 1 through 6. The deployment proof in step 7 remains outstanding.
+
 1. **Reservation experiment.** Prove overlap exclusion, durable create intent, conflict outcomes, replay, and rollback with real SQLite. This increment implements that check only.
 2. **Workers execution.** The root now runs Astro 7 on Node 24 with a local D1 binding. The built `/api/health` endpoint queries D1 under Wrangler. The shared reservation SQL passes local D1 trigger, batch rollback, positional binding, immutable replay, and fifty concurrent batch-pair checks. Concurrent HTTP booking requests and deployed D1 behavior remain gates before production selection.
 3. **Scheduling extraction.** Move selected MIT algorithms behind explicit types, clock, timezone, and configuration. Compare behavior against upstream fixtures. Add a public event page with a reusable React date/time picker. No database/network imports in the scheduling core.
@@ -85,7 +102,7 @@ FreeBusy plus insertion cannot exclude simultaneous writes by unrelated Google c
 6. **Reschedule and cancellation.** Mutate the same booking and Google event with version checks and scoped management capabilities. Race moves against creates/cancels and inject failures before/after each external write and local acknowledgment.
 7. **Deployment proof and setup.** With deployment authorization, verify a real organizer and separate guest account, then measure the deployed artifact and account usage. Build a guided installer only after one documented setup works. Explain Google account/consent setup and token-lifetime requirements.
 
-Each code increment targets fewer than 500 changed code lines and fewer than 10 code files.
+Follow the current [agent guide](../../AGENTS.md) for scope review and verification requirements.
 Keep the existing upstream app intact while establishing the focused path. Do not install its full dependency graph for this experiment.
 The root toolchain uses Astro, its Cloudflare and React integrations, React/React DOM, Wrangler, and TypeScript/type tooling.
 The development guide describes the pinned versions and verification commands.

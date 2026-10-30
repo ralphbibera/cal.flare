@@ -3,6 +3,9 @@
 The repository root runs the focused Astro/React/Workers port in this directory.
 The inherited Cal.diy packages are outside the active workspace graph.
 The root MIT license and Cal.com attribution continue to apply.
+For the ordered operator procedure, use [Configure and run Cal.flare](SETUP.md).
+It covers Google access, Workers with static assets, D1 deployment, deployed acceptance, and recovery.
+This page is the development and implementation reference.
 
 ## Install and run
 
@@ -25,6 +28,9 @@ No Cloudflare account, database provisioning, or Google credentials are needed f
 For a built Worker, run `build` followed by `preview` through the same bundled Yarn command.
 `preview` invokes local Wrangler against Astro's generated deployment configuration.
 No deploy command is provided by the root scripts.
+The [production procedure](SETUP.md#deploy-to-cloudflare-workers) builds after source configuration,
+then deploys with `yarn workspace @calflare/web exec wrangler deploy --config dist/server/wrangler.json`.
+Local preview and mocked-provider checks do not establish production readiness.
 
 Open `/` to sign in with the Google account configured for this installation.
 The private organizer page links to the public event preview. Sign-out revokes the current
@@ -104,7 +110,7 @@ Filter and positive safe-integer `before` row cursors persist in the URL within 
 Changing filters resets paging. **Older bookings** continues newest-recorded-first keyset paging;
 **First page** returns to the newest records. New inserts use normal keyset behavior. Invalid or duplicate
 query fields are rejected after authentication. Reading pages never retries provider operations.
-Other owner actions and booking-list pixel parity remain migration work.
+Owner cancellation and rescheduling are described below. Booking-list pixel parity remains migration work.
 
 Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the current weekly
 schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinute`, and
@@ -508,9 +514,9 @@ The root no longer inherits the old Vite 6 override or legacy integration depend
 
 The [reservation model](../../experiments/d1-reservations/schema.sql) remains experimental.
 The app includes owner OAuth, D1-backed sessions, authenticated settings, public availability,
-booking lifecycle APIs, and scheduled recovery. The current model has one organizer, one event,
-and the primary Google calendar. Broader account and feature parity remain migration work.
-Generated Wrangler types and local state are ignored. The current D1 configuration is for local development.
+booking lifecycle APIs, and scheduled recovery. The current model has one organizer and one event,
+with selected conflict calendars and primary-calendar event operations. Broader account and feature parity remain migration work.
+Generated Wrangler types and local state are ignored. Checked-in Wrangler configuration has no production database UUID or variables.
 Image transformation and Astro's default session storage are disabled.
 Production resource configuration, deployed execution, live Google delivery, and measured
-Workers Paid usage require separate verification and deployment authorization.
+Workers and D1 usage require separate verification and deployment authorization.
