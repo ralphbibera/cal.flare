@@ -9,10 +9,11 @@ type EventSettings = {
   noticeMinutes: number;
   disableCancelling?: boolean;
   disableRescheduling?: boolean;
+  location?: string;
 };
 
 type MinuteRange = { startMinute: number; endMinute: number };
-type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes">;
+type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes" | "location">;
 type BookingRules = Required<
   Pick<
     EventSettings,
@@ -63,6 +64,11 @@ function integer(input: unknown, path: string, min: number, max: number): number
     throw new SettingsError(`${path} must be an integer between ${min} and ${max}`);
   }
   return input;
+}
+
+function locationText(input: unknown): string {
+  if (typeof input !== "string") throw new SettingsError("location must be a string");
+  return text(input.trim(), "location", 1000);
 }
 
 function list(input: unknown, path: string, max: number): unknown[] {
@@ -131,6 +137,10 @@ function parseSettings(input: unknown): Settings {
       result.event[key] = event[key];
     }
   }
+  if (Object.hasOwn(event, "location")) {
+    const location = locationText(event.location);
+    if (location) result.event.location = location;
+  }
   if (schedule.overrides !== undefined) {
     const dates = new Set<string>();
     result.schedule.overrides = list(schedule.overrides, "overrides", 366).map((input) => {
@@ -173,7 +183,11 @@ const defaultSettings: Settings = {
 
 function parseEventDetails(input: unknown): EventDetails {
   const value = object(input, "event details");
-  if (Object.keys(value).some((key) => !["slug", "title", "description", "durationMinutes"].includes(key))) {
+  if (
+    Object.keys(value).some(
+      (key) => !["slug", "title", "description", "durationMinutes", "location"].includes(key)
+    )
+  ) {
     throw new SettingsError("Event details contain an unsupported field");
   }
   const { slug, title, description, durationMinutes } = parseSettings({
@@ -186,7 +200,13 @@ function parseEventDetails(input: unknown): EventDetails {
       durationMinutes: value.durationMinutes,
     },
   }).event;
-  return { slug, title, description, durationMinutes };
+  return {
+    slug,
+    title,
+    description,
+    durationMinutes,
+    ...(Object.hasOwn(value, "location") ? { location: locationText(value.location) } : {}),
+  };
 }
 
 function parseWeeklySchedule(input: unknown): WeeklySchedule {
