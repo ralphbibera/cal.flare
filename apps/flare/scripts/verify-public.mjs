@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { verifyBookingWindow } from "./verify-booking-window.mjs";
 import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
+import { verifyConflictCalendarsUI } from "./verify-conflict-calendars.mjs";
 import { verifyManagement } from "./verify-management.mjs";
 import { verifyMeetingLocationFlow, verifyMeetingLocationPrivacy } from "./verify-meeting-location.mjs";
 import { verifyOwner, verifyOwnerBookings } from "./verify-owner.mjs";
@@ -307,6 +308,7 @@ export async function verifyPublic(browser) {
     }
   }
   await verifyBookingWindow(browser);
+  await verifyConflictCalendarsUI(browser);
   await verifyCalendarBoundary(browser);
   await verifyWeekPage(browser);
 }
