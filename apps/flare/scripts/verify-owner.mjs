@@ -175,7 +175,7 @@ async function verifyEventEditor(browser, fixture) {
       if (message.type() === "error" && !message.text().includes("503 (Service Unavailable)"))
         errors.push(message.text());
     });
-    await page.route("**/api/owner", async (route) => {
+    await page.route("**/api/owner/events/default", async (route) => {
       if (route.request().method() !== "PATCH") return route.continue();
       attempts.push(route.request().postDataJSON());
       if (fail)
@@ -187,7 +187,9 @@ async function verifyEventEditor(browser, fixture) {
       return route.continue();
     });
     await page.goto(fixture.origin);
-    const save = page.locator('form[action="/api/owner"]').getByRole("button", { name: "Save", exact: true });
+    const save = page
+      .locator('form[action="/api/owner/events/default"]')
+      .getByRole("button", { name: "Save", exact: true });
     await save.waitFor();
     await page.locator('label[for="event-description"]').click();
     assert.ok(
@@ -995,13 +997,13 @@ async function verifyBookingRulesEditor(browser, fixture) {
       if (
         message.type() === "error" &&
         !(
-          message.location().url === `${fixture.origin}/api/owner/booking-rules` &&
+          message.location().url === `${fixture.origin}/api/owner/events/default/booking-rules` &&
           message.text().startsWith("Failed to load resource: the server responded with a status of 503")
         )
       )
         errors.push(message.text());
     });
-    await page.route("**/api/owner/booking-rules", async (route) => {
+    await page.route("**/api/owner/events/default/booking-rules", async (route) => {
       if (route.request().method() !== "PATCH") return route.continue();
       requests.push(route.request().postDataJSON());
       if (fail)

@@ -113,7 +113,7 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
           await selected.click();
           await page.getByLabel("Email address*", { exact: true }).fill("column@example.test");
           const requests = [];
-          await page.route("**/api/bookings", async (route) => {
+          await page.route("**/api/events/default/bookings", async (route) => {
             requests.push(route.request().postDataJSON());
             assert.equal((await route.fetch()).status(), 201);
             await route.fulfill({ status: 200, contentType: "application/json", body: "truncated" });
@@ -125,13 +125,13 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
           await page.mouse.click(1, 1);
           await expect(dialog).toBeVisible();
           await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
-          await page.unroute("**/api/bookings");
+          await page.unroute("**/api/events/default/bookings");
           await page.reload();
           await expect(dialog).toBeVisible();
           await expect(dialog.locator("time")).toHaveAttribute("datetime", "2030-01-31T09:00:00.000Z");
           await expect(dialog.locator("time")).toHaveText("Thursday, January 31, 2030, 9:00 am");
           await expect(dialog).toContainText("UTC");
-          const replay = page.waitForRequest("**/api/bookings");
+          const replay = page.waitForRequest("**/api/events/default/bookings");
           await dialog.getByRole("button", { name: "Retry", exact: true }).click();
           assert.deepEqual((await replay).postDataJSON(), requests[0]);
           await expect(page.getByRole("heading", { name: "This meeting is scheduled" })).toBeVisible();
@@ -176,12 +176,12 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
     try {
       const page = await sparse.newPage();
       await page.clock.setFixedTime(new Date(fixedTime));
-      const initialRequest = page.waitForRequest("**/api/slots?*");
+      const initialRequest = page.waitForRequest("**/api/events/default/slots?*");
       await page.goto(`${fixture.origin}/intro?layout=column_view`);
       assert.equal(new URL((await initialRequest).url()).searchParams.get("to"), "2030-03-01T00:00:00.000Z");
       const region = page.locator('[class*="grid-area:main"]');
       await expect(region.locator("header")).toHaveText(["Thu10", "Thu28, Feb"]);
-      const marchRequest = page.waitForRequest("**/api/slots?*");
+      const marchRequest = page.waitForRequest("**/api/events/default/slots?*");
       await page.getByRole("button", { name: "Next Day", exact: true }).click();
       const marchQuery = new URL((await marchRequest).url()).searchParams;
       assert.equal(marchQuery.get("from"), "2030-03-01T00:00:00.000Z");

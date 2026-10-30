@@ -13,6 +13,16 @@ type EventSettings = {
   location?: string;
 };
 
+const DEFAULT_EVENT_ID = "default";
+type OwnerEvent = { id: string; event: EventSettings };
+function isEventId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    (value === DEFAULT_EVENT_ID ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value))
+  );
+}
+
 type MinuteRange = { startMinute: number; endMinute: number };
 type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes" | "location">;
 type BookingRules = Required<
@@ -308,8 +318,18 @@ function parseBookingRules(input: unknown): BookingRules {
   };
 }
 
-export type { BookingRules, EventDetails, EventSettings, ScheduleOverrides, Settings, WeeklySchedule };
+export type {
+  BookingRules,
+  EventDetails,
+  EventSettings,
+  OwnerEvent,
+  ScheduleOverrides,
+  Settings,
+  WeeklySchedule,
+};
 export {
+  DEFAULT_EVENT_ID,
+  isEventId,
   defaultSettings,
   parseBookingRules,
   parseConflictCalendarIds,

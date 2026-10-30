@@ -38,7 +38,7 @@ export async function verifySubmission(browser, fixture, date) {
       if (message.type() === "error") consoles.push({ text: message.text(), url: message.location().url });
     });
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/bookings" && request.method() === "POST") {
+      if (new URL(request.url()).pathname === "/api/events/default/bookings" && request.method() === "POST") {
         requests.push(request.postDataJSON());
         bodies.push(request.postData());
       }
@@ -110,9 +110,7 @@ export async function verifySubmission(browser, fixture, date) {
     return page;
   };
   const saved = (page) =>
-    page.evaluate(() =>
-      JSON.parse(sessionStorage.getItem(`calflare:create:v1:${encodeURIComponent(location.pathname)}`))
-    );
+    page.evaluate(() => JSON.parse(sessionStorage.getItem("calflare:create:v2:default")));
   try {
     const page = await open();
     await verifyDialogTypography(page);
@@ -414,7 +412,7 @@ export async function verifySubmission(browser, fixture, date) {
     });
     const applied = Promise.withResolvers();
     const acknowledge = Promise.withResolvers();
-    await page.route("**/api/bookings", async (route) => {
+    await page.route("**/api/events/default/bookings", async (route) => {
       try {
         const response = await route.fetch();
         applied.resolve({ status: response.status(), booking: await response.json() });
@@ -475,7 +473,7 @@ export async function verifySubmission(browser, fixture, date) {
     assert.deepEqual(await saved(page), pending);
     assert.equal(await page.getByLabel("Time zone", { exact: true }).count(), 0);
     assert.equal(await page.getByTestId("event-meta").getByText("UTC", { exact: true }).count(), 1);
-    await page.unroute("**/api/bookings");
+    await page.unroute("**/api/events/default/bookings");
     await page.reload();
     await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
     assert.equal(await page.getByLabel("Email address*", { exact: true }).inputValue(), "guest@example.test");
@@ -489,6 +487,7 @@ export async function verifySubmission(browser, fixture, date) {
     assert.ok(await dialog.isVisible());
     assert.equal(requests.length, 1);
     for (const method of ["getItem", "setItem"]) {
+      const beforeRetry = requests.length;
       await page.evaluate((method) => {
         window.restoreGuestStorage = Storage.prototype[method];
         Storage.prototype[method] = () => {
@@ -504,15 +503,17 @@ export async function verifySubmission(browser, fixture, date) {
       assert.deepEqual(await values(page), recipients);
       assert.ok(await guest(page, 1).evaluate((input) => input.readOnly));
       assert.equal(fixture.google.writes.length, 1);
+      assert.equal(requests.length, beforeRetry + (method === "getItem" ? 0 : 1));
     }
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
     assert.deepEqual(requests[1], requests[0]);
-    assert.equal(requests.length, 4);
+    assert.equal(requests.length, 3);
     for (const body of bodies) assert.equal(body, bodies[0]);
     assert.equal(fixture.google.writes.length, 1);
     const receipt = await saved(page);
-    assert.deepEqual(Object.keys(receipt).sort(), ["access", "kind", "requestKey"]);
+    assert.deepEqual(Object.keys(receipt).sort(), ["access", "eventId", "kind", "requestKey"]);
+    assert.equal(receipt.eventId, "default");
     assert.equal(receipt.access.id, original.booking.id);
     assert.ok(!JSON.stringify(receipt).includes("guest@example.test"));
     assert.ok(!JSON.stringify(receipt).includes("Fixture Guest"));
@@ -525,7 +526,7 @@ export async function verifySubmission(browser, fixture, date) {
     assert.ok(!(await projection.text()).includes("second@example.test"));
     await page.reload();
     await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
-    assert.equal(requests.length, 4);
+    assert.equal(requests.length, 3);
     assert.equal(fixture.google.writes.length, 1);
     assert.ok(!(await page.content()).includes(receipt.access.token));
     assert.ok(!page.url().includes(receipt.access.token));
@@ -564,7 +565,7 @@ export async function verifySubmission(browser, fixture, date) {
       0
     );
     assert.equal(fixture.google.writes.length, 2);
-    assert.ok(!Object.hasOwn(requests[4], "guests"));
+    assert.ok(!Object.hasOwn(requests[3], "guests"));
     await uncertain.reload();
     await uncertain
       .getByRole("heading", { name: "This booking needs the organizer's attention.", exact: true })
@@ -585,7 +586,7 @@ export async function verifySubmission(browser, fixture, date) {
     });
     await conflict.getByRole("button", { name: "Confirm", exact: true }).click();
     await conflict.getByRole("alert").filter({ hasText: "The event or time has changed" }).waitFor();
-    assert.equal(await saved(conflict), null);
+    assert.deepEqual(await saved(conflict), { kind: "empty", eventId: "default" });
     assert.ok(await conflict.getByRole("button", { name: "Back", exact: true }).isEnabled());
     await conflict.getByRole("button", { name: "Back", exact: true }).click();
     await conflict.getByTestId("time").first().click();
@@ -611,7 +612,7 @@ export async function verifySubmission(browser, fixture, date) {
       consoles.filter(
         (error) =>
           !(
-            error.url === `${fixture.origin}/api/bookings` &&
+            error.url === `${fixture.origin}/api/events/default/bookings` &&
             error.text.startsWith("Failed to load resource: the server responded with a status of 409")
           )
       ),

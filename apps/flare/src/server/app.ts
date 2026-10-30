@@ -163,6 +163,31 @@ export async function getOwnerData(request: Request, dependencies: Dependencies)
   return { owner: identity, settings, bookings: await bookingService(dependencies).ownerList() };
 }
 
+export async function getOwnerEventData(request: Request, dependencies: Dependencies) {
+  const identity = await requireOwner(dependencies.env, request);
+  if (!identity) return null;
+  const url = new URL(request.url);
+  const ids = url.searchParams.getAll("eventId");
+  const modes = url.searchParams.getAll("create");
+  if (
+    ids.length > 1 ||
+    modes.length > 1 ||
+    (ids.length && modes.length) ||
+    (modes.length && modes[0] !== "1")
+  )
+    throw new ErrorWithCode("invalid_query");
+  const selectedId = eventId(ids[0] ?? DEFAULT_EVENT_ID);
+  const settings = await getSettings(dependencies.env.DB, selectedId);
+  return {
+    owner: identity,
+    settings,
+    selectedId,
+    creating: modes.length === 1,
+    events: await listEvents(dependencies.env.DB),
+    bookings: await bookingService(dependencies).ownerList(),
+  };
+}
+
 export async function getOwnerBookings(request: Request, dependencies: Dependencies) {
   if (!(await requireOwner(dependencies.env, request))) return null;
   const query = parseOwnerBookingQuery(new URL(request.url).searchParams);

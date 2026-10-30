@@ -35,7 +35,10 @@ export async function verifyBookingWindow(browser) {
     await page.clock.install({ time: fixedTime });
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/owner/booking-rules" && request.method() === "PATCH")
+      if (
+        new URL(request.url()).pathname === "/api/owner/events/default/booking-rules" &&
+        request.method() === "PATCH"
+      )
         saves.push(request.postDataJSON());
     });
     await page.goto(fixture.origin);
@@ -55,7 +58,7 @@ export async function verifyBookingWindow(browser) {
     }
     await days.fill("7");
     await page.route(
-      "**/api/owner/booking-rules",
+      "**/api/owner/events/default/booking-rules",
       (route) => route.fulfill({ status: 503, contentType: "application/json", body: "{}" }),
       { times: 1 }
     );
@@ -127,7 +130,8 @@ export async function verifyBookingWindow(browser) {
     await publicPage.getByLabel("Email address*", { exact: true }).fill("window@example.test");
     const posted = publicPage.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === "/api/bookings" && response.request().method() === "POST"
+        new URL(response.url()).pathname === "/api/events/default/bookings" &&
+        response.request().method() === "POST"
     );
     await publicPage.getByRole("button", { name: "Confirm", exact: true }).click();
     const response = await posted;

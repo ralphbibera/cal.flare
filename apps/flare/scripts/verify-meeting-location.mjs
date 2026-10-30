@@ -63,8 +63,13 @@ export async function verifyMeetingLocationFlow(browser, fixture, date) {
     page.on("request", (request) => {
       const path = new URL(request.url()).pathname;
       if (path.includes("private-location-probe")) errors.push("Location executed as markup");
-      if (path.startsWith("/api/bookings") && request.method() === "POST") posts.push(request);
-      if (path === "/api/owner" && request.method() === "PATCH") saves.push(request.postDataJSON());
+      if (
+        (path.startsWith("/api/bookings") || path === "/api/events/default/bookings") &&
+        request.method() === "POST"
+      )
+        posts.push(request);
+      if (path === "/api/owner/events/default" && request.method() === "PATCH")
+        saves.push(request.postDataJSON());
     });
     return page;
   };
@@ -128,7 +133,7 @@ export async function verifyMeetingLocationFlow(browser, fixture, date) {
     await editor.goto(fixture.origin);
     const input = editor.getByLabel("Location", { exact: true });
     const save = editor
-      .locator('form[action="/api/owner"]')
+      .locator('form[action="/api/owner/events/default"]')
       .getByRole("button", { name: "Save", exact: true });
     await expect(input).toBeEnabled();
     await editor.locator('label[for="event-location"]').click();
@@ -150,7 +155,7 @@ export async function verifyMeetingLocationFlow(browser, fixture, date) {
     await expect(input).toBeEnabled();
     await input.fill(` \n${location}\t `);
     await editor.route(
-      "**/api/owner",
+      "**/api/owner/events/default",
       (route) =>
         route.request().method() === "PATCH"
           ? route.fulfill({ status: 503, contentType: "application/json", body: "{}" })
@@ -181,7 +186,8 @@ export async function verifyMeetingLocationFlow(browser, fixture, date) {
     await source.getByLabel("Additional notes", { exact: false }).fill("private-notes");
     const created = source.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === "/api/bookings" && response.request().method() === "POST"
+        new URL(response.url()).pathname === "/api/events/default/bookings" &&
+        response.request().method() === "POST"
     );
     await source.getByRole("button", { name: "Confirm", exact: true }).click();
     const response = await created,
@@ -300,7 +306,10 @@ export async function verifyMeetingLocationFlow(browser, fixture, date) {
       fixture.google.writes.slice(initialWrites).map((write) => write.action),
       ["insert", "update", "delete"]
     );
-    assert.equal(posts.filter((request) => new URL(request.url()).pathname === "/api/bookings").length, 1);
+    assert.equal(
+      posts.filter((request) => new URL(request.url()).pathname === "/api/events/default/bookings").length,
+      1
+    );
     console.log(
       "PASS static location editor validation/retry/clear, private UI booking facts, historical move/reload and actual ICS/composer exports at 390/1280; denied, blocked, pending, attention and cancelled omission. Built Worker/local D1; Google is mocked."
     );

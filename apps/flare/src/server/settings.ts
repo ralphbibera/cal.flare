@@ -2,12 +2,15 @@ import type {
   BookingRules,
   EventDetails,
   EventSettings,
+  OwnerEvent,
   ScheduleOverrides,
   Settings,
   WeeklySchedule,
 } from "../domain/settings.ts";
 import {
+  DEFAULT_EVENT_ID,
   defaultSettings,
+  isEventId,
   parseBookingRules,
   parseConflictCalendarIds,
   parseEventDetails,
@@ -19,17 +22,11 @@ import {
 import { ErrorWithCode } from "./http.ts";
 
 type SettingsDatabase = Pick<D1Database, "prepare" | "batch">;
-const DEFAULT_EVENT_ID = "default";
-type OwnerEvent = { id: string; event: EventSettings };
 type StoredSettings = { event_json: string | null; preferences_json: string | null };
 type CurrentActionPolicy = Pick<EventSettings, "disableCancelling" | "disableRescheduling">;
 
 function eventId(value: string): string {
-  if (
-    value !== DEFAULT_EVENT_ID &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)
-  )
-    throw new ErrorWithCode("not_found", 404);
+  if (!isEventId(value)) throw new ErrorWithCode("not_found", 404);
   return value;
 }
 
@@ -90,6 +87,13 @@ async function listEvents(db: SettingsDatabase): Promise<OwnerEvent[]> {
     FROM event_type e LEFT JOIN organizer_settings o ON o.id='owner' ORDER BY e.rowid`)
     .all<{ id: string; event_json: string; preferences_json: string | null }>();
   return rows.results.map((row) => ({ id: row.id, event: storedSettings(row).event }));
+}
+
+async function findEventBySlug(db: SettingsDatabase, slug: string): Promise<string | null> {
+  return db
+    .prepare("SELECT id FROM event_type WHERE json_extract(json,'$.slug')=?")
+    .bind(slug)
+    .first<string>("id");
 }
 
 async function eventWrite(statement: D1PreparedStatement): Promise<void> {
@@ -244,6 +248,7 @@ export {
   currentActionPolicy,
   DEFAULT_EVENT_ID,
   eventId,
+  findEventBySlug,
   getCurrentActionPolicy,
   getSettings,
   listEvents,

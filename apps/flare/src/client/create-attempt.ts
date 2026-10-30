@@ -1,10 +1,16 @@
 import { parseGuests } from "../domain/guests.ts";
 import { isValidTimeZone } from "../domain/scheduling.ts";
+import { DEFAULT_EVENT_ID, isEventId } from "../domain/settings.ts";
 import type { BookingAccess, CreateRequest } from "./bookings.ts";
 import { ErrorWithCode } from "./bookings.ts";
 
-type PendingCreate = { kind: "pending"; request: Readonly<CreateRequest> };
-type CreationReceipt = { kind: "receipt"; requestKey: string; access: Readonly<BookingAccess> };
+type PendingCreate = { kind: "pending"; eventId: string; request: Readonly<CreateRequest> };
+type CreationReceipt = {
+  kind: "receipt";
+  eventId: string;
+  requestKey: string;
+  access: Readonly<BookingAccess>;
+};
 type CreationState = PendingCreate | CreationReceipt;
 type Session = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -24,6 +30,7 @@ function normalizedNotes(value: unknown): string | undefined {
 }
 function decode(value: unknown): CreationState {
   const data = object(value);
+  if (!isEventId(data.eventId)) throw new Error();
   if (data.kind === "pending") {
     const request = object(data.request);
     if (
@@ -46,6 +53,7 @@ function decode(value: unknown): CreationState {
     if (guests === null) throw new Error();
     const pending: PendingCreate = {
       kind: "pending",
+      eventId: data.eventId,
       request: Object.freeze({
         requestKey: key(request.requestKey),
         start: request.start,
@@ -71,6 +79,7 @@ function decode(value: unknown): CreationState {
       throw new Error();
     return {
       kind: "receipt",
+      eventId: data.eventId,
       requestKey: key(data.requestKey),
       access: Object.freeze({ id: access.id, token: access.token }),
     };
@@ -81,9 +90,14 @@ function decode(value: unknown): CreationState {
 class CreateAttempts {
   private readonly storage: Session;
   private readonly key: string;
-  constructor({ storage, scope }: { storage: Session; scope: string }) {
+  private readonly legacyKey: string | null;
+  readonly eventId: string;
+  constructor({ storage, scope, eventId }: { storage: Session; scope: string; eventId: string }) {
+    if (!isEventId(eventId)) throw new ErrorWithCode("invalid_event", 400);
     this.storage = storage;
-    this.key = `calflare:create:v1:${encodeURIComponent(scope)}`;
+    this.eventId = eventId;
+    this.key = `calflare:create:v2:${eventId}`;
+    this.legacyKey = eventId === DEFAULT_EVENT_ID ? `calflare:create:v1:${encodeURIComponent(scope)}` : null;
   }
   read(): CreationState | null {
     let raw: string | null;
@@ -92,21 +106,62 @@ class CreateAttempts {
     } catch {
       throw new ErrorWithCode("storage_unavailable", 0);
     }
-    if (raw === null) return null;
+    if (raw === null) return this.importLegacy();
     try {
       if (raw.length > 65536) throw new Error();
-      return decode(JSON.parse(raw));
+      const value = object(JSON.parse(raw));
+      if (value.eventId !== this.eventId) throw new Error();
+      if (value.kind === "empty" && Object.keys(value).length === 2) return null;
+      const state = decode(value);
+      if (JSON.stringify(state) !== raw) throw new Error();
+      return state;
     } catch {
       throw new ErrorWithCode("invalid_saved_attempt", 400);
     }
   }
-  private write(state: CreationState | null): void {
+  private importLegacy(): CreationState | null {
+    if (this.legacyKey === null) return null;
+    let raw: string | null;
     try {
-      if (state === null) this.storage.removeItem(this.key);
-      else this.storage.setItem(this.key, JSON.stringify(state));
+      raw = this.storage.getItem(this.legacyKey);
     } catch {
       throw new ErrorWithCode("storage_unavailable", 0);
     }
+    if (raw === null) return null;
+    let state: CreationState;
+    try {
+      if (raw.length > 65536) throw new Error();
+      const value = object(JSON.parse(raw));
+      if (Object.hasOwn(value, "eventId")) throw new Error();
+      state = decode({ ...value, eventId: this.eventId });
+      const { eventId: _, ...legacy } = state;
+      if (JSON.stringify(legacy) !== raw) throw new Error();
+    } catch {
+      throw new ErrorWithCode("invalid_saved_attempt", 400);
+    }
+    this.write(state);
+    try {
+      if (this.storage.getItem(this.legacyKey) === raw) this.storage.removeItem(this.legacyKey);
+    } catch {
+      throw new ErrorWithCode("storage_unavailable", 0);
+    }
+    return state;
+  }
+  private write(state: CreationState | null): void {
+    try {
+      this.storage.setItem(this.key, JSON.stringify(state ?? { kind: "empty", eventId: this.eventId }));
+    } catch {
+      throw new ErrorWithCode("storage_unavailable", 0);
+    }
+  }
+  verify(pending: PendingCreate): void {
+    const current = this.read();
+    if (
+      pending.eventId !== this.eventId ||
+      current?.kind !== "pending" ||
+      JSON.stringify(current) !== JSON.stringify(pending)
+    )
+      throw new ErrorWithCode("stale_attempt", 409);
   }
   begin(input: Omit<CreateRequest, "requestKey">): PendingCreate {
     const current = this.read();
@@ -129,7 +184,11 @@ class CreateAttempts {
     }
     let next: CreationState;
     try {
-      next = decode({ kind: "pending", request: { requestKey: crypto.randomUUID(), ...body } });
+      next = decode({
+        kind: "pending",
+        eventId: this.eventId,
+        request: { requestKey: crypto.randomUUID(), ...body },
+      });
     } catch (error) {
       if (error instanceof ErrorWithCode) throw error;
       throw new ErrorWithCode("invalid_input", 400);
@@ -151,7 +210,7 @@ class CreateAttempts {
       throw new ErrorWithCode("stale_attempt", 409);
     let next: CreationState;
     try {
-      next = decode({ kind: "receipt", requestKey, access });
+      next = decode({ kind: "receipt", eventId: this.eventId, requestKey, access });
     } catch {
       throw new ErrorWithCode("invalid_receipt", 400);
     }

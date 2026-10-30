@@ -10,6 +10,7 @@ import { chromium, expect } from "@playwright/test";
 import { differentPixels } from "./different-pixels.mjs";
 import { verifyCalendar } from "./verify-calendar.mjs";
 import { columnAliases, columnReferencePaths, verifyColumns } from "./verify-columns.mjs";
+import { verifyEvents } from "./verify-events.mjs";
 import { verifyMeta } from "./verify-meta.mjs";
 import { verifyPublic } from "./verify-public.mjs";
 import { verifyTimes } from "./verify-times.mjs";
@@ -401,6 +402,7 @@ try {
   );
   await verifyCalendar(browser, origin);
   await verifyPublic(browser);
+  await verifyEvents(browser);
   await verifyMeta(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],
@@ -528,7 +530,7 @@ try {
   const attemptsModule = `/@fs${fileURLToPath(new URL("../src/client/create-attempt.ts", import.meta.url))}`;
   const firstAttempt = await sessionPage.evaluate(async (url) => {
     const { CreateAttempts } = await import(url);
-    return new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).begin({
+    return new CreateAttempts({ storage: sessionStorage, scope: "/intro", eventId: "default" }).begin({
       start: Date.UTC(2030, 0, 1, 10),
       name: "Browser guest",
       email: "browser@example.test",
@@ -538,17 +540,20 @@ try {
   await sessionPage.reload();
   const resumed = await sessionPage.evaluate(async (url) => {
     const { CreateAttempts } = await import(url);
-    return new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).read();
+    return new CreateAttempts({ storage: sessionStorage, scope: "/intro", eventId: "default" }).read();
   }, attemptsModule);
   assert.deepEqual(resumed, firstAttempt);
   const requestKey = firstAttempt.request.requestKey;
   await sessionPage.evaluate(
     async ({ url, requestKey }) => {
       const { CreateAttempts } = await import(url);
-      new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).acknowledge(requestKey, {
-        id: "a".repeat(64),
-        token: "b".repeat(43),
-      });
+      new CreateAttempts({ storage: sessionStorage, scope: "/intro", eventId: "default" }).acknowledge(
+        requestKey,
+        {
+          id: "a".repeat(64),
+          token: "b".repeat(43),
+        }
+      );
     },
     { url: attemptsModule, requestKey }
   );
@@ -556,7 +561,7 @@ try {
   const receipt = await sessionPage.evaluate(async (url) => {
     const { CreateAttempts } = await import(url);
     return {
-      saved: new CreateAttempts({ storage: sessionStorage, scope: "/intro" }).read(),
+      saved: new CreateAttempts({ storage: sessionStorage, scope: "/intro", eventId: "default" }).read(),
       attendeeRetained: ["browser@example.test", "Browser guest"].some((value) =>
         JSON.stringify({ ...sessionStorage }).includes(value)
       ),
@@ -564,6 +569,7 @@ try {
   }, attemptsModule);
   assert.deepEqual(receipt.saved, {
     kind: "receipt",
+    eventId: "default",
     requestKey,
     access: { id: "a".repeat(64), token: "b".repeat(43) },
   });

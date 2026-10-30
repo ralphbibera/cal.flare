@@ -8,25 +8,34 @@ import { OwnerConflictCalendars } from "../components/OwnerConflictCalendars.tsx
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
 import { OwnerOverridesEditor } from "../components/OwnerOverridesEditor.tsx";
 import { OwnerScheduleEditor } from "../components/OwnerScheduleEditor.tsx";
-import { getOwnerData } from "../server/app.ts";
+import { defaultSettings } from "../domain/settings.ts";
+import { getOwnerEventData } from "../server/app.ts";
+import { ErrorWithCode } from "../server/http.ts";
 import "../styles/globals.css";
 
 type State =
-  | { kind: "anonymous" | "unavailable" }
-  | { kind: "owner"; data: NonNullable<Awaited<ReturnType<typeof getOwnerData>>> };
+  | { kind: "anonymous" | "unavailable" | "invalid" }
+  | { kind: "owner"; data: NonNullable<Awaited<ReturnType<typeof getOwnerEventData>>> };
 let state: State = { kind: "unavailable" };
 try {
-  const data = await getOwnerData(Astro.request, { env });
+  const data = await getOwnerEventData(Astro.request, { env });
   state = data ? { kind: "owner", data } : { kind: "anonymous" };
-} catch {
-  state = { kind: "unavailable" };
+} catch (error) {
+  state = {
+    kind:
+      error instanceof ErrorWithCode && ["not_found", "invalid_query"].includes(error.code)
+        ? "invalid"
+        : "unavailable",
+  };
 }
-Astro.response.status = state.kind === "unavailable" ? 503 : 200;
+Astro.response.status = state.kind === "unavailable" ? 503 : state.kind === "invalid" ? 404 : 200;
 Astro.response.headers.set("Cache-Control", "private, no-store");
 // Native form POSTs need a non-null Origin for the existing CSRF check.
 Astro.response.headers.set("Referrer-Policy", "same-origin");
 Astro.response.headers.set("X-Content-Type-Options", "nosniff");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+const details =
+  state.kind === "owner" && !state.data.creating ? state.data.settings.event : defaultSettings.event;
 ---
 <!doctype html>
 <html lang="en">
@@ -55,10 +64,15 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               <p>{state.data.owner.name}</p>
               <p class="text-subtle text-sm">{state.data.owner.email}</p>
             </div>
-            <OwnerEventEditor client:load details={{
-              title: state.data.settings.event.title, slug: state.data.settings.event.slug,
-              description: state.data.settings.event.description, durationMinutes: state.data.settings.event.durationMinutes,
-              location: state.data.settings.event.location,
+            <nav aria-label={common.flare_owner_events} class="space-y-2">
+              <h2 class="font-semibold">{common.flare_owner_events}</h2>
+              {state.data.events.map((entry) => <a href={`/?eventId=${entry.id}`} aria-current={!state.data.creating && entry.id === state.data.selectedId ? "page" : undefined} class="block break-words underline">{entry.event.title} /{entry.event.slug}</a>)}
+              <a href="/?create=1" class="block underline" aria-current={state.data.creating ? "page" : undefined}>{common.flare_create_event}</a>
+            </nav>
+            <OwnerEventEditor client:load mode={state.data.creating ? { kind: "create" } : { kind: "edit", id: state.data.selectedId }} details={{
+              title: details.title, slug: details.slug,
+              description: details.description, durationMinutes: details.durationMinutes,
+              location: details.location,
             }} labels={{
               title: common.title, slug: common.slug, description: common.description,
               location: common.location, locationHelp: common.flare_event_location_help,
@@ -66,8 +80,10 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               duration: common.duration, minutes: common.minutes, save: common.save,
               saved: common.saved, preview: common.preview, invalid: common.flare_event_details_invalid,
               failed: common.flare_event_details_failed, javascript: common.flare_event_details_javascript,
+              create: common.flare_create_event, uncertain: common.flare_event_create_uncertain,
+              refresh: common.flare_event_refresh, candidates: common.flare_event_candidates,
             }} />
-            <OwnerBookingRulesEditor client:load rules={{
+            {!state.data.creating && <OwnerBookingRulesEditor client:load eventId={state.data.selectedId} rules={{
               intervalMinutes: state.data.settings.event.intervalMinutes, beforeMinutes: state.data.settings.event.beforeMinutes,
               afterMinutes: state.data.settings.event.afterMinutes, noticeMinutes: state.data.settings.event.noticeMinutes,
               disableCancelling: state.data.settings.event.disableCancelling ?? false,
@@ -81,7 +97,7 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               windowHelp: common.flare_booking_window_help,
               minutes: common.minutes, save: common.save, saved: common.saved, invalid: common.flare_booking_rules_invalid,
               failed: common.flare_booking_rules_failed, javascript: common.flare_booking_rules_javascript,
-            }} />
+            }} />}
             <OwnerConflictCalendars client:load selection={state.data.settings.conflictCalendarIds ?? null} labels={{
               heading: common.flare_conflict_calendars, help: common.flare_conflict_help,
               primary: common.flare_conflict_primary, default: common.flare_conflict_default,
@@ -119,9 +135,9 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
             </form>
           </div>
         )}
-        {state.kind === "unavailable" && (
+        {(state.kind === "unavailable" || state.kind === "invalid") && (
           <div class="space-y-4">
-            <p role="alert">{common.flare_owner_unavailable}</p>
+            <p role="alert">{state.kind === "invalid" ? common.flare_event_not_found : common.flare_owner_unavailable}</p>
             <a class="text-default underline" href="/">{common.retry}</a>
           </div>
         )}

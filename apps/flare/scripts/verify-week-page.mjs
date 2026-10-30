@@ -49,8 +49,8 @@ export async function verifyWeekPage(browser) {
         });
         page.on("request", (request) => {
           const url = new URL(request.url());
-          if (url.pathname === "/api/slots") queries.push(url);
-          if (url.pathname === "/api/bookings" && request.method() === "POST")
+          if (url.pathname === "/api/events/default/slots") queries.push(url);
+          if (url.pathname === "/api/events/default/bookings" && request.method() === "POST")
             commands.push(request.postDataJSON());
         });
         await page.clock.setFixedTime(new Date(fixedTime));
@@ -239,12 +239,12 @@ export async function verifyWeekPage(browser) {
           await page.getByRole("button", { name: "Previous Day", exact: true }).click();
           await expect(cells).toHaveCount(1);
           const release = Promise.withResolvers();
-          await page.route("**/api/slots?**", async (route) => {
+          await page.route("**/api/events/default/slots?**", async (route) => {
             await release.promise;
             await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
           });
           try {
-            const requested = page.waitForRequest("**/api/slots?**");
+            const requested = page.waitForRequest("**/api/events/default/slots?**");
             await page.getByRole("combobox", { name: "Time zone", exact: true }).fill("Kolkata");
             await page.keyboard.press("Enter");
             await requested;
@@ -257,8 +257,8 @@ export async function verifyWeekPage(browser) {
           }
           await expect(page.getByRole("alert")).toBeVisible();
           await expect(cells).toHaveCount(0);
-          await page.unroute("**/api/slots?**");
-          const retried = page.waitForResponse("**/api/slots?**");
+          await page.unroute("**/api/events/default/slots?**");
+          const retried = page.waitForResponse("**/api/events/default/slots?**");
           await page.getByRole("button", { name: "Retry", exact: true }).click();
           const response = await retried;
           assert.equal(response.status(), 200);
@@ -273,7 +273,7 @@ export async function verifyWeekPage(browser) {
             path: fileURLToPath(new URL("week-dialog.png", artifacts)),
             fullPage: true,
           });
-          await page.route("**/api/bookings", async (route) => {
+          await page.route("**/api/events/default/bookings", async (route) => {
             assert.equal((await route.fetch()).status(), 201);
             await route.fulfill({ status: 200, contentType: "application/json", body: "truncated" });
           });
@@ -285,7 +285,7 @@ export async function verifyWeekPage(browser) {
           await page.mouse.click(1, 1);
           await expect(dialog).toBeVisible();
           await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
-          await page.unroute("**/api/bookings");
+          await page.unroute("**/api/events/default/bookings");
           await page.reload();
           await expect(dialog).toBeVisible();
           await expect(dialog).toContainText("Asia/Kolkata");

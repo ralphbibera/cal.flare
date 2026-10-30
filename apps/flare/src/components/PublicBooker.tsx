@@ -27,6 +27,7 @@ import { TimezoneSelect, timezoneAliases } from "./TimezoneSelect.tsx";
 import { Tooltip } from "./Tooltip.tsx";
 
 type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
+  eventId: string;
   labels: typeof bookingLabels;
 };
 
@@ -44,11 +45,23 @@ type Stage =
   | PendingCreate
   | { kind: "receipt"; receipt: CreationReceipt; booking?: Booking };
 const client = new BookerClient();
-const attempts = () => new CreateAttempts({ storage: sessionStorage, scope: location.pathname });
 const avatarClass =
   "bg-emphasis relative inline-flex aspect-square items-center justify-center border align-top w-6 h-6 min-w-6 min-h-6 rounded-full";
 
-export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
+function PublicBooker(props: PublicBookerProps) {
+  return <BookingSession key={props.eventId} {...props} />;
+}
+
+function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps) {
+  const attempts = () => new CreateAttempts({ storage: sessionStorage, scope: location.pathname, eventId });
+  const operation = useRef(0);
+  const submitting = useRef(false);
+  useEffect(
+    () => () => {
+      operation.current++;
+    },
+    []
+  );
   const [timeZone, setTimeZone] = useState("UTC");
   const [zones, setZones] = useState<{ label: string; timezone: string }[]>([]);
   const [format, setFormat] = useState<"h:mma" | "HH:mm">("h:mma");
@@ -67,19 +80,28 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const nameInput = useRef<HTMLInputElement>(null);
   const emailInput = useRef<HTMLInputElement>(null);
   async function loadReceipt(receipt: CreationReceipt) {
+    const ticket = ++operation.current;
     setStage((previous) =>
       previous.kind === "receipt" && previous.receipt === receipt ? previous : { kind: "receipt", receipt }
     );
     setBusy(true);
     setError("");
     try {
+      const saved = attempts().read();
+      if (
+        receipt.eventId !== eventId ||
+        saved?.kind !== "receipt" ||
+        JSON.stringify(saved) !== JSON.stringify(receipt)
+      )
+        throw new Error();
       const booking = await client.view(receipt.access);
+      if (ticket !== operation.current) return;
       setTimeZone(booking.timeZone);
       setStage({ kind: "receipt", receipt, booking });
     } catch {
-      setError(labels.bookingError);
+      if (ticket === operation.current) setError(labels.bookingError);
     } finally {
-      setBusy(false);
+      if (ticket === operation.current) setBusy(false);
     }
   }
   function restore() {
@@ -149,7 +171,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     setStage({ kind: "calendar" });
   }
   async function submit() {
-    if (busy || (stage.kind !== "form" && stage.kind !== "pending")) return;
+    if (submitting.current || busy || (stage.kind !== "form" && stage.kind !== "pending")) return;
     if (stage.kind === "form") {
       setError("");
       if (!nameInput.current?.reportValidity() || !emailInput.current?.reportValidity()) return;
@@ -158,40 +180,41 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
       if (invalid) return;
     }
     let pending: PendingCreate;
+    let store: CreateAttempts;
     try {
+      store = attempts();
       pending =
         stage.kind === "pending"
           ? stage
-          : attempts().begin({
+          : store.begin({
               start: stage.start,
               ...draft,
               guests: draft.guests.map((row) => row.value),
               timeZone,
             });
+      store.verify(pending);
     } catch (failure) {
-      if (failure instanceof ErrorWithCode && failure.code === "invalid_input") setError(labels.invalidInput);
-      else if (failure instanceof ErrorWithCode && failure.code === "request_too_large")
-        setError(labels.requestTooLarge);
-      else {
-        setStage({ kind: "blocked" });
-        setError(labels.storageError);
-      }
+      invalidAttempt(failure);
       return;
     }
+    submitting.current = true;
+    const ticket = ++operation.current;
     setStage(pending);
     setBusy(true);
     setError("");
     try {
-      const booking = await client.create(pending.request);
-      const receipt = attempts().acknowledge(pending.request.requestKey, {
+      const booking = await client.create(pending.request, pending.eventId);
+      if (ticket !== operation.current) return;
+      const receipt = store.acknowledge(pending.request.requestKey, {
         id: booking.id,
         token: booking.manageToken,
       });
       setDraft({ name: "", email: "", notes: "", guests: [] });
       setStage({ kind: "receipt", receipt, booking });
     } catch (failure) {
+      if (ticket !== operation.current) return;
       try {
-        if (attempts().reject(pending.request.requestKey, failure)) {
+        if (store.reject(pending.request.requestKey, failure)) {
           setStage({ kind: "form", start: pending.request.start });
           setDraft({
             name: pending.request.name,
@@ -205,8 +228,23 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         setError(labels.storageError);
       }
     } finally {
-      setBusy(false);
+      if (ticket === operation.current) {
+        submitting.current = false;
+        setBusy(false);
+      }
     }
+  }
+  function invalidAttempt(failure: unknown) {
+    if (failure instanceof ErrorWithCode && failure.code === "invalid_input") {
+      setError(labels.invalidInput);
+      return;
+    }
+    if (failure instanceof ErrorWithCode && failure.code === "request_too_large") {
+      setError(labels.requestTooLarge);
+      return;
+    }
+    if (stage.kind !== "pending") setStage({ kind: "blocked" });
+    setError(labels.storageError);
   }
   const selectedZone = stage.kind === "pending" ? stage.request.timeZone : timeZone;
   const selectedLabel = selected
@@ -366,6 +404,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
         }>
         {showCalendar ? (
           <BookingCalendar
+            access={{ kind: "event", id: eventId }}
             metadata={metadata}
             view={view}
             layoutToggle={layoutToggle}
@@ -539,3 +578,5 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
     </div>
   );
 }
+
+export { PublicBooker };
