@@ -6,6 +6,22 @@ import type { CalendarEvent, EventInput, GoogleCalendar } from "./google.ts";
 import { ErrorWithCode, record } from "./http.ts";
 
 export type Action = "create" | "reschedule" | "cancel";
+export type OwnerBookingQuery = { filter: "all" | "upcoming" | "past" | "cancelled"; before: number | null };
+export type OwnerBookingPage = { bookings: BookingView[]; older: number | null };
+
+export function parseOwnerBookingQuery(params: URLSearchParams): OwnerBookingQuery {
+  for (const key of params.keys()) {
+    if (!["filter", "before"].includes(key) || params.getAll(key).length !== 1)
+      throw new ErrorWithCode("invalid_booking_query");
+  }
+  const filter = params.get("filter") ?? "all";
+  if (filter !== "all" && filter !== "upcoming" && filter !== "past" && filter !== "cancelled")
+    throw new ErrorWithCode("invalid_booking_query");
+  const cursor = params.get("before");
+  if (cursor !== null && (!/^[1-9][0-9]{0,15}$/.test(cursor) || !Number.isSafeInteger(Number(cursor))))
+    throw new ErrorWithCode("invalid_booking_query");
+  return { filter, before: cursor === null ? null : Number(cursor) };
+}
 export type BookingView = {
   id: string;
   status: "pending" | "confirmed" | "rescheduling" | "cancelling" | "cancelled" | "attention";

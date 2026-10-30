@@ -10,6 +10,7 @@ import {
 } from "../domain/settings.ts";
 import type { AuthEnv } from "./auth.ts";
 import { beginLogin, finishLogin, logout, requireOwner } from "./auth.ts";
+import { parseOwnerBookingQuery } from "./booking-model.ts";
 import { BookingService } from "./bookings.ts";
 import type { GoogleCalendar } from "./google.ts";
 import { GoogleCalendar as CalendarClient } from "./google.ts";
@@ -118,6 +119,17 @@ export async function getOwnerData(request: Request, dependencies: Dependencies)
   if (!identity) return null;
   const settings = await getSettings(dependencies.env.DB);
   return { owner: identity, settings, bookings: await bookingService(dependencies, settings).ownerList() };
+}
+
+export async function getOwnerBookings(request: Request, dependencies: Dependencies) {
+  if (!(await requireOwner(dependencies.env, request))) return null;
+  const query = parseOwnerBookingQuery(new URL(request.url).searchParams);
+  const settings = await getSettings(dependencies.env.DB);
+  return {
+    query,
+    timeZone: settings.schedule.timeZone,
+    ...(await bookingService(dependencies, settings).ownerPage(query)),
+  };
 }
 
 export async function handleApi(request: Request, dependencies: Dependencies): Promise<Response> {

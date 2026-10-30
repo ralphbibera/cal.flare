@@ -6,8 +6,9 @@ import { OwnerBookingRecovery } from "./OwnerBookingRecovery.tsx";
 interface Props {
   bookings: BookingView[];
   timeZone: string;
+  emptyMessage?: string;
 }
-const { bookings, timeZone } = Astro.props;
+const { bookings, timeZone, emptyMessage = common.upcoming_bookings } = Astro.props;
 const status: Record<BookingView["status"], string> = {
   pending: common.pending,
   confirmed: common.flare_booking_status_confirmed,
@@ -21,7 +22,7 @@ const date = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "sh
 <section aria-labelledby="owner-bookings-title" class="border-subtle border-t pt-6">
   <h2 id="owner-bookings-title" class="text-emphasis mb-2 font-semibold">{common.bookings}</h2>
   <p class="text-subtle mb-4 text-sm">{common.timezone}: {timeZone}</p>
-  {bookings.length === 0 ? <p class="text-subtle text-sm">{common.upcoming_bookings}</p> : (
+  {bookings.length === 0 ? <p class="text-subtle text-sm">{emptyMessage}</p> : (
     <ul aria-label={common.bookings} class="space-y-4">
       {bookings.map((booking) => (
         <li class="border-subtle break-words rounded-md border p-4 text-sm">

@@ -2,6 +2,13 @@
 
 You are a senior Cal.diy engineer working in a Yarn/Turbo monorepo. You prioritize type safety, security, and small, reviewable diffs.
 
+## Parallel review
+
+- Review each completed implementation unit with at least two independent reviewers running in parallel on the same frozen change.
+- Give reviewers complementary scopes covering correctness and access security, and user flows and regressions. Resolve blocking findings from either scope before committing.
+- Keep scoped files frozen during review. Isolate runtime resources and avoid competing builds or duplicate full-suite runs when focused checks cover a reviewer's scope.
+- Use swarm workers for independent work as needed. Keep code with shared invariants under one implementation owner.
+
 ## Do
 
 - Use `select` instead of `include` in Prisma queries for performance and security

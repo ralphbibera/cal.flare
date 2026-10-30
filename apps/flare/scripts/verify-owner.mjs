@@ -282,6 +282,8 @@ export async function verifyOwnerBookings(browser, fixture) {
       .getByRole("listitem")
       .filter({ hasText: input.email });
     await page.goto(fixture.origin);
+    await page.getByRole("link", { name: "Bookings", exact: true }).click({ timeout: 3000 });
+    assert.equal(new URL(page.url()).pathname, "/owner/bookings");
     assert.ok((await row.textContent()).includes("Confirmed"));
     assert.equal(await row.locator("time").getAttribute("datetime"), new Date(start).toISOString());
     assert.ok((await row.textContent()).includes(input.name));
@@ -378,6 +380,7 @@ export async function verifyOwnerBookings(browser, fixture) {
     assert.equal(unavailable.status, 503);
     assert.ok(!(await unavailable.text()).includes(input.email));
     await fixture.db.prepare("UPDATE booking SET initial_json=? WHERE id=?").bind(stored, pending.id).run();
+    await verifyBookingPages(page, fixture, owner);
     await verifyOwnerRecovery(browser, fixture, owner, pending);
     assert.deepEqual(fixture.google.denied, []);
     assert.deepEqual(fixture.upstreamFailures, []);
@@ -386,6 +389,148 @@ export async function verifyOwnerBookings(browser, fixture) {
     );
   } finally {
     await context.close();
+  }
+}
+
+async function verifyBookingPages(page, fixture, owner) {
+  const db = fixture.db;
+  const commands = (await db.prepare("SELECT * FROM booking_command ORDER BY rowid").all()).results;
+  const writes = fixture.google.writes.length;
+  const stored = (end) =>
+    JSON.stringify({
+      id: "b".repeat(64),
+      title: "Stored browser fixture",
+      description: "",
+      start: Date.UTC(2000, 0, 1),
+      end,
+      timeZone: "UTC",
+      attendee: { name: "Browser guest", email: "fixture@example.test" },
+      privateMetadata: { application: "calflare" },
+    });
+  try {
+    for (const [count, offset, end] of [
+      [78, 100000, Date.UTC(2099, 0, 1)],
+      [1001, 200000, Date.UTC(2001, 0, 1)],
+    ]) {
+      await db
+        .prepare(`WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n < ?)
+        INSERT INTO booking(rowid,id,version,state,token_hash,initial_json)
+        SELECT ?+n,printf('%064x',?+n),1,
+        CASE WHEN ?=200000 OR n%3=0 THEN 'cancelled' ELSE 'active' END,'',
+        json_set(?, '$.attendee.email', printf('browser-%d@example.test',?+n),
+          '$.end', CASE WHEN ?=100000 AND n%3=1 THEN ? ELSE ? END) FROM numbers`)
+        .bind(count, offset, offset, offset, stored(end), offset, offset, Date.UTC(2001, 0, 1), end)
+        .run();
+    }
+    const rows = () => page.getByRole("list", { name: "Bookings", exact: true }).getByRole("listitem");
+    const emails = () =>
+      rows().evaluateAll((items) => items.map((item) => item.querySelectorAll("p")[1].textContent));
+    await page.goto(`${fixture.origin}/owner/bookings`);
+    assert.equal(await rows().count(), 25);
+    assert.deepEqual(
+      await emails(),
+      Array.from({ length: 25 }, (_, i) => `browser-${201001 - i}@example.test`)
+    );
+    await page.getByRole("link", { name: "Older bookings", exact: true }).click();
+    assert.deepEqual(
+      await emails(),
+      Array.from({ length: 25 }, (_, i) => `browser-${200976 - i}@example.test`)
+    );
+    const olderUrl = page.url();
+    await page.reload();
+    assert.equal(page.url(), olderUrl);
+    await page.getByRole("link", { name: "First page", exact: true }).click();
+    assert.equal(new URL(page.url()).searchParams.has("before"), false);
+    for (const [label, filter, first] of [
+      ["Upcoming", "upcoming", 77],
+      ["Past", "past", 76],
+    ]) {
+      await page.getByRole("link", { name: label, exact: true }).click();
+      assert.equal(new URL(page.url()).search, `?filter=${filter}`);
+      assert.equal(
+        await page.getByRole("link", { name: label, exact: true }).getAttribute("aria-current"),
+        "page"
+      );
+      assert.equal(await rows().count(), 25);
+      assert.deepEqual(
+        await emails(),
+        Array.from({ length: 25 }, (_, i) => `browser-${100000 + first - i * 3}@example.test`)
+      );
+      assert.ok((await rows().first().textContent()).includes("Stored browser fixture"));
+      assert.ok((await rows().first().textContent()).includes("Browser guest"));
+      await page.getByRole("link", { name: "Older bookings", exact: true }).click();
+      const url = page.url();
+      await page.reload();
+      assert.equal(page.url(), url);
+      assert.ok((await rows().count()) <= 25);
+      assert.deepEqual(
+        (await emails()).filter((email) => email.startsWith("browser-")),
+        [`browser-${100000 + first - 75}@example.test`]
+      );
+      assert.equal(await page.getByRole("link", { name: "Older bookings", exact: true }).count(), 0);
+      await page.getByRole("link", { name: "First page", exact: true }).click();
+    }
+    await page.getByRole("link", { name: "Canceled", exact: true }).click();
+    assert.equal(await rows().count(), 25);
+    assert.ok((await rows().first().textContent()).includes("Canceled"));
+    await page.getByRole("link", { name: "All", exact: true }).click();
+    const seen = [];
+    while (true) {
+      assert.ok((await rows().count()) <= 25);
+      seen.push(...(await emails()).filter((email) => email.startsWith("browser-")));
+      const older = page.getByRole("link", { name: "Older bookings", exact: true });
+      if (!(await older.count())) break;
+      await older.click();
+    }
+    assert.deepEqual(seen, [
+      ...Array.from({ length: 1001 }, (_, i) => `browser-${201001 - i}@example.test`),
+      ...Array.from({ length: 78 }, (_, i) => `browser-${100078 - i}@example.test`),
+    ]);
+    await page.getByRole("link", { name: "First page", exact: true }).click();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      for (const name of ["Organizer", "All", "Upcoming", "Past", "Canceled", "Older bookings"])
+        assert.ok(await page.getByRole("link", { name, exact: true }).isVisible());
+    }
+    await page.goto(`${fixture.origin}/owner/bookings?filter=upcoming&before=1`);
+    assert.ok((await page.textContent("body")).includes("No bookings match this filter or page."));
+    assert.equal(await page.getByRole("listitem").count(), 0);
+    assert.equal(await page.getByRole("link", { name: "Older bookings", exact: true }).count(), 0);
+    for (const query of [
+      "filter=nope",
+      "filter=all&filter=past",
+      "before=0",
+      "before=-1",
+      "before=1.5",
+      "before=9007199254740992",
+      "before=1&before=2",
+      "before=1%20OR%201=1",
+      "unknown=1",
+    ]) {
+      for (const headers of [owner, {}, { Cookie: `flare_session=${"A".repeat(43)}` }]) {
+        const response = await fixture.request(`/owner/bookings?${query}`, { headers });
+        assert.equal(response.status, headers === owner ? 400 : 200);
+        assert.equal(response.headers.get("cache-control"), "private, no-store");
+        assert.equal(response.headers.get("referrer-policy"), "same-origin");
+        assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+        assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
+        const html = await response.text();
+        assert.ok(!html.includes("fixture@example.test") && !html.includes("browser-100077@example.test"));
+      }
+    }
+    assert.equal(fixture.google.writes.length, writes);
+    assert.deepEqual(
+      (await db.prepare("SELECT * FROM booking_command ORDER BY rowid").all()).results,
+      commands
+    );
+    console.log(
+      "PASS private booking URL filters, bounded keyset pages beyond 1000 rows, equal-time ordering, reload/first links, invalid-query privacy and read-only commands without JavaScript. Built Worker/local D1; Google is mocked."
+    );
+  } finally {
+    await db
+      .prepare("DELETE FROM booking WHERE rowid BETWEEN 100001 AND 100078 OR rowid BETWEEN 200001 AND 201001")
+      .run();
   }
 }
 
