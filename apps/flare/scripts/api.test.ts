@@ -7,6 +7,194 @@ import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
+test("owner details and required-reason cancellation use session authorization and immutable replay", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const client = new BookerClient((path, init) =>
+    f.request(path, {
+      ...init,
+      headers: {
+        ...Object.fromEntries(new Headers(init.headers)),
+        ...f.ownerHeaders,
+        Origin: f.env.PUBLIC_ORIGIN,
+      },
+    })
+  );
+  const created = record(
+    await (
+      await f.send("/api/bookings", {
+        requestKey: "owner-cancel-create-0001",
+        start: f.now() + 9 * hour,
+        name: "Private guest",
+        email: "guest@example.test",
+        timeZone: "Asia/Manila",
+      })
+    ).json()
+  );
+  assert.equal(typeof created.id, "string");
+  const id = String(created.id),
+    path = `/api/owner/bookings/${id}`;
+  const input = {
+    action: "cancel",
+    requestKey: "owner-cancel-request-0001",
+    version: 1,
+    cancellationReason: "  First\n😀 <literal>  ",
+  };
+  for (const headers of [
+    {},
+    { Authorization: `Bearer ${created.manageToken}` },
+    { Cookie: `flare_session=${"A".repeat(43)}` },
+  ]) {
+    assert.equal((await f.request(path, { headers })).status, 401);
+    assert.equal((await f.send(path, input, headers)).status, 401);
+  }
+  assert.equal(
+    (await f.send(path, input, { ...f.ownerHeaders, Origin: "https://foreign.test" })).status,
+    403
+  );
+  assert.equal((await f.request("/api/owner/bookings/invalid", { headers: f.ownerHeaders })).status, 404);
+  const view = await client.ownerView(id);
+  assert.equal(view.title, settings.event.title);
+  assert.equal(view.timeZone, "Asia/Manila");
+  assert.equal(view.manageToken, undefined);
+  assert.equal(f.calendar.writes.length, 1);
+  for (const cancellationReason of [undefined, "", " \n\t", "x".repeat(1001), `${"😀".repeat(500)}x`])
+    assert.equal((await f.send(path, { ...input, cancellationReason }, f.ownerHeaders)).status, 400);
+  assert.equal(
+    (
+      await f.send(
+        path,
+        { ...input, action: "reschedule", start: f.now() + 10 * hour, cancellationReason: undefined },
+        f.ownerHeaders
+      )
+    ).status,
+    400
+  );
+  assert.equal(await f.db.prepare("SELECT count(*) FROM booking_command").first("count(*)"), 1);
+  const later = new BookingService({
+    db: f.db,
+    calendar: f.calendar,
+    settings,
+    secret: f.env.TOKEN_ENCRYPTION_KEY,
+    now: () => f.now() + 48 * hour,
+  });
+  await assert.rejects(
+    later.ownerCancel(id, { ...input, requestKey: "ended-owner-cancel-0001" }),
+    /invalid_slot/
+  );
+  const accepted = await client.ownerCancel(id, { ...input, action: "cancel" });
+  assert.equal(accepted.status, "cancelled");
+  assert.equal(accepted.cancellationReason, "First\n😀 <literal>");
+  await f.send(
+    "/api/owner",
+    { ...settings, event: { ...settings.event, disableCancelling: true } },
+    f.ownerHeaders,
+    "PUT"
+  );
+  assert.deepEqual(await client.ownerCancel(id, { ...input, action: "cancel" }), await client.ownerView(id));
+  assert.equal((await client.ownerView(id)).cancellationReason, "First\n😀 <literal>");
+  assert.deepEqual(
+    f.calendar.writes.map((write) => write.action),
+    ["insert", "delete"]
+  );
+  assert.equal(await f.db.prepare("SELECT count(*) FROM booking_reservation").first("count(*)"), 0);
+  assert.equal(
+    await f.db.prepare("SELECT count(*) FROM booking_command WHERE outcome='accepted'").first("count(*)"),
+    2
+  );
+  await f.db.prepare("UPDATE owner_session SET expires_at=0").run();
+  assert.equal((await f.request(path, { headers: f.ownerHeaders })).status, 401);
+  assert.equal((await f.send(path, input, f.ownerHeaders)).status, 401);
+  await f.db.prepare("DELETE FROM owner_session").run();
+  assert.equal((await f.request(path, { headers: f.ownerHeaders })).status, 401);
+});
+
+test("fresh owner cancellation retains policy, stale and attention outcomes while accepted recovery survives policy changes", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const created = record(
+    await (
+      await f.send("/api/bookings", {
+        requestKey: "owner-policy-create-0001",
+        start: f.now() + 9 * hour,
+        name: "Guest",
+        email: "guest@example.test",
+        timeZone: "UTC",
+      })
+    ).json()
+  );
+  const id = String(created.id),
+    path = `/api/owner/bookings/${id}`;
+  const input = {
+    action: "cancel",
+    requestKey: "owner-policy-cancel-0001",
+    version: 1,
+    cancellationReason: "x".repeat(1000),
+  };
+  const setDisabled = (disableCancelling: boolean) =>
+    f.send(
+      "/api/owner",
+      { ...settings, event: { ...settings.event, disableCancelling } },
+      f.ownerHeaders,
+      "PUT"
+    );
+  await setDisabled(true);
+  assert.equal((await f.send(path, input, f.ownerHeaders)).status, 409);
+  await setDisabled(false);
+  assert.equal((await f.send(path, input, f.ownerHeaders)).status, 409);
+  assert.equal(
+    (await f.send(path, { ...input, requestKey: "owner-stale-cancel-0001", version: 2 }, f.ownerHeaders))
+      .status,
+    409
+  );
+  const remote = f.calendar.events.get(id);
+  assert.ok(remote);
+  f.calendar.events.set(id, { ...remote, summary: "External edit" });
+  const accepted = {
+    ...input,
+    requestKey: "owner-accepted-cancel-0001",
+    cancellationReason: `  ${input.cancellationReason}  `,
+  };
+  const pending = record(await (await f.send(path, accepted, f.ownerHeaders)).json());
+  assert.equal(pending.status, "attention");
+  assert.equal(pending.error, "event_changed");
+  const commands = (await f.db.prepare("SELECT * FROM booking_command ORDER BY rowid").all()).results;
+  for (let n = 0; n < 2; n++)
+    assert.equal(
+      record(await (await f.request(path, { headers: f.ownerHeaders })).json()).status,
+      "attention"
+    );
+  assert.deepEqual(
+    (await f.db.prepare("SELECT * FROM booking_command ORDER BY rowid").all()).results,
+    commands
+  );
+  assert.equal(
+    (await f.send(path, { ...input, requestKey: "owner-busy-cancel-00001" }, f.ownerHeaders)).status,
+    409
+  );
+  assert.equal(f.calendar.writes.length, 1);
+  f.calendar.events.set(id, remote);
+  await setDisabled(true);
+  f.calendar.cutAfter = "delete";
+  assert.equal((await f.send(path, accepted, f.ownerHeaders)).status, 202);
+  assert.equal(record(await (await f.request(path, { headers: f.ownerHeaders })).json()).status, "attention");
+  const recovered = record(await (await f.send("/api/owner/retry", { id }, f.ownerHeaders)).json());
+  assert.equal(recovered.status, "cancelled");
+  assert.equal(recovered.cancellationReason, input.cancellationReason);
+  assert.deepEqual(
+    f.calendar.writes.map((write) => write.action),
+    ["insert", "delete"]
+  );
+  for (const value of [
+    { ...recovered, manageToken: created.manageToken },
+    { ...recovered, id: "b".repeat(64) },
+  ])
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value)).ownerView(id),
+      /invalid_response/
+    );
+});
+
 test("booking rule updates preserve concurrent settings and change slot spacing, buffers and notice", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);

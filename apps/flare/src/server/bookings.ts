@@ -134,8 +134,23 @@ export class BookingService {
     );
   }
   async change(id: string, token: string, input: unknown): Promise<BookingView> {
-    const booking = await this.authorized(id, token),
+    return this.changeBooking(await this.authorized(id, token), parseChange(input), "attendee");
+  }
+  async ownerView(id: string): Promise<BookingView> {
+    return this.render(await this.booking(id));
+  }
+  async ownerCancel(id: string, input: unknown): Promise<BookingView> {
+    const booking = await this.booking(id),
       data = parseChange(input);
+    if (data.action !== "cancel") throw new ErrorWithCode("invalid_input");
+    return this.changeBooking(booking, data, "owner");
+  }
+  private async changeBooking(
+    booking: Booking,
+    data: ReturnType<typeof parseChange>,
+    actor: "owner" | "attendee"
+  ): Promise<BookingView> {
+    const id = booking.id;
     const { action, requestKey, version } = data;
     const start = action === "reschedule" ? data.start : undefined;
     const payload = JSON.stringify({
@@ -153,6 +168,8 @@ export class BookingService {
     });
     const replay = await this.replay(requestKey, payload);
     if (replay) return replay;
+    if (actor === "owner" && data.action === "cancel" && !data.cancellationReason)
+      throw new ErrorWithCode("invalid_input");
     parseSettings(this.settings);
     const commandId = await identity("calflare:command:v1", requestKey);
     const original = snapshot(booking.confirmed_json ?? booking.initial_json);

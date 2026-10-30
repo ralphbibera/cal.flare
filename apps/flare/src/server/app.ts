@@ -132,6 +132,11 @@ export async function getOwnerBookings(request: Request, dependencies: Dependenc
   };
 }
 
+export async function getOwnerBooking(request: Request, dependencies: Dependencies, id: string) {
+  if (!(await requireOwner(dependencies.env, request))) return null;
+  return bookingService(dependencies, await getSettings(dependencies.env.DB)).ownerView(id);
+}
+
 export async function handleApi(request: Request, dependencies: Dependencies): Promise<Response> {
   const { env } = dependencies;
   const url = new URL(request.url);
@@ -164,6 +169,15 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     await getSettings(env.DB);
     await saveBookingRules(env.DB, parseBookingRules(await body(request)));
     return json({ saved: true });
+  }
+  const ownerBooking = /^\/api\/owner\/bookings\/([^/]+)$/.exec(path);
+  if (ownerBooking) {
+    await owner(env, request);
+    const service = bookingService(dependencies, await getSettings(env.DB));
+    if (method === "GET") return json(await service.ownerView(ownerBooking[1]));
+    if (method === "POST")
+      return bookingResponse(await service.ownerCancel(ownerBooking[1], await body(request)));
+    return json({ error: "not_found" }, 404);
   }
 
   const settings = await getSettings(env.DB);
