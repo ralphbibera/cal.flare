@@ -56,7 +56,8 @@ export class BookingAvailability {
     const busy = await this.calendar.busy(
       new Date(from).toISOString(),
       new Date(to).toISOString(),
-      excludeId
+      excludeId,
+      settings.conflictCalendarIds
     );
     return busy.some((range) => range.start < to && from < range.end) ? "conflict" : "accepted";
   }
@@ -79,7 +80,8 @@ export class BookingAvailability {
     const remote = await this.calendar.busy(
       new Date(start).toISOString(),
       new Date(end).toISOString(),
-      exclude?.id
+      exclude?.id,
+      this.settings.conflictCalendarIds
     );
     const local = await this.db
       .prepare("SELECT start,end FROM booking_reservation WHERE start < ? AND end > ? AND booking_id <> ?")

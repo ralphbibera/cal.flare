@@ -8,6 +8,7 @@ import type {
 import {
   defaultSettings,
   parseBookingRules,
+  parseConflictCalendarIds,
   parseEventDetails,
   parseScheduleOverrides,
   parseSettings,
@@ -38,6 +39,18 @@ export async function saveSettings(db: D1Database, settings: Settings): Promise<
        ON CONFLICT(id) DO UPDATE SET json = excluded.json, version = organizer_settings.version + 1`
     )
     .bind("owner", JSON.stringify(validated))
+    .run();
+}
+
+export async function saveConflictCalendars(db: D1Database, input: string[] | null): Promise<void> {
+  const ids = input === null ? null : parseConflictCalendarIds(input);
+  const patch = ids === null ? {} : { conflictCalendarIds: ids };
+  await db
+    .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
+      ON CONFLICT(id) DO UPDATE SET json = json_patch(
+        json_remove(organizer_settings.json, '$.conflictCalendarIds'), json(?)),
+        version = organizer_settings.version + 1`)
+    .bind(JSON.stringify(parseSettings({ ...defaultSettings, ...patch })), JSON.stringify(patch))
     .run();
 }
 

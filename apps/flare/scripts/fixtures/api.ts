@@ -40,12 +40,18 @@ export class FakeCalendar {
   cutAfter: "insert" | "update" | "delete" | undefined;
   private revision = 0;
 
-  async busy(from: string, to: string, exclude?: string) {
+  async busy(from: string, to: string, exclude?: string, conflictCalendarIds?: string[]) {
+    if (conflictCalendarIds && !conflictCalendarIds.includes("primary")) return [];
     return [...this.events.values()].flatMap((event) => {
       assert.ok("dateTime" in event.start && "dateTime" in event.end);
       const start = Date.parse(event.start.dateTime),
         end = Date.parse(event.end.dateTime);
-      return event.id !== exclude && start < Date.parse(to) && end > Date.parse(from) ? [{ start, end }] : [];
+      const owned =
+        event.extendedProperties?.private?.application === "calflare" &&
+        event.extendedProperties?.private?.booking === event.id;
+      return !(event.id === exclude && owned) && start < Date.parse(to) && end > Date.parse(from)
+        ? [{ start, end }]
+        : [];
     });
   }
 
