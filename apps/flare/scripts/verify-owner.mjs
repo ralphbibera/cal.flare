@@ -120,6 +120,10 @@ export async function verifyOwner(browser, fixture) {
     assert.equal(new URL(page.url()).pathname, `/${fixture.settings.event.slug}`);
     assert.ok(!(await page.content()).includes(email));
     await page.goto(fixture.origin);
+    const preferences = await fixture.db
+      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
+      .first();
+    assert.ok(preferences);
     await fixture.db.prepare("UPDATE organizer_settings SET json='{}' WHERE id='owner'").run();
     const unavailable = await check(await fixture.request("/", { headers: ownerHeaders }), 503);
     assert.ok(unavailable.includes("Organizer sign-in is currently unavailable."));
@@ -138,6 +142,10 @@ export async function verifyOwner(browser, fixture) {
     assert.deepEqual(fixture.google.denied, []);
     assert.deepEqual(fixture.upstreamFailures, []);
     assert.deepEqual(errors, []);
+    await fixture.db
+      .prepare("INSERT INTO organizer_settings(id,json,version) VALUES ('owner',?,?)")
+      .bind(preferences.json, preferences.version)
+      .run();
     console.log(
       "PASS native organizer sign-in, OAuth redirect landing, private SSR, event preview and revoked-session sign-out without JavaScript. Built Worker/local D1; Google is mocked."
     );

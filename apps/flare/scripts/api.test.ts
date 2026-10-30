@@ -5,7 +5,7 @@ import { defaultSettings, parseSettings } from "../src/domain/settings.ts";
 import { BookingService } from "../src/server/bookings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
-import { apiFixture, hour, settings } from "./fixtures/api.ts";
+import { apiFixture, hour, settings, storedSettings } from "./fixtures/api.ts";
 
 test("calendar discovery is owner-only, private and independent of settings and booking work", async (t) => {
   const f = await apiFixture();
@@ -289,10 +289,7 @@ test("booking rule updates preserve concurrent settings and change slot spacing,
     disableRescheduling: false,
   };
   const patch = (value: unknown) => send("/api/owner/booking-rules", value, ownerHeaders, "PATCH");
-  const row = () =>
-    db
-      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
-      .first<{ json: string; version: number }>();
+  const row = () => storedSettings(db);
   const before = await row();
   assert.equal((await send("/api/owner/booking-rules", rules, {}, "PATCH")).status, 401);
   assert.equal(
@@ -386,12 +383,8 @@ test("booking rule updates preserve concurrent settings and change slot spacing,
   assert.equal((await patch({ ...rules, noticeMinutes: 43200 })).status, 200);
   assert.deepEqual(await slots(), []);
   await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
-  assert.equal((await patch(rules)).status, 200);
-  assert.equal(
-    (await row())?.json,
-    JSON.stringify({ ...defaultSettings, event: { ...defaultSettings.event, ...rules } })
-  );
-  assert.equal((await row())?.version, 1);
+  assert.equal((await patch(rules)).status, 400);
+  assert.equal(await row(), null, "Missing authoritative preferences cannot silently reset");
   assert.equal(calendar.writes.length, 0);
 });
 
@@ -410,10 +403,7 @@ test("dated override updates preserve independent settings and reject invalid or
     },
     { date: "2032-02-29", ranges: [] },
   ];
-  const row = () =>
-    db
-      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
-      .first<{ json: string; version: number }>();
+  const row = () => storedSettings(db);
   const before = await row();
   const patch = (value: unknown) => send("/api/owner/overrides", value, ownerHeaders, "PATCH");
   assert.equal((await send("/api/owner/overrides", { overrides }, {}, "PATCH")).status, 401);
@@ -506,7 +496,7 @@ test("dated override updates preserve independent settings and reject invalid or
   assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
   const stored = await row();
   assert.ok(stored && before);
-  assert.equal(stored.version, before.version + 4);
+  assert.equal(stored.version, before.version + 5);
   assert.equal(stored.json, JSON.stringify(expected));
   assert.equal((await patch({ overrides: [] })).status, 200);
   assert.equal(
@@ -514,12 +504,8 @@ test("dated override updates preserve independent settings and reject invalid or
     JSON.stringify({ ...expected, schedule: { ...expected.schedule, overrides: [] } })
   );
   await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
-  assert.equal((await patch({ overrides })).status, 200);
-  assert.equal(
-    (await row())?.json,
-    JSON.stringify({ ...defaultSettings, schedule: { ...defaultSettings.schedule, overrides } })
-  );
-  assert.equal((await row())?.version, 1);
+  assert.equal((await patch({ overrides })).status, 400);
+  assert.equal(await row(), null, "Missing authoritative preferences cannot silently reset");
   assert.equal(calendar.writes.length, 0);
 });
 
@@ -535,10 +521,7 @@ test("weekly updates preserve overrides and concurrent event edits, rejecting in
       { weekday: 2, startMinute: 0, endMinute: 1440 },
     ],
   };
-  const row = () =>
-    db
-      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
-      .first<{ json: string; version: number }>();
+  const row = () => storedSettings(db);
   const before = await row();
   assert.equal((await send("/api/owner/schedule", weekly, {}, "PATCH")).status, 401);
   assert.equal(
@@ -613,7 +596,7 @@ test("weekly updates preserve overrides and concurrent event edits, rejecting in
   assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
   const stored = await row();
   assert.ok(stored && before);
-  assert.equal(stored.version, before.version + 3);
+  assert.equal(stored.version, before.version + 4);
   assert.equal(stored.json, JSON.stringify(expected));
   assert.equal(
     (await send("/api/owner/schedule", { timeZone: "UTC", rules: [] }, ownerHeaders, "PATCH")).status,
@@ -625,9 +608,8 @@ test("weekly updates preserve overrides and concurrent event edits, rejecting in
   assert.equal(closed.status, 200);
   assert.deepEqual(await closed.json(), { slots: [] });
   await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
-  assert.equal((await send("/api/owner/schedule", weekly, ownerHeaders, "PATCH")).status, 200);
-  assert.equal((await row())?.json, JSON.stringify({ ...defaultSettings, schedule: weekly }));
-  assert.equal((await row())?.version, 1);
+  assert.equal((await send("/api/owner/schedule", weekly, ownerHeaders, "PATCH")).status, 400);
+  assert.equal(await row(), null, "Missing authoritative preferences cannot silently reset");
   assert.equal(calendar.writes.length, 0);
 });
 
@@ -695,10 +677,7 @@ test("owner detail edits preserve independent scheduling settings and require au
     assert.equal(response.status, 200);
     return parseSettings(record(await response.json()).settings);
   };
-  const row = () =>
-    db
-      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
-      .first<{ json: string; version: number }>();
+  const row = () => storedSettings(db);
   const before = await row();
   assert.equal((await send("/api/owner", details, {}, "PATCH")).status, 401);
   assert.equal(
@@ -745,7 +724,7 @@ test("owner detail edits preserve independent scheduling settings and require au
   assert.deepEqual(await read(), expected);
   const stored = await row();
   assert.ok(stored && before);
-  assert.equal(stored.version, before.version + 2);
+  assert.equal(stored.version, before.version + 3);
   assert.equal(
     stored.json,
     JSON.stringify(expected),
@@ -761,12 +740,8 @@ test("owner detail edits preserve independent scheduling settings and require au
     assert.deepEqual(record(await (await request("/api/public")).json()).event, roundTrip.event);
   }
   await db.prepare("DELETE FROM organizer_settings WHERE id='owner'").run();
-  assert.equal((await send("/api/owner", details, ownerHeaders, "PATCH")).status, 200);
-  assert.deepEqual(await read(), {
-    ...defaultSettings,
-    event: { ...defaultSettings.event, ...details },
-  });
-  assert.equal((await row())?.version, 1);
+  assert.equal((await send("/api/owner", details, ownerHeaders, "PATCH")).status, 400);
+  assert.equal(await row(), null, "Missing authoritative preferences cannot silently reset");
   assert.equal(calendar.writes.length, 0);
 });
 

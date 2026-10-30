@@ -37,7 +37,7 @@ test("booking-rule partial saves canonicalize every existing policy-key presence
             200
           );
           const before = await f.db
-            .prepare("SELECT version FROM organizer_settings")
+            .prepare("SELECT version FROM event_type WHERE id='default'")
             .first<{ version: number }>();
           const rules = {
             intervalMinutes: 30,
@@ -52,7 +52,7 @@ test("booking-rule partial saves canonicalize every existing policy-key presence
           );
           const current = await getSettings(f.db);
           const raw = await f.db
-            .prepare("SELECT json, version FROM organizer_settings")
+            .prepare("SELECT json, version FROM event_type WHERE id='default'")
             .first<{ json: string; version: number }>();
           assert.deepEqual(current, {
             ...settings,
@@ -71,7 +71,12 @@ test("booking-rule partial saves canonicalize every existing policy-key presence
             { "CF-Connecting-IP": `192.0.2.${command}` }
           );
           assert.equal(created.status, 201, `${label}: ${await created.text()}`);
-          assert.equal(raw?.json, JSON.stringify(current), label);
+          assert.equal(raw?.json, JSON.stringify(current.event), label);
+          const { event: _event, ...preferences } = current;
+          assert.equal(
+            await f.db.prepare("SELECT json FROM organizer_settings").first("json"),
+            JSON.stringify(preferences)
+          );
         }
 });
 
@@ -112,13 +117,26 @@ test("owner location writes remain private, canonical and admissible across part
   const f = await apiFixture();
   t.after(f.close);
   const raw = () =>
-    f.db.prepare("SELECT json, version FROM organizer_settings").first<{ json: string; version: number }>();
+    f.db
+      .prepare(`SELECT e.json AS event_json,o.json AS preferences_json,e.version+o.version AS version
+      FROM event_type e JOIN organizer_settings o ON o.id='owner' WHERE e.id='default'`)
+      .first<{ event_json: string; preferences_json: string; version: number }>();
+  const canonical = async () => {
+    const stored = await raw();
+    const { event, ...preferences } = await getSettings(f.db);
+    assert.equal(stored?.event_json, JSON.stringify(event), "stored event must admit bookings");
+    assert.equal(
+      stored?.preferences_json,
+      JSON.stringify(preferences),
+      "stored preferences must admit bookings"
+    );
+  };
   const patch = async (path: string, input: unknown) => {
     const before = await raw();
     assert.equal((await f.send(path, input, f.ownerHeaders, "PATCH")).status, 200);
     const after = await raw();
     assert.equal(after?.version, (before?.version ?? 0) + 1);
-    assert.equal(after?.json, JSON.stringify(await getSettings(f.db)), "stored settings must admit bookings");
+    await canonical();
   };
   const rules = {
     intervalMinutes: 30,
@@ -156,7 +174,7 @@ test("owner location writes remain private, canonical and admissible across part
     ]))
       assert.equal(response.status, 200);
     assert.equal((await raw())?.version, version + 4);
-    assert.equal((await raw())?.json, JSON.stringify(await getSettings(f.db)));
+    await canonical();
     const current = await getSettings(f.db);
     assert.equal(Reflect.get(current.event, "location"), address);
     assert.deepEqual(current.schedule.rules, weekly.rules);

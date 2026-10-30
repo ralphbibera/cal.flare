@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
-import { getPlatformProxy } from "wrangler";
 import type { Settings } from "../src/domain/settings.ts";
 import { defaultSettings, parseSettings, SettingsError } from "../src/domain/settings.ts";
 import { getSettings, saveSettings } from "../src/server/settings.ts";
+import { apiFixture } from "./fixtures/api.ts";
 
 function settings(): Settings {
   return structuredClone(defaultSettings);
@@ -189,17 +187,13 @@ test("date overrides allow closures and leap dates, rejecting duplicates, overla
   assert.throws(() => parseSettings(input), SettingsError);
 });
 
-test("D1 reads defaults, persists updates in one row, and rejects corrupt stored settings", async () => {
-  const platform = await getPlatformProxy<{ DB: D1Database }>({
-    configPath: fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),
-    persist: false,
-    remoteBindings: false,
-  });
+test("D1 composes authoritative event and preferences, persists updates and rejects corrupt state", async () => {
+  const fixture = await apiFixture();
   try {
-    const db = platform.env.DB;
-    await db
-      .prepare(await readFile(new URL("../migrations/0002_settings.sql", import.meta.url), "utf8"))
-      .run();
+    const db = fixture.db;
+    await saveSettings(db, defaultSettings);
+    const version = await db.prepare("SELECT version FROM organizer_settings").first<number>("version");
+    assert.ok(version);
     const first = await getSettings(db);
     assert.deepEqual(first, defaultSettings);
     first.event.title = "Changed locally";
@@ -212,7 +206,12 @@ test("D1 reads defaults, persists updates in one row, and rejects corrupt stored
     await saveSettings(db, input);
     assert.deepEqual(await getSettings(db), input);
     assert.equal(await db.prepare("SELECT count(*) FROM organizer_settings").first("count(*)"), 1);
-    assert.equal(await db.prepare("SELECT version FROM organizer_settings").first("version"), 2);
+    assert.equal(await db.prepare("SELECT version FROM organizer_settings").first("version"), version + 2);
+    assert.equal(await db.prepare("SELECT count(*) FROM event_type").first("count(*)"), 1);
+    assert.equal(
+      await db.prepare("SELECT json -> '$.event' AS event FROM organizer_settings").first("event"),
+      null
+    );
     await assert.rejects(db.prepare("INSERT INTO organizer_settings VALUES ('other', '{}', 1)").run());
     await assert.rejects(db.prepare("UPDATE organizer_settings SET version = 0").run());
     input.event.durationMinutes = 0;
@@ -223,6 +222,6 @@ test("D1 reads defaults, persists updates in one row, and rejects corrupt stored
       await assert.rejects(getSettings(db), SettingsError);
     }
   } finally {
-    await platform.dispose();
+    await fixture.close();
   }
 });

@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { unstable_getMiniflareWorkerOptions } from "wrangler";
 import { encryptionKey, seal, unseal } from "../src/server/secrets.ts";
-import { hour, settings as httpSettings } from "./fixtures/api.ts";
+import { hour, settings as httpSettings, storedSettings } from "./fixtures/api.ts";
 import { createGoogleFixture } from "./fixtures/google.mjs";
 
 const require = createRequire(import.meta.url);
@@ -65,7 +65,13 @@ async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
   };
   try {
     const wrangler = join(dirname(require.resolve("wrangler/package.json")), "bin/wrangler.js");
-    for (const name of ["0001_identity.sql", "0002_settings.sql", "0003_bookings.sql", "0004_http.sql"]) {
+    for (const name of [
+      "0001_identity.sql",
+      "0002_settings.sql",
+      "0003_bookings.sql",
+      "0004_http.sql",
+      "0005_events.sql",
+    ]) {
       await promisify(execFile)(
         process.execPath,
         [
@@ -282,10 +288,7 @@ async function verifyBookingRules(fixture, owner, day) {
   await read(await send("/api/owner/booking-rules", rules, owner, "PATCH"));
   const expected = { ...settings, event: { ...settings.event, ...rules } };
   assert.deepEqual((await read(await request("/api/owner", { headers: owner }))).settings, expected);
-  assert.equal(
-    await db.prepare("SELECT json FROM organizer_settings WHERE id='owner'").first("json"),
-    JSON.stringify(expected)
-  );
+  assert.equal((await storedSettings(db))?.json, JSON.stringify(expected));
   const id = "a".repeat(32);
   google.events.set(id, {
     id,
@@ -337,10 +340,7 @@ async function verifyWeeklySchedule(fixture, owner, day) {
   await read(await send("/api/owner/schedule", weekly, owner, "PATCH"));
   const expected = { ...original, schedule: { ...original.schedule, ...weekly } };
   assert.deepEqual((await read(await request("/api/owner", { headers: owner }))).settings, expected);
-  assert.equal(
-    await db.prepare("SELECT json FROM organizer_settings WHERE id='owner'").first("json"),
-    JSON.stringify(expected)
-  );
+  assert.equal((await storedSettings(db))?.json, JSON.stringify(expected));
   const slots = (from) =>
     request(
       `/api/slots?${new URLSearchParams({
@@ -390,10 +390,7 @@ async function verifyWeeklySchedule(fixture, owner, day) {
   await read(await send("/api/owner/overrides", { overrides }, owner, "PATCH"));
   const overridden = { ...expected, schedule: { ...expected.schedule, overrides } };
   assert.deepEqual((await read(await request("/api/owner", { headers: owner }))).settings, overridden);
-  assert.equal(
-    await db.prepare("SELECT json FROM organizer_settings WHERE id='owner'").first("json"),
-    JSON.stringify(overridden)
-  );
+  assert.equal((await storedSettings(db))?.json, JSON.stringify(overridden));
   assert.deepEqual(
     (await read(await slots(day))).slots,
     [330, 360].map((minute) => ({ start: day + minute * 60_000, end: day + (minute + 30) * 60_000 }))

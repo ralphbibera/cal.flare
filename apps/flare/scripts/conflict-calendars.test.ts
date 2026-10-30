@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseSettings, SettingsError } from "../src/domain/settings.ts";
 import { getSettings, saveConflictCalendars, saveSettings } from "../src/server/settings.ts";
-import { apiFixture, hour, settings } from "./fixtures/api.ts";
+import { apiFixture, hour, settings, storedSettings } from "./fixtures/api.ts";
 
 test("conflict selection preserves legacy bytes and validates exact sorted IDs", () => {
   assert.equal(JSON.stringify(parseSettings(settings)), JSON.stringify(settings));
@@ -71,8 +71,7 @@ test("owner conflict reset and empty selection persist canonical settings withou
     );
   };
   const path = "/api/owner/conflict-calendars";
-  const raw = () =>
-    f.db.prepare("SELECT json,version FROM organizer_settings").first<{ json: string; version: number }>();
+  const raw = () => storedSettings(f.db);
   const original = await raw();
   for (const value of [
     {},
@@ -194,9 +193,8 @@ test("owner conflict reset and empty selection persist canonical settings withou
   assert.equal((await raw())?.json, JSON.stringify(settings));
   for (const ids of [[], null, ["primary"]]) {
     await f.db.prepare("DELETE FROM organizer_settings").run();
-    await saveConflictCalendars(f.db, ids);
-    assert.equal((await raw())?.version, 1);
-    assert.equal((await raw())?.json, JSON.stringify(await getSettings(f.db)));
+    await assert.rejects(saveConflictCalendars(f.db, ids), SettingsError);
+    assert.equal(await raw(), null, "Missing authoritative preferences cannot silently reset");
   }
   await f.db.prepare("UPDATE owner_session SET expires_at=0").run();
   const beforeExpired = calls;

@@ -20,6 +20,13 @@ import { encryptionKey, hash, randomSecret, seal } from "../../src/server/secret
 import { saveSettings } from "../../src/server/settings.ts";
 
 export const hour = 3_600_000;
+export function storedSettings(db: D1Database) {
+  return db
+    .prepare(`SELECT '{"event":'||e.json||','||substr(o.json,2) AS json,
+    e.version+o.version AS version FROM event_type e JOIN organizer_settings o ON o.id='owner'
+    WHERE e.id='default'`)
+    .first<{ json: string; version: number }>();
+}
 export const settings: Settings = {
   ...defaultSettings,
   event: {
@@ -68,7 +75,10 @@ export class FakeCalendar {
       summary: input.title,
       description: input.description,
       ...(input.location === undefined ? {} : { location: input.location }),
-      attendees: [{ email: input.attendee.email, displayName: input.attendee.name }],
+      attendees: [
+        { email: input.attendee.email, displayName: input.attendee.name },
+        ...(input.guests ?? []).map((email) => ({ email })),
+      ],
       extendedProperties: { private: { ...input.privateMetadata } },
     };
   }
@@ -115,7 +125,13 @@ export class FakeCalendar {
   }
 }
 
-export async function apiFixture({ port = 0 }: { port?: number } = {}) {
+export async function apiFixture({
+  port = 0,
+  legacyEvents = false,
+}: {
+  port?: number;
+  legacyEvents?: boolean;
+} = {}) {
   const configPath = fileURLToPath(new URL("../../wrangler.jsonc", import.meta.url));
   const require = createRequire(import.meta.url);
   const wrangler = join(dirname(require.resolve("wrangler/package.json")), "bin/wrangler.js");
@@ -139,7 +155,7 @@ export async function apiFixture({ port = 0 }: { port?: number } = {}) {
     }
   };
   try {
-    for (const name of ["0001_identity.sql", "0002_settings.sql", "0003_bookings.sql", "0004_http.sql"]) {
+    const migrate = async (name: string) => {
       await promisify(execFile)(process.execPath, [
         wrangler,
         "d1",
@@ -153,14 +169,24 @@ export async function apiFixture({ port = 0 }: { port?: number } = {}) {
         "--config",
         configPath,
       ]);
-    }
-    platform = await getPlatformProxy<{ DB: D1Database }>({
-      configPath,
-      persist: { path: join(temporary, "v3") },
-      remoteBindings: false,
-    });
-    const db = platform.env.DB,
-      calendar = new FakeCalendar();
+    };
+    for (const name of [
+      "0001_identity.sql",
+      "0002_settings.sql",
+      "0003_bookings.sql",
+      "0004_http.sql",
+      ...(legacyEvents ? [] : ["0005_events.sql"]),
+    ])
+      await migrate(name);
+    const connect = () =>
+      getPlatformProxy<{ DB: D1Database }>({
+        configPath,
+        persist: { path: join(temporary, "v3") },
+        remoteBindings: false,
+      });
+    platform = await connect();
+    let db = platform.env.DB;
+    const calendar = new FakeCalendar();
     const clock = Date.UTC(2030, 0, 1);
     const env: AuthEnv = {
       DB: db,
@@ -189,7 +215,22 @@ export async function apiFixture({ port = 0 }: { port?: number } = {}) {
         .prepare("INSERT INTO owner_session VALUES (?, 'owner', ?)")
         .bind(await hash(session), Date.now() + hour),
     ]);
-    await saveSettings(db, settings);
+    if (legacyEvents)
+      await db
+        .prepare("INSERT INTO organizer_settings VALUES ('owner',?,1)")
+        .bind(JSON.stringify(settings))
+        .run();
+    else await saveSettings(db, settings);
+    const migrateEvents = async () => {
+      await platform?.dispose();
+      try {
+        await migrate("0005_events.sql");
+      } finally {
+        platform = await connect();
+        db = platform.env.DB;
+        env.DB = db;
+      }
+    };
     server.on("request", async (incoming, outgoing) => {
       try {
         const chunks: Buffer[] = [];
@@ -230,7 +271,10 @@ export async function apiFixture({ port = 0 }: { port?: number } = {}) {
         body: JSON.stringify(value),
       });
     return {
-      db,
+      get db() {
+        return db;
+      },
+      migrateEvents,
       calendar,
       env,
       ciphertext,
