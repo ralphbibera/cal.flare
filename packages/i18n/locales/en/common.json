@@ -1,4 +1,6 @@
 {
+  "flare_booking_window_days": "Calendar days into the future",
+  "flare_booking_window_help": "Include the final day in the booker's time zone. Applies to new bookings and new reschedule requests. Existing accepted requests can still complete. Maximum 365 days.",
   "flare_bookings_empty": "No bookings match this filter or page.",
   "flare_bookings_paging": "Booking pages",
   "flare_bookings_first": "First page",

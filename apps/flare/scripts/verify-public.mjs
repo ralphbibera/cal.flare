@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyBookingWindow } from "./verify-booking-window.mjs";
 import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
 import { verifyManagement } from "./verify-management.mjs";
 import { verifyMeetingLocationFlow, verifyMeetingLocationPrivacy } from "./verify-meeting-location.mjs";
@@ -305,6 +306,7 @@ export async function verifyPublic(browser) {
       await fixture.close();
     }
   }
+  await verifyBookingWindow(browser);
   await verifyCalendarBoundary(browser);
   await verifyWeekPage(browser);
 }

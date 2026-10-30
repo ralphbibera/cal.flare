@@ -6,11 +6,21 @@ import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
 
 type Labels = Record<
-  keyof BookingRules | "heading" | "minutes" | "save" | "saved" | "invalid" | "failed" | "javascript",
+  | keyof BookingRules
+  | "limitFutureBookings"
+  | "windowHelp"
+  | "heading"
+  | "minutes"
+  | "save"
+  | "saved"
+  | "invalid"
+  | "failed"
+  | "javascript",
   string
 >;
 
 export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules; labels: Labels }) {
+  const [limited, setLimited] = useState(typeof rules.bookingWindowDays === "number");
   const [status, setStatus] = useState<"loading" | "idle" | "saving" | "saved" | "invalid" | "failed">(
     "loading"
   );
@@ -39,6 +49,7 @@ export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules
               noticeMinutes: Number(form.get("noticeMinutes")),
               disableCancelling: form.get("disableCancelling") === "on",
               disableRescheduling: form.get("disableRescheduling") === "on",
+              bookingWindowDays: limited ? Number(form.get("bookingWindowDays")) : null,
             });
           } catch {
             setStatus("invalid");
@@ -101,6 +112,36 @@ export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules
               {labels[key]}
             </label>
           ))}
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              className="mt-1"
+              name="limitFutureBookings"
+              type="checkbox"
+              checked={limited}
+              onChange={(event) => setLimited(event.currentTarget.checked)}
+              aria-controls="booking-window-days"
+            />
+            {labels.limitFutureBookings}
+          </label>
+          {limited && (
+            <div>
+              <Label htmlFor="booking-window-days">{labels.bookingWindowDays}</Label>
+              <Input
+                id="booking-window-days"
+                name="bookingWindowDays"
+                type="number"
+                defaultValue={rules.bookingWindowDays ?? 30}
+                required
+                min={1}
+                max={365}
+                step={1}
+                aria-describedby="booking-window-help"
+              />
+              <p id="booking-window-help" className="text-subtle mt-2 text-sm">
+                {labels.windowHelp}
+              </p>
+            </div>
+          )}
           <Button type="submit" loading={status === "saving"}>
             {labels.save}
           </Button>

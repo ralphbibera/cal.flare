@@ -38,7 +38,12 @@ export class BookingAvailability {
     if (start < now || end > now + 365 * DAY) return "invalid_slot";
     const slots = availableSlots({
       schedule: settings.schedule,
-      policy: { ...settings.event, durationMinutes: (end - start) / MINUTE },
+      // Reschedule displays can round in another zone, so validate their exact selected interval.
+      policy: {
+        ...settings.event,
+        durationMinutes: (end - start) / MINUTE,
+        intervalMinutes: excludeId === undefined ? settings.event.intervalMinutes : 1,
+      },
       from: start,
       to: end,
       visitorTimeZone: desired.timeZone,
@@ -63,9 +68,11 @@ export class BookingAvailability {
       throw new ErrorWithCode("invalid_range");
     if (!isValidTimeZone(visitorTimeZone)) throw new ErrorWithCode("invalid_input");
     let durationMinutes = this.settings.event.durationMinutes;
+    let windowTimeZone: string | undefined;
     if (exclude) {
       const event = snapshot(exclude.confirmed_json ?? exclude.initial_json);
       durationMinutes = (event.end - event.start) / MINUTE;
+      windowTimeZone = event.timeZone;
     }
     const start = from - this.settings.event.beforeMinutes * MINUTE,
       end = to + this.settings.event.afterMinutes * MINUTE;
@@ -84,6 +91,7 @@ export class BookingAvailability {
       from,
       to,
       visitorTimeZone,
+      windowTimeZone,
       now: this.now(),
       busy: [...remote, ...local.results],
     });

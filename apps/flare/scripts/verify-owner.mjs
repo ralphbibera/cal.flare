@@ -1040,7 +1040,10 @@ async function verifyBookingRulesEditor(browser, fixture) {
       disableCancelling: true,
       disableRescheduling: false,
     };
-    assert.deepEqual(requests, [rules, rules]);
+    assert.deepEqual(requests, [
+      { ...rules, bookingWindowDays: null },
+      { ...rules, bookingWindowDays: null },
+    ]);
     await page.reload();
     assert.equal(await field("Time-slot intervals").inputValue(), "60");
     assert.equal(await cancelling.isChecked(), true);

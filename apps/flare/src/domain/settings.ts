@@ -9,6 +9,7 @@ type EventSettings = {
   noticeMinutes: number;
   disableCancelling?: boolean;
   disableRescheduling?: boolean;
+  bookingWindowDays?: number;
   location?: string;
 };
 
@@ -24,7 +25,7 @@ type BookingRules = Required<
     | "disableCancelling"
     | "disableRescheduling"
   >
->;
+> & { bookingWindowDays?: number | null };
 type Settings = {
   event: EventSettings;
   schedule: {
@@ -137,6 +138,9 @@ function parseSettings(input: unknown): Settings {
       result.event[key] = event[key];
     }
   }
+  if (Object.hasOwn(event, "bookingWindowDays")) {
+    result.event.bookingWindowDays = integer(event.bookingWindowDays, "bookingWindowDays", 1, 365);
+  }
   if (Object.hasOwn(event, "location")) {
     const location = locationText(event.location);
     if (location) result.event.location = location;
@@ -246,6 +250,7 @@ function parseBookingRules(input: unknown): BookingRules {
           "noticeMinutes",
           "disableCancelling",
           "disableRescheduling",
+          "bookingWindowDays",
         ].includes(key)
     ) ||
     typeof disableCancelling !== "boolean" ||
@@ -272,6 +277,14 @@ function parseBookingRules(input: unknown): BookingRules {
     noticeMinutes: event.noticeMinutes,
     disableCancelling,
     disableRescheduling,
+    ...(Object.hasOwn(value, "bookingWindowDays")
+      ? {
+          bookingWindowDays:
+            value.bookingWindowDays === null
+              ? null
+              : integer(value.bookingWindowDays, "bookingWindowDays", 1, 365),
+        }
+      : {}),
   };
 }
 
