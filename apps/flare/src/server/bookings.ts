@@ -139,11 +139,8 @@ export class BookingService {
   async ownerView(id: string): Promise<BookingView> {
     return this.render(await this.booking(id));
   }
-  async ownerCancel(id: string, input: unknown): Promise<BookingView> {
-    const booking = await this.booking(id),
-      data = parseChange(input);
-    if (data.action !== "cancel") throw new ErrorWithCode("invalid_input");
-    return this.changeBooking(booking, data, "owner");
+  async ownerChange(id: string, input: unknown): Promise<BookingView> {
+    return this.changeBooking(await this.booking(id), parseChange(input), "owner");
   }
   private async changeBooking(
     booking: Booking,
@@ -181,7 +178,7 @@ export class BookingService {
     const disabled =
       action === "cancel" ? this.settings.event.disableCancelling : this.settings.event.disableRescheduling;
     const precondition =
-      disabled || (action === "cancel" && original.end < this.now())
+      disabled || ((action === "cancel" || actor === "owner") && original.end < this.now())
         ? "invalid_slot"
         : action === "cancel" ||
             booking.pending_id ||
@@ -396,6 +393,19 @@ export class BookingService {
     exclude?: { id: string; token: string }
   ): Promise<Interval[]> {
     const booking = exclude ? await this.authorized(exclude.id, exclude.token) : undefined;
+    return this.scheduler().slots(from, to, visitorTimeZone, booking);
+  }
+  async ownerAvailability(
+    id: string,
+    from: number,
+    to: number,
+    visitorTimeZone: string
+  ): Promise<Interval[]> {
+    const booking = await this.booking(id);
+    if (booking.pending_id) throw new ErrorWithCode("busy", 409);
+    const original = snapshot(booking.confirmed_json ?? booking.initial_json);
+    if (booking.state !== "active" || this.settings.event.disableRescheduling || original.end < this.now())
+      throw new ErrorWithCode("invalid_slot", 409);
     return this.scheduler().slots(from, to, visitorTimeZone, booking);
   }
   async recover(limit = 20): Promise<void> {

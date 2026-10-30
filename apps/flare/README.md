@@ -193,13 +193,24 @@ shared built Next fixture lacks the reschedule route. This flow does not send re
 or establish live invitation arrival.
 Owner home and paged-list titles open private booking details at `/owner/bookings/:id`.
 Details use the stored booking facts and primary attendee. Reads never retry calendar writes.
-The owner session authorizes GET and cancellation POST at `/api/owner/bookings/:id`, without
+The owner session authorizes GET and change POST at `/api/owner/bookings/:id`, without
 minting attendee capabilities. Owner cancellation requires a nonblank, trimmed reason of at most
 1000 UTF-16 units and an explicit destructive confirmation. Disabled and ended restrictions apply.
 The existing immutable command, delivery and recovery path handles cancellation and exact replay.
 Owner attempts reuse ChangeAttempts in a separate session-storage namespace, preserving attendee
 attempts in the same tab. Uncertain acknowledgements keep the frozen request for explicit retry.
-Pending operations retain the existing owner recovery control. Owner rescheduling is deferred.
+Pending operations retain the existing owner recovery control. Owner rescheduling UI is deferred.
+The API accepts the existing `reschedule` request with version, requestKey, UTC start and optional
+rescheduleReason. Fresh owner moves retain disabled, cancelled, pending and ended restrictions.
+Accepted commands remain replayable and explicitly recoverable after policy or time changes.
+Authenticated `GET /api/owner/bookings/:id/slots?from=ISO&to=ISO&timeZone=IANA` excludes only the
+stored booking and its matching provider event. Queries require unique known fields, valid ISO
+instants, an IANA timezone and the existing 63-day range and 365-day horizon limits. Target notice,
+schedule, overrides, buffers and conflicts still apply. Slots and moves use the stored duration
+and retain the same booking ID and facts after event edits. Public booking exclusion still requires
+the attendee bearer token, even with an owner cookie. Slot reads do not change bookings, commands,
+reservations, settings or calendar events, and never dispatch delivery or recovery. Availability
+rate-limit counters still write, and Google authentication may refresh persisted credentials.
 The Worker/D1 browser journey verifies the functional owner flow with mocked Google at 390/1280.
 This does not establish native interaction parity, live Google delivery or reason emails.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.

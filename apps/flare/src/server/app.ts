@@ -170,13 +170,15 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     await saveBookingRules(env.DB, parseBookingRules(await body(request)));
     return json({ saved: true });
   }
+  const ownerSlots = /^\/api\/owner\/bookings\/([^/]+)\/slots$/.exec(path);
+  if (ownerSlots) await owner(env, request);
   const ownerBooking = /^\/api\/owner\/bookings\/([^/]+)$/.exec(path);
   if (ownerBooking) {
     await owner(env, request);
     const service = bookingService(dependencies, await getSettings(env.DB));
     if (method === "GET") return json(await service.ownerView(ownerBooking[1]));
     if (method === "POST")
-      return bookingResponse(await service.ownerCancel(ownerBooking[1], await body(request)));
+      return bookingResponse(await service.ownerChange(ownerBooking[1], await body(request)));
     return json({ error: "not_found" }, 404);
   }
 
@@ -199,9 +201,20 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (typeof input.id !== "string") throw new ErrorWithCode("invalid_booking");
     return bookingResponse(await service.ownerRetry(input.id));
   }
-  if (path === "/api/slots" && method === "GET") {
+  if ((path === "/api/slots" || ownerSlots) && method === "GET") {
     await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
     await connectedOwner(env);
+    if (ownerSlots) {
+      for (const key of url.searchParams.keys()) {
+        if (!["from", "to", "timeZone"].includes(key) || url.searchParams.getAll(key).length !== 1)
+          throw new ErrorWithCode("invalid_range");
+      }
+      for (const key of ["from", "to"]) {
+        const value = url.searchParams.get(key) ?? "";
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value))
+          throw new ErrorWithCode("invalid_range");
+      }
+    }
     const zone = url.searchParams.get("timeZone");
     if (!zone || !isValidTimeZone(zone)) throw new ErrorWithCode("invalid_time_zone");
     const from = Date.parse(url.searchParams.get("from") ?? "");
@@ -214,6 +227,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     ) {
       throw new ErrorWithCode("invalid_range");
     }
+    if (ownerSlots) return json({ slots: await service.ownerAvailability(ownerSlots[1], from, to, zone) });
     const id = url.searchParams.get("bookingId");
     const exclude = id ? { id, token: bearer(request) } : undefined;
     return json({ slots: await service.availability(from, to, zone, exclude) });
