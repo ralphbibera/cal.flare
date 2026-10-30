@@ -117,6 +117,77 @@ test("event and owner acknowledgments fail closed on wrong IDs, duplicates and m
   assert.equal(requests, 0);
 });
 
+test("lifecycle transport copies saved state, sends explicit visibility and bodyless removal, and decodes acknowledgments strictly", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const calls: { path: string; init: RequestInit }[] = [];
+  const client = new BookerClient((path, init) => {
+    calls.push({ path, init });
+    const headers = new Headers(init.headers);
+    for (const [key, value] of Object.entries(f.ownerHeaders)) headers.set(key, value);
+    headers.set("Origin", f.env.PUBLIC_ORIGIN);
+    return f.request(path, { ...init, headers });
+  });
+  await client.ownerSaveEvent("default", {
+    title: "Saved",
+    slug: "intro",
+    description: "Saved description",
+    durationMinutes: 60,
+    location: "Current private room",
+  });
+  await client.ownerSaveRules("default", {
+    intervalMinutes: 15,
+    noticeMinutes: 30,
+    beforeMinutes: 5,
+    afterMinutes: 10,
+    disableCancelling: true,
+    disableRescheduling: true,
+    bookingWindowDays: 14,
+  });
+  await client.ownerSetVisibility("default", true);
+  await client.ownerSetVisibility("default", true);
+  const source = await client.ownerEvent("default");
+  const details = { title: "Copy", slug: "copy", description: "Literal <copy>", durationMinutes: 45 };
+  const copy = await client.ownerDuplicateEvent("default", details);
+  assert.notEqual(copy.id, source.id);
+  assert.deepEqual(copy.event, { ...source.event, ...details });
+  assert.equal(copy.lifecycle, "hidden");
+  const duplicateCall = calls.find((call) => call.path.endsWith("/duplicate"));
+  assert.equal(duplicateCall?.init.body, JSON.stringify(details));
+  await client.ownerRemoveEvent(copy.id);
+  await client.ownerRemoveEvent(copy.id);
+  assert.equal(calls.at(-1)?.init.method, "DELETE");
+  assert.equal(calls.at(-1)?.init.body, undefined);
+  for (const call of calls) {
+    assert.equal(call.init.credentials, "same-origin");
+    assert.equal(call.init.cache, "no-store");
+    assert.ok(call.init.signal instanceof AbortSignal);
+  }
+  for (const value of [
+    null,
+    { ...copy, id: "default" },
+    { ...copy, id: source.id },
+    { ...copy, lifecycle: "removed" },
+    { ...copy, private: true },
+    ...Object.keys(details).map((key) => ({ ...copy, event: { ...copy.event, [key]: "wrong" } })),
+  ])
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value)).ownerDuplicateEvent(source.id, details),
+      ErrorWithCode
+    );
+  for (const value of [null, {}, { saved: false }, { saved: true, private: true }]) {
+    const invalid = new BookerClient(async () => Response.json(value));
+    await assert.rejects(invalid.ownerSetVisibility(source.id, false), ErrorWithCode);
+    await assert.rejects(invalid.ownerRemoveEvent(source.id), ErrorWithCode);
+  }
+  const staleCopy = { ...copy, event: { ...copy.event, location: "New saved location", noticeMinutes: 90 } };
+  assert.deepEqual(
+    await new BookerClient(async () => Response.json(staleCopy)).ownerDuplicateEvent(source.id, details),
+    staleCopy
+  );
+  assert.equal(f.calendar.writes.length, 0);
+});
+
 test("calendar prefetch crosses months through HTTP/D1 and rejects oversized ranges before Calendar work", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);
