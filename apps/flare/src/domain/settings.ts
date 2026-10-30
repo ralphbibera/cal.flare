@@ -14,7 +14,7 @@ type EventSettings = {
 };
 
 const DEFAULT_EVENT_ID = "default";
-type OwnerEvent = { id: string; event: EventSettings };
+type OwnerEvent = { id: string; event: EventSettings; lifecycle: "listed" | "hidden" };
 function isEventId(value: unknown): value is string {
   return (
     typeof value === "string" &&

@@ -33,7 +33,12 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
   const temporary = await mkdtemp(join(tmpdir(), "flare-booking-storage-"));
   let platform: Awaited<ReturnType<typeof getPlatformProxy<{ DB: D1Database }>>> | undefined;
   try {
-    for (const name of ["0002_settings.sql", "0003_bookings.sql", "0005_events.sql"]) {
+    for (const name of [
+      "0002_settings.sql",
+      "0003_bookings.sql",
+      "0005_events.sql",
+      "0006_event_lifecycle.sql",
+    ]) {
       await promisify(execFile)(
         process.execPath,
         [
@@ -62,7 +67,7 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
     let db = platform.env.DB;
     await db.prepare("UPDATE organizer_settings SET json='{}'").run();
     await db.prepare("UPDATE event_type SET json='{}'").run();
-    await db.prepare("INSERT INTO event_type VALUES ('second','{}',1)").run();
+    await db.prepare("INSERT INTO event_type(id,json,version) VALUES ('second','{}',1)").run();
     const statement = (input: Input) =>
       db
         .prepare(`

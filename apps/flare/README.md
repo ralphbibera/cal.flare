@@ -94,6 +94,15 @@ session and returns to the sign-in page. These entry forms work without browser 
 Select an event with `/?eventId=<stable-id>`, or use **Create event** to open `/?create=1`.
 Creation replaces the details editor and shows booking rules after the event exists.
 New events use app defaults for their rules. Each event keeps its own details and rules.
+The owner API returns each event's stable ID, definition, and `listed` or `hidden` lifecycle.
+`POST /api/owner/events/:id/duplicate` accepts only title, slug, description, and durationMinutes.
+It copies saved rules, policies, location, and visibility under a new ID.
+`PATCH /api/owner/events/:id/visibility` accepts only `{ "hidden": boolean }`.
+Hidden events remain directly bookable. `DELETE /api/owner/events/:id` accepts no body and retains a permanent tombstone.
+Removal blocks fresh bookings and rescheduling while retaining history, occupancy, replay, and accepted-command recovery.
+Cancellation still follows the saved current policy. Removed slugs cannot be reused.
+These lifecycle operations currently require API calls. Owner lifecycle controls and a public event directory remain pending.
+After default removal, owner entry selects the first remaining event. With no events, entry opens creation with shared preferences and booking history.
 Working hours, timezone, overrides, and conflict calendars remain shared across all events.
 An uncertain creation keeps the draft and offers **Refresh events** to inspect explicit selection candidates.
 The app does not automatically repeat the creation request.

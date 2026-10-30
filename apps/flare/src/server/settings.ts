@@ -22,7 +22,11 @@ import {
 import { ErrorWithCode } from "./http.ts";
 
 type SettingsDatabase = Pick<D1Database, "prepare" | "batch">;
-type StoredSettings = { event_json: string | null; preferences_json: string | null };
+type StoredSettings = {
+  event_json: string | null;
+  preferences_json: string | null;
+  lifecycle: "listed" | "hidden" | "removed" | null;
+};
 type CurrentActionPolicy = Pick<EventSettings, "disableCancelling" | "disableRescheduling">;
 
 function eventId(value: string): string {
@@ -51,7 +55,7 @@ function storedSettings(row: StoredSettings): Settings {
 
 async function readSettings(db: SettingsDatabase, id: string): Promise<StoredSettings | null> {
   return db
-    .prepare(`SELECT e.json AS event_json, o.json AS preferences_json FROM event_type e
+    .prepare(`SELECT e.json AS event_json, e.lifecycle, o.json AS preferences_json FROM event_type e
       LEFT JOIN organizer_settings o ON o.id='owner' WHERE e.id=?`)
     .bind(eventId(id))
     .first<StoredSettings>();
@@ -63,14 +67,34 @@ async function getSettings(db: SettingsDatabase, id: string = DEFAULT_EVENT_ID):
   return storedSettings(row);
 }
 
+async function getBookableSettings(db: SettingsDatabase, id: string = DEFAULT_EVENT_ID): Promise<Settings> {
+  const row = await readSettings(db, id);
+  if (!row || row.lifecycle === "removed") throw new ErrorWithCode("not_found", 404);
+  return storedSettings(row);
+}
+
+async function getOwnerPreferences(db: SettingsDatabase): Promise<Omit<Settings, "event">> {
+  const preferences_json = await db
+    .prepare("SELECT json FROM organizer_settings WHERE id='owner'")
+    .first<string>("json");
+  const { event: _event, ...preferences } = storedSettings({
+    preferences_json,
+    event_json: JSON.stringify(defaultSettings.event),
+    lifecycle: null,
+  });
+  return preferences;
+}
+
 function currentActionPolicy(row: StoredSettings | null): CurrentActionPolicy {
   try {
     if (!row) throw new SettingsError("Missing current event");
     const { disableCancelling, disableRescheduling } = storedSettings(row).event;
-    return {
+    const policy = {
       ...(disableCancelling === undefined ? {} : { disableCancelling }),
       ...(disableRescheduling === undefined ? {} : { disableRescheduling }),
     };
+    if (row.lifecycle === "removed") policy.disableRescheduling = true;
+    return policy;
   } catch (error) {
     if (error instanceof SettingsError) return { disableCancelling: true, disableRescheduling: true };
     throw error;
@@ -83,15 +107,27 @@ async function getCurrentActionPolicy(db: SettingsDatabase, id: string): Promise
 
 async function listEvents(db: SettingsDatabase): Promise<OwnerEvent[]> {
   const rows = await db
-    .prepare(`SELECT e.id,e.json AS event_json,o.json AS preferences_json
-    FROM event_type e LEFT JOIN organizer_settings o ON o.id='owner' ORDER BY e.rowid`)
-    .all<{ id: string; event_json: string; preferences_json: string | null }>();
-  return rows.results.map((row) => ({ id: row.id, event: storedSettings(row).event }));
+    .prepare(`SELECT e.id,e.lifecycle,e.json AS event_json,o.json AS preferences_json
+    FROM event_type e LEFT JOIN organizer_settings o ON o.id='owner'
+    WHERE e.lifecycle <> 'removed' ORDER BY e.rowid`)
+    .all<StoredSettings & { id: string; lifecycle: "listed" | "hidden" }>();
+  return rows.results.map((row) => ({
+    id: row.id,
+    event: storedSettings(row).event,
+    lifecycle: row.lifecycle,
+  }));
+}
+
+async function getOwnerEvent(db: SettingsDatabase, id: string): Promise<OwnerEvent> {
+  const row = await readSettings(db, id);
+  if (!row || row.lifecycle === "removed" || row.lifecycle === null)
+    throw new ErrorWithCode("not_found", 404);
+  return { id, event: storedSettings(row).event, lifecycle: row.lifecycle };
 }
 
 async function findEventBySlug(db: SettingsDatabase, slug: string): Promise<string | null> {
   return db
-    .prepare("SELECT id FROM event_type WHERE json_extract(json,'$.slug')=?")
+    .prepare("SELECT id FROM event_type WHERE json_extract(json,'$.slug')=? AND lifecycle <> 'removed'")
     .bind(slug)
     .first<string>("id");
 }
@@ -114,7 +150,43 @@ async function createEvent(db: SettingsDatabase, input: EventDetails): Promise<O
   await eventWrite(
     db.prepare("INSERT INTO event_type(id,json,version) VALUES (?,?,1)").bind(id, JSON.stringify(event))
   );
-  return { id, event };
+  return { id, event, lifecycle: "listed" };
+}
+
+async function duplicateEvent(
+  db: SettingsDatabase,
+  sourceId: string,
+  details: EventDetails
+): Promise<OwnerEvent> {
+  await getBookableSettings(db, sourceId);
+  const id = crypto.randomUUID();
+  await eventWrite(
+    db
+      .prepare(`INSERT INTO event_type(id,json,version,lifecycle)
+    SELECT ?,json_set(json,'$.slug',?,'$.title',json(?),'$.description',json(?),
+      '$.durationMinutes',CAST(? AS INTEGER)),1,lifecycle FROM event_type WHERE id=? AND lifecycle <> 'removed'`)
+      .bind(
+        id,
+        details.slug,
+        JSON.stringify(details.title),
+        JSON.stringify(details.description),
+        details.durationMinutes,
+        sourceId
+      )
+  );
+  return getOwnerEvent(db, id);
+}
+
+async function setEventVisibility(db: SettingsDatabase, id: string, hidden: boolean): Promise<void> {
+  await eventWrite(
+    db
+      .prepare("UPDATE event_type SET lifecycle=? WHERE id=? AND lifecycle <> 'removed'")
+      .bind(hidden ? "hidden" : "listed", eventId(id))
+  );
+}
+
+async function removeEvent(db: SettingsDatabase, id: string): Promise<void> {
+  await eventWrite(db.prepare("UPDATE event_type SET lifecycle='removed' WHERE id=?").bind(eventId(id)));
 }
 
 async function saveSettings(db: D1Database, settings: Settings): Promise<void> {
@@ -122,16 +194,15 @@ async function saveSettings(db: D1Database, settings: Settings): Promise<void> {
   try {
     const results = await db.batch([
       db
-        .prepare(`UPDATE event_type SET json=?,version=version+1 WHERE id='default'
+        .prepare(`UPDATE event_type SET json=?,version=version+1 WHERE id='default' AND lifecycle <> 'removed'
           AND EXISTS(SELECT 1 FROM organizer_settings WHERE id='owner')`)
         .bind(JSON.stringify(event)),
       db
         .prepare(`UPDATE organizer_settings SET json=?,version=version+1 WHERE id='owner'
-          AND EXISTS(SELECT 1 FROM event_type WHERE id='default')`)
+          AND EXISTS(SELECT 1 FROM event_type WHERE id='default' AND lifecycle <> 'removed')`)
         .bind(JSON.stringify(preferences)),
     ]);
-    if (results.some((result) => result.meta.changes !== 1))
-      throw new SettingsError("Missing authoritative settings");
+    if (results.some((result) => result.meta.changes !== 1)) throw new ErrorWithCode("not_found", 404);
   } catch (error) {
     if (error instanceof Error && error.message.includes("event_type_slug"))
       throw new ErrorWithCode("slug_conflict", 409);
@@ -172,7 +243,7 @@ async function saveEventDetails(
     db
       .prepare(`UPDATE event_type SET json=json_set(${location},
         '$.slug', ?, '$.title', json(?), '$.description', json(?), '$.durationMinutes', CAST(? AS INTEGER)),
-        version=version+1 WHERE id=?`)
+        version=version+1 WHERE id=? AND lifecycle <> 'removed'`)
       .bind(
         ...values,
         details.slug,
@@ -231,7 +302,7 @@ async function saveBookingRules(
       UPDATE event_type SET json=(SELECT substr(timing,1,length(timing)-1)
         || CASE WHEN window_json IS NULL THEN '' ELSE ',"bookingWindowDays":'||window_json END
         || CASE WHEN location_json IS NULL THEN '' ELSE ',"location":'||location_json END || '}' FROM updated),
-        version=version+1 WHERE id=?`)
+        version=version+1 WHERE id=? AND lifecycle <> 'removed'`)
       .bind(
         ...timing,
         Object.hasOwn(rules, "bookingWindowDays") ? 1 : 0,
@@ -245,13 +316,19 @@ async function saveBookingRules(
 export type { CurrentActionPolicy, OwnerEvent };
 export {
   createEvent,
+  duplicateEvent,
   currentActionPolicy,
   DEFAULT_EVENT_ID,
   eventId,
   findEventBySlug,
   getCurrentActionPolicy,
+  getBookableSettings,
+  getOwnerEvent,
+  getOwnerPreferences,
   getSettings,
   listEvents,
+  removeEvent,
+  setEventVisibility,
   saveBookingRules,
   saveConflictCalendars,
   saveEventDetails,

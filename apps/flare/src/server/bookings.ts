@@ -19,7 +19,13 @@ import { parseChange, parseCreate, snapshot } from "./booking-model.ts";
 import { ErrorWithCode, record } from "./http.ts";
 import { base64url, encryptionKey, hash } from "./secrets.ts";
 import type { CurrentActionPolicy } from "./settings.ts";
-import { currentActionPolicy, DEFAULT_EVENT_ID, getCurrentActionPolicy, getSettings } from "./settings.ts";
+import {
+  currentActionPolicy,
+  DEFAULT_EVENT_ID,
+  getBookableSettings,
+  getCurrentActionPolicy,
+  getSettings,
+} from "./settings.ts";
 
 type Options = {
   db: D1Database;
@@ -122,7 +128,7 @@ export class BookingService {
       payload = JSON.stringify(data);
     const replay = await this.replay(data.requestKey, payload, eventId, true);
     if (replay) return replay;
-    const settings = await getSettings(this.db, eventId);
+    const settings = await getBookableSettings(this.db, eventId);
     const id = await identity("calflare:booking:v1", data.requestKey);
     const commandId = await identity("calflare:command:v1", data.requestKey);
     const desired: BookingSnapshot = {
@@ -191,6 +197,7 @@ export class BookingService {
     if (actor === "owner" && data.action === "cancel" && !data.cancellationReason)
       throw new ErrorWithCode("invalid_input");
     const settings = await getSettings(this.db, booking.event_id);
+    const policy = await getCurrentActionPolicy(this.db, booking.event_id);
     const commandId = await identity("calflare:command:v1", requestKey);
     const original = snapshot(booking.confirmed_json ?? booking.initial_json);
     const desired = {
@@ -198,8 +205,7 @@ export class BookingService {
       ...(start === undefined ? {} : { start, end: start + original.end - original.start }),
       privateMetadata: { ...original.privateMetadata, operation: commandId },
     };
-    const disabled =
-      action === "cancel" ? settings.event.disableCancelling : settings.event.disableRescheduling;
+    const disabled = action === "cancel" ? policy.disableCancelling : policy.disableRescheduling;
     const precondition =
       disabled || ((action === "cancel" || actor === "owner") && original.end < this.now())
         ? "invalid_slot"
@@ -298,7 +304,7 @@ export class BookingService {
     const now = this.now();
     const rows = await this.db
       .prepare(`SELECT b.*, b.rowid AS cursor, c.action AS pending_action, c.error AS pending_error,
-      completed.payload AS completed_payload, e.json AS event_json, o.json AS preferences_json
+      completed.payload AS completed_payload, e.json AS event_json, e.lifecycle, o.json AS preferences_json
       FROM booking b LEFT JOIN booking_command c ON c.id = b.pending_id
       LEFT JOIN event_type e ON e.id=b.event_id
       LEFT JOIN organizer_settings o ON o.id='owner'
@@ -331,6 +337,7 @@ export class BookingService {
           completed_payload: string | null;
           event_json: string | null;
           preferences_json: string | null;
+          lifecycle: "listed" | "hidden" | "removed" | null;
         }
       >();
     const visible = rows.results.slice(0, limit);
@@ -430,7 +437,7 @@ export class BookingService {
     eventId = DEFAULT_EVENT_ID
   ): Promise<Interval[]> {
     const booking = exclude ? await this.authorized(exclude.id, exclude.token) : undefined;
-    const settings = await getSettings(this.db, booking?.event_id ?? eventId);
+    const settings = await getBookableSettings(this.db, booking?.event_id ?? eventId);
     return this.scheduler(settings).slots(from, to, visitorTimeZone, booking);
   }
   async ownerAvailability(
@@ -441,9 +448,10 @@ export class BookingService {
   ): Promise<Interval[]> {
     const booking = await this.booking(id);
     const settings = await getSettings(this.db, booking.event_id);
+    const policy = await getCurrentActionPolicy(this.db, booking.event_id);
     if (booking.pending_id) throw new ErrorWithCode("busy", 409);
     const original = snapshot(booking.confirmed_json ?? booking.initial_json);
-    if (booking.state !== "active" || settings.event.disableRescheduling || original.end < this.now())
+    if (booking.state !== "active" || policy.disableRescheduling || original.end < this.now())
       throw new ErrorWithCode("invalid_slot", 409);
     return this.scheduler(settings).slots(from, to, visitorTimeZone, booking);
   }

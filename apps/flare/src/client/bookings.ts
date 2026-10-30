@@ -23,8 +23,8 @@ function exact(data: Record<string, unknown>, keys: string[]): void {
 }
 function ownerEvent(value: unknown): OwnerEvent {
   const data = object(value);
-  exact(data, ["id", "event"]);
-  if (!isEventId(data.id)) throw new Error();
+  exact(data, ["id", "event", "lifecycle"]);
+  if (!isEventId(data.id) || (data.lifecycle !== "listed" && data.lifecycle !== "hidden")) throw new Error();
   const event = object(data.event);
   exact(event, [
     ...Object.keys(defaultSettings.event),
@@ -33,7 +33,11 @@ function ownerEvent(value: unknown): OwnerEvent {
     "bookingWindowDays",
     "location",
   ]);
-  return { id: data.id, event: parseSettings({ ...defaultSettings, event }).event };
+  return {
+    id: data.id,
+    event: parseSettings({ ...defaultSettings, event }).event,
+    lifecycle: data.lifecycle,
+  };
 }
 function saved(value: unknown): void {
   const data = object(value);

@@ -84,7 +84,7 @@ test("owner creates a stable independently editable event through authenticated 
   const path = `/api/owner/events/${created.id}`;
   assert.deepEqual(await read(await f.request(path, { headers: f.ownerHeaders })), created);
   assert.deepEqual(await read(await f.request("/api/owner/events", { headers: f.ownerHeaders })), {
-    events: [{ id: "default", event: settings.event }, created],
+    events: [{ id: "default", event: settings.event, lifecycle: "listed" }, created],
   });
   assert.deepEqual(await getSettings(f.db), settings);
   const location = "Room B\ud800\u0000東京 😀";
@@ -466,7 +466,10 @@ test("historical private views tolerate missing policy rows but propagate broken
     expected
   );
   assert.equal((await f.send(`/api/events/${id}/bookings`, data)).status, 404);
-  await f.db.prepare("INSERT INTO event_type VALUES (?,?,?)").bind(event.id, event.json, event.version).run();
+  await f.db
+    .prepare("INSERT INTO event_type(id,json,version) VALUES (?,?,?)")
+    .bind(event.id, event.json, event.version)
+    .run();
   await f.db.prepare("DELETE FROM organizer_settings").run();
   assert.deepEqual(await read(await f.request(`/api/bookings/${booking.id}`, { headers: auth })), expected);
   assert.deepEqual(

@@ -128,9 +128,11 @@ export class FakeCalendar {
 export async function apiFixture({
   port = 0,
   legacyEvents = false,
+  legacyLifecycle = false,
 }: {
   port?: number;
   legacyEvents?: boolean;
+  legacyLifecycle?: boolean;
 } = {}) {
   const configPath = fileURLToPath(new URL("../../wrangler.jsonc", import.meta.url));
   const require = createRequire(import.meta.url);
@@ -176,6 +178,7 @@ export async function apiFixture({
       "0003_bookings.sql",
       "0004_http.sql",
       ...(legacyEvents ? [] : ["0005_events.sql"]),
+      ...(legacyEvents || legacyLifecycle ? [] : ["0006_event_lifecycle.sql"]),
     ])
       await migrate(name);
     const connect = () =>
@@ -220,11 +223,17 @@ export async function apiFixture({
         .prepare("INSERT INTO organizer_settings VALUES ('owner',?,1)")
         .bind(JSON.stringify(settings))
         .run();
-    else await saveSettings(db, settings);
-    const migrateEvents = async () => {
+    else if (legacyLifecycle) {
+      const { event, ...preferences } = settings;
+      await db.batch([
+        db.prepare("UPDATE event_type SET json=? WHERE id='default'").bind(JSON.stringify(event)),
+        db.prepare("UPDATE organizer_settings SET json=? WHERE id='owner'").bind(JSON.stringify(preferences)),
+      ]);
+    } else await saveSettings(db, settings);
+    const migrateEvents = async (lifecycle = false) => {
       await platform?.dispose();
       try {
-        await migrate("0005_events.sql");
+        await migrate(lifecycle ? "0006_event_lifecycle.sql" : "0005_events.sql");
       } finally {
         platform = await connect();
         db = platform.env.DB;
