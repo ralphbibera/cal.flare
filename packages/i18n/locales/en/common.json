@@ -4809,6 +4809,7 @@
   "flare_event_details_invalid": "Check the event details. The URL slug api is reserved.",
   "flare_event_details_failed": "We couldn't save these event details. Your draft is still here. Try saving again.",
   "flare_event_details_javascript": "Enable JavaScript to edit this event.",
+  "flare_event_location_help": "Kept off public booking pages. Shared with booked participants and their calendar provider. Changes apply to new bookings. Leave blank to clear.",
   "flare_booking_status_confirmed": "Confirmed",
   "flare_booking_status_rescheduling": "Rescheduling",
   "flare_booking_status_cancelling": "Canceling",

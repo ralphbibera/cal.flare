@@ -29,11 +29,11 @@ No deploy command is provided by the root scripts.
 Open `/` to sign in with the Google account configured for this installation.
 The private organizer page links to the public event preview. Sign-out revokes the current
 session and returns to the sign-in page. These entry forms work without browser JavaScript.
-The organizer page edits the event title, URL slug, description, and duration with browser JavaScript.
+The organizer page edits the event title, URL slug, description, duration, and optional static location with browser JavaScript.
 Saving these details preserves scheduling rules and booking policies. Other settings currently
 use the authenticated API. This editor is a functional checkpoint; upstream editor pixel parity remains open.
 
-The private meeting-location prerequisite accepts optional `event.location` through authenticated
+The static-location flow accepts optional `event.location` through authenticated
 `PUT /api/owner`, or `location` alongside the four event-detail fields in `PATCH /api/owner`.
 Flare policy accepts strings only, trims surrounding whitespace, and limits the result to 1,000 UTF-16 units.
 Internal whitespace, Unicode, and literal markup remain text. Blank strings clear the setting.
@@ -43,8 +43,14 @@ New bookings freeze the configured address into their initial and provider snaps
 edits, moves and retries retain that historical value. Google event requests include the literal location;
 recovery requires an exact remote match when the snapshot has one. Legacy snapshots omit location
 and preserve unknown provider locations on moves. Only authorized confirmed booking API/client views
-expose the frozen address. Pending, attention and cancelled views omit it. Editor controls, rendered
-booking details and calendar exports remain the next layer. Native parity and live delivery remain unverified.
+expose the frozen address. Confirmed receipts, private attendee pages, and owner details show it as
+literal **Where** text. Editing, blocked storage, pending, attention, and cancelled views hide that row.
+The event editor validates before saving, retains failed drafts for explicit retry, and sends a blank
+location to clear only future bookings. The confirmed attendee actions export the historical address
+to Google, Outlook, Office, and a downloaded `booking.ics`. Legacy exports omit location entirely.
+The existing built Worker browser journey checks the editor, privacy, historical facts, moves,
+and actual downloads at 390px and 1280px with mocked Google. Native location pixel parity, live
+calendar imports, invitation arrival, and other location types remain unverified.
 
 The private home page also lists the latest 1,000 bookings, newest recorded first, with attendee
 details, times in the organizer's schedule timezone, and lifecycle status. Viewing this list
@@ -155,9 +161,9 @@ Confirmed receipts and authorized private details offer **Add to calendar**, ord
 Microsoft Outlook, Microsoft Office, then Other. The first three open external composers with
 `noopener noreferrer`. Other downloads a local UTF-8 `text/calendar` file named `booking.ics`.
 Other uses the existing calendar icon and fixed filename; native uses an Outlook-shaped icon and event-title filename.
-Exports contain the stored title and UTC interval, plus ICS identity, version, and export timestamp.
+Exports contain the stored title, UTC interval, and optional stored location, plus ICS identity, version, and export timestamp.
 The stable UID survives rescheduling; a later download uses the canonical new interval and version.
-Exports omit attendee fields, notes, guests, private links, access tokens, description, and location.
+Exports omit attendee fields, notes, guests, private links, access tokens, and description.
 They hide during change selection, saved unresolved changes, blocked storage, provider uncertainty,
 status refresh, and cancellation. Manual export does not send invitations or retry provider writes.
 The existing browser journey decodes composer queries, aborts a keyboard-opened popup before external
@@ -166,7 +172,7 @@ It checks unchanged mock-provider write counts, event-setting edits, reschedulin
 The native row's order, 40px controls, brand paths, hrefs, and ICS were observed on the isolated fixture.
 Its exports use current event metadata and description; this port uses only available canonical facts.
 Live external import, account event creation, invitation arrival, and automatic calendar sync remain unverified.
-Host identity, location, description, invitation-delivery copy, and signup branding remain later port work. Source-backed layout does not establish
+Host identity, native location presentation parity, description, invitation-delivery copy, and signup branding remain later port work. Source-backed layout does not establish
 candidate confirmation pixel parity or completion of the full port.
 From that receipt, visitors can reschedule or cancel after confirmation.
 Pending changes keep their request identity across reloads. Server-accepted changes

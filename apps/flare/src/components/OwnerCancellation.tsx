@@ -210,6 +210,12 @@ export function OwnerCancellation({
           <p>{booking.email}</p>
           <time dateTime={new Date(booking.start).toISOString()}>{range}</time>
           <p>{status[booking.status]}</p>
+          {stage.kind === "actions" && booking.status === "confirmed" && booking.location && (
+            <dl className="min-w-0">
+              <dt className="font-medium">{labels.where}</dt>
+              <dd className="min-w-0 whitespace-pre-wrap break-words">{booking.location}</dd>
+            </dl>
+          )}
           {booking.pendingAction && (
             <OwnerBookingRecovery
               id={booking.id}
