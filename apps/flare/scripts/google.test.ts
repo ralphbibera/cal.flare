@@ -410,7 +410,12 @@ try {
     if (!parsed.searchParams.has("pageToken"))
       return Response.json({
         items: [
-          { id: input.id, start: { dateTime: input.start }, end: { dateTime: input.end } },
+          {
+            id: input.id,
+            start: { dateTime: input.start },
+            end: { dateTime: input.end },
+            extendedProperties: { private: { application: "calflare", booking: input.id } },
+          },
           { id: `${input.id}-similar`, start: { dateTime: input.start }, end: { dateTime: input.end } },
           { id: "cancelled", status: "cancelled" },
           { id: "transparent", transparency: "transparent" },
@@ -437,6 +442,109 @@ try {
     "Only the exact rescheduled event is excluded; all-day occupancy is conservative"
   );
   assert.equal(pages, 2);
+  handler = async () =>
+    Response.json({
+      items: [{ id: input.id, start: { dateTime: input.start }, end: { dateTime: input.end } }],
+    });
+  assert.equal(
+    (await client.busy(from, to, input.id)).length,
+    1,
+    "An ID without ownership markers must still block"
+  );
+  handler = async () => {
+    throw new Error("Empty selection must not read Google");
+  };
+  assert.deepEqual(await client.busy(from, to, undefined, []), []);
+  const ids = ["secondary", "Other"];
+  let secondaryReads = 0;
+  handler = async (url, init) => {
+    assert.equal(new URL(String(url)).pathname, "/calendar/v3/freeBusy");
+    const payload = JSON.parse(String(init?.body));
+    assert.deepEqual(payload, {
+      timeMin: from,
+      timeMax: to,
+      calendarExpansionMax: 50,
+      items: ids.map((id) => ({ id })),
+    });
+    secondaryReads++;
+    return Response.json({
+      calendars: {
+        secondary: { busy: [{ start: "2026-11-01T00:00:00Z", end: input.end }] },
+        Other: { busy: [] },
+      },
+    });
+  };
+  assert.deepEqual(await client.busy(from, to, input.id, ids), [
+    { start: Date.parse(from), end: Date.parse(String(input.end)) },
+  ]);
+  assert.equal(secondaryReads, 1);
+  for (const outside of [false, true]) {
+    handler = async (url) =>
+      new URL(String(url)).pathname.endsWith("/freeBusy")
+        ? Response.json({
+            calendars: {
+              secondary: {
+                busy: Array.from({ length: 10000 }, () => ({
+                  start: outside ? "2026-01-01T00:00:00Z" : from,
+                  end: outside ? "2026-01-02T00:00:00Z" : to,
+                })),
+              },
+            },
+          })
+        : Response.json({ items: [{ id: "external", start: { dateTime: from }, end: { dateTime: to } }] });
+    await assert.rejects(
+      client.busy(from, to, undefined, ["secondary", "primary"]),
+      failure("retryable", 200)
+    );
+  }
+  handler = async (url) =>
+    new URL(String(url)).pathname.endsWith("/freeBusy")
+      ? Response.json({
+          calendars: {
+            secondary: {
+              busy: Array.from({ length: 9999 }, () => ({
+                start: "2026-01-01T00:00:00Z",
+                end: "2026-01-02T00:00:00Z",
+              })),
+            },
+          },
+        })
+      : Response.json({ items: [{ id: "external", start: { dateTime: from }, end: { dateTime: to } }] });
+  assert.deepEqual(await client.busy(from, to, undefined, ["secondary", "primary"]), [
+    { start: Date.parse(from), end: Date.parse(to) },
+  ]);
+  for (const bad of [
+    undefined,
+    null,
+    {},
+    { errors: [{ reason: "forbidden" }], busy: [] },
+    { errors: "bad", busy: [] },
+    { busy: [{ start: to, end: from }] },
+    { busy: [{ start: "bad", end: to }] },
+    { busy: Array.from({ length: 10001 }, () => ({ start: from, end: to })) },
+  ]) {
+    handler = async () =>
+      Response.json({ calendars: { secondary: { busy: [] }, ...(bad === undefined ? {} : { Other: bad }) } });
+    await assert.rejects(client.busy(from, to, undefined, ids), failure("retryable", 200));
+  }
+  for (const markers of [
+    undefined,
+    { application: "other", booking: input.id },
+    { application: "calflare", booking: "wrong" },
+  ]) {
+    handler = async () =>
+      Response.json({
+        items: [
+          {
+            id: input.id,
+            start: { dateTime: input.start },
+            end: { dateTime: input.end },
+            ...(markers ? { extendedProperties: { private: markers } } : {}),
+          },
+        ],
+      });
+    assert.equal((await client.busy(from, to, input.id, ["primary"])).length, 1);
+  }
   handler = async () =>
     Response.json({
       timeZone: "America/New_York",

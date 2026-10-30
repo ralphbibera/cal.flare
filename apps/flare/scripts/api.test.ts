@@ -72,6 +72,7 @@ test("calendar discovery is owner-only, private and independent of settings and 
   assert.match(response.headers.get("Content-Type") ?? "", /application\/json/);
   assert.deepEqual(await response.json(), {
     calendars: [{ id: "private-calendar-id", name: "Private calendar name", primary: false }],
+    conflictCalendarIds: null,
   });
   status = 403;
   const failed = await f.request(path, { headers: f.ownerHeaders });

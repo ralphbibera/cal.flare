@@ -3,6 +3,7 @@ import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
 import {
   parseBookingRules,
+  parseConflictCalendars,
   parseEventDetails,
   parseScheduleOverrides,
   parseSettings,
@@ -19,6 +20,7 @@ import { hash } from "./secrets.ts";
 import {
   getSettings,
   saveBookingRules,
+  saveConflictCalendars,
   saveEventDetails,
   saveScheduleOverrides,
   saveSettings,
@@ -116,6 +118,13 @@ function bookingService(dependencies: Dependencies, settings: Settings): Booking
   });
 }
 
+async function validateConflictCalendars(env: AuthEnv, ids?: string[] | null): Promise<void> {
+  if (!ids?.length) return;
+  const calendars = await new CalendarClient(env).listCalendars();
+  const allowed = new Set(calendars.map((calendar) => calendar.id));
+  if (ids.some((id) => !allowed.has(id))) throw new ErrorWithCode("invalid_calendar_selection");
+}
+
 export async function getOwnerData(request: Request, dependencies: Dependencies) {
   const identity = await requireOwner(dependencies.env, request);
   if (!identity) return null;
@@ -156,9 +165,19 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   }
   if (path === "/api/owner/conflict-calendars") {
     await owner(env, request);
-    if (method !== "GET") return json({ error: "not_found" }, 404);
     if (url.search) throw new ErrorWithCode("invalid_query");
-    return json({ calendars: await new CalendarClient(env).listCalendars() });
+    if (method === "GET")
+      return json({
+        calendars: await new CalendarClient(env).listCalendars(),
+        conflictCalendarIds: (await getSettings(env.DB)).conflictCalendarIds ?? null,
+      });
+    if (method === "PATCH") {
+      const ids = parseConflictCalendars(await body(request));
+      await validateConflictCalendars(env, ids);
+      await saveConflictCalendars(env.DB, ids);
+      return json({ saved: true });
+    }
+    return json({ error: "not_found" }, 404);
   }
   if (path === "/api/owner/schedule" && method === "PATCH") {
     await owner(env, request);
@@ -195,7 +214,9 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   if (path === "/api/owner") {
     await owner(env, request);
     if (method === "PUT") {
-      await saveSettings(env.DB, parseSettings(await body(request)));
+      const replacement = parseSettings(await body(request));
+      await validateConflictCalendars(env, replacement.conflictCalendarIds);
+      await saveSettings(env.DB, replacement);
       return json({ saved: true });
     }
     if (method === "PATCH") {

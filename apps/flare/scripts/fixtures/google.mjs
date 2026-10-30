@@ -39,6 +39,9 @@ export function createGoogleFixture(origin) {
   const events = new Map();
   const calendars = [];
   const calendarReads = [];
+  const busyReads = [];
+  const secondaryBusy = new Map();
+  const busyFailures = new Map();
   const writes = [];
   const denied = [];
   const grants = [];
@@ -53,6 +56,9 @@ export function createGoogleFixture(origin) {
     events,
     calendars,
     calendarReads,
+    busyReads,
+    secondaryBusy,
+    busyFailures,
     writes,
     denied,
     grants,
@@ -108,6 +114,32 @@ export function createGoogleFixture(origin) {
           items: calendars.slice(offset, offset + 250),
           ...(offset + 250 < calendars.length ? { nextPageToken: String(offset + 250) } : {}),
         });
+      }
+      if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/freeBusy") {
+        assert.equal(request.headers.get("Authorization"), `Bearer ${access}`);
+        assert.equal(request.method, "POST");
+        const input = await request.json();
+        assert.equal(input.calendarExpansionMax, 50);
+        assert.ok(input.items.length <= 50);
+        const ids = input.items.map(({ id }) => id);
+        busyReads.push(ids);
+        const failure = ids.map((id) => busyFailures.get(id)).find((value) => value !== undefined);
+        if (typeof failure === "number" || failure?.after === busyReads.length)
+          return json(
+            { error: "Private calendar failure" },
+            typeof failure === "number" ? failure : failure.status
+          );
+        const calendars = Object.fromEntries(
+          ids
+            .filter((id) => busyFailures.get(id) !== "missing")
+            .map((id) => [
+              id,
+              busyFailures.has(id) && !busyFailures.get(id)?.after
+                ? busyFailures.get(id)
+                : { busy: secondaryBusy.get(id) ?? [] },
+            ])
+        );
+        return json({ calendars });
       }
       const root = "/calendar/v3/calendars/primary/events";
       if (

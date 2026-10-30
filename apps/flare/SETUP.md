@@ -78,8 +78,12 @@ The old `calendar.freebusy` grant alone does not satisfy selected-calendar free/
 No stored scope inventory is inferred or migrated. Live consent and provider access require
 operator verification and have not been established by local mocked-provider checks.
 The owner-only `/api/owner/conflict-calendars` endpoint is a backend discovery prerequisite.
-Selection persistence, availability aggregation and a selection UI are not implemented yet.
-Event operations and recovery still target the primary calendar.
+The private settings API can persist selected conflict calendars and aggregate their busy periods.
+A nonempty selection requires the new discovery grant before saving and selected-calendar
+free/busy access when checking availability. Resetting to the primary default or an explicit
+empty selection does not require CalendarList access. Empty selection still enforces local
+booking reservations. A selection UI is not implemented yet. Event operations and remote
+reconciliation still target the primary calendar.
 The setup command does not run OAuth for you.
 That flow will request Google's native attendee notifications with `sendUpdates=all`.
 Native Google invitations do not require a separate email provider.

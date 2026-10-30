@@ -48,6 +48,11 @@ const calendarPage = z.object({
     .refine((value) => value.trim().length > 0)
     .optional(),
 });
+const bookingOwnership = z.object({
+  extendedProperties: z.object({
+    private: z.object({ application: z.literal("calflare"), booking: z.string() }),
+  }),
+});
 export type EventInput = {
   id: string;
   start: string | number;
@@ -392,25 +397,70 @@ export class GoogleCalendar {
     }
     throw new GoogleCalendarError("retryable", 200, "Google Calendar pagination limit exceeded");
   }
-  async freeBusy(fromISO: string, toISO: string): Promise<BusyRange[]> {
-    interval(fromISO, toISO);
+  async freeBusy(fromISO: string, toISO: string, ids: string[] = ["primary"]): Promise<BusyRange[]> {
+    return (await this.readFreeBusy(fromISO, toISO, ids)).ranges;
+  }
+  private async readFreeBusy(
+    fromISO: string,
+    toISO: string,
+    ids: string[]
+  ): Promise<{ ranges: BusyRange[]; received: number }> {
+    const requested = interval(fromISO, toISO);
+    z.array(calendarId).max(50).parse(ids);
+    if (!ids.length) return { ranges: [], received: 0 };
     const response = await this.request("/freeBusy", "POST", {
       timeMin: fromISO,
       timeMax: toISO,
-      items: [{ id: "primary" }],
+      calendarExpansionMax: 50,
+      items: ids.map((id) => ({ id })),
     });
     return this.parsed(response, false, (value) => {
-      const primary = object(object(object(value).calendars).primary);
-      if (primary.errors !== undefined && (!Array.isArray(primary.errors) || primary.errors.length > 0))
-        throw new ErrorWithCode("CALENDAR_BUSY", "Google could not determine calendar availability");
-      if (!Array.isArray(primary.busy)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing busy periods");
-      return primary.busy.map((value: unknown) => {
-        const range = object(value);
-        return interval(nonempty(range.start), nonempty(range.end));
-      });
+      const calendars = object(object(value).calendars);
+      const result: BusyRange[] = [];
+      let total = 0;
+      for (const id of ids) {
+        if (!Object.hasOwn(calendars, id)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing calendar");
+        const calendar = object(calendars[id]);
+        if (calendar.errors !== undefined && (!Array.isArray(calendar.errors) || calendar.errors.length > 0))
+          throw new ErrorWithCode("CALENDAR_BUSY", "Google could not determine calendar availability");
+        if (!Array.isArray(calendar.busy)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing busy periods");
+        total += calendar.busy.length;
+        if (total > 10_000) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
+        for (const value of calendar.busy) {
+          const range = object(value),
+            parsed = interval(nonempty(range.start), nonempty(range.end));
+          if (parsed.start < requested.end && parsed.end > requested.start)
+            result.push({
+              start: Math.max(parsed.start, requested.start),
+              end: Math.min(parsed.end, requested.end),
+            });
+        }
+      }
+      return { ranges: result, received: total };
     });
   }
-  async busy(fromISO: string, toISO: string, excludeEventId?: string): Promise<BusyRange[]> {
+  async busy(
+    fromISO: string,
+    toISO: string,
+    excludeEventId?: string,
+    conflictCalendarIds?: string[]
+  ): Promise<BusyRange[]> {
+    interval(fromISO, toISO);
+    const ids = conflictCalendarIds ?? ["primary"];
+    const secondary = ids.filter((id) => id !== "primary");
+    const result = secondary.length
+      ? await this.readFreeBusy(fromISO, toISO, secondary)
+      : { ranges: [], received: 0 };
+    if (!ids.includes("primary")) return result.ranges;
+    const primary = await this.primaryBusy(fromISO, toISO, excludeEventId, 10_000 - result.received);
+    return [...result.ranges, ...primary];
+  }
+  private async primaryBusy(
+    fromISO: string,
+    toISO: string,
+    excludeEventId: string | undefined,
+    limit: number
+  ): Promise<BusyRange[]> {
     const requested = interval(fromISO, toISO),
       result: BusyRange[] = [];
     const seen = new Set<string>();
@@ -430,12 +480,17 @@ export class GoogleCalendar {
         const data = object(value);
         if (!Array.isArray(data.items)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Missing event list");
         total += data.items.length;
-        if (total > 10_000) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
+        if (total > limit) throw new ErrorWithCode("CALENDAR_LIMIT", "Google Calendar event limit exceeded");
         const ranges: BusyRange[] = [];
         for (const value of data.items) {
           const item = object(value),
             id = nonempty(item.id);
-          if (id === excludeEventId || item.status === "cancelled" || item.transparency === "transparent")
+          const ownership = id === excludeEventId && bookingOwnership.safeParse(item);
+          if (
+            (ownership && ownership.success && ownership.data.extendedProperties.private.booking === id) ||
+            item.status === "cancelled" ||
+            item.transparency === "transparent"
+          )
             continue;
           const start = time(item.start),
             end = time(item.end);

@@ -33,6 +33,7 @@ type Settings = {
     rules: (MinuteRange & { weekday: number })[];
     overrides?: { date: string; ranges: MinuteRange[] }[];
   };
+  conflictCalendarIds?: string[];
 };
 type WeeklySchedule = Pick<Settings["schedule"], "timeZone" | "rules">;
 type ScheduleOverrides = { overrides: NonNullable<Settings["schedule"]["overrides"]> };
@@ -77,6 +78,23 @@ function list(input: unknown, path: string, max: number): unknown[] {
     throw new SettingsError(`${path} must be an array with at most ${max} entries`);
   }
   return input;
+}
+
+function parseConflictCalendarIds(input: unknown): string[] {
+  const ids = list(input, "conflictCalendarIds", 50).map((value) => {
+    const id = text(value, "calendar ID", 1024, 1);
+    if (/\s|\p{Cc}/u.test(id)) throw new SettingsError("Invalid calendar ID");
+    return id;
+  });
+  if (new Set(ids).size !== ids.length) throw new SettingsError("Duplicate calendar IDs");
+  return ids.sort();
+}
+
+function parseConflictCalendars(input: unknown): string[] | null {
+  const value = object(input, "conflict calendars");
+  if (Object.keys(value).length !== 1 || !Object.hasOwn(value, "conflictCalendarIds"))
+    throw new SettingsError("Conflict calendars require only conflictCalendarIds");
+  return value.conflictCalendarIds === null ? null : parseConflictCalendarIds(value.conflictCalendarIds);
 }
 
 function range(input: unknown): MinuteRange {
@@ -165,6 +183,8 @@ function parseSettings(input: unknown): Settings {
       return { date, ranges };
     });
   }
+  if (Object.hasOwn(root, "conflictCalendarIds"))
+    result.conflictCalendarIds = parseConflictCalendarIds(root.conflictCalendarIds);
   return result;
 }
 
@@ -292,6 +312,8 @@ export type { BookingRules, EventDetails, EventSettings, ScheduleOverrides, Sett
 export {
   defaultSettings,
   parseBookingRules,
+  parseConflictCalendarIds,
+  parseConflictCalendars,
   parseEventDetails,
   parseScheduleOverrides,
   parseSettings,
