@@ -9,7 +9,6 @@ import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
 import { CalendarExport } from "./CalendarExport.tsx";
 import { formatDuration } from "./format-duration.ts";
-import { Icon } from "./Icon.tsx";
 import { Label } from "./Label.tsx";
 import { TextArea } from "./TextArea.tsx";
 
@@ -190,16 +189,28 @@ export function BookingManagement({
         : savedRequest.cancellationReason) ?? "";
   }
   return (
-    <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 rounded-lg border p-8">
+    <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 rounded-lg border px-8 pb-4 pt-5 sm:py-8">
       {confirmed && (
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-          <Icon name="check" size={20} className="text-green-600" />
+        <div className="bg-cal-success mx-auto flex h-12 w-12 items-center justify-center rounded-full">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-green-600 dark:text-green-400"
+            aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
         </div>
       )}
       <h1 className="text-emphasis text-center text-2xl font-semibold leading-6" aria-live="polite">
         {heading}
       </h1>
-      <dl className="border-subtle grid grid-cols-3 gap-x-4 gap-y-6 border-t pt-8 text-sm">
+      <dl className="border-subtle grid grid-cols-3 gap-x-4 gap-y-6 border-t pt-8 text-base leading-6 sm:gap-x-0">
         <dt className="font-medium">{labels.what}</dt>
         <dd className="col-span-2 min-w-0 break-words">{booking.title}</dd>
         <dt className="font-medium">{labels.when}</dt>

@@ -246,7 +246,7 @@ export function PublicBooker({ organizer, event, labels }: PublicBookerProps) {
   const showCalendar = stage.kind === "calendar" || (wide && formActive);
   if (stage.kind === "receipt") {
     return (
-      <div className="text-default mx-auto min-h-full w-full px-4 py-8">
+      <div className="text-default mx-auto min-h-full w-full self-start px-4 py-8">
         {stage.booking ? (
           <BookingManagement
             booking={stage.booking}

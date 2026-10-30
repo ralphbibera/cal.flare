@@ -118,7 +118,16 @@ confirmed success heading and check. Loading details does not retry a provider o
 The built Worker/D1 browser journey verifies these facts after event edits, public and private
 reloads, and at 390px and 1280px. Google responses are mocked.
 The optional native confirmation fixture supplies a repeatable reference baseline.
-Candidate confirmation and terminal-page pixel parity remain unverified.
+Receipt and authorized private confirmation presentation share the native frame contract at
+390px and 1280px. Cards start 32px from the top with responsive vertical padding, a 10px radius,
+and 32px horizontal padding. Both routes use the pinned Inter Booking face, including the
+24px semibold heading. Details use 16px text with 24px line height and the native responsive
+column gap. The success emblem uses the native colors and Lucide check path.
+The existing management verifier checks literal geometry, computed styles, loaded font and
+served font bytes after event-setting edits and canonical-fact reloads on both routes.
+This is partial presentation contract convergence. Whole-card and whole-page pixel parity
+remain unverified. Host identity, notes, guests, invitation narrative, signup, export layout,
+and intentional private controls still differ. Missing content has no placeholder rows or heights.
 Confirmed receipts and authorized private details offer **Add to calendar**, ordered Google,
 Microsoft Outlook, Microsoft Office, then Other. The first three open external composers with
 `noopener noreferrer`. Other downloads a local UTF-8 `text/calendar` file named `booking.ics`.

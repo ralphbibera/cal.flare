@@ -12,6 +12,88 @@ const rescheduleReason = 'Schedule changed\n\n<img src="/unexpected-move" onerro
 );
 const rescheduleDraft = ` \n${rescheduleReason}\t `;
 
+async function verifyPresentation(page, width) {
+  await page.evaluate(() => document.fonts.ready);
+  const metrics = await page.locator("section:has(> dl)").evaluate((card) => {
+    const rect = (node) => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    const style = getComputedStyle(card);
+    const heading = card.querySelector("h1");
+    const details = card.querySelector("dl");
+    const check = card.querySelector("svg");
+    const pixel = document.createElement("canvas").getContext("2d");
+    pixel.fillStyle = getComputedStyle(check).color;
+    pixel.fillRect(0, 0, 1, 1);
+    const font = (node) => {
+      const s = getComputedStyle(node);
+      return [s.fontFamily.split(",")[0], s.fontSize, s.fontWeight, s.lineHeight];
+    };
+    return {
+      card: rect(card),
+      padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
+      border: [style.borderTopWidth, style.borderRadius, style.borderTopColor],
+      heading: font(heading),
+      details: rect(details),
+      label: font(details.querySelector("dt")),
+      value: font(details.querySelector("dd")),
+      valueX: details.querySelector("dd").getBoundingClientRect().x,
+      gap: getComputedStyle(details).columnGap,
+      emblem: rect(check.parentElement),
+      emblemColor: getComputedStyle(check.parentElement).backgroundColor,
+      check: [rect(check).width, rect(check).height, [...pixel.getImageData(0, 0, 1, 1).data]],
+      path: check.querySelector("path")?.getAttribute("d"),
+      stroke: [
+        check.getAttribute("stroke-width"),
+        check.getAttribute("stroke-linecap"),
+        check.getAttribute("stroke-linejoin"),
+      ],
+      decorative: check.getAttribute("aria-hidden"),
+      background: getComputedStyle(document.body).backgroundColor,
+      loaded: [...document.fonts].some(
+        (face) => face.family.replaceAll('"', "") === "Inter Booking" && face.status === "loaded"
+      ),
+      fontSource: [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find((rule) => rule.type === CSSRule.FONT_FACE_RULE && rule.style.fontFamily === '"Inter Booking"')
+        ?.style.src,
+    };
+  });
+  const mobile = width === 390;
+  assert.deepEqual(
+    [metrics.card.x, metrics.card.y, metrics.card.width],
+    mobile ? [16, 32, 358] : [352, 32, 576],
+    "Native confirmation frame contract, without a fixed height"
+  );
+  assert.deepEqual(metrics.padding, mobile ? ["20px", "32px", "16px", "32px"] : Array(4).fill("32px"));
+  assert.deepEqual(metrics.border, ["1px", "10px", "rgb(229, 231, 235)"]);
+  assert.deepEqual(metrics.heading, ['"Inter Booking"', "24px", "600", "24px"]);
+  assert.deepEqual(metrics.label, ['"Inter Booking"', "16px", "500", "24px"]);
+  assert.deepEqual(metrics.value, ['"Inter Booking"', "16px", "400", "24px"]);
+  assert.deepEqual([metrics.details.x, metrics.details.width], mobile ? [49, 292] : [385, 510]);
+  assert.equal(metrics.gap, mobile ? "16px" : "0px");
+  if (!mobile) assert.equal(metrics.valueX, 555);
+  assert.deepEqual([metrics.emblem.width, metrics.emblem.height], [48, 48]);
+  assert.equal(metrics.emblem.y, mobile ? 53 : 65);
+  assert.equal(metrics.emblemColor, "rgb(228, 251, 237)");
+  assert.deepEqual(metrics.check, [20, 20, [0, 166, 62, 255]]);
+  assert.equal(metrics.path, "M20 6 9 17l-5-5");
+  assert.deepEqual(metrics.stroke, ["2", "round", "round"]);
+  assert.equal(metrics.decorative, "true");
+  assert.equal(metrics.background, "rgb(238, 239, 242)");
+  assert.ok(metrics.loaded, "Pinned Inter Booking face is loaded for confirmation text and heading");
+  assert.match(metrics.fontSource, /url\("\/fonts\/Inter-booking-latin\.woff2"\)/);
+  const font = await page.request.get(new URL("/fonts/Inter-booking-latin.woff2", page.url()).href);
+  assert.equal(font.status(), 200);
+  assert.ok(
+    (await font.body()).equals(
+      await readFile(new URL("../public/fonts/Inter-booking-latin.woff2", import.meta.url))
+    )
+  );
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+}
+
 export async function verifyManagement(browser, fixture, date) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
   const errors = [],
@@ -261,6 +343,7 @@ export async function verifyManagement(browser, fixture, date) {
         ["private", privatePage],
       ]) {
         await target.setViewportSize({ width, height: 900 });
+        await verifyPresentation(target, width);
         assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await verifyExports(target);
         await target.getByRole("button", { name: "Copy private booking link", exact: true }).focus();
