@@ -26,7 +26,7 @@ const date = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "sh
     <ul aria-label={common.bookings} class="space-y-4">
       {bookings.map((booking) => (
         <li class="border-subtle break-words rounded-md border p-4 text-sm">
-          <h3 class="text-emphasis font-semibold">{booking.title}</h3>
+          <h3 class="text-emphasis font-semibold"><a class="underline" href={`/owner/bookings/${booking.id}`}>{booking.title}</a></h3>
           <p>{booking.name}</p>
           <p>{booking.email}</p>
           <time datetime={new Date(booking.start).toISOString()}>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
 import { verifyManagement } from "./verify-management.mjs";
 import { verifyOwner, verifyOwnerBookings } from "./verify-owner.mjs";
+import { verifyOwnerCancellation } from "./verify-owner-cancellation.mjs";
 import { verifySubmission } from "./verify-submission.mjs";
 import { verifyWeekPage } from "./verify-week-page.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
@@ -291,6 +292,7 @@ export async function verifyPublic(browser) {
     assert.equal((await fixture.send("/api/owner", alias, owner, "PUT")).status, 200);
     assert.equal((await fixture.request("/booking")).status, 200);
     await verifyOwnerBookings(browser, fixture);
+    await verifyOwnerCancellation(browser, fixture);
   } finally {
     try {
       await context?.close();
