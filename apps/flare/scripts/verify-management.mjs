@@ -12,6 +12,58 @@ const rescheduleReason = 'Schedule changed\n\n<img src="/unexpected-move" onerro
 );
 const rescheduleDraft = ` \n${rescheduleReason}\t `;
 
+async function verifyExportRow(page, width, name) {
+  const row = page.getByText("Add to calendar", { exact: true }).locator("..");
+  await row.screenshot({
+    path: new URL(`../.verification/confirmed-export-${name}-${width}.png`, import.meta.url).pathname,
+    animations: "disabled",
+  });
+  const metrics = await row.evaluate((node) => {
+    const base = node.getBoundingClientRect();
+    const rect = (element) => {
+      const r = element.getBoundingClientRect();
+      return [r.x - base.x, r.y - base.y, r.width, r.height];
+    };
+    const label = node.firstElementChild;
+    const text = getComputedStyle(label);
+    const separator = getComputedStyle(node.previousElementSibling);
+    return {
+      row: [base.width, base.height],
+      label: rect(label),
+      font: [text.fontSize, text.fontWeight, text.lineHeight, text.color],
+      separator: [separator.marginTop, separator.borderTopWidth, separator.borderTopColor],
+      links: [...node.querySelectorAll("a")].map((link) => {
+        const style = getComputedStyle(link);
+        const svg = link.querySelector("svg");
+        return {
+          box: rect(link),
+          border: [style.borderTopWidth, style.borderTopColor, style.borderRadius],
+          spacing: [style.marginLeft, style.marginRight, style.paddingTop, style.paddingRight],
+          svg: rect(svg),
+          viewBox: svg.getAttribute("viewBox"),
+          decorative: svg.getAttribute("aria-hidden"),
+        };
+      }),
+    };
+  });
+  const mobile = width === 390;
+  assert.deepEqual(metrics.row, mobile ? [292, 80] : [510, 72], "Complete native export-row bounds");
+  assert.deepEqual(metrics.label, mobile ? [0, 32, 68, 48] : [82.40625, 40, 121.171875, 24]);
+  assert.deepEqual(metrics.font, ["16px", "500", "24px", "rgb(60, 62, 68)"]);
+  assert.deepEqual(metrics.separator, ["32px", "1px", "rgb(229, 231, 235)"]);
+  assert.equal(metrics.links.length, 4);
+  for (const [index, link] of metrics.links.entries()) {
+    const x = (mobile ? 76 : 211.578125) + index * 56;
+    const y = mobile ? 36 : 32;
+    assert.deepEqual(link.box, [x, y, 40, 40]);
+    assert.deepEqual(link.border, ["1px", "rgb(229, 231, 235)", "6px"]);
+    assert.deepEqual(link.spacing, [index === 0 ? "0px" : "8px", "8px", "8px", "12px"]);
+    assert.deepEqual(link.svg, [x + 13, y + 11.625, 16, 16]);
+    assert.equal(link.viewBox, index === 3 ? "0 0 1000 1000" : "0 0 24 24");
+    assert.equal(link.decorative, "true");
+  }
+}
+
 async function verifyPresentation(page, width) {
   await page.evaluate(() => document.fonts.ready);
   const metrics = await page.locator("section:has(> dl)").evaluate((card) => {
@@ -163,6 +215,14 @@ export async function verifyManagement(browser, fixture, date) {
         if (index === 0) await link.focus();
         else await target.keyboard.press("Tab");
         assert.ok(await link.evaluate((node) => node === document.activeElement));
+        if (index > 0)
+          assert.deepEqual(
+            await link.evaluate((node) => {
+              const style = getComputedStyle(node);
+              return [style.outlineWidth, style.outlineOffset, style.outlineStyle];
+            }),
+            ["2px", "2px", "solid"]
+          );
         const href = await link.getAttribute("href");
         for (const privateValue of [
           receipt.access.token,
@@ -352,6 +412,7 @@ export async function verifyManagement(browser, fixture, date) {
             .getByRole("button", { name: "Copy private booking link", exact: true })
             .evaluate((node) => node === document.activeElement)
         );
+        await verifyExportRow(target, width, name);
         await target.screenshot({
           path: new URL(`../.verification/confirmed-${name}-${width}.png`, import.meta.url).pathname,
           fullPage: true,

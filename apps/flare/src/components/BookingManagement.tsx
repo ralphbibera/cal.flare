@@ -189,7 +189,7 @@ export function BookingManagement({
         : savedRequest.cancellationReason) ?? "";
   }
   return (
-    <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 rounded-lg border px-8 pb-4 pt-5 sm:py-8">
+    <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 overflow-hidden rounded-lg border px-8 pb-4 pt-5 sm:py-8">
       {confirmed && (
         <div className="bg-cal-success mx-auto flex h-12 w-12 items-center justify-center rounded-full">
           <svg
