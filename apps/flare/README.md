@@ -3,6 +3,9 @@
 The repository root runs the focused Astro/React/Workers port in this directory.
 The inherited Cal.diy packages are outside the active workspace graph.
 The root MIT license and Cal.com attribution continue to apply.
+For the ordered operator procedure, use [Configure and run Cal.flare](SETUP.md).
+It covers Google access, Workers with static assets, D1 deployment, deployed acceptance, and recovery.
+This page is the development and implementation reference.
 
 ## Install and run
 
@@ -25,6 +28,9 @@ No Cloudflare account, database provisioning, or Google credentials are needed f
 For a built Worker, run `build` followed by `preview` through the same bundled Yarn command.
 `preview` invokes local Wrangler against Astro's generated deployment configuration.
 No deploy command is provided by the root scripts.
+The [production procedure](SETUP.md#deploy-to-cloudflare-workers) builds after source configuration,
+then deploys with `yarn workspace @calflare/web exec wrangler deploy --config dist/server/wrangler.json`.
+Local preview and mocked-provider checks do not establish production readiness.
 
 Open `/` to sign in with the Google account configured for this installation.
 The private organizer page links to the public event preview. Sign-out revokes the current
@@ -510,7 +516,7 @@ The [reservation model](../../experiments/d1-reservations/schema.sql) remains ex
 The app includes owner OAuth, D1-backed sessions, authenticated settings, public availability,
 booking lifecycle APIs, and scheduled recovery. The current model has one organizer and one event,
 with selected conflict calendars and primary-calendar event operations. Broader account and feature parity remain migration work.
-Generated Wrangler types and local state are ignored. The current D1 configuration is for local development.
+Generated Wrangler types and local state are ignored. Checked-in Wrangler configuration has no production database UUID or variables.
 Image transformation and Astro's default session storage are disabled.
 Production resource configuration, deployed execution, live Google delivery, and measured
-Workers Paid usage require separate verification and deployment authorization.
+Workers and D1 usage require separate verification and deployment authorization.
