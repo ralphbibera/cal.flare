@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
 import { verifyManagement } from "./verify-management.mjs";
+import { verifyMeetingLocationPrivacy } from "./verify-meeting-location.mjs";
 import { verifyOwner, verifyOwnerBookings } from "./verify-owner.mjs";
 import { verifyOwnerCancellation } from "./verify-owner-cancellation.mjs";
 import { verifyOwnerReschedule } from "./verify-owner-reschedule.mjs";
@@ -13,6 +14,7 @@ export async function verifyPublic(browser) {
   let context;
   try {
     await verifyOwner(browser, fixture);
+    await verifyMeetingLocationPrivacy(fixture);
     const owner = await fixture.login();
     const settings = {
       ...fixture.settings,

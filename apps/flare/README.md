@@ -32,6 +32,16 @@ session and returns to the sign-in page. These entry forms work without browser 
 The organizer page edits the event title, URL slug, description, and duration with browser JavaScript.
 Saving these details preserves scheduling rules and booking policies. Other settings currently
 use the authenticated API. This editor is a functional checkpoint; upstream editor pixel parity remains open.
+
+The private meeting-location prerequisite accepts optional `event.location` through authenticated
+`PUT /api/owner`, or `location` alongside the four event-detail fields in `PATCH /api/owner`.
+Flare policy accepts strings only, trims surrounding whitespace, and limits the result to 1,000 UTF-16 units.
+Internal whitespace, Unicode, and literal markup remain text. Blank strings clear the setting.
+PATCH omission preserves it; full PUT omission clears it. Legacy settings retain no location member.
+The address stays private before confirmation and is removed from public JSON, SSR, and hydration props.
+This prerequisite adds no editor control and does not yet freeze addresses into bookings or send them
+to providers, booking details, or exports. Native location parity and live delivery remain unverified.
+
 The private home page also lists the latest 1,000 bookings, newest recorded first, with attendee
 details, times in the organizer's schedule timezone, and lifecycle status. Viewing this list
 does not retry provider operations. It renders without JavaScript. With JavaScript enabled,

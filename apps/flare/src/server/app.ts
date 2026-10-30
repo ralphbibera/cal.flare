@@ -95,7 +95,9 @@ async function connectedOwner(env: AuthEnv): Promise<{ name: string }> {
 
 async function getPublicBooking(env: AuthEnv) {
   const organizer = await connectedOwner(env);
-  return { organizer, ...(await getSettings(env.DB)) };
+  const { event, schedule } = await getSettings(env.DB);
+  const { location: _location, ...publicEvent } = event;
+  return { organizer, event: publicEvent, schedule };
 }
 
 function bookingResponse(value: Awaited<ReturnType<BookingService["view"]>>, created = false): Response {

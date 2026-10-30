@@ -46,15 +46,16 @@ export async function saveEventDetails(db: D1Database, input: EventDetails): Pro
   const initial = parseSettings({ ...defaultSettings, event: { ...defaultSettings.event, ...details } });
   await db
     .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
-      ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
-        '$.event.slug', ?, '$.event.title', json(?), '$.event.description', json(?), '$.event.durationMinutes', CAST(? AS INTEGER)),
+      ON CONFLICT(id) DO UPDATE SET json = json_patch(json_set(organizer_settings.json,
+        '$.event.slug', ?, '$.event.title', json(?), '$.event.description', json(?), '$.event.durationMinutes', CAST(? AS INTEGER)), json(?)),
         version = organizer_settings.version + 1`)
     .bind(
       JSON.stringify(initial),
       details.slug,
       JSON.stringify(details.title),
       JSON.stringify(details.description),
-      details.durationMinutes
+      details.durationMinutes,
+      JSON.stringify(details.location === undefined ? {} : { event: { location: details.location || null } })
     )
     .run();
 }
@@ -90,10 +91,14 @@ export async function saveBookingRules(db: D1Database, input: BookingRules): Pro
   const initial = parseSettings({ ...defaultSettings, event: { ...defaultSettings.event, ...rules } });
   await db
     .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
-    ON CONFLICT(id) DO UPDATE SET json = json_set(organizer_settings.json,
+    ON CONFLICT(id) DO UPDATE SET json = json_patch(json_set(json_remove(organizer_settings.json,
+      '$.event.disableCancelling', '$.event.disableRescheduling', '$.event.location'),
       '$.event.intervalMinutes', json(?), '$.event.beforeMinutes', json(?),
       '$.event.afterMinutes', json(?), '$.event.noticeMinutes', json(?),
       '$.event.disableCancelling', json(?), '$.event.disableRescheduling', json(?)),
+      CASE WHEN json_type(organizer_settings.json, '$.event.location') = 'text'
+        THEN json_object('event', json_object('location', json(organizer_settings.json -> '$.event.location')))
+        ELSE '{}' END),
       version = organizer_settings.version + 1`)
     .bind(
       JSON.stringify(initial),
