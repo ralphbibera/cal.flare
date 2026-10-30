@@ -2,6 +2,7 @@ import common from "../../../../packages/i18n/locales/en/common.json" with { typ
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
 import {
+  defaultSettings,
   parseBookingRules,
   parseConflictCalendars,
   parseEventDetails,
@@ -20,15 +21,21 @@ import { hash } from "./secrets.ts";
 import {
   createEvent,
   DEFAULT_EVENT_ID,
+  duplicateEvent,
   eventId,
+  getBookableSettings,
+  getOwnerEvent,
+  getOwnerPreferences,
   getSettings,
   listEvents,
+  removeEvent,
   saveBookingRules,
   saveConflictCalendars,
   saveEventDetails,
   saveScheduleOverrides,
   saveSettings,
   saveWeeklySchedule,
+  setEventVisibility,
 } from "./settings.ts";
 
 type Dependencies = {
@@ -107,7 +114,7 @@ async function connectedOwner(env: AuthEnv): Promise<{ name: string }> {
 
 async function getPublicBooking(env: AuthEnv, id = DEFAULT_EVENT_ID) {
   const organizer = await connectedOwner(env);
-  const { event, schedule } = await getSettings(env.DB, id);
+  const { event, schedule } = await getBookableSettings(env.DB, id);
   const { location: _location, ...publicEvent } = event;
   return { organizer, event: publicEvent, schedule };
 }
@@ -134,6 +141,32 @@ async function validateConflictCalendars(env: AuthEnv, ids?: string[] | null): P
   if (ids.some((id) => !allowed.has(id))) throw new ErrorWithCode("invalid_calendar_selection");
 }
 
+async function eventLifecycle(
+  request: Request,
+  db: D1Database,
+  id: string,
+  action?: string
+): Promise<Response | null> {
+  const method = request.method;
+  if (method === "DELETE" && !action) {
+    if ((await request.text()) !== "") throw new ErrorWithCode("invalid_input");
+    await removeEvent(db, id);
+    return json({ saved: true });
+  }
+  if (method === "POST" && action === "/duplicate") {
+    const input = record(await body(request));
+    if (Object.keys(input).length !== 4 || Object.hasOwn(input, "location"))
+      throw new ErrorWithCode("invalid_input");
+    return json(await duplicateEvent(db, id, parseEventDetails(input)), 201);
+  }
+  if (method !== "PATCH" || action !== "/visibility") return null;
+  const value = record(await body(request));
+  if (Object.keys(value).length !== 1 || typeof value.hidden !== "boolean")
+    throw new ErrorWithCode("invalid_input");
+  await setEventVisibility(db, id, value.hidden);
+  return json({ saved: true });
+}
+
 async function ownerEvents(request: Request, { env }: Dependencies, url: URL): Promise<Response> {
   await owner(env, request);
   if (url.search) throw new ErrorWithCode("invalid_query");
@@ -144,14 +177,19 @@ async function ownerEvents(request: Request, { env }: Dependencies, url: URL): P
       return json(await createEvent(env.DB, parseEventDetails(await body(request))), 201);
     return json({ error: "not_found" }, 404);
   }
-  const target = /^\/api\/owner\/events\/([^/]+)(\/booking-rules)?$/.exec(url.pathname);
+  const target = /^\/api\/owner\/events\/([^/]+)(\/(?:booking-rules|duplicate|visibility))?$/.exec(
+    url.pathname
+  );
   if (!target) throw new ErrorWithCode("not_found", 404);
   const id = eventId(target[1]);
-  const selected = await getSettings(env.DB, id);
-  if (method === "GET" && !target[2]) return json({ id, event: selected.event });
+  const lifecycle = await eventLifecycle(request, env.DB, id, target[2]);
+  if (lifecycle) return lifecycle;
+  const selected = await getOwnerEvent(env.DB, id);
+  if (method === "GET" && !target[2]) return json(selected);
   if (method !== "PATCH") return json({ error: "not_found" }, 404);
   const input = await body(request);
-  if (target[2]) await saveBookingRules(env.DB, parseBookingRules(input), id);
+  if (target[2] === "/booking-rules") await saveBookingRules(env.DB, parseBookingRules(input), id);
+  else if (target[2]) return json({ error: "not_found" }, 404);
   else await saveEventDetails(env.DB, parseEventDetails(input), id);
   return json({ saved: true });
 }
@@ -176,14 +214,20 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
     (modes.length && modes[0] !== "1")
   )
     throw new ErrorWithCode("invalid_query");
-  const selectedId = eventId(ids[0] ?? DEFAULT_EVENT_ID);
-  const settings = await getSettings(dependencies.env.DB, selectedId);
+  const events = await listEvents(dependencies.env.DB);
+  const selectedId = eventId(ids[0] ?? events[0]?.id ?? DEFAULT_EVENT_ID);
+  const creating = modes.length === 1 || (!ids.length && events.length === 0);
+  const preferences = await getOwnerPreferences(dependencies.env.DB);
+  const settings = {
+    ...preferences,
+    event: creating ? defaultSettings.event : (await getOwnerEvent(dependencies.env.DB, selectedId)).event,
+  };
   return {
     owner: identity,
     settings,
     selectedId,
-    creating: modes.length === 1,
-    events: await listEvents(dependencies.env.DB),
+    creating,
+    events,
     bookings: await bookingService(dependencies).ownerList(),
   };
 }
@@ -191,7 +235,7 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
 export async function getOwnerBookings(request: Request, dependencies: Dependencies) {
   if (!(await requireOwner(dependencies.env, request))) return null;
   const query = parseOwnerBookingQuery(new URL(request.url).searchParams);
-  const settings = await getSettings(dependencies.env.DB);
+  const settings = await getOwnerPreferences(dependencies.env.DB);
   return {
     query,
     timeZone: settings.schedule.timeZone,
@@ -248,10 +292,10 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (method === "GET")
       return json({
         calendars: await new CalendarClient(env).listCalendars(),
-        conflictCalendarIds: (await getSettings(env.DB)).conflictCalendarIds ?? null,
+        conflictCalendarIds: (await getOwnerPreferences(env.DB)).conflictCalendarIds ?? null,
       });
     if (method === "PATCH") {
-      await getSettings(env.DB);
+      await getOwnerPreferences(env.DB);
       const ids = parseConflictCalendars(await body(request));
       await validateConflictCalendars(env, ids);
       await saveConflictCalendars(env.DB, ids);
@@ -261,19 +305,19 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   }
   if (path === "/api/owner/schedule" && method === "PATCH") {
     await owner(env, request);
-    await getSettings(env.DB);
+    await getOwnerPreferences(env.DB);
     await saveWeeklySchedule(env.DB, parseWeeklySchedule(await body(request)));
     return json({ saved: true });
   }
   if (path === "/api/owner/overrides" && method === "PATCH") {
     await owner(env, request);
-    await getSettings(env.DB);
+    await getOwnerPreferences(env.DB);
     await saveScheduleOverrides(env.DB, parseScheduleOverrides(await body(request)));
     return json({ saved: true });
   }
   if (path === "/api/owner/booking-rules" && method === "PATCH") {
     await owner(env, request);
-    await getSettings(env.DB);
+    await getBookableSettings(env.DB);
     await saveBookingRules(env.DB, parseBookingRules(await body(request)));
     return json({ saved: true });
   }
@@ -293,7 +337,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   const service = bookingService(dependencies);
   if (path === "/api/owner") {
     await owner(env, request);
-    await getSettings(env.DB);
+    await getBookableSettings(env.DB);
     if (method === "PUT") {
       const replacement = parseSettings(await body(request));
       await validateConflictCalendars(env, replacement.conflictCalendarIds);

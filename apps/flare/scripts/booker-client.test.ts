@@ -64,13 +64,16 @@ test("event transport binds metadata, slots and unchanged create bodies to the s
 
 test("event and owner acknowledgments fail closed on wrong IDs, duplicates and malformed policy", async () => {
   const id = "11111111-1111-4111-8111-111111111111";
-  const entry = { id, event: defaultSettings.event };
+  const entry = { id, event: defaultSettings.event, lifecycle: "listed" };
   for (const value of [
     null,
     { events: [entry, entry] },
     { events: [{ ...entry, id: "wrong" }] },
     { events: [{ ...entry, event: { ...entry.event, noticeMinutes: "120" } }] },
     { events: [entry], private: true },
+    { events: [{ ...entry, lifecycle: "removed" }] },
+    { events: [{ ...entry, lifecycle: true }] },
+    { events: [{ id, event: defaultSettings.event }] },
   ]) {
     await assert.rejects(new BookerClient(async () => Response.json(value)).ownerEvents(), ErrorWithCode);
   }

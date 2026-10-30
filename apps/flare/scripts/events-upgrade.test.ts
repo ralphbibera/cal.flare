@@ -97,6 +97,7 @@ test("populated D1 upgrade retains legacy command bytes, rowids, capabilities, o
     );
   }
   assert.deepEqual(after[2].results, before[2].results);
+  await f.migrateEvents(true);
   assert.deepEqual(await getSettings(f.db), JSON.parse(rawSettings));
   assert.equal(
     await f.db.prepare("SELECT json FROM event_type WHERE id='default'").first("json"),
@@ -165,6 +166,64 @@ test("D1 migration seeds defaults only for absent settings and fails without rep
   }
   await f.db.prepare("DELETE FROM organizer_settings").run();
   await f.migrateEvents();
+  await f.migrateEvents(true);
   assert.deepEqual(await getSettings(f.db), defaultSettings);
   assert.equal(await f.db.prepare("SELECT count(*) AS n FROM event_type").first("n"), 1);
+});
+
+test("0005 to 0006 preserves populated canonical bytes, rowids, commands and reservations", async (t) => {
+  const f = await apiFixture({ legacyLifecycle: true });
+  t.after(f.close);
+  const raw = JSON.stringify({
+    ...settings.event,
+    location: "Private\ud800\u0000東京",
+    bookingWindowDays: 30,
+  });
+  await f.db.prepare("UPDATE event_type SET json=?,version=7").bind(raw).run();
+  const { event: _event, ...preferences } = settings;
+  for (const [index, mode] of ["done", "queued", "sent", "rejected"].entries()) {
+    const id = `upgrade-${mode}`;
+    const start = mode === "rejected" ? 9 * hour : (9 + index * 2) * hour;
+    await f.db
+      .prepare(`INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
+      desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due)
+      VALUES(?,?,?,'create','{}',0,'{}',?,'immutable-token-hash',?,?,'accepted',0)`)
+      .bind(id, id, id, `{"event":${raw},${JSON.stringify(preferences).slice(1)}`, start, start + hour)
+      .run();
+    if (mode === "sent")
+      await f.db
+        .prepare("UPDATE booking_command SET execution='sent',dispatch_nonce='dispatch' WHERE id=?")
+        .bind(id)
+        .run();
+    if (mode === "done")
+      await f.db
+        .prepare("UPDATE booking_command SET execution='done',result_etag='etag',terminal=1 WHERE id=?")
+        .bind(id)
+        .run();
+  }
+  const capture = () =>
+    Promise.all([
+      f.db.prepare("SELECT rowid AS cursor,* FROM event_type ORDER BY rowid").all(),
+      f.db.prepare("SELECT rowid AS cursor,* FROM organizer_settings").all(),
+      f.db.prepare("SELECT rowid AS cursor,* FROM booking ORDER BY rowid").all(),
+      f.db.prepare("SELECT rowid AS cursor,* FROM booking_command ORDER BY rowid").all(),
+      f.db.prepare("SELECT * FROM booking_reservation ORDER BY booking_id,role").all(),
+    ]).then((results) => results.map((result) => result.results));
+  const before = await capture();
+  assert.deepEqual(
+    before[3].map((row) => row.outcome),
+    ["accepted", "accepted", "accepted", "conflict"]
+  );
+  await f.migrateEvents(true);
+  const after = await capture();
+  assert.deepEqual(
+    after[0].map(({ lifecycle, ...row }) => {
+      assert.equal(lifecycle, "listed");
+      return row;
+    }),
+    before[0]
+  );
+  assert.deepEqual(after.slice(1), before.slice(1));
+  assert.equal(await f.db.prepare("SELECT json FROM event_type").first("json"), raw);
+  await assert.rejects(f.db.prepare("UPDATE event_type SET lifecycle='invalid'").run(), /CHECK constraint/);
 });

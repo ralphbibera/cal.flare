@@ -170,6 +170,7 @@ export async function verifyEvents(browser) {
       frozen
     );
     assert.equal(google.writes.filter((w) => w.id === pending.id).length, 1);
+    await verifyLifecycle(f, owner, created.id, start + 24 * hour, rules);
     assert.deepEqual(f.upstreamFailures, []);
     assert.deepEqual(google.denied, []);
     process.stdout.write(
@@ -178,6 +179,94 @@ export async function verifyEvents(browser) {
   } finally {
     await f.close();
   }
+}
+
+async function verifyLifecycle(f, owner, sourceId, start, rules) {
+  const { send, request, read, db, google } = f;
+  const remove = (id) =>
+    request(`/api/owner/events/${id}`, {
+      method: "DELETE",
+      headers: { ...owner, Origin: f.origin },
+    });
+  await read(await send("/api/owner/schedule", f.settings.schedule, owner, "PATCH"));
+  await read(
+    await send(
+      `/api/owner/events/${sourceId}/booking-rules`,
+      { ...rules, bookingWindowDays: null },
+      owner,
+      "PATCH"
+    )
+  );
+  await read(await remove("default"));
+  const beforeWrites = google.writes.length;
+  const source = await read(await request(`/api/owner/events/${sourceId}`, { headers: owner }));
+  const details = {
+    slug: "hidden-copy",
+    title: "Hidden copy",
+    description: "Copied saved configuration",
+    durationMinutes: 30,
+  };
+  const copy = await read(await send(`/api/owner/events/${sourceId}/duplicate`, details, owner), 201);
+  assert.deepEqual(copy.event, { ...source.event, ...details });
+  await read(await send(`/api/owner/events/${copy.id}/visibility`, { hidden: true }, owner, "PATCH"));
+  assert.equal((await read(await request(`/api/events/${copy.id}`))).event.title, details.title);
+  assert.equal((await request("/hidden-copy")).status, 200);
+  const query = new URLSearchParams({
+    from: new Date(start).toISOString(),
+    to: new Date(start + hour).toISOString(),
+    timeZone: "UTC",
+  });
+  assert.ok((await read(await request(`/api/events/${copy.id}/slots?${query}`))).slots.length);
+  assert.equal(google.writes.length, beforeWrites);
+  const input = {
+    requestKey: randomUUID(),
+    start,
+    name: "Lifecycle guest",
+    email: "guest@example.test",
+    timeZone: "UTC",
+  };
+  google.loseResponseAfter("insert");
+  const pending = await read(await send(`/api/events/${copy.id}/bookings`, input), 202);
+  const command = await db
+    .prepare("SELECT settings_json,desired_json,token_hash,outcome FROM booking_command WHERE booking_id=?")
+    .bind(pending.id)
+    .first();
+  await read(await remove(copy.id));
+  await read(await remove(copy.id));
+  assert.equal((await request("/hidden-copy")).status, 404);
+  assert.equal((await request(`/api/events/${copy.id}`)).status, 404);
+  assert.equal(
+    (await send(`/api/events/${copy.id}/bookings`, { ...input, requestKey: randomUUID() })).status,
+    404
+  );
+  await db
+    .prepare("UPDATE booking_command SET due=0,lease_until=0 WHERE booking_id=?")
+    .bind(pending.id)
+    .run();
+  await f.scheduled();
+  const recovered = await read(await send(`/api/events/${copy.id}/bookings`, input), 201);
+  assert.equal(recovered.id, pending.id);
+  assert.equal(recovered.manageToken, pending.manageToken);
+  assert.equal(recovered.disableRescheduling, true);
+  assert.equal(google.writes.filter((w) => w.id === pending.id).length, 1);
+  assert.deepEqual(
+    await db
+      .prepare("SELECT settings_json,desired_json,token_hash,outcome FROM booking_command WHERE booking_id=?")
+      .bind(pending.id)
+      .first(),
+    command
+  );
+  assert.equal((await request("/", { headers: owner })).status, 200);
+  assert.equal((await request("/?eventId=default", { headers: owner })).status, 404);
+  assert.equal((await request("/api/public")).status, 404);
+  await read(await remove(sourceId));
+  const finalPage = await request("/", { headers: owner });
+  assert.equal(finalPage.status, 200);
+  assert.match(await finalPage.text(), /name="title"/);
+  assert.equal((await request("/?create=1", { headers: owner })).status, 200);
+  assert.equal((await request("/owner/bookings", { headers: owner })).status, 200);
+  assert.deepEqual((await read(await request("/api/owner/events", { headers: owner }))).events, []);
+  assert.equal(google.writes.length, beforeWrites + 1);
 }
 
 async function createFromOwner(browser, f, owner, details) {

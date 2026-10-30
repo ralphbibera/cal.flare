@@ -165,7 +165,7 @@ Retain the existing `main`, compatibility settings, assets, and `triggers.crons`
 ```
 
 The checked-in source has no production database UUID or variables. Do not rely on automatic resource provisioning.
-The five production migrations are `0001_identity.sql` through `0005_events.sql` in `apps/flare/migrations`.
+The six production migrations are `0001_identity.sql` through `0006_event_lifecycle.sql` in `apps/flare/migrations`.
 Use these migrations, not the reservation experiment or inherited Prisma schema.
 
 ### 3. Configure production Google access and secrets
@@ -203,7 +203,7 @@ yarn build
 yarn workspace @calflare/web exec wrangler deploy --config dist/server/wrangler.json
 ```
 
-On a fresh database, the first list shows five unapplied migrations. After application, the last list shows none pending.
+On a fresh database, the first list shows six unapplied migrations. After application, the last list shows none pending.
 The build must run after the production source edits. Astro generates `apps/flare/dist/server/wrangler.json`
 with `entry.mjs`, assets at `../client`, and the D1 migrations path at `../../migrations`.
 The custom `src/worker.ts` entry preserves Astro fetch handling and scheduled recovery.
@@ -232,7 +232,7 @@ Treat every unchecked item as unverified. Local fixtures and dry runs cannot com
 1. Open the chosen HTTPS origin. Confirm the sign-in page, styles, scripts, and fonts load without failed asset requests.
 2. Request `/api/health` on that origin. Expect HTTP 200 and `{"status":"ok","storage":"d1"}`.
    This runs `SELECT 1`. It proves binding access, not application tables, migrations, OAuth, or Google delivery.
-3. Run the remote migrations-list command above. Expect no pending migrations, including all five app migrations on a fresh installation.
+3. Run the remote migrations-list command above. Expect no pending migrations, including all six app migrations on a fresh installation.
 4. Sign in with the configured Google owner and approve the requested scopes. Expect the private organizer page.
    Reload to check the session, then sign out and confirm private pages require sign-in. Sign in again.
 5. Load **Conflict calendars**. Confirm eligible Google calendars appear, select the intended conflict calendars, save, and reload.
