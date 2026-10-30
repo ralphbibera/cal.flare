@@ -1,0 +1,60 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../../packages/i18n/locales/en/common.json";
+import OwnerBookings from "../../components/OwnerBookings.astro";
+import { getOwnerBookings } from "../../server/app.ts";
+import { ErrorWithCode } from "../../server/http.ts";
+import "../../styles/globals.css";
+
+type State =
+  | { kind: "anonymous" | "invalid" | "unavailable" }
+  | { kind: "owner"; data: NonNullable<Awaited<ReturnType<typeof getOwnerBookings>>> };
+let state: State = { kind: "unavailable" };
+try {
+  const data = await getOwnerBookings(Astro.request, { env });
+  state = data ? { kind: "owner", data } : { kind: "anonymous" };
+} catch (error) {
+  state = {
+    kind:
+      error instanceof ErrorWithCode && error.code === "invalid_booking_query" ? "invalid" : "unavailable",
+  };
+}
+Astro.response.status = state.kind === "unavailable" ? 503 : state.kind === "invalid" ? 400 : 200;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "same-origin");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+const filters = {
+  all: common.all,
+  upcoming: common.upcoming,
+  past: common.past,
+  cancelled: common.cancelled,
+};
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{common.bookings} | Cal.flare</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    <main class="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
+      <a href="/" class="underline">{common.organizer}</a>
+      {state.kind === "owner" ? <>
+        <nav aria-label={common.filter} class="flex flex-wrap gap-4">
+          {Object.entries(filters).map(([filter, label]) => <a class="underline" href={`?filter=${filter}`}
+            aria-current={state.kind === "owner" && state.data.query.filter === filter ? "page" : undefined}>{label}</a>)}
+        </nav>
+        <OwnerBookings bookings={state.data.bookings} timeZone={state.data.timeZone} emptyMessage={common.flare_bookings_empty} />
+        <nav aria-label={common.flare_bookings_paging} class="flex flex-wrap gap-4">
+          {state.data.query.before !== null && <a class="underline" href={`?filter=${state.data.query.filter}`}>{common.flare_bookings_first}</a>}
+          {state.data.older !== null && <a class="underline" href={`?filter=${state.data.query.filter}&before=${state.data.older}`}>{common.flare_bookings_older}</a>}
+        </nav>
+      </> : <>
+        <p role="alert">{state.kind === "invalid" ? common.invalid_input : state.kind === "anonymous" ? common.flare_owner_signin_help : common.flare_owner_unavailable}</p>
+        <a class="underline" href="/owner/bookings">{common.retry}</a>
+      </>}
+    </main>
+  </body>
+</html>

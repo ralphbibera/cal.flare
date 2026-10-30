@@ -37,7 +37,16 @@ details, times in the organizer's schedule timezone, and lifecycle status. Viewi
 does not retry provider operations. It renders without JavaScript. With JavaScript enabled,
 **Retry pending operation** explicitly resumes the booking's existing durable command and
 reloads its current status. A failed or lost response leaves an explicit retry available.
-Filters, pagination, other owner actions, and booking-list pixel parity remain migration work.
+The home **Bookings** link opens private `/owner/bookings`. Its All, Upcoming, Past, and Canceled
+filters and 25-row pages render without JavaScript. Upcoming means a noncancelled stored interval
+ending after server now; Past includes the exact end boundary. Canceled includes all cancelled rows.
+Classification uses the confirmed snapshot, falling back to the initial snapshot. Pending and
+attention labels retain their actual lifecycle meaning. Later event edits do not rewrite intervals.
+Filter and positive safe-integer `before` row cursors persist in the URL within authenticated sessions.
+Changing filters resets paging. **Older bookings** continues newest-recorded-first keyset paging;
+**First page** returns to the newest records. New inserts use normal keyset behavior. Invalid or duplicate
+query fields are rejected after authentication. Reading pages never retries provider operations.
+Other owner actions and booking-list pixel parity remain migration work.
 
 Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the current weekly
 schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinute`, and

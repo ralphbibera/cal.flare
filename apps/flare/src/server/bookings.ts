@@ -5,7 +5,16 @@ import { parseSettings } from "../domain/settings.ts";
 import type { SlotCondition } from "./booking-availability.ts";
 import { BookingAvailability } from "./booking-availability.ts";
 import { BookingDelivery } from "./booking-delivery.ts";
-import type { Action, Booking, BookingSnapshot, BookingView, Calendar, Command } from "./booking-model.ts";
+import type {
+  Action,
+  Booking,
+  BookingSnapshot,
+  BookingView,
+  Calendar,
+  Command,
+  OwnerBookingPage,
+  OwnerBookingQuery,
+} from "./booking-model.ts";
 import { parseChange, parseCreate, snapshot } from "./booking-model.ts";
 import { ErrorWithCode, record } from "./http.ts";
 import { base64url, encryptionKey, hash } from "./secrets.ts";
@@ -238,31 +247,59 @@ export class BookingService {
     return this.render(await this.booking(id));
   }
   async ownerList(): Promise<BookingView[]> {
+    return (await this.ownerRows({ filter: "all", before: null }, 1000)).bookings;
+  }
+  async ownerPage(query: OwnerBookingQuery): Promise<OwnerBookingPage> {
+    return this.ownerRows(query, 25);
+  }
+  private async ownerRows(query: OwnerBookingQuery, limit: number): Promise<OwnerBookingPage> {
+    const now = this.now();
     const rows = await this.db
-      .prepare(`SELECT b.*, c.action AS pending_action, c.error AS pending_error,
+      .prepare(`SELECT b.*, b.rowid AS cursor, c.action AS pending_action, c.error AS pending_error,
       completed.payload AS completed_payload
       FROM booking b LEFT JOIN booking_command c ON c.id = b.pending_id
       LEFT JOIN booking_command completed ON completed.booking_id=b.id
       AND completed.accepted_version=b.version
       AND ((b.state='cancelled' AND completed.action='cancel') OR (b.state='active' AND completed.action='reschedule'))
       AND completed.outcome='accepted' AND completed.terminal=1 AND completed.execution='done'
-      ORDER BY b.rowid DESC LIMIT 1000`)
+      WHERE (? IS NULL OR b.rowid < ?)
+      AND (?='all' OR (?='cancelled' AND b.state='cancelled')
+        OR (b.state <> 'cancelled' AND (
+          (?='upcoming' AND json_extract(COALESCE(b.confirmed_json,b.initial_json),'$.end') > ?)
+          OR (?='past' AND json_extract(COALESCE(b.confirmed_json,b.initial_json),'$.end') <= ?))))
+      ORDER BY b.rowid DESC LIMIT ?`)
+      .bind(
+        query.before,
+        query.before,
+        query.filter,
+        query.filter,
+        query.filter,
+        now,
+        query.filter,
+        now,
+        limit + 1
+      )
       .all<
         Booking & {
+          cursor: number;
           pending_action: Action | null;
           pending_error: string | null;
           completed_payload: string | null;
         }
       >();
-    return Promise.all(
-      rows.results.map((row) =>
-        this.render(
-          row,
-          row.pending_action ? { action: row.pending_action, error: row.pending_error } : null,
-          row.completed_payload
+    const visible = rows.results.slice(0, limit);
+    return {
+      older: rows.results.length > limit ? (visible.at(-1)?.cursor ?? null) : null,
+      bookings: await Promise.all(
+        visible.map((row) =>
+          this.render(
+            row,
+            row.pending_action ? { action: row.pending_action, error: row.pending_error } : null,
+            row.completed_payload
+          )
         )
-      )
-    );
+      ),
+    };
   }
   private async render(
     booking: Booking,

@@ -1,4 +1,8 @@
 {
+  "flare_bookings_empty": "No bookings match this filter or page.",
+  "flare_bookings_paging": "Booking pages",
+  "flare_bookings_first": "First page",
+  "flare_bookings_older": "Older bookings",
   "flare_booking_status_unavailable": "Booking status is currently unavailable.",
   "flare_booking_pending": "This booking is not confirmed yet.",
   "flare_booking_attention": "This booking needs the organizer's attention.",

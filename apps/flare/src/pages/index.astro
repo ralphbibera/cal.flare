@@ -94,6 +94,7 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               help: common.flare_overrides_help, empty: common.flare_overrides_empty, closed: common.unavailable,
               midnight: common.flare_working_hours_midnight, javascript: common.flare_overrides_javascript,
             }} />
+            <a href="/owner/bookings" class="text-default underline">{common.bookings}</a>
             <OwnerBookings bookings={state.data.bookings} timeZone={state.data.settings.schedule.timeZone} />
             <form action="/api/auth/logout" method="post" class="mt-6">
               <Button type="submit" color="secondary">{common.sign_out}</Button>

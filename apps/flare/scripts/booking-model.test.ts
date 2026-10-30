@@ -1,11 +1,112 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { getOwnerBookings } from "../src/server/app.ts";
 import type { BookingSnapshot } from "../src/server/booking-model.ts";
-import { matches, parseChange, parseCreate, snapshot, timestamp } from "../src/server/booking-model.ts";
+import {
+  matches,
+  parseChange,
+  parseCreate,
+  parseOwnerBookingQuery,
+  snapshot,
+  timestamp,
+} from "../src/server/booking-model.ts";
+import { BookingService } from "../src/server/bookings.ts";
 import type { CalendarEvent } from "../src/server/google.ts";
 import { ErrorWithCode } from "../src/server/http.ts";
+import { apiFixture, settings } from "./fixtures/api.ts";
 
 const start = Date.parse("2026-01-05T09:00:00Z");
+test("owner booking URLs validate filters and positive safe row cursors", () => {
+  assert.deepEqual(parseOwnerBookingQuery(new URLSearchParams()), { filter: "all", before: null });
+  for (const filter of ["all", "upcoming", "past", "cancelled"])
+    assert.deepEqual(parseOwnerBookingQuery(new URLSearchParams({ filter, before: "42" })), {
+      filter,
+      before: 42,
+    });
+  for (const query of [
+    "filter=unknown",
+    "filter=",
+    "filter=all&filter=past",
+    "before=1&before=2",
+    "extra=1",
+    "before=0",
+    "before=-1",
+    "before=1.5",
+    "before=1e3",
+    "before=9007199254740992",
+    "before=1%20OR%201=1",
+    "before=",
+  ])
+    assert.throws(() => parseOwnerBookingQuery(new URLSearchParams(query)), ErrorWithCode, query);
+});
+test("owner filters use canonical stored ends at the exact server boundary after authorization", async () => {
+  const fixture = await apiFixture();
+  try {
+    const service = new BookingService({
+      db: fixture.db,
+      calendar: fixture.calendar,
+      settings: { ...settings, event: { ...settings.event, title: "Edited title", durationMinutes: 480 } },
+      secret: fixture.env.TOKEN_ENCRYPTION_KEY,
+      now: fixture.now,
+    });
+    for (const [id, end, state] of [
+      [1, fixture.now(), "active"],
+      [2, fixture.now() + 1, "active"],
+      [3, fixture.now() - 1, "cancelled"],
+      [4, fixture.now() + 1, "cancelled"],
+    ]) {
+      const stored = JSON.stringify({ ...desired, start: fixture.now() - 60_000, end });
+      await fixture.db
+        .prepare(
+          "INSERT INTO booking(id,version,state,token_hash,initial_json,confirmed_json) VALUES (?,1,?,'',?,?)"
+        )
+        .bind(
+          String(id),
+          state,
+          id === 2 ? stored : JSON.stringify({ ...desired, end: fixture.now() + 100_000 }),
+          id === 2 ? null : stored
+        )
+        .run();
+    }
+    const upcoming = await service.ownerPage({ filter: "upcoming", before: null });
+    assert.deepEqual(
+      upcoming.bookings.map((row) => row.id),
+      ["2"]
+    );
+    assert.equal(upcoming.bookings[0]?.title, "Consultation");
+    assert.equal(upcoming.bookings[0]?.end, fixture.now() + 1);
+    assert.equal(upcoming.bookings[0]?.manageToken, undefined);
+    assert.deepEqual(
+      (await service.ownerPage({ filter: "past", before: null })).bookings.map((row) => row.id),
+      ["1"]
+    );
+    assert.deepEqual(
+      (await service.ownerPage({ filter: "cancelled", before: null })).bookings.map((row) => row.id),
+      ["4", "3"]
+    );
+    assert.deepEqual(await service.ownerPage({ filter: "all", before: 1 }), { bookings: [], older: null });
+    const request = new Request(`${fixture.env.PUBLIC_ORIGIN}/owner/bookings?filter=invalid`);
+    assert.equal(await getOwnerBookings(request, fixture), null);
+    await assert.rejects(
+      getOwnerBookings(new Request(request, { headers: fixture.ownerHeaders }), fixture),
+      /invalid_booking_query/
+    );
+    await fixture.db.prepare("UPDATE owner_session SET expires_at=0").run();
+    assert.equal(
+      await getOwnerBookings(new Request(request, { headers: fixture.ownerHeaders }), fixture),
+      null
+    );
+    await fixture.db.prepare("DELETE FROM owner_session").run();
+    assert.equal(
+      await getOwnerBookings(new Request(request, { headers: fixture.ownerHeaders }), fixture),
+      null
+    );
+    assert.equal(fixture.calendar.writes.length, 0);
+    assert.equal(await fixture.db.prepare("SELECT count(*) AS n FROM booking_command").first("n"), 0);
+  } finally {
+    await fixture.close();
+  }
+});
 const create = {
   requestKey: "create-request-0001",
   start,
