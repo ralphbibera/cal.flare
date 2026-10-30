@@ -12,13 +12,13 @@ Astro.response.headers.set("X-Content-Type-Options", "nosniff");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
 ---
 <!doctype html>
-<html lang="en">
+<html lang="en" class="public-booking">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{bookingLabels.manageBooking}</title>
   </head>
-  <body class="bg-default text-default min-h-screen font-sans">
+  <body class="bg-subtle dark:bg-default text-default min-h-screen font-sans">
     {valid ? <PrivateBooking client:load id={id} labels={bookingLabels} /> : <main class="p-6"><h1>{bookingLabels.statusUnavailable}</h1></main>}
     <noscript><p>{bookingLabels.javascriptRequired}</p></noscript>
   </body>
