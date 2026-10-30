@@ -191,6 +191,17 @@ and exports at 390px and 1280px with mocked Google and unchanged provider write 
 Native interactive typing, submission, and reason-page pixel parity remain deferred because the
 shared built Next fixture lacks the reschedule route. This flow does not send reason emails
 or establish live invitation arrival.
+Owner home and paged-list titles open private booking details at `/owner/bookings/:id`.
+Details use the stored booking facts and primary attendee. Reads never retry calendar writes.
+The owner session authorizes GET and cancellation POST at `/api/owner/bookings/:id`, without
+minting attendee capabilities. Owner cancellation requires a nonblank, trimmed reason of at most
+1000 UTF-16 units and an explicit destructive confirmation. Disabled and ended restrictions apply.
+The existing immutable command, delivery and recovery path handles cancellation and exact replay.
+Owner attempts reuse ChangeAttempts in a separate session-storage namespace, preserving attendee
+attempts in the same tab. Uncertain acknowledgements keep the frozen request for explicit retry.
+Pending operations retain the existing owner recovery control. Owner rescheduling is deferred.
+The Worker/D1 browser journey verifies the functional owner flow with mocked Google at 390/1280.
+This does not establish native interaction parity, live Google delivery or reason emails.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
 The authenticated settings API accepts optional `event.disableCancelling` and
 `event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.

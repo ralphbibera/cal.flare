@@ -1,0 +1,38 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../../../packages/i18n/locales/en/common.json";
+import { bookingLabels } from "../../../components/booking-labels.ts";
+import { OwnerCancellation } from "../../../components/OwnerCancellation.tsx";
+import { getOwnerBooking } from "../../../server/app.ts";
+import { ErrorWithCode } from "../../../server/http.ts";
+import "../../../styles/globals.css";
+
+let booking: Awaited<ReturnType<typeof getOwnerBooking>> = null;
+let status = 200;
+try {
+  booking = await getOwnerBooking(Astro.request, { env }, Astro.params.id ?? "");
+} catch (error) {
+  status = error instanceof ErrorWithCode && error.status === 404 ? 404 : 503;
+}
+Astro.response.status = status;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "same-origin");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{common.bookings} | Cal.flare</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    <main class="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
+      <a class="underline" href="/owner/bookings">{common.bookings}</a>
+      {booking ? <>
+        <OwnerCancellation client:load booking={booking} initialRange={new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: booking.timeZone }).formatRange(booking.start, booking.end)} labels={{...bookingLabels, cancellationReason: common.cancellation_reason}} />
+      </> : <p role="alert">{status === 503 ? common.flare_owner_unavailable : status === 404 ? common.not_found : common.flare_owner_signin_help}</p>}
+    </main>
+  </body>
+</html>
