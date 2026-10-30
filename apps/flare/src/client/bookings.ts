@@ -221,6 +221,28 @@ class BookerClient {
   view(access: BookingAccess): Promise<BookingView> {
     return this.request(`/api/bookings/${access.id}`, booking, { headers: accessHeaders(access) });
   }
+  private ownerBooking(id: string, init: RequestInit = {}): Promise<BookingView> {
+    if (!/^[0-9a-f]{64}$/.test(id)) throw new ErrorWithCode("invalid_access", 400);
+    return this.request(
+      `/api/owner/bookings/${id}`,
+      (value) => {
+        const result = booking(value);
+        if (result.id !== id || result.manageToken !== undefined) throw new Error();
+        return result;
+      },
+      init
+    );
+  }
+  ownerView(id: string): Promise<BookingView> {
+    return this.ownerBooking(id);
+  }
+  ownerCancel(id: string, input: Extract<ChangeRequest, { action: "cancel" }>): Promise<BookingView> {
+    return this.ownerBooking(id, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
   change(access: BookingAccess, input: ChangeRequest): Promise<BookingView> {
     return this.request(`/api/bookings/${access.id}`, booking, {
       method: "POST",
