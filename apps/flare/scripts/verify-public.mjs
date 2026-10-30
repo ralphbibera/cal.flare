@@ -396,11 +396,20 @@ async function verifyPrivate(browser, fixture, date) {
     await time.waitFor();
     const selected = await time.getAttribute("data-time");
     await time.click();
+    await guest.getByRole("textbox", { name: "Reason for reschedule", exact: true }).fill(" \n\t ");
+    const rescheduleResponse = guest.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/bookings/${id}` && response.request().method() === "POST"
+    );
     await guest.getByRole("button", { name: "Reschedule", exact: true }).click();
+    const reschedule = await rescheduleResponse;
+    assert.ok(!Object.hasOwn(reschedule.request().postDataJSON(), "rescheduleReason"));
+    assert.ok(!Object.hasOwn(await reschedule.json(), "rescheduleReason"));
     await guest.waitForFunction(
       (selected) => document.querySelector("dl time")?.getAttribute("datetime") === selected,
       selected
     );
+    assert.equal(await guest.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
     await guest.getByRole("button", { name: "Cancel event", exact: true }).click();
     await guest
       .getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true })

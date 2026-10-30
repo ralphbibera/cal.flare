@@ -3,6 +3,7 @@ import { BookerClient, type BookingAccess, type ChangeRequest, ErrorWithCode } f
 import { ChangeAttempts } from "../client/change-attempt.ts";
 import { managementLink } from "../client/management-access.ts";
 import { parseCancellationReason } from "../domain/cancellation-reason.ts";
+import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
@@ -17,7 +18,7 @@ type Labels = typeof bookingLabels;
 type Stage =
   | { kind: "restore" | "actions" | "calendar" | "blocked" }
   | { kind: "cancel"; invalid?: true }
-  | { kind: "move"; start: number }
+  | { kind: "move"; start: number; invalid?: true }
   | { kind: "pending"; request: Readonly<ChangeRequest> };
 const client = new BookerClient();
 
@@ -38,6 +39,7 @@ export function BookingManagement({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [cancellationDraft, setCancellationDraft] = useState("");
+  const [rescheduleDraft, setRescheduleDraft] = useState("");
   const reasonId = useId();
   const [copy, setCopy] = useState<"ready" | "copied" | "failed">("ready");
   async function copyLink() {
@@ -84,6 +86,11 @@ export function BookingManagement({
       setStage({ kind: "cancel", invalid: true });
       return;
     }
+    const rescheduleReason = stage.kind === "move" ? parseRescheduleReason(rescheduleDraft) : undefined;
+    if (rescheduleReason === null && stage.kind === "move") {
+      setStage({ ...stage, invalid: true });
+      return;
+    }
     let request: Readonly<ChangeRequest>;
     try {
       request =
@@ -91,7 +98,12 @@ export function BookingManagement({
           ? stage.request
           : store().begin(
               stage.kind === "move"
-                ? { action: "reschedule", version: booking.version, start: stage.start }
+                ? {
+                    action: "reschedule",
+                    version: booking.version,
+                    start: stage.start,
+                    ...(rescheduleReason ? { rescheduleReason } : {}),
+                  }
                 : {
                     action: "cancel",
                     version: booking.version,
@@ -111,6 +123,7 @@ export function BookingManagement({
       if (!store().acknowledge(request.requestKey)) throw new ErrorWithCode("stale_attempt", 409);
       onUpdated(result);
       if (request.action === "cancel") setCancellationDraft("");
+      else setRescheduleDraft("");
       setStage({ kind: "actions" });
     } catch (failure) {
       try {
@@ -166,8 +179,16 @@ export function BookingManagement({
       : stage.kind === "pending" && stage.request.action === "reschedule"
         ? stage.request.start
         : undefined;
-  const savedCancellation =
-    stage.kind === "pending" && stage.request.action === "cancel" ? stage.request : undefined;
+  const savedRequest = stage.kind === "pending" ? stage.request : undefined;
+  const moving = stage.kind === "move" || savedRequest?.action === "reschedule";
+  const invalid = (stage.kind === "cancel" || stage.kind === "move") && !!stage.invalid;
+  let reasonValue = moving ? rescheduleDraft : cancellationDraft;
+  if (savedRequest) {
+    reasonValue =
+      (savedRequest.action === "reschedule"
+        ? savedRequest.rescheduleReason
+        : savedRequest.cancellationReason) ?? "";
+  }
   return (
     <section className="bg-default border-subtle mx-auto w-full max-w-xl space-y-6 rounded-lg border p-8">
       {confirmed && (
@@ -210,6 +231,12 @@ export function BookingManagement({
             </dd>
           </>
         )}
+        {stage.kind === "actions" && confirmed && booking.rescheduleReason && (
+          <>
+            <dt className="font-medium">{labels.rescheduleReasonDisplay}</dt>
+            <dd className="col-span-2 min-w-0 whitespace-pre-wrap break-words">{booking.rescheduleReason}</dd>
+          </>
+        )}
       </dl>
       {confirmed && stage.kind === "actions" && !busy && !error && (
         <CalendarExport booking={booking} labels={labels} />
@@ -238,25 +265,30 @@ export function BookingManagement({
         </div>
       )}
       {stage.kind === "cancel" && <p>{labels.cancelPrompt}</p>}
-      {(stage.kind === "cancel" || savedCancellation) && (
+      {(stage.kind === "cancel" || stage.kind === "move" || savedRequest) && (
         <div>
-          <Label htmlFor={reasonId}>{labels.cancellationReason}</Label>
+          <Label htmlFor={reasonId}>{moving ? labels.rescheduleReason : labels.cancellationReason}</Label>
           <TextArea
             id={reasonId}
             rows={3}
-            placeholder={labels.cancellationReasonPlaceholder}
-            readOnly={!!savedCancellation}
-            value={savedCancellation ? (savedCancellation.cancellationReason ?? "") : cancellationDraft}
-            aria-invalid={stage.kind === "cancel" && !!stage.invalid}
-            aria-describedby={stage.kind === "cancel" && stage.invalid ? `${reasonId}-error` : undefined}
+            placeholder={moving ? labels.rescheduleReasonPlaceholder : labels.cancellationReasonPlaceholder}
+            readOnly={!!savedRequest}
+            value={reasonValue}
+            aria-invalid={invalid}
+            aria-describedby={invalid ? `${reasonId}-error` : undefined}
             onChange={(event) => {
-              setCancellationDraft(event.target.value);
-              setStage({ kind: "cancel" });
+              if (stage.kind === "move") {
+                setRescheduleDraft(event.target.value);
+                setStage({ kind: "move", start: stage.start });
+              } else if (stage.kind === "cancel") {
+                setCancellationDraft(event.target.value);
+                setStage({ kind: "cancel" });
+              }
             }}
           />
-          {stage.kind === "cancel" && stage.invalid && (
+          {invalid && (
             <p id={`${reasonId}-error`} role="alert" className="text-error text-sm">
-              {labels.cancellationReasonLimit}
+              {labels.reasonLimit}
             </p>
           )}
         </div>
