@@ -126,12 +126,14 @@ column gap. The success emblem uses the native colors and Lucide check path.
 The existing management verifier checks literal geometry, computed styles, loaded font and
 served font bytes after event-setting edits and canonical-fact reloads on both routes.
 This is partial presentation contract convergence. Whole-card and whole-page pixel parity
-remain unverified. Host identity, notes, guests, invitation narrative, signup, export layout,
+remain unverified. Host identity, notes, guests, invitation narrative, signup,
 and intentional private controls still differ. Missing content has no placeholder rows or heights.
 Confirmed receipts and authorized private details offer **Add to calendar**, ordered Google,
 Microsoft Outlook, Microsoft Office, then Other. The first three open external composers with
 `noopener noreferrer`. Other downloads a local UTF-8 `text/calendar` file named `booking.ics`.
-Other uses the existing calendar icon and fixed filename; native uses an Outlook-shaped icon and event-title filename.
+Other uses the exact pinned native ICS-shaped path with its accessible name preserved.
+The booking card retains the native `overflow-hidden` clipping contract.
+The safe fixed filename remains an intentional difference; native uses an event-title filename.
 Exports contain the stored title and UTC interval, plus ICS identity, version, and export timestamp.
 The stable UID survives rescheduling; a later download uses the canonical new interval and version.
 Exports omit attendee fields, notes, guests, private links, access tokens, description, and location.
@@ -140,7 +142,12 @@ status refresh, and cancellation. Manual export does not send invitations or ret
 The existing browser journey decodes composer queries, aborts a keyboard-opened popup before external
 network access, and reads actual downloaded ICS bytes at 390px and 1280px on public and private views.
 It checks unchanged mock-provider write counts, event-setting edits, rescheduling, and hidden states.
-The native row's order, 40px controls, brand paths, hrefs, and ICS were observed on the isolated fixture.
+The complete export row independently matches both actual native confirmation takes at
+390px and 1280px with zero differing RGBA pixels on receipts and authorized private pages.
+The natural row boundary includes the label, all four controls, and 32px top padding.
+Its separate separator is outside that boundary. Row dimensions are 292×80 and 510×72.
+Literal checks cover mobile label wrapping beside the controls, 40px anchors, 56px pitch,
+typography, borders, SVG bounds, keyboard order, focus visibility, and overflow.
 Its exports use current event metadata and description; this port uses only available canonical facts.
 Live external import, account event creation, invitation arrival, and automatic calendar sync remain unverified.
 Host identity, location, description, invitation-delivery copy, and signup branding remain later port work. Source-backed layout does not establish
@@ -311,7 +318,11 @@ stable geometry, and completed animations without changing the public-page image
 Read-only SQL checks preserve booking content and counts and require zero credentials after each visit.
 The browser permits only local reads and the source-backed session and feature-map queries.
 Visible email-sent wording is fixture UI content. No booking is created through the UI and no invitation is sent.
-This is reference baseline evidence only. Candidate confirmation parity and full-port completion remain unverified.
+The export row also compares both native takes with the earlier built receipt and private-row captures.
+Each complete row requires identical dimensions and zero differing RGBA pixels without masks or tolerance.
+Both native takes match receipts and private rows at both widths with zero differing RGBA pixels.
+The remaining confirmation content and whole-card pixels are outside that comparison.
+Whole confirmation parity and full-port completion remain unverified.
 Without `CALFLARE_REFERENCE_ORIGIN`, the existing verifier skips native checks.
 That default path needs no native Prisma graph or PostgreSQL connection.
 

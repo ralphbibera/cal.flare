@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -106,6 +107,7 @@ export async function verifyNativeConfirmation(browser, origin, artifacts, diffe
     ["desktop", { width: 1280, height: 900 }],
   ]) {
     const captures = [];
+    const rows = [];
     for (const take of [1, 2]) {
       const context = await browser.newContext({
         viewport,
@@ -150,6 +152,53 @@ export async function verifyNativeConfirmation(browser, origin, artifacts, diffe
           "Microsoft Outlook",
           "Microsoft Office",
           "Other",
+        ]);
+        const row = card.getByText("Add to calendar", { exact: true }).locator("..");
+        const geometry = await row.evaluate((node) => {
+          const base = node.getBoundingClientRect();
+          const rect = (element) => {
+            const r = element.getBoundingClientRect();
+            return [r.x - base.x, r.y - base.y, r.width, r.height];
+          };
+          const text = getComputedStyle(node.firstElementChild);
+          const separator = getComputedStyle(node.previousElementSibling);
+          return {
+            row: [base.width, base.height],
+            label: rect(node.firstElementChild),
+            font: [text.fontSize, text.fontWeight, text.lineHeight, text.color],
+            separator: [separator.marginTop, separator.borderTopWidth, separator.borderTopColor],
+            links: [...node.querySelectorAll("a")].map((link) => {
+              const style = getComputedStyle(link);
+              return {
+                box: rect(link),
+                border: [style.borderTopWidth, style.borderTopColor, style.borderRadius],
+                spacing: [style.marginLeft, style.marginRight, style.paddingTop, style.paddingRight],
+                svg: rect(link.querySelector("svg")),
+                viewBox: link.querySelector("svg").getAttribute("viewBox"),
+              };
+            }),
+          };
+        });
+        const mobile = viewport.width === 390;
+        assert.deepEqual(geometry.row, mobile ? [292, 80] : [510, 72]);
+        assert.deepEqual(geometry.label, mobile ? [0, 32, 68, 48] : [82.40625, 40, 121.171875, 24]);
+        assert.deepEqual(geometry.font, ["16px", "500", "24px", "rgb(60, 62, 68)"]);
+        assert.deepEqual(geometry.separator, ["32px", "1px", "rgb(229, 231, 235)"]);
+        for (const [index, link] of geometry.links.entries()) {
+          const x = (mobile ? 76 : 211.578125) + index * 56;
+          const y = mobile ? 36 : 32;
+          assert.deepEqual(link.box, [x, y, 40, 40]);
+          assert.deepEqual(link.border, ["1px", "rgb(229, 231, 235)", "6px"]);
+          assert.deepEqual(link.spacing, [index === 0 ? "0px" : "8px", "8px", "8px", "12px"]);
+          assert.deepEqual(link.svg, [x + 13, y + 11.625, 16, 16]);
+          assert.equal(link.viewBox, index === 3 ? "0 0 1000 1000" : "0 0 24 24");
+        }
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        rows.push([
+          ...(await row.screenshot({
+            path: fileURLToPath(new URL(`upstream-confirmation-export-${name}-${take}.png`, artifacts)),
+            animations: "disabled",
+          })),
         ]);
         for (const [index, link] of (await exports.all()).entries()) {
           const box = await link.boundingBox();
@@ -250,6 +299,21 @@ export async function verifyNativeConfirmation(browser, origin, artifacts, diffe
         await comparison.evaluate(differentPixels, captures),
         0,
         `${name} native whole-page confirmation repeat dimensions and every RGBA channel`
+      );
+      for (const [take, rowPixels] of rows.entries()) {
+        for (const route of ["receipt", "private"]) {
+          const candidate = await readFile(
+            new URL(`confirmed-export-${route}-${viewport.width}.png`, artifacts)
+          );
+          assert.equal(
+            await comparison.evaluate(differentPixels, [rowPixels, [...candidate]]),
+            0,
+            `${name} ${route} take ${take + 1} complete export row dimensions and every RGBA channel`
+          );
+        }
+      }
+      console.log(
+        `PASS ${name} complete export row: both native takes, receipt and private have zero differing RGBA pixels.`
       );
     } finally {
       await comparison.close();
