@@ -21,7 +21,7 @@ type Tokens = { access: string; refresh: string; expiresAt: number };
 const sessionSeconds = 7 * 24 * 60 * 60;
 const tokenEndpoint = "https://oauth2.googleapis.com/token";
 export const GOOGLE_SCOPES =
-  "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy";
+  "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 
 async function config(env: AuthEnv, request?: Request) {
   let origin: URL;
@@ -99,6 +99,7 @@ export async function beginLogin(env: AuthEnv, request: Request): Promise<Respon
     code_challenge: await hash(verifier),
     code_challenge_method: "S256",
     access_type: "offline",
+    include_granted_scopes: "true",
     prompt: "consent",
     login_hint: env.GOOGLE_OWNER_EMAIL,
   }).toString();
@@ -178,11 +179,11 @@ export async function finishLogin(env: AuthEnv, request: Request): Promise<Respo
   const scopes = new Set(typeof raw.scope === "string" ? raw.scope.split(/\s+/) : []);
   const calendar = "https://www.googleapis.com/auth/calendar";
   if (
-    !scopes.has(calendar) &&
-    (!scopes.has(`${calendar}.events`) ||
-      ![`${calendar}.freebusy`, `${calendar}.events.freebusy`, `${calendar}.readonly`].some((scope) =>
-        scopes.has(scope)
-      ))
+    ![
+      [calendar, `${calendar}.events`],
+      [calendar, `${calendar}.readonly`, `${calendar}.events.freebusy`],
+      [calendar, `${calendar}.readonly`, `${calendar}.calendarlist`, `${calendar}.calendarlist.readonly`],
+    ].every((permissions) => permissions.some((scope) => scopes.has(scope)))
   )
     throw new ErrorWithCode("FORBIDDEN", "Required Google Calendar permissions were not granted");
   const identityResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {

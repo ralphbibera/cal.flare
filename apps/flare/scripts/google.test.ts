@@ -61,6 +61,150 @@ try {
     )
     .run();
   handler = async (url, init) => {
+    const query = new URL(String(url));
+    assert.equal(query.pathname, "/calendar/v3/users/me/calendarList");
+    assert.equal(query.searchParams.get("maxResults"), "250");
+    assert.equal(query.searchParams.get("showHidden"), "true");
+    assert.equal(query.searchParams.get("showDeleted"), "false");
+    assert.equal(init?.method, "GET");
+    assert.equal(init?.body, undefined);
+    return Response.json({
+      items: [{ id: "Owner@Example.com", summary: "Private name", primary: true, accessRole: "owner" }],
+    });
+  };
+  assert.deepEqual(await client.listCalendars(), [{ id: "primary", name: "Private name", primary: true }]);
+  const entry = (id: string, accessRole = "reader") => ({ id, summary: `Name ${id}`, accessRole });
+  let listPages = 0;
+  handler = async (url) => {
+    const page = new URL(String(url)).searchParams.get("pageToken");
+    listPages++;
+    if (!page)
+      return Response.json({
+        items: [
+          { ...entry("Owner@Example.com", "owner"), primary: true },
+          { ...entry("Hidden@group.calendar.google.com", "freeBusyReader"), hidden: true, selected: false },
+          entry("en.usa#holiday@group.v.calendar.google.com"),
+          entry("addressbook#contacts@group.v.calendar.google.com"),
+          { id: "deleted", deleted: true },
+          entry("no-access", "none"),
+        ],
+        nextPageToken: "second+page",
+      });
+    assert.equal(page, "second+page");
+    return Response.json({
+      items: [entry("CaseSensitive@Group.calendar.google.com", "writer"), entry("read-only")],
+    });
+  };
+  assert.deepEqual(await client.listCalendars(), [
+    { id: "primary", name: "Name Owner@Example.com", primary: true },
+    { id: "Hidden@group.calendar.google.com", name: "Name Hidden@group.calendar.google.com", primary: false },
+    {
+      id: "CaseSensitive@Group.calendar.google.com",
+      name: "Name CaseSensitive@Group.calendar.google.com",
+      primary: false,
+    },
+    { id: "read-only", name: "Name read-only", primary: false },
+  ]);
+  assert.equal(listPages, 2);
+  for (const items of [
+    [entry("same"), entry("same")],
+    [
+      { ...entry("first"), primary: true },
+      { ...entry("second"), primary: true },
+    ],
+    [entry("primary")],
+    [entry("")],
+    [entry(" padded ")],
+    [entry("bad\u0000id")],
+    [entry("bad\u0080id")],
+    [entry("bad\u0085id")],
+    [entry("bad\u009fid")],
+    [entry("a".repeat(1025))],
+    [{ ...entry("id"), summary: " " }],
+    [{ ...entry("id"), summary: 3 }],
+    [{ ...entry("id"), primary: "true" }],
+    [{ ...entry("id"), hidden: 1 }],
+    [{ ...entry("id"), deleted: "true" }],
+    [entry("id", "unexpected-role")],
+    [null],
+    ["id"],
+  ]) {
+    handler = async () => Response.json({ items });
+    await assert.rejects(client.listCalendars(), failure("retryable", 200));
+  }
+  for (const value of [
+    {},
+    null,
+    { items: null },
+    { items: [], nextPageToken: "" },
+    { items: [], nextPageToken: " " },
+    { items: [], nextPageToken: 3 },
+  ]) {
+    handler = async () => Response.json(value);
+    await assert.rejects(client.listCalendars(), failure("retryable", 200));
+  }
+  for (const scenario of ["repeat", "duplicate", "pages", "count", "page-size"]) {
+    listPages = 0;
+    handler = async () => {
+      const current = listPages++;
+      return Response.json({
+        items:
+          scenario === "count" || scenario === "page-size"
+            ? Array.from({ length: scenario === "count" ? 250 : 251 }, (_, n) => entry(`id-${current}-${n}`))
+            : scenario === "duplicate"
+              ? [entry("same")]
+              : [],
+        nextPageToken: scenario === "repeat" ? "repeated" : `page-${current}`,
+      });
+    };
+    await assert.rejects(client.listCalendars(), failure("retryable", 200));
+    assert.equal(listPages, { repeat: 2, duplicate: 2, pages: 10, count: 5, "page-size": 1 }[scenario]);
+  }
+  for (const status of [403, 429, 503]) {
+    handler = async () =>
+      Response.json({ error: { message: "PRIVATE NAME / PRIVATE ID / TOKEN" } }, { status });
+    await assert.rejects(client.listCalendars(), (error: unknown) => {
+      assert.ok(error instanceof GoogleCalendarError);
+      assert.equal(error.kind, status === 403 ? "definite" : "retryable");
+      assert.equal(error.status, status);
+      assert.ok(!error.message.includes("PRIVATE"));
+      return true;
+    });
+  }
+  listPages = 0;
+  handler = async () => {
+    const current = listPages++;
+    return Response.json({
+      items: Array.from({ length: 250 }, (_, n) => entry(`id-${current}-${n}`)),
+      ...(current < 3 ? { nextPageToken: `page-${current}` } : {}),
+    });
+  };
+  assert.equal((await client.listCalendars()).length, 1000);
+  for (const invalid of [
+    { id: "partial-private-id", summary: "Private name", accessRole: "invalid" },
+    entry("bad\u0080id"),
+    entry("bad\u0085id"),
+    entry("bad\u009fid"),
+  ]) {
+    listPages = 0;
+    handler = async () =>
+      Response.json(
+        listPages++ === 0
+          ? { items: [entry("partial-private-id")], nextPageToken: "next" }
+          : { items: [invalid] }
+      );
+    await assert.rejects(client.listCalendars(), failure("retryable", 200));
+    assert.equal(listPages, 2);
+  }
+  handler = async () => {
+    throw new Error("PRIVATE transport details");
+  };
+  await assert.rejects(client.listCalendars(), failure("retryable", 0));
+  handler = async () => new Response("PRIVATE malformed response", { status: 200 });
+  await assert.rejects(client.listCalendars(), failure("retryable", 200));
+  handler = async () => Response.json({ items: [] });
+  assert.deepEqual(await client.listCalendars(), []);
+  handler = async (url, init) => {
     assert.equal(
       String(url),
       "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all"
