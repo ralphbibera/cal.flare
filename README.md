@@ -4,9 +4,13 @@ Cal.flare is an independent, MIT-licensed Cloudflare port of [Cal.diy](https://g
 The new stack uses Astro, reusable React components, Workers, and a focused D1 data model.
 The root workspace now builds `apps/flare`. Inherited Cal.diy source remains available for selective reuse.
 
-Start with the [development guide](apps/flare/README.md) and [migration plan](docs/porting/cloudflare-astro.md).
-The current implementation proves local Workers/D1 plumbing and experimental reservations.
-Google connection, visitor booking, invitation delivery, and production deployment remain to be implemented and verified.
+Start with the [development guide](apps/flare/README.md) and [setup guide](apps/flare/SETUP.md).
+The current app supports one configured organizer and event, owner settings and conflict-calendar selection,
+public booking, attendee and owner cancellation and rescheduling, calendar exports, and durable recovery.
+These flows have passed local Worker/D1 and browser checks with mocked Google responses.
+Live Google authorization and invitation delivery, deployed behavior, and production resource usage remain unverified.
+Broader Cal.diy feature and visual parity remain outside this local checkpoint.
+The [migration plan](docs/porting/cloudflare-astro.md) records the original design and reservation experiments.
 
 ## Original Cal.diy documentation
 

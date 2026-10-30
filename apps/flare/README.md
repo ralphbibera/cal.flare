@@ -104,7 +104,7 @@ Filter and positive safe-integer `before` row cursors persist in the URL within 
 Changing filters resets paging. **Older bookings** continues newest-recorded-first keyset paging;
 **First page** returns to the newest records. New inserts use normal keyset behavior. Invalid or duplicate
 query fields are rejected after authentication. Reading pages never retries provider operations.
-Other owner actions and booking-list pixel parity remain migration work.
+Owner cancellation and rescheduling are described below. Booking-list pixel parity remains migration work.
 
 Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the current weekly
 schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinute`, and
@@ -508,8 +508,8 @@ The root no longer inherits the old Vite 6 override or legacy integration depend
 
 The [reservation model](../../experiments/d1-reservations/schema.sql) remains experimental.
 The app includes owner OAuth, D1-backed sessions, authenticated settings, public availability,
-booking lifecycle APIs, and scheduled recovery. The current model has one organizer, one event,
-and the primary Google calendar. Broader account and feature parity remain migration work.
+booking lifecycle APIs, and scheduled recovery. The current model has one organizer and one event,
+with selected conflict calendars and primary-calendar event operations. Broader account and feature parity remain migration work.
 Generated Wrangler types and local state are ignored. The current D1 configuration is for local development.
 Image transformation and Astro's default session storage are disabled.
 Production resource configuration, deployed execution, live Google delivery, and measured
