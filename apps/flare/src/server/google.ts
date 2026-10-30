@@ -115,6 +115,42 @@ function time(value: unknown): EventTime {
     return { date: data.date, ...zone };
   throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid Google event time");
 }
+function attendee(value: unknown): CalendarEvent["attendees"][number] {
+  const data = object(value);
+  const parsed: CalendarEvent["attendees"][number] = { email: nonempty(data.email) };
+  if (data.displayName !== undefined) {
+    if (typeof data.displayName !== "string")
+      throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid attendee name");
+    parsed.displayName = data.displayName;
+  }
+  if (data.additionalGuests !== undefined) {
+    if (
+      typeof data.additionalGuests !== "number" ||
+      !Number.isSafeInteger(data.additionalGuests) ||
+      data.additionalGuests < 0
+    )
+      throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid additional guests");
+    parsed.additionalGuests = data.additionalGuests;
+  }
+  if (data.responseStatus !== undefined) parsed.responseStatus = nonempty(data.responseStatus);
+  if (data.self !== undefined) {
+    if (typeof data.self !== "boolean")
+      throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid self attendee flag");
+    parsed.self = data.self;
+  }
+  return parsed;
+}
+function privateMetadata(value: unknown): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (value === undefined) return result;
+  const properties = object(value);
+  if (properties.private === undefined) return result;
+  for (const [key, value] of Object.entries(object(properties.private))) {
+    if (typeof value !== "string") throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid event metadata");
+    Object.defineProperty(result, key, { value, enumerable: true });
+  }
+  return result;
+}
 function event(value: unknown): CalendarEvent {
   const data = object(value);
   const result: CalendarEvent = {
@@ -139,40 +175,9 @@ function event(value: unknown): CalendarEvent {
   }
   if (data.attendees !== undefined) {
     if (!Array.isArray(data.attendees)) throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid event attendees");
-    result.attendees = data.attendees.map((value: unknown) => {
-      const attendee = object(value);
-      const parsed: CalendarEvent["attendees"][number] = { email: nonempty(attendee.email) };
-      if (attendee.displayName !== undefined) {
-        if (typeof attendee.displayName !== "string")
-          throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid attendee name");
-        parsed.displayName = attendee.displayName;
-      }
-      if (attendee.additionalGuests !== undefined) {
-        if (
-          typeof attendee.additionalGuests !== "number" ||
-          !Number.isSafeInteger(attendee.additionalGuests) ||
-          attendee.additionalGuests < 0
-        )
-          throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid additional guests");
-        parsed.additionalGuests = attendee.additionalGuests;
-      }
-      if (attendee.responseStatus !== undefined) parsed.responseStatus = nonempty(attendee.responseStatus);
-      if (attendee.self !== undefined) {
-        if (typeof attendee.self !== "boolean")
-          throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid self attendee flag");
-        parsed.self = attendee.self;
-      }
-      return parsed;
-    });
+    result.attendees = data.attendees.map(attendee);
   }
-  if (data.extendedProperties !== undefined) {
-    const properties = object(data.extendedProperties);
-    if (properties.private !== undefined)
-      for (const [key, value] of Object.entries(object(properties.private))) {
-        if (typeof value !== "string") throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid event metadata");
-        Object.defineProperty(result.extendedProperties.private, key, { value, enumerable: true });
-      }
-  }
+  result.extendedProperties.private = privateMetadata(data.extendedProperties);
   return result;
 }
 function interval(from: string, to: string): BusyRange {
