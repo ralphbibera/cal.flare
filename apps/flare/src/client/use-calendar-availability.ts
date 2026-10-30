@@ -10,22 +10,28 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 const client = new BookerClient();
 type Days = Record<string, { time: string }[]>;
-type Query = { month: string; timeZone: string; access?: BookingAccess };
+export type CalendarAccess = BookingAccess | { kind: "owner"; id: string };
+type Query = { month: string; timeZone: string; access?: CalendarAccess };
 type Result = { query: Query } & (
   | { status: "loading" | "error" }
   | { status: "ready"; days: Days; coverage: { from: number; to: number; horizon: number } }
 );
 
-function useCalendarAvailability(month: string, timeZone: string, access?: BookingAccess) {
+function useCalendarAvailability(month: string, timeZone: string, access?: CalendarAccess) {
   const id = access?.id,
-    token = access?.token;
+    owner = access && "kind" in access && access.kind === "owner",
+    token = access && "token" in access ? access.token : undefined;
   const query = useMemo(
-    () => ({
+    (): Query => ({
       month,
       timeZone,
-      access: id !== undefined || token !== undefined ? { id: id ?? "", token: token ?? "" } : undefined,
+      access: owner
+        ? { kind: "owner", id: id ?? "" }
+        : id !== undefined || token !== undefined
+          ? { id: id ?? "", token: token ?? "" }
+          : undefined,
     }),
-    [month, timeZone, id, token]
+    [month, timeZone, id, token, owner]
   );
   const [result, setResult] = useState<Result>({ query, status: "loading" });
   const [revision, setRevision] = useState(0);
@@ -61,16 +67,13 @@ function useCalendarAvailability(month: string, timeZone: string, access?: Booki
         );
         const endMonth = dayjs(`${query.month}-01`).add(2, "month").format("YYYY-MM-DD");
         const to = Math.max(from, Math.min(dayjs.tz(endMonth, query.timeZone).valueOf(), horizon));
+        const options = { from, to, timeZone: query.timeZone, signal: controller.signal };
         const slots =
-          from < to
-            ? await client.slots({
-                from,
-                to,
-                timeZone: query.timeZone,
-                access: query.access,
-                signal: controller.signal,
-              })
-            : [];
+          from >= to
+            ? []
+            : query.access && "kind" in query.access
+              ? await client.ownerSlots(query.access.id, options)
+              : await client.slots({ ...options, access: query.access });
         const formatter = new Intl.DateTimeFormat("en", {
           timeZone: query.timeZone,
           year: "numeric",

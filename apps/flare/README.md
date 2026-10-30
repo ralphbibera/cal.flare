@@ -199,7 +199,11 @@ minting attendee capabilities. Owner cancellation requires a nonblank, trimmed r
 The existing immutable command, delivery and recovery path handles cancellation and exact replay.
 Owner attempts reuse ChangeAttempts in a separate session-storage namespace, preserving attendee
 attempts in the same tab. Uncertain acknowledgements keep the frozen request for explicit retry.
-Pending operations retain the existing owner recovery control. Owner rescheduling UI is deferred.
+Pending operations retain the existing owner recovery control. **Reschedule** opens the existing
+calendar with session-authorized availability. Selecting a time shows the proposed UTC range
+and an optional three-row reason. Back and reselection preserve that draft. Invalid reasons
+remain editable before storage or POST. A refused stale move refreshes canonical facts, then
+requires fresh slot selection and explicit confirmation with a new request identity.
 The API accepts the existing `reschedule` request with version, requestKey, UTC start and optional
 rescheduleReason. Fresh owner moves retain disabled, cancelled, pending and ended restrictions.
 Accepted commands remain replayable and explicitly recoverable after policy or time changes.
