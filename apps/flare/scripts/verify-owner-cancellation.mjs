@@ -75,7 +75,7 @@ export async function verifyOwnerCancellation(browser, fixture) {
       );
       await page.getByText("Asia/Manila", { exact: false }).waitFor();
       assert.ok(!(await page.content()).includes(booking.manageToken));
-      assert.equal(await page.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
+      await expect(page.getByRole("button", { name: "Reschedule", exact: true })).toBeEnabled();
       let lose = true,
         refresh = "live";
       const heldRead = Promise.withResolvers();

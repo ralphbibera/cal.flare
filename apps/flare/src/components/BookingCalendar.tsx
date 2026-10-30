@@ -2,8 +2,7 @@ import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { BookingAccess } from "../client/bookings.ts";
-import { useCalendarAvailability } from "../client/use-calendar-availability.ts";
+import { type CalendarAccess, useCalendarAvailability } from "../client/use-calendar-availability.ts";
 import { Button } from "./Button.tsx";
 import { ColumnTimeSlots } from "./ColumnTimeSlots.tsx";
 import { MonthPicker } from "./MonthPicker.tsx";
@@ -41,7 +40,7 @@ type BookingCalendarProps = CalendarControl & {
     retry: string;
     empty: string;
   };
-  access?: BookingAccess;
+  access?: CalendarAccess;
   selectedTime?: string;
   returnFocusTime?: string;
   onTimeSelect: (time: string) => void;
