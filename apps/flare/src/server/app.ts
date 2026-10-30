@@ -1,6 +1,6 @@
 import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
-import type { Settings } from "../domain/settings.ts";
+import type { OwnerEventMode, Settings } from "../domain/settings.ts";
 import {
   defaultSettings,
   parseBookingRules,
@@ -28,6 +28,7 @@ import {
   getOwnerPreferences,
   getSettings,
   listEvents,
+  listPublicEvents,
   removeEvent,
   saveBookingRules,
   saveConflictCalendars,
@@ -119,6 +120,11 @@ async function getPublicBooking(env: AuthEnv, id = DEFAULT_EVENT_ID) {
   return { organizer, event: publicEvent, schedule };
 }
 
+async function getPublicDirectory(env: AuthEnv) {
+  const organizer = await connectedOwner(env);
+  return { organizer, events: await listPublicEvents(env.DB) };
+}
+
 function bookingResponse(value: Awaited<ReturnType<BookingService["view"]>>, created = false): Response {
   if (!["confirmed", "cancelled"].includes(value.status)) return json(value, 202);
   if (created) return json(value, 201);
@@ -207,26 +213,33 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
   const url = new URL(request.url);
   const ids = url.searchParams.getAll("eventId");
   const modes = url.searchParams.getAll("create");
+  const duplicates = url.searchParams.getAll("duplicate");
   if (
     ids.length > 1 ||
     modes.length > 1 ||
-    (ids.length && modes.length) ||
+    duplicates.length > 1 ||
+    ids.length + modes.length + duplicates.length > 1 ||
     (modes.length && modes[0] !== "1")
   )
     throw new ErrorWithCode("invalid_query");
   const events = await listEvents(dependencies.env.DB);
-  const selectedId = eventId(ids[0] ?? events[0]?.id ?? DEFAULT_EVENT_ID);
-  const creating = modes.length === 1 || (!ids.length && events.length === 0);
+  const selectedId = eventId(ids[0] ?? duplicates[0] ?? events[0]?.id ?? DEFAULT_EVENT_ID);
+  const creating = modes.length === 1 || (!ids.length && !duplicates.length && events.length === 0);
+  const selected = creating ? null : await getOwnerEvent(dependencies.env.DB, selectedId);
+  let mode: OwnerEventMode = { kind: "create" };
+  if (selected) mode = { kind: "edit", id: selected.id, lifecycle: selected.lifecycle };
+  if (selected && duplicates.length) mode = { kind: "duplicate", id: selected.id };
   const preferences = await getOwnerPreferences(dependencies.env.DB);
   const settings = {
     ...preferences,
-    event: creating ? defaultSettings.event : (await getOwnerEvent(dependencies.env.DB, selectedId)).event,
+    event: selected?.event ?? defaultSettings.event,
   };
   return {
     owner: identity,
     settings,
     selectedId,
     creating,
+    mode,
     events,
     bookings: await bookingService(dependencies).ownerList(),
   };
@@ -404,4 +417,4 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   return json({ error: "not_found" }, 404);
 }
 
-export { getPublicBooking };
+export { getPublicBooking, getPublicDirectory };

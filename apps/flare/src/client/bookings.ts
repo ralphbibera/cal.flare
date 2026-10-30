@@ -290,6 +290,39 @@ class BookerClient {
       body: JSON.stringify(input),
     });
   }
+  ownerDuplicateEvent(id: string, input: Omit<EventDetails, "location">): Promise<OwnerEvent> {
+    eventPath(id);
+    const { title, slug, description, durationMinutes } = input;
+    const details = { title, slug, description, durationMinutes };
+    return this.request(
+      `/api/owner/events/${id}/duplicate`,
+      (value) => {
+        const result = ownerEvent(value);
+        if (result.id === id || result.id === "default") throw new Error();
+        if (
+          result.event.title !== title ||
+          result.event.slug !== slug ||
+          result.event.description !== description ||
+          result.event.durationMinutes !== durationMinutes
+        )
+          throw new Error();
+        return result;
+      },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(details) }
+    );
+  }
+  ownerSetVisibility(id: string, hidden: boolean): Promise<void> {
+    eventPath(id);
+    return this.request(`/api/owner/events/${id}/visibility`, saved, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hidden }),
+    });
+  }
+  ownerRemoveEvent(id: string): Promise<void> {
+    eventPath(id);
+    return this.request(`/api/owner/events/${id}`, saved, { method: "DELETE" });
+  }
   ownerSaveRules(id: string, input: BookingRules): Promise<void> {
     eventPath(id);
     return this.request(`/api/owner/events/${id}/booking-rules`, saved, {

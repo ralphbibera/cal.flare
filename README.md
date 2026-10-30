@@ -7,7 +7,10 @@ Google event operations use the owner's primary calendar. Selected calendars can
 The owner creates and selects events at `/` using stable event IDs. Each event has independent details,
 booking rules, and a public slug page. Working hours, timezone, dated overrides, and conflict calendars
 are shared. Renaming a slug preserves pending requests, receipts, and historical private booking links.
-Deletion, duplication, hiding, reusable schedules, additional organizers, and destination calendars are not supported.
+Owners can duplicate saved events, explicitly save directory visibility, and permanently remove events.
+Visitors browse listed events at `/public/events`. Hidden events remain directly bookable.
+Removal closes new bookings and rescheduling while retaining history and recovery. Removed slugs cannot be reused.
+Reusable schedules, additional organizers, and destination calendars are not supported.
 
 Local Worker, D1, and browser checks use mocked Google responses.
 Live Google authorization, invitation arrival, deployed behavior, and production usage remain unverified.

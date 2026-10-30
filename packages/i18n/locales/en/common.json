@@ -4858,5 +4858,18 @@
   "flare_event_create_uncertain": "We couldn't confirm whether this event was created. Your draft is still here. Refresh your events and select an event to inspect it before starting another creation.",
   "flare_event_refresh": "Refresh events",
   "flare_event_candidates": "Select an event to inspect",
+  "flare_duplicate_event": "Duplicate event",
+  "flare_duplicate_help": "Edit these four details for the new event. Duplication copies the source's saved location, booking rules and visibility. Unsaved changes to the source are not copied.",
+  "flare_event_visibility": "Event visibility",
+  "flare_event_hidden": "Hide from public directory",
+  "flare_event_visibility_help": "Save to update the directory. Hidden events can still be booked through their direct link.",
+  "flare_event_visibility_failed": "We couldn't confirm the change. Your selection is still here. Save again to apply this visibility.",
+  "flare_remove_event": "Remove event",
+  "flare_remove_confirm": "Permanently remove event",
+  "flare_remove_warning": "Remove this saved event permanently? Its public link, new bookings and rescheduling will close. Booking history stays available. Cancellation follows the saved policy. The URL slug cannot be reused.",
+  "flare_remove_failed": "We couldn't confirm removal. This event may already be removed. Retry permanent removal for the same event to confirm the result.",
+  "flare_public_events": "Browse events",
+  "flare_public_events_empty": "There are no listed events right now.",
+  "flare_public_events_unavailable": "We couldn't load events. Please try again later.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

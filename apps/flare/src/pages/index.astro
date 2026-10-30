@@ -6,6 +6,7 @@ import { OwnerBookingRulesEditor } from "../components/OwnerBookingRulesEditor.t
 import OwnerBookings from "../components/OwnerBookings.astro";
 import { OwnerConflictCalendars } from "../components/OwnerConflictCalendars.tsx";
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
+import { OwnerEventLifecycle } from "../components/OwnerEventLifecycle.tsx";
 import { OwnerOverridesEditor } from "../components/OwnerOverridesEditor.tsx";
 import { OwnerScheduleEditor } from "../components/OwnerScheduleEditor.tsx";
 import { defaultSettings } from "../domain/settings.ts";
@@ -34,8 +35,7 @@ Astro.response.headers.set("Cache-Control", "private, no-store");
 Astro.response.headers.set("Referrer-Policy", "same-origin");
 Astro.response.headers.set("X-Content-Type-Options", "nosniff");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-const details =
-  state.kind === "owner" && !state.data.creating ? state.data.settings.event : defaultSettings.event;
+const details = state.kind === "owner" ? state.data.settings.event : defaultSettings.event;
 ---
 <!doctype html>
 <html lang="en">
@@ -48,6 +48,7 @@ const details =
     <main class="relative flex min-h-screen items-center justify-center px-4 py-10">
       <section class="bg-default border-subtle w-full max-w-md rounded-xl border p-10 shadow-sm">
         <h1 class="text-emphasis mb-2 text-center text-xl font-bold">Cal.flare</h1>
+        <a class="mb-6 block underline" href="/public/events">{common.flare_public_events}</a>
         {state.kind === "anonymous" && (
           <>
             <p class="text-subtle mb-8 text-center text-sm">{common.welcome_back_sign_in}</p>
@@ -66,10 +67,11 @@ const details =
             </div>
             <nav aria-label={common.flare_owner_events} class="space-y-2">
               <h2 class="font-semibold">{common.flare_owner_events}</h2>
-              {state.data.events.map((entry) => <a href={`/?eventId=${entry.id}`} aria-current={!state.data.creating && entry.id === state.data.selectedId ? "page" : undefined} class="block break-words underline">{entry.event.title} /{entry.event.slug}</a>)}
-              <a href="/?create=1" class="block underline" aria-current={state.data.creating ? "page" : undefined}>{common.flare_create_event}</a>
+              {state.data.events.map((entry) => <a href={`/?eventId=${entry.id}`} aria-current={state.data.mode.kind === "edit" && entry.id === state.data.mode.id ? "page" : undefined} class="block break-words underline">{entry.event.title} /{entry.event.slug}</a>)}
+              <a href="/?create=1" class="block underline" aria-current={state.data.mode.kind === "create" ? "page" : undefined}>{common.flare_create_event}</a>
             </nav>
-            <OwnerEventEditor client:load mode={state.data.creating ? { kind: "create" } : { kind: "edit", id: state.data.selectedId }} details={{
+            {state.data.mode.kind === "duplicate" && <a class="block underline" href={`/?eventId=${state.data.mode.id}`}>{common.back}</a>}
+            <OwnerEventEditor client:load mode={state.data.mode} details={{
               title: details.title, slug: details.slug,
               description: details.description, durationMinutes: details.durationMinutes,
               location: details.location,
@@ -81,9 +83,18 @@ const details =
               saved: common.saved, preview: common.preview, invalid: common.flare_event_details_invalid,
               failed: common.flare_event_details_failed, javascript: common.flare_event_details_javascript,
               create: common.flare_create_event, uncertain: common.flare_event_create_uncertain,
+              duplicate: common.flare_duplicate_event, duplicateHelp: common.flare_duplicate_help,
               refresh: common.flare_event_refresh, candidates: common.flare_event_candidates,
             }} />
-            {!state.data.creating && <OwnerBookingRulesEditor client:load eventId={state.data.selectedId} rules={{
+            {state.data.mode.kind === "edit" && <OwnerEventLifecycle client:load id={state.data.mode.id} lifecycle={state.data.mode.lifecycle} labels={{
+              heading: common.flare_event_visibility, hidden: common.flare_event_hidden,
+              help: common.flare_event_visibility_help, save: common.save, saved: common.saved,
+              failed: common.flare_event_visibility_failed, duplicate: common.flare_duplicate_event,
+              remove: common.flare_remove_event, confirm: common.flare_remove_confirm,
+              warning: common.flare_remove_warning, back: common.back,
+              removeFailed: common.flare_remove_failed, javascript: common.flare_event_details_javascript,
+            }} />}
+            {state.data.mode.kind === "edit" && <OwnerBookingRulesEditor client:load eventId={state.data.mode.id} rules={{
               intervalMinutes: state.data.settings.event.intervalMinutes, beforeMinutes: state.data.settings.event.beforeMinutes,
               afterMinutes: state.data.settings.event.afterMinutes, noticeMinutes: state.data.settings.event.noticeMinutes,
               disableCancelling: state.data.settings.event.disableCancelling ?? false,

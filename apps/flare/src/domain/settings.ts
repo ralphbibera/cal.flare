@@ -15,6 +15,10 @@ type EventSettings = {
 
 const DEFAULT_EVENT_ID = "default";
 type OwnerEvent = { id: string; event: EventSettings; lifecycle: "listed" | "hidden" };
+type OwnerEventMode =
+  | { kind: "create" }
+  | { kind: "duplicate"; id: string }
+  | { kind: "edit"; id: string; lifecycle: OwnerEvent["lifecycle"] };
 function isEventId(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -323,6 +327,7 @@ export type {
   EventDetails,
   EventSettings,
   OwnerEvent,
+  OwnerEventMode,
   ScheduleOverrides,
   Settings,
   WeeklySchedule,

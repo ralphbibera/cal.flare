@@ -101,7 +101,14 @@ It copies saved rules, policies, location, and visibility under a new ID.
 Hidden events remain directly bookable. `DELETE /api/owner/events/:id` accepts no body and retains a permanent tombstone.
 Removal blocks fresh bookings and rescheduling while retaining history, occupancy, replay, and accepted-command recovery.
 Cancellation still follows the saved current policy. Removed slugs cannot be reused.
-These lifecycle operations currently require API calls. Owner lifecycle controls and a public event directory remain pending.
+The owner page offers these lifecycle controls. **Duplicate event** opens `/?duplicate=<stable-id>`
+with one four-field editor. It uses the saved source, preserves its location and rules, and opens the
+new event after a valid acknowledgment. A collision keeps the draft. An uncertain create or duplicate
+locks submission and offers a GET-only event refresh with explicit candidate selection.
+Visibility changes require Save. Removal names the current saved event and requires inline confirmation.
+An unacknowledged removal can be retried safely against the same event.
+Anonymous visitors browse listed events at `/public/events`. This directory is server-rendered and
+contains only public event details and the sanitized organizer name. Hidden events retain direct links.
 After default removal, owner entry selects the first remaining event. With no events, entry opens creation with shared preferences and booking history.
 Working hours, timezone, overrides, and conflict calendars remain shared across all events.
 An uncertain creation keeps the draft and offers **Refresh events** to inspect explicit selection candidates.

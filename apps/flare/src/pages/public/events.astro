@@ -1,0 +1,40 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../../packages/i18n/locales/en/common.json";
+import { getPublicDirectory } from "../../server/app.ts";
+import "../../styles/globals.css";
+
+let directory: Awaited<ReturnType<typeof getPublicDirectory>> | undefined;
+try {
+  directory = await getPublicDirectory(env);
+} catch {
+  Astro.response.status = 503;
+}
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "no-referrer");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preload" href="/fonts/CalSans-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <title>{common.flare_public_events} | Cal.flare</title>
+  </head>
+  <body class="bg-subtle text-default min-h-screen font-sans">
+    <main class="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
+      <a href="/" class="underline">{common.organizer}</a>
+      <h1 class="font-cal text-2xl text-emphasis">{common.flare_public_events}</h1>
+      {directory ? <>
+        <p class="break-words">{directory.organizer.name}</p>
+        {directory.events.length === 0 ? <p>{common.flare_public_events_empty}</p> :
+          <ul class="space-y-4">{directory.events.map((event) => <li class="bg-default border-subtle space-y-3 rounded-xl border p-6 [overflow-wrap:anywhere]">
+            <h2 class="text-lg font-semibold text-emphasis"><a class="underline" href={`/${event.slug}`}>{event.title}</a></h2>
+            <p class="whitespace-pre-wrap">{event.description}</p>
+            <p>{event.durationMinutes} {common.minutes}</p>
+          </li>)}</ul>}
+      </> : <p role="alert">{common.flare_public_events_unavailable}</p>}
+    </main>
+  </body>
+</html>

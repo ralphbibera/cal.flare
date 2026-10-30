@@ -118,6 +118,20 @@ async function listEvents(db: SettingsDatabase): Promise<OwnerEvent[]> {
   }));
 }
 
+async function listPublicEvents(db: SettingsDatabase) {
+  const rows = await db
+    .prepare("SELECT id,json AS event_json FROM event_type WHERE lifecycle='listed' ORDER BY rowid")
+    .all<{ id: string; event_json: string }>();
+  return rows.results.map((row) => {
+    const id = eventId(row.id);
+    const { slug, title, description, durationMinutes } = parseSettings({
+      ...defaultSettings,
+      event: JSON.parse(row.event_json),
+    }).event;
+    return { id, slug, title, description, durationMinutes };
+  });
+}
+
 async function getOwnerEvent(db: SettingsDatabase, id: string): Promise<OwnerEvent> {
   const row = await readSettings(db, id);
   if (!row || row.lifecycle === "removed" || row.lifecycle === null)
@@ -327,6 +341,7 @@ export {
   getOwnerPreferences,
   getSettings,
   listEvents,
+  listPublicEvents,
   removeEvent,
   setEventVisibility,
   saveBookingRules,

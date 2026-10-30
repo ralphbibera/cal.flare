@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defaultSettings, parseSettings } from "../src/domain/settings.ts";
-import { getOwnerEventData } from "../src/server/app.ts";
+import { getOwnerEventData, getPublicDirectory } from "../src/server/app.ts";
 import { BookingService } from "../src/server/bookings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
 import { ErrorWithCode } from "../src/server/http.ts";
@@ -53,12 +53,19 @@ test("owner page selection authenticates before query disclosure and never falls
   assert.deepEqual(selected?.settings.schedule, settings.schedule);
   assert.equal(selected?.creating, false);
   assert.equal((await page("create=1"))?.creating, true);
+  assert.deepEqual((await page(`duplicate=${b.id}`))?.mode, { kind: "duplicate", id: b.id });
+  assert.deepEqual((await page(`duplicate=${b.id}`))?.settings.event, selected?.settings.event);
   for (const query of [
     "eventId=invalid",
     `eventId=${crypto.randomUUID()}`,
     "eventId=default&eventId=default",
     "eventId=default&create=1",
     "create=bad",
+    "duplicate=invalid",
+    `duplicate=${crypto.randomUUID()}`,
+    "duplicate=default&create=1",
+    "duplicate=default&eventId=default",
+    "duplicate=default&duplicate=default",
   ]) {
     assert.equal(await page(query, false), null);
     await assert.rejects(page(query), ErrorWithCode);
@@ -72,6 +79,48 @@ test("owner page selection authenticates before query disclosure and never falls
     .bind("renamed-b")
     .all<{ detail: string }>();
   assert.ok(plan.results.some((row) => row.detail.includes("event_type_slug")));
+  assert.equal(f.calendar.writes.length, 0);
+});
+
+test("public directory projects listed events only, survives default removal and fails on malformed listed storage", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const b = await read(
+    await f.send(
+      "/api/owner/events",
+      { ...details, slug: "events", location: "private room" },
+      f.ownerHeaders
+    ),
+    201
+  );
+  const c = await read(
+    await f.send("/api/owner/events", { ...details, slug: "public" }, f.ownerHeaders),
+    201
+  );
+  const directory = () => getPublicDirectory(f.env);
+  const initial = await directory();
+  assert.deepEqual(initial.events[1], {
+    id: b.id,
+    slug: "events",
+    title: details.title,
+    description: details.description,
+    durationMinutes: details.durationMinutes,
+  });
+  assert.deepEqual(Object.keys(initial.organizer), ["name"]);
+  assert.ok(!JSON.stringify(initial).includes("private room"));
+  await read(await f.send(`/api/owner/events/${b.id}/visibility`, { hidden: true }, f.ownerHeaders, "PATCH"));
+  await f.db.prepare("UPDATE event_type SET json='{}' WHERE id=?").bind(b.id).run();
+  await read(await f.send("/api/owner/events/default", undefined, f.ownerHeaders, "DELETE"));
+  assert.deepEqual(
+    (await directory()).events.map((event) => event.id),
+    [c.id]
+  );
+  await f.db.prepare("UPDATE event_type SET json='{}' WHERE id=?").bind(c.id).run();
+  await assert.rejects(directory());
+  await read(await f.send(`/api/owner/events/${c.id}`, undefined, f.ownerHeaders, "DELETE"));
+  assert.deepEqual((await directory()).events, []);
+  await f.db.prepare("DELETE FROM google_connection").run();
+  await assert.rejects(directory(), ErrorWithCode);
   assert.equal(f.calendar.writes.length, 0);
 });
 

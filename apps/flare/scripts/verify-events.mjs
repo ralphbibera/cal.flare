@@ -7,12 +7,23 @@ import { chromium, expect } from "@playwright/test";
 import { hour } from "./fixtures/api.ts";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
-export async function verifyEvents(browser) {
+async function verifyEvents(browser) {
   const f = await createWorkerFixture({ port: 8797 });
   try {
     const { request, send, read, google, db } = f;
     const owner = await f.login();
     await read(await send("/api/owner", f.settings, owner, "PUT"));
+    const entry = await (await request("/", { headers: owner })).text();
+    assert.deepEqual(
+      {
+        directory: (await request("/public/events")).status,
+        duplicate: entry.includes("/?duplicate=default"),
+        visibility: entry.includes("event-hidden"),
+        remove: entry.includes("Remove event"),
+      },
+      { directory: 200, duplicate: true, visibility: true, remove: true },
+      "Directory and saved-event lifecycle controls are available"
+    );
     const details = {
       slug: "second-event",
       title: "Second event",
@@ -170,18 +181,18 @@ export async function verifyEvents(browser) {
       frozen
     );
     assert.equal(google.writes.filter((w) => w.id === pending.id).length, 1);
-    await verifyLifecycle(f, owner, created.id, start + 24 * hour, rules);
+    await verifyLifecycle(browser, f, owner, created.id, start + 24 * hour, rules);
     assert.deepEqual(f.upstreamFailures, []);
     assert.deepEqual(google.denied, []);
     process.stdout.write(
-      "PASS built Worker owner create/select, independent events, event-bound public bookings, stale slots, rename/reload recovery, historical moves and global recovery. Google mocked; live delivery remains unverified.\n"
+      "PASS built Worker owner create/select/duplicate, uncertain submission recovery, explicit visibility, confirmed removal, SSR directory, hidden direct booking, global occupancy, final-removal creation, historical replay and recovery at 390/1280. Google mocked; live delivery remains unverified.\n"
     );
   } finally {
     await f.close();
   }
 }
 
-async function verifyLifecycle(f, owner, sourceId, start, rules) {
+async function verifyLifecycle(browser, f, owner, sourceId, start, rules) {
   const { send, request, read, db, google } = f;
   const remove = (id) =>
     request(`/api/owner/events/${id}`, {
@@ -192,22 +203,38 @@ async function verifyLifecycle(f, owner, sourceId, start, rules) {
   await read(
     await send(
       `/api/owner/events/${sourceId}/booking-rules`,
-      { ...rules, bookingWindowDays: null },
+      {
+        ...rules,
+        intervalMinutes: 15,
+        beforeMinutes: 5,
+        afterMinutes: 10,
+        noticeMinutes: 30,
+        disableCancelling: true,
+        disableRescheduling: true,
+        bookingWindowDays: 30,
+      },
       owner,
       "PATCH"
     )
   );
-  await read(await remove("default"));
+  await db
+    .prepare("UPDATE event_type SET json=? WHERE id='default'")
+    .bind(JSON.stringify(f.settings.event))
+    .run();
+  await removeFromOwner(browser, f, owner, "default");
+  await read(await send(`/api/owner/events/${sourceId}/visibility`, { hidden: true }, owner, "PATCH"));
   const beforeWrites = google.writes.length;
   const source = await read(await request(`/api/owner/events/${sourceId}`, { headers: owner }));
   const details = {
     slug: "hidden-copy",
-    title: "Hidden copy",
-    description: "Copied saved configuration",
+    title: `Hidden <copy> ${"x".repeat(80)}`,
+    description: `Copied <script>literal</script> ${"https://example.test/".repeat(40)}`,
     durationMinutes: 30,
   };
-  const copy = await read(await send(`/api/owner/events/${sourceId}/duplicate`, details, owner), 201);
+  const copy = await duplicateFromOwner(browser, f, owner, source, details);
   assert.deepEqual(copy.event, { ...source.event, ...details });
+  assert.equal(copy.lifecycle, "hidden");
+  await verifyDirectory(browser, f, owner, copy);
   await read(await send(`/api/owner/events/${copy.id}/visibility`, { hidden: true }, owner, "PATCH"));
   assert.equal((await read(await request(`/api/events/${copy.id}`))).event.title, details.title);
   assert.equal((await request("/hidden-copy")).status, 200);
@@ -218,9 +245,10 @@ async function verifyLifecycle(f, owner, sourceId, start, rules) {
   });
   assert.ok((await read(await request(`/api/events/${copy.id}/slots?${query}`))).slots.length);
   assert.equal(google.writes.length, beforeWrites);
+  await bookHiddenCopy(browser, f, sourceId, copy, start);
   const input = {
     requestKey: randomUUID(),
-    start,
+    start: start + 2 * hour,
     name: "Lifecycle guest",
     email: "guest@example.test",
     timeZone: "UTC",
@@ -231,7 +259,7 @@ async function verifyLifecycle(f, owner, sourceId, start, rules) {
     .prepare("SELECT settings_json,desired_json,token_hash,outcome FROM booking_command WHERE booking_id=?")
     .bind(pending.id)
     .first();
-  await read(await remove(copy.id));
+  await removeFromOwner(browser, f, owner, copy.id, true);
   await read(await remove(copy.id));
   assert.equal((await request("/hidden-copy")).status, 404);
   assert.equal((await request(`/api/events/${copy.id}`)).status, 404);
@@ -259,14 +287,457 @@ async function verifyLifecycle(f, owner, sourceId, start, rules) {
   assert.equal((await request("/", { headers: owner })).status, 200);
   assert.equal((await request("/?eventId=default", { headers: owner })).status, 404);
   assert.equal((await request("/api/public")).status, 404);
-  await read(await remove(sourceId));
+  await removeFromOwner(browser, f, owner, sourceId);
   const finalPage = await request("/", { headers: owner });
   assert.equal(finalPage.status, 200);
   assert.match(await finalPage.text(), /name="title"/);
   assert.equal((await request("/?create=1", { headers: owner })).status, 200);
   assert.equal((await request("/owner/bookings", { headers: owner })).status, 200);
   assert.deepEqual((await read(await request("/api/owner/events", { headers: owner }))).events, []);
-  assert.equal(google.writes.length, beforeWrites + 1);
+  const empty = await request("/public/events");
+  assert.equal(empty.status, 200);
+  assert.match(await empty.text(), /There are no listed events/);
+  assert.equal(google.writes.length, beforeWrites + 2);
+  await createAfterRemoval(browser, f, owner);
+}
+
+async function fillDuplicate(page, details) {
+  await page.getByLabel("Title", { exact: true }).fill(details.title);
+  await page.getByLabel("Slug", { exact: true }).fill(details.slug);
+  await page.getByLabel("Description", { exact: true }).fill(details.description);
+  await page.getByLabel("Duration (Minutes)", { exact: true }).fill(String(details.durationMinutes));
+}
+
+async function duplicateFromOwner(browser, f, owner, source, details) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  try {
+    await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
+    const page = await context.newPage();
+    await page.goto(`${f.origin}/?eventId=${source.id}`);
+    await page.getByLabel("Title", { exact: true }).fill("Unsaved source draft");
+    await page.getByRole("link", { name: "Duplicate event", exact: true }).click();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveValue(source.event.title);
+    assert.equal(await page.getByLabel("Location", { exact: true }).count(), 0);
+    assert.equal(await page.locator('form[action$="/booking-rules"]').count(), 0);
+    assert.equal(await page.locator('input[name="title"]').count(), 1);
+    const submissions = [];
+    let outcome = "collision",
+      copy;
+    await page.route(`**/api/owner/events/${source.id}/duplicate`, async (route) => {
+      submissions.push(route.request().postDataJSON());
+      if (outcome === "expired") return route.fulfill({ status: 401, json: { error: "unauthorized" } });
+      const response = await route.fetch();
+      if (outcome === "lost") {
+        assert.equal(response.status(), 201);
+        copy = await response.json();
+        return route.abort("failed");
+      }
+      return route.fulfill({ response });
+    });
+    const submit = page.getByRole("button", { name: "Duplicate event", exact: true });
+    await fillDuplicate(page, { ...details, slug: "api" });
+    await submit.click();
+    await page.getByRole("alert").waitFor();
+    assert.equal(submissions.length, 0);
+    await page.getByLabel("Slug", { exact: true }).fill(source.event.slug);
+    await submit.click();
+    await page.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveValue(details.title);
+    outcome = "expired";
+    await page.getByLabel("Slug", { exact: true }).fill(details.slug);
+    await submit.click();
+    await expect(submit).toBeEnabled();
+    await expect(page.getByLabel("Description", { exact: true })).toHaveValue(details.description);
+    outcome = "lost";
+    await submit.evaluate((button) => {
+      button.form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      button.form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await page.getByRole("alert").filter({ hasText: "Refresh your events" }).waitFor();
+    assert.equal(submissions.length, 3);
+    assert.deepEqual(submissions[2], details);
+    await expect(submit).toBeDisabled();
+    await expect(page.getByLabel("Title", { exact: true })).toHaveValue(details.title);
+    await page.getByRole("button", { name: "Refresh events", exact: true }).click();
+    const candidates = page.getByRole("navigation", { name: "Select an event to inspect", exact: true });
+    await candidates.waitFor();
+    assert.ok(new URL(page.url()).searchParams.has("duplicate"), "Refresh does not select automatically");
+    assert.equal(submissions.length, 3, "Refresh cannot repeat the duplicate POST");
+    await candidates.getByRole("link", { name: `${details.title} /${details.slug}`, exact: true }).click();
+    await page.waitForURL(`**/?eventId=${copy.id}`);
+    await expect(page.getByLabel("Location", { exact: true })).toHaveValue(source.event.location);
+    await expect(page.getByLabel("Minimum notice (Minutes)", { exact: true })).toHaveValue("30");
+    await expect(page.getByLabel("Hide from public directory", { exact: true })).toBeChecked();
+    await f.read(
+      await f.send(
+        `/api/owner/events/${source.id}`,
+        {
+          title: source.event.title,
+          slug: source.event.slug,
+          description: "Source changed independently",
+          durationMinutes: source.event.durationMinutes,
+          location: "Changed source room",
+        },
+        owner,
+        "PATCH"
+      )
+    );
+    assert.deepEqual(
+      (await f.read(await f.request(`/api/owner/events/${copy.id}`, { headers: owner }))).event,
+      copy.event
+    );
+    await verifyAbandonedDuplicate(page, f, owner, source.id);
+    return copy;
+  } finally {
+    await context.close();
+  }
+}
+
+async function verifyAbandonedDuplicate(page, f, owner, sourceId) {
+  const release = Promise.withResolvers(),
+    applied = Promise.withResolvers(),
+    finished = Promise.withResolvers();
+  try {
+    await page.goto(`${f.origin}/?duplicate=${sourceId}`);
+    await page.getByLabel("Slug", { exact: true }).fill("abandoned-copy");
+    await page.route(
+      `**/api/owner/events/${sourceId}/duplicate`,
+      async (route) => {
+        const response = await route.fetch();
+        applied.resolve(await response.json());
+        await release.promise;
+        await route.fulfill({ response }).catch(() => {});
+        finished.resolve();
+      },
+      { times: 1 }
+    );
+    await page.getByRole("button", { name: "Duplicate event", exact: true }).click();
+    const abandoned = await applied.promise;
+    await page.locator(`nav a[href="/?eventId=${sourceId}"]`).click();
+    release.resolve();
+    await finished.promise;
+    await expect(page.getByLabel("Slug", { exact: true })).toHaveValue("renamed-second");
+    assert.equal(new URL(page.url()).search, `?eventId=${sourceId}`);
+    await verifyAbandonedRemoval(page, f, owner, abandoned.id, sourceId);
+  } finally {
+    release.resolve();
+  }
+}
+
+async function verifyAbandonedRemoval(page, f, owner, id, selectedId) {
+  const release = Promise.withResolvers(),
+    applied = Promise.withResolvers(),
+    finished = Promise.withResolvers();
+  try {
+    await page.goto(`${f.origin}/?eventId=${id}`);
+    await page.getByRole("button", { name: "Remove event", exact: true }).click();
+    await page.route(
+      `**/api/owner/events/${id}`,
+      async (route) => {
+        if (route.request().method() !== "DELETE") return route.continue();
+        const response = await route.fetch();
+        applied.resolve();
+        await release.promise;
+        await route.fulfill({ response }).catch(() => {});
+        finished.resolve();
+      },
+      { times: 1 }
+    );
+    await page.getByRole("button", { name: "Permanently remove event", exact: true }).click();
+    await applied.promise;
+    await page.locator(`nav a[href="/?eventId=${selectedId}"]`).click();
+    release.resolve();
+    await finished.promise;
+    await expect(page.getByLabel("Slug", { exact: true })).toHaveValue("renamed-second");
+    assert.equal(new URL(page.url()).search, `?eventId=${selectedId}`);
+    assert.equal((await f.request(`/api/owner/events/${id}`, { headers: owner })).status, 404);
+  } finally {
+    release.resolve();
+  }
+}
+
+async function verifyDirectory(browser, f, owner, copy) {
+  const context = await browser.newContext();
+  try {
+    await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
+    const page = await context.newPage();
+    await page.goto(`${f.origin}/?eventId=${copy.id}`);
+    const form = page.getByRole("form", { name: "Event visibility", exact: true });
+    const hidden = form.getByRole("checkbox", { name: "Hide from public directory", exact: true });
+    const save = form.getByRole("button", { name: "Save", exact: true });
+    const row = () => f.db.prepare("SELECT json,version FROM event_type WHERE id=?").bind(copy.id).first();
+    const before = await row(),
+      writes = f.google.writes.length;
+    await hidden.uncheck();
+    await save.click();
+    await form.getByRole("status").waitFor();
+    await checkDirectorySSR(browser, f, copy);
+    const requests = [];
+    let outcome = "failed";
+    await page.route(`**/api/owner/events/${copy.id}/visibility`, async (route) => {
+      requests.push(route.request().postDataJSON());
+      if (outcome === "failed")
+        return route.fulfill({ status: 503, json: { error: "private-visibility-detail" } });
+      const response = await route.fetch();
+      if (outcome === "malformed")
+        return route.fulfill({ status: 200, json: { saved: true, private: "untrusted" } });
+      return route.fulfill({ response });
+    });
+    await hidden.check();
+    await save.click();
+    await form.getByRole("alert").waitFor();
+    await expect(hidden).toBeChecked();
+    assert.ok(!(await page.content()).includes("private-visibility-detail"));
+    outcome = "malformed";
+    await save.click();
+    await expect(save).toBeEnabled();
+    await form.getByRole("alert").waitFor();
+    outcome = "success";
+    await save.click();
+    await form.getByRole("status").waitFor();
+    assert.deepEqual(requests, [{ hidden: true }, { hidden: true }, { hidden: true }]);
+    await page.reload();
+    await expect(hidden).toBeChecked();
+    const directory = await f.request("/public/events");
+    assert.equal(directory.status, 200);
+    assert.ok(!(await directory.text()).includes(`href="/${copy.event.slug}"`));
+    assert.equal((await f.request(`/${copy.event.slug}`)).status, 200);
+    assert.deepEqual(await row(), before, "Visibility changes do not write event configuration or version");
+    assert.equal(f.google.writes.length, writes);
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.getByLabel("Title", { exact: true }).focus();
+      await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.getByLabel("Slug", { exact: true })).toBeFocused();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+    assert.deepEqual(
+      await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) })),
+      { local: [], session: [] }
+    );
+  } finally {
+    await context.close();
+  }
+}
+
+async function checkDirectorySSR(browser, f, copy) {
+  const response = await f.request("/public/events");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control"), /no-store/);
+  const html = await response.text();
+  assert.ok(html.includes(`href="/${copy.event.slug}"`));
+  assert.ok(html.includes("&lt;script&gt;literal&lt;/script&gt;"));
+  for (const privateValue of [
+    ...Object.values(f.secrets),
+    ...f.google.secrets,
+    "organizer@example.test",
+    copy.event.location,
+    "bookingWindowDays",
+    "conflictCalendarIds",
+    "astro-island",
+    "<script>literal</script>",
+  ])
+    assert.ok(!html.includes(privateValue), `Directory excludes private or executable values`);
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${f.origin}/public/events`);
+      await expect(page.getByRole("link", { name: copy.event.title, exact: true })).toHaveAttribute(
+        "href",
+        `/${copy.event.slug}`
+      );
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+  } finally {
+    await context.close();
+  }
+  const raw = await f.db.prepare("SELECT json FROM event_type WHERE id=?").bind(copy.id).first("json");
+  try {
+    await f.db.prepare("UPDATE event_type SET json='{}' WHERE id=?").bind(copy.id).run();
+    const broken = await f.request("/public/events");
+    assert.equal(broken.status, 503);
+    assert.match(await broken.text(), /load events/);
+  } finally {
+    await f.db.prepare("UPDATE event_type SET json=? WHERE id=?").bind(raw, copy.id).run();
+  }
+  try {
+    await f.db.prepare("ALTER TABLE event_type RENAME TO unavailable_events").run();
+    assert.equal((await f.request("/public/events")).status, 503);
+  } finally {
+    await f.db.prepare("ALTER TABLE unavailable_events RENAME TO event_type").run();
+  }
+}
+
+async function bookHiddenCopy(browser, f, sourceId, copy, start) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 900 }, timezoneId: "UTC" });
+  try {
+    const page = await context.newPage();
+    const date = new Date(start);
+    date.setUTCDate(1);
+    date.setUTCHours(0, 0, 0, 0);
+    await page.clock.install({ time: date });
+    await page.goto(`${f.origin}/${copy.event.slug}`);
+    await page
+      .getByTestId("day")
+      .filter({ hasText: new RegExp(`^${new Date(start).getUTCDate()}(Today)?$`) })
+      .click();
+    await page.locator(`button[data-time="${new Date(start).toISOString()}"]`).click();
+    await page.getByLabel("Your name*", { exact: true }).fill("Hidden copy guest");
+    await page.getByLabel("Email address*", { exact: true }).fill("hidden@example.test");
+    const before = f.google.writes.length;
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+    assert.equal(f.google.writes.length, before + 1);
+    const remote = f.google.events.get(f.google.writes.at(-1).id);
+    assert.equal(remote.summary, copy.event.title);
+    assert.equal(remote.location, copy.event.location);
+    assert.equal(
+      Date.parse(remote.end.dateTime) - Date.parse(remote.start.dateTime),
+      copy.event.durationMinutes * 60_000
+    );
+    const conflict = await f.read(
+      await f.send(`/api/events/${sourceId}/bookings`, {
+        requestKey: randomUUID(),
+        start,
+        name: "Conflicting guest",
+        email: "conflict@example.test",
+        timeZone: "UTC",
+      }),
+      409
+    );
+    assert.equal(conflict.error, "conflict");
+    assert.equal(f.google.writes.length, before + 1);
+  } finally {
+    await context.close();
+  }
+}
+
+async function removeFromOwner(browser, f, owner, id, failures = false) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  try {
+    await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
+    const saved = await f.read(await f.request(`/api/owner/events/${id}`, { headers: owner }));
+    const page = await context.newPage();
+    await page.goto(`${f.origin}/?eventId=${id}`);
+    const remove = page.getByRole("button", { name: "Remove event", exact: true });
+    await expect(remove).toBeEnabled();
+    await remove.focus();
+    await page.keyboard.press("Enter");
+    const group = page.getByRole("group", { name: "Permanently remove event", exact: true });
+    const back = group.getByRole("button", { name: "Back", exact: true });
+    await expect(back).toBeFocused();
+    await expect(group).toContainText(saved.event.title);
+    await page.keyboard.press("Enter");
+    await expect(group).toHaveCount(0);
+    await expect(remove).toBeFocused();
+    const requests = [];
+    let outcome = failures ? "failed" : "success";
+    await page.route(`**/api/owner/events/${id}`, async (route) => {
+      if (route.request().method() !== "DELETE") return route.continue();
+      requests.push({ url: route.request().url(), body: route.request().postData() });
+      if (outcome === "failed")
+        return route.fulfill({ status: 503, json: { error: "private-removal-detail" } });
+      const response = await route.fetch();
+      if (outcome === "lost")
+        return route.fulfill({ status: 200, json: { saved: true, private: "bad-ack" } });
+      return route.fulfill({ response });
+    });
+    await remove.click();
+    await expect(back).toBeFocused();
+    const confirm = group.getByRole("button", { name: "Permanently remove event", exact: true });
+    if (failures) {
+      await confirm.evaluate((button) => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await group.getByRole("alert").waitFor();
+      assert.equal(new URL(page.url()).search, `?eventId=${id}`);
+      assert.ok(!(await page.content()).includes("private-removal-detail"));
+      outcome = "lost";
+      await confirm.click();
+      await expect(confirm).toBeEnabled();
+      await group.getByRole("alert").waitFor();
+      await expect(group).toContainText(saved.event.title);
+      assert.equal(new URL(page.url()).search, `?eventId=${id}`);
+      await expect(
+        page.getByRole("checkbox", { name: "Hide from public directory", exact: true })
+      ).toBeDisabled();
+      outcome = "success";
+    }
+    await confirm.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(f.origin + "/");
+    assert.equal(requests.length, failures ? 3 : 1);
+    assert.ok(
+      requests.every(
+        (request) => request.url === `${f.origin}/api/owner/events/${id}` && request.body === null
+      )
+    );
+    assert.equal((await f.request(`/?eventId=${id}`, { headers: owner })).status, 404);
+    assert.equal((await f.request(`/?duplicate=${id}`, { headers: owner })).status, 404);
+    await page.getByRole("link", { name: "Bookings", exact: true }).first().click();
+    await page.getByRole("link", { name: "Organizer", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Working hours", exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+}
+
+async function createAfterRemoval(browser, f, owner) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: "UTC" });
+  try {
+    await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
+    const page = await context.newPage();
+    await page.goto(f.origin);
+    await fillDuplicate(page, {
+      title: "After final removal",
+      slug: "events",
+      description: "Fresh event",
+      durationMinutes: 30,
+    });
+    await page.getByRole("button", { name: "Create event", exact: true }).click();
+    await page.waitForURL("**/?eventId=*");
+    const id = new URL(page.url()).searchParams.get("eventId");
+    await f.read(
+      await f.send(
+        "/api/owner/events",
+        { title: "Public slug", slug: "public", description: "Single segment", durationMinutes: 30 },
+        owner
+      ),
+      201
+    );
+    for (const path of ["/events", "/public", "/public/events"])
+      assert.equal((await f.request(path)).status, 200);
+    const html = await (await f.request("/public/events")).text();
+    assert.ok(html.includes('href="/events"') && html.includes('href="/public"'));
+    const start = Math.ceil((Date.now() + 96 * hour) / hour) * hour;
+    const month = new Date(start);
+    month.setUTCDate(1);
+    month.setUTCHours(0, 0, 0, 0);
+    await page.clock.install({ time: month });
+    await page.goto(`${f.origin}/public/events`);
+    await page.getByRole("link", { name: "After final removal", exact: true }).click();
+    await page.waitForURL(`${f.origin}/events`);
+    await page
+      .getByTestId("day")
+      .filter({ hasText: new RegExp(`^${new Date(start).getUTCDate()}(Today)?$`) })
+      .click();
+    await page.locator(`button[data-time="${new Date(start).toISOString()}"]`).click();
+    await page.getByLabel("Your name*", { exact: true }).fill("Directory guest");
+    await page.getByLabel("Email address*", { exact: true }).fill("directory@example.test");
+    const before = f.google.writes.length;
+    const command = page.waitForRequest(`**/api/events/${id}/bookings`);
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await command;
+    await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+    assert.equal(f.google.writes.length, before + 1);
+    assert.equal(f.google.events.get(f.google.writes.at(-1).id).summary, "After final removal");
+  } finally {
+    await context.close();
+  }
 }
 
 async function createFromOwner(browser, f, owner, details) {
@@ -545,3 +1016,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     await browser.close();
   }
 }
+
+export { verifyEvents };
