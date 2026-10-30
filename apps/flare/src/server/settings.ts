@@ -88,14 +88,24 @@ export async function saveScheduleOverrides(db: D1Database, input: ScheduleOverr
 
 export async function saveBookingRules(db: D1Database, input: BookingRules): Promise<void> {
   const rules = parseBookingRules(input);
-  const initial = parseSettings({ ...defaultSettings, event: { ...defaultSettings.event, ...rules } });
+  const { bookingWindowDays, ...timing } = rules;
+  const initial = parseSettings({
+    ...defaultSettings,
+    event: {
+      ...defaultSettings.event,
+      ...timing,
+      ...(typeof bookingWindowDays === "number" ? { bookingWindowDays } : {}),
+    },
+  });
   await db
     .prepare(`INSERT INTO organizer_settings (id, json, version) VALUES ('owner', ?, 1)
-    ON CONFLICT(id) DO UPDATE SET json = json_patch(json_set(json_remove(organizer_settings.json,
-      '$.event.disableCancelling', '$.event.disableRescheduling', '$.event.location'),
+    ON CONFLICT(id) DO UPDATE SET json = json_patch(json_patch(json_set(json_remove(organizer_settings.json,
+      '$.event.disableCancelling', '$.event.disableRescheduling', '$.event.bookingWindowDays', '$.event.location'),
       '$.event.intervalMinutes', json(?), '$.event.beforeMinutes', json(?),
       '$.event.afterMinutes', json(?), '$.event.noticeMinutes', json(?),
       '$.event.disableCancelling', json(?), '$.event.disableRescheduling', json(?)),
+      json_object('event', json_object('bookingWindowDays', CASE WHEN ? THEN json(?)
+        ELSE json(organizer_settings.json -> '$.event.bookingWindowDays') END))),
       CASE WHEN json_type(organizer_settings.json, '$.event.location') = 'text'
         THEN json_object('event', json_object('location', json(organizer_settings.json -> '$.event.location')))
         ELSE '{}' END),
@@ -109,7 +119,9 @@ export async function saveBookingRules(db: D1Database, input: BookingRules): Pro
         rules.noticeMinutes,
         rules.disableCancelling,
         rules.disableRescheduling,
-      ].map((value) => JSON.stringify(value))
+      ].map((value) => JSON.stringify(value)),
+      Object.hasOwn(rules, "bookingWindowDays") ? 1 : 0,
+      JSON.stringify(bookingWindowDays ?? null)
     )
     .run();
 }

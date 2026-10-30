@@ -30,8 +30,8 @@ Open `/` to sign in with the Google account configured for this installation.
 The private organizer page links to the public event preview. Sign-out revokes the current
 session and returns to the sign-in page. These entry forms work without browser JavaScript.
 The organizer page edits the event title, URL slug, description, duration, and optional static location with browser JavaScript.
-Saving these details preserves scheduling rules and booking policies. Other settings currently
-use the authenticated API. This editor is a functional checkpoint; upstream editor pixel parity remains open.
+Saving these details preserves scheduling rules and booking policies. The private page also edits
+working hours, dated overrides and booking rules. These are functional checkpoints; upstream editor pixel parity remains open.
 
 The static-location flow accepts optional `event.location` through authenticated
 `PUT /api/owner`, or `location` alongside the four event-detail fields in `PATCH /api/owner`.
@@ -92,7 +92,35 @@ commands retain their original replay and recovery behavior after a rules change
 The private booking-rules editor saves these fields explicitly and retains drafts after failed
 saves. Full editor pixel parity remains migration work.
 
-After the organizer connects Google and configures the event through the authenticated API,
+**Limit future bookings** enables a rolling calendar-day window, initially 30 days. The owner
+can save 1–365 whole days and reload the setting. This subset uses the booker's timezone,
+not the organizer's schedule timezone. Today plus the configured number of civil dates is
+included in full. January 1 plus 30 days permits starts through January 31. DST does not turn
+the limit into elapsed 24-hour periods. Only the start is checked, so a normally available
+appointment can end after the final day. Working hours, notice, buffers and occupancy still apply.
+Public listing and fresh creates use the query or submitted booker timezone. Existing-booking
+listing and fresh attendee/owner moves use the stored booking timezone for the window.
+Listing still rounds display minutes in the query timezone. A valid availability query entirely
+beyond the window returns an empty list. Stale selected times fail fresh admission.
+Moves validate the exact selected interval without rounding it again in the stored timezone.
+Fresh creates retain their existing grid-alignment requirement.
+Disabling the checkbox removes the optional canonical `event.bookingWindowDays` key. Omission
+keeps legacy settings bytes and the existing 365-day transport/admission ceiling. That ceiling
+continues to apply even with a configured window. No business-day, available-day, fixed-range
+or custom-calendar modes are implemented.
+
+Booking-rules PATCH accepts optional `bookingWindowDays`. Omission preserves the stored limit,
+an integer sets it, and explicit `null` removes it. Full settings PUT omission removes it.
+The limit applies to future requests, without rewriting stored booking facts. Already accepted
+create/move commands replay and recover with frozen admission settings, including uncertain
+provider writes. Durable rejected requests retain their original outcome on replay. Recovery
+still observes the existing occupancy, provider-match, lease and hard-horizon constraints.
+Node/D1 coverage checks literal date boundaries, DST, serialization and admission/recovery.
+The existing built Worker browser runner checks the owner control at 390px and 1280px and a
+public selection through confirmation. Google is mocked. Live invitations, imports, deployed
+behavior, native editor pixels and full-port completion are not established by these checks.
+
+After the organizer connects Google and configures the event on the private home page,
 open `/<event-slug>` to view its availability. The default slug is `intro`.
 The slug `api` is reserved for application routes.
 The page renders event details on the server, then loads the calendar in the browser.

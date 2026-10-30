@@ -12,10 +12,12 @@ type SlotPolicy = {
   beforeMinutes: number;
   afterMinutes: number;
   noticeMinutes: number;
+  bookingWindowDays?: number;
 };
 type AvailabilityInput = {
   schedule: Schedule;
   visitorTimeZone: string;
+  windowTimeZone?: string;
   policy: SlotPolicy;
   from: number;
   to: number;
@@ -59,11 +61,14 @@ function validate(input: AvailabilityInput): void {
   const { schedule, policy, from, to, now, busy } = input;
   if (!isValidTimeZone(schedule.timeZone)) throw new RangeError("Invalid IANA time zone");
   if (!isValidTimeZone(input.visitorTimeZone)) throw new RangeError("Invalid visitor time zone");
+  if (input.windowTimeZone !== undefined && !isValidTimeZone(input.windowTimeZone))
+    throw new RangeError("Invalid window time zone");
   for (const value of [from, to, now]) integer(value, EARLIEST, LATEST, "timestamp");
   if (to <= from || to - from > MAX_QUERY_DAYS * DAY)
     throw new RangeError(`Query must span (0, ${MAX_QUERY_DAYS}] days`);
   integer(policy.durationMinutes, 1, 1440, "durationMinutes");
   integer(policy.intervalMinutes, 1, 1440, "intervalMinutes");
+  if (policy.bookingWindowDays !== undefined) integer(policy.bookingWindowDays, 1, 365, "bookingWindowDays");
   for (const value of [policy.beforeMinutes, policy.afterMinutes, policy.noticeMinutes]) {
     integer(value, 0, 31 * 1440, "buffer or notice minutes");
   }
@@ -185,6 +190,22 @@ function availableSlots(input: AvailabilityInput): Interval[] {
   });
   const slots: Interval[] = [];
   const duration = policy.durationMinutes * MINUTE;
+  const windowDate = new Intl.DateTimeFormat("en-US", {
+    timeZone: input.windowTimeZone ?? input.visitorTimeZone,
+    calendar: "gregory",
+    numberingSystem: "latn",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  });
+  const calendarDay = (timestamp: number) => {
+    const fields = Object.fromEntries(
+      windowDate.formatToParts(timestamp).map((part) => [part.type, part.value])
+    );
+    return Date.UTC(Number(fields.year), Number(fields.month) - 1, Number(fields.day));
+  };
+  const lastDay =
+    policy.bookingWindowDays === undefined ? undefined : calendarDay(now) + policy.bookingWindowDays * DAY;
   for (const range of free) {
     let start = Math.ceil(Math.max(range.start, now + policy.noticeMinutes * MINUTE) / MINUTE) * MINUTE;
     if (start + duration > range.end) continue;
@@ -195,6 +216,7 @@ function availableSlots(input: AvailabilityInput): Interval[] {
     const previous = slots.at(-1);
     if (previous) start = Math.max(start, previous.start + policy.intervalMinutes * MINUTE);
     for (; start + duration <= range.end; start += policy.intervalMinutes * MINUTE) {
+      if (lastDay !== undefined && calendarDay(start) > lastDay) break;
       slots.push({ start, end: start + duration });
     }
   }

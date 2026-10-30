@@ -71,10 +71,13 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               afterMinutes: state.data.settings.event.afterMinutes, noticeMinutes: state.data.settings.event.noticeMinutes,
               disableCancelling: state.data.settings.event.disableCancelling ?? false,
               disableRescheduling: state.data.settings.event.disableRescheduling ?? false,
+              bookingWindowDays: state.data.settings.event.bookingWindowDays,
             }} labels={{
               heading: common.flare_booking_rules, intervalMinutes: common.slot_interval, beforeMinutes: common.before_event,
               afterMinutes: common.after_event, noticeMinutes: common.minimum_booking_notice,
               disableCancelling: common.disable_cancelling, disableRescheduling: common.disable_rescheduling,
+              limitFutureBookings: common.limit_future_bookings, bookingWindowDays: common.flare_booking_window_days,
+              windowHelp: common.flare_booking_window_help,
               minutes: common.minutes, save: common.save, saved: common.saved, invalid: common.flare_booking_rules_invalid,
               failed: common.flare_booking_rules_failed, javascript: common.flare_booking_rules_javascript,
             }} />
