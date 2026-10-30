@@ -61,6 +61,7 @@ export class FakeCalendar {
       end: { dateTime: new Date(input.end).toISOString() },
       summary: input.title,
       description: input.description,
+      ...(input.location === undefined ? {} : { location: input.location }),
       attendees: [{ email: input.attendee.email, displayName: input.attendee.name }],
       extendedProperties: { private: { ...input.privateMetadata } },
     };
@@ -91,7 +92,9 @@ export class FakeCalendar {
 
   async update(id: string, etag: string, input: Omit<EventInput, "id">) {
     this.match(id, etag);
+    const previous = this.events.get(id);
     const event = this.event({ ...input, id });
+    if (input.location === undefined && previous?.location !== undefined) event.location = previous.location;
     this.events.set(id, event);
     this.writes.push({ action: "update", id, etag, attendee: input.attendee.email });
     this.cut("update");

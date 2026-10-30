@@ -39,6 +39,7 @@ export type BookingView = {
   disableRescheduling?: boolean;
   cancellationReason?: string;
   rescheduleReason?: string;
+  location?: string;
 };
 export type Booking = {
   id: string;
@@ -149,6 +150,8 @@ export function parseChange(input: unknown): ChangeRequest {
 }
 export function snapshot(json: string): BookingSnapshot {
   const data = record(JSON.parse(json));
+  const location = Object.hasOwn(data, "location") ? text(data.location, 1000) : undefined;
+  if (location !== undefined && location.trim() !== location) throw new ErrorWithCode("invalid_input");
   const guests = parseGuests(data.guests);
   if (guests === null) throw new ErrorWithCode("invalid_input");
   const start = timestamp(data.start),
@@ -167,6 +170,7 @@ export function snapshot(json: string): BookingSnapshot {
     attendee: guest(record(data.attendee)),
     privateMetadata,
     ...(guests ? { guests } : {}),
+    ...(location === undefined ? {} : { location }),
   };
 }
 export function matches(event: CalendarEvent, desired: BookingSnapshot): boolean {
@@ -188,6 +192,7 @@ export function matches(event: CalendarEvent, desired: BookingSnapshot): boolean
     Date.parse(event.end.dateTime) === desired.end &&
     event.summary === desired.title &&
     (event.description ?? "") === desired.description &&
+    (desired.location === undefined || event.location === desired.location) &&
     event.attendees.some(
       (guest) =>
         guest.email.toLowerCase() === desired.attendee.email.toLowerCase() &&

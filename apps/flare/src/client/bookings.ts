@@ -120,6 +120,12 @@ function booking(value: unknown): BookingView {
     if (status !== "confirmed" || !reason || reason !== data.rescheduleReason) throw new Error();
     result.rescheduleReason = reason;
   }
+  if (Object.hasOwn(data, "location")) {
+    const location = text(data.location);
+    if (status !== "confirmed" || !location.length || location.length > 1000 || location.trim() !== location)
+      throw new Error();
+    result.location = location;
+  }
   return result;
 }
 function accessHeaders(access: BookingAccess): { Authorization: string } {

@@ -26,6 +26,7 @@ export type EventInput = {
   attendee: { name: string; email: string };
   privateMetadata: Record<string, string>;
   guests?: readonly string[];
+  location?: string;
 };
 type EventTime = { dateTime: string; timeZone?: string } | { date: string; timeZone?: string };
 export type CalendarEvent = {
@@ -37,6 +38,7 @@ export type CalendarEvent = {
   transparency?: string;
   summary?: string;
   description?: string;
+  location?: string;
   attendees: {
     email: string;
     displayName?: string;
@@ -90,7 +92,7 @@ function event(value: unknown): CalendarEvent {
       throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid attendee completeness");
     result.attendeesOmitted = data.attendeesOmitted;
   }
-  for (const field of ["status", "transparency", "summary", "description"] as const) {
+  for (const field of ["status", "transparency", "summary", "description", "location"] as const) {
     if (data[field] !== undefined) {
       if (typeof data[field] !== "string") throw new ErrorWithCode("UPSTREAM_SHAPE", "Invalid event text");
       result[field] = data[field];
@@ -188,6 +190,14 @@ function body(input: Omit<EventInput, "id">) {
     Object.values(input.privateMetadata).some((v) => typeof v !== "string")
   )
     throw new ErrorWithCode("INVALID_EVENT", "Invalid event input");
+  if (
+    Object.hasOwn(input, "location") &&
+    (typeof input.location !== "string" ||
+      !input.location.length ||
+      input.location.length > 1000 ||
+      input.location.trim() !== input.location)
+  )
+    throw new ErrorWithCode("INVALID_EVENT", "Invalid event location");
   return {
     summary: input.title,
     description: input.description,
@@ -200,6 +210,7 @@ function body(input: Omit<EventInput, "id">) {
         .map((email) => ({ email })),
     ],
     extendedProperties: { private: input.privateMetadata },
+    ...(input.location === undefined ? {} : { location: input.location }),
   };
 }
 function match(etag: string): Record<string, string> {
