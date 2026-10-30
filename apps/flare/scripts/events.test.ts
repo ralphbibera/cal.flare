@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defaultSettings, parseSettings } from "../src/domain/settings.ts";
+import { getOwnerEventData } from "../src/server/app.ts";
 import { BookingService } from "../src/server/bookings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
-import { getSettings, saveBookingRules, saveEventDetails, saveSettings } from "../src/server/settings.ts";
+import { ErrorWithCode } from "../src/server/http.ts";
+import {
+  findEventBySlug,
+  getSettings,
+  saveBookingRules,
+  saveEventDetails,
+  saveSettings,
+} from "../src/server/settings.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
 const details = { slug: "second-event", title: "Second event", description: "Event B", durationMinutes: 45 };
@@ -28,6 +36,44 @@ async function read(response: Response, status = 200) {
   assert.equal(response.status, status, await response.clone().text());
   return response.json();
 }
+
+test("owner page selection authenticates before query disclosure and never falls back from invalid IDs", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const b = await read(await f.send("/api/owner/events", details, f.ownerHeaders), 201);
+  const dependencies = { env: f.env, calendar: f.calendar, now: f.now };
+  const page = (query: string, authorized = true) =>
+    getOwnerEventData(
+      new Request(`${f.env.PUBLIC_ORIGIN}/?${query}`, { headers: authorized ? f.ownerHeaders : {} }),
+      dependencies
+    );
+  const selected = await page(`eventId=${b.id}`);
+  assert.equal(selected?.selectedId, b.id);
+  assert.deepEqual(selected?.settings.event, { ...defaultSettings.event, ...details });
+  assert.deepEqual(selected?.settings.schedule, settings.schedule);
+  assert.equal(selected?.creating, false);
+  assert.equal((await page("create=1"))?.creating, true);
+  for (const query of [
+    "eventId=invalid",
+    `eventId=${crypto.randomUUID()}`,
+    "eventId=default&eventId=default",
+    "eventId=default&create=1",
+    "create=bad",
+  ]) {
+    assert.equal(await page(query, false), null);
+    await assert.rejects(page(query), ErrorWithCode);
+  }
+  assert.equal(await findEventBySlug(f.db, details.slug), b.id);
+  await saveEventDetails(f.db, { ...details, slug: "renamed-b" }, b.id);
+  assert.equal(await findEventBySlug(f.db, details.slug), null);
+  assert.equal(await findEventBySlug(f.db, "renamed-b"), b.id);
+  const plan = await f.db
+    .prepare("EXPLAIN QUERY PLAN SELECT id FROM event_type WHERE json_extract(json,'$.slug')=?")
+    .bind("renamed-b")
+    .all<{ detail: string }>();
+  assert.ok(plan.results.some((row) => row.detail.includes("event_type_slug")));
+  assert.equal(f.calendar.writes.length, 0);
+});
 
 test("owner creates a stable independently editable event through authenticated HTTP", async (t) => {
   const f = await apiFixture();

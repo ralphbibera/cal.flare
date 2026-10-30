@@ -2,8 +2,8 @@ import { parseCancellationReason } from "../domain/cancellation-reason.ts";
 import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import type { Interval } from "../domain/scheduling.ts";
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
-import type { Settings } from "../domain/settings.ts";
-import { parseSettings } from "../domain/settings.ts";
+import type { BookingRules, EventDetails, OwnerEvent, Settings } from "../domain/settings.ts";
+import { defaultSettings, isEventId, parseSettings } from "../domain/settings.ts";
 import type { BookingView, parseChange, parseCreate } from "../server/booking-model.ts";
 
 type Transport = (path: string, init: RequestInit) => Promise<Response>;
@@ -11,6 +11,34 @@ type CreateRequest = Omit<ReturnType<typeof parseCreate>, "action">;
 type ChangeRequest = ReturnType<typeof parseChange>;
 type BookingAccess = { id: string; token: string };
 type PublicBooking = Settings & { organizer: { name: string } };
+type EventAccess = { kind: "event"; id: string };
+type CalendarAccess = BookingAccess | EventAccess | { kind: "owner"; id: string };
+
+function eventPath(id: string): string {
+  if (!isEventId(id)) throw new ErrorWithCode("invalid_event", 400);
+  return `/api/events/${id}`;
+}
+function exact(data: Record<string, unknown>, keys: string[]): void {
+  if (Object.keys(data).some((key) => !keys.includes(key))) throw new Error();
+}
+function ownerEvent(value: unknown): OwnerEvent {
+  const data = object(value);
+  exact(data, ["id", "event"]);
+  if (!isEventId(data.id)) throw new Error();
+  const event = object(data.event);
+  exact(event, [
+    ...Object.keys(defaultSettings.event),
+    "disableCancelling",
+    "disableRescheduling",
+    "bookingWindowDays",
+    "location",
+  ]);
+  return { id: data.id, event: parseSettings({ ...defaultSettings, event }).event };
+}
+function saved(value: unknown): void {
+  const data = object(value);
+  if (Object.keys(data).length !== 1 || data.saved !== true) throw new Error();
+}
 
 class ErrorWithCode extends Error {
   readonly code: string;
@@ -188,6 +216,84 @@ class BookerClient {
       { signal }
     );
   }
+  eventData(id: string, signal?: AbortSignal): Promise<PublicBooking & { id: string }> {
+    return this.request(
+      eventPath(id),
+      (value) => {
+        const data = object(value);
+        exact(data, ["id", "event", "schedule", "organizer"]);
+        if (data.id !== id || Object.hasOwn(object(data.event), "location")) throw new Error();
+        return { ...parseSettings(data), id, organizer: { name: text(object(data.organizer).name) } };
+      },
+      { signal }
+    );
+  }
+  ownerEvents(signal?: AbortSignal): Promise<OwnerEvent[]> {
+    return this.request(
+      "/api/owner/events",
+      (value) => {
+        const data = object(value);
+        exact(data, ["events"]);
+        if (!Array.isArray(data.events)) throw new Error();
+        const events = data.events.map(ownerEvent);
+        if (
+          new Set(events.map((event) => event.id)).size !== events.length ||
+          new Set(events.map((entry) => entry.event.slug)).size !== events.length
+        )
+          throw new Error();
+        return events;
+      },
+      { signal }
+    );
+  }
+  ownerEvent(id: string, signal?: AbortSignal): Promise<OwnerEvent> {
+    eventPath(id);
+    return this.request(
+      `/api/owner/events/${id}`,
+      (value) => {
+        const result = ownerEvent(value);
+        if (result.id !== id) throw new Error();
+        return result;
+      },
+      { signal }
+    );
+  }
+  ownerCreateEvent(input: EventDetails): Promise<OwnerEvent> {
+    return this.request(
+      "/api/owner/events",
+      (value) => {
+        const result = ownerEvent(value);
+        if (result.id === "default") throw new Error();
+        const { title, slug, description, durationMinutes, location } = result.event;
+        if (
+          title !== input.title ||
+          slug !== input.slug ||
+          description !== input.description ||
+          durationMinutes !== input.durationMinutes ||
+          (location ?? "") !== (input.location ?? "")
+        )
+          throw new Error();
+        return result;
+      },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }
+    );
+  }
+  ownerSaveEvent(id: string, input: EventDetails): Promise<void> {
+    eventPath(id);
+    return this.request(`/api/owner/events/${id}`, saved, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+  ownerSaveRules(id: string, input: BookingRules): Promise<void> {
+    eventPath(id);
+    return this.request(`/api/owner/events/${id}/booking-rules`, saved, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
   slots({
     from,
     to,
@@ -198,7 +304,7 @@ class BookerClient {
     from: number;
     to: number;
     timeZone: string;
-    access?: BookingAccess;
+    access?: BookingAccess | EventAccess;
     signal?: AbortSignal;
   }): Promise<Interval[]> {
     const query = new URLSearchParams({
@@ -206,13 +312,22 @@ class BookerClient {
       to: new Date(to).toISOString(),
       timeZone,
     });
+    if (access && "kind" in access)
+      return this.request(`${eventPath(access.id)}/slots?${query}`, slots, { signal });
     const headers = access ? accessHeaders(access) : undefined;
     if (access) query.set("bookingId", access.id);
     return this.request(`/api/slots?${query}`, slots, { headers, signal });
   }
-  create(input: CreateRequest): Promise<BookingView & { manageToken: string }> {
+  calendarSlots(
+    access: CalendarAccess | undefined,
+    options: { from: number; to: number; timeZone: string; signal?: AbortSignal }
+  ): Promise<Interval[]> {
+    if (access && "kind" in access && access.kind === "owner") return this.ownerSlots(access.id, options);
+    return this.slots({ ...options, access });
+  }
+  create(input: CreateRequest, eventId?: string): Promise<BookingView & { manageToken: string }> {
     return this.request(
-      "/api/bookings",
+      eventId === undefined ? "/api/bookings" : `${eventPath(eventId)}/bookings`,
       (value) => {
         const result = booking(value);
         if (!result.manageToken) throw new Error();
@@ -222,7 +337,15 @@ class BookerClient {
     );
   }
   view(access: BookingAccess): Promise<BookingView> {
-    return this.request(`/api/bookings/${access.id}`, booking, { headers: accessHeaders(access) });
+    return this.request(
+      `/api/bookings/${access.id}`,
+      (value) => {
+        const result = booking(value);
+        if (result.id !== access.id) throw new Error();
+        return result;
+      },
+      { headers: accessHeaders(access) }
+    );
   }
   private ownerBooking(id: string, init: RequestInit = {}): Promise<BookingView> {
     if (!/^[0-9a-f]{64}$/.test(id)) throw new ErrorWithCode("invalid_access", 400);
@@ -288,4 +411,6 @@ export {
   type ChangeRequest,
   type BookingAccess,
   type PublicBooking,
+  type EventAccess,
+  type CalendarAccess,
 };

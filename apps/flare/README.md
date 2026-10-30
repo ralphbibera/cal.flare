@@ -73,7 +73,7 @@ The root no longer inherits the old Vite 6 override or legacy integration depend
 
 The [reservation model](../../experiments/d1-reservations/schema.sql) remains experimental.
 The app includes owner OAuth, D1-backed sessions, authenticated settings, public availability,
-booking lifecycle APIs, and scheduled recovery. The current model has one organizer and one event,
+booking lifecycle APIs, and scheduled recovery. The current model has one organizer and multiple events,
 with selected conflict calendars and primary-calendar event operations. Broader account and feature parity remain migration work.
 Generated Wrangler types and local state are ignored. Checked-in Wrangler configuration has no production database UUID or variables.
 Image transformation and Astro's default session storage are disabled.
@@ -91,6 +91,12 @@ in the porting guide. The default verification path needs no native reference ch
 Open `/` to sign in with the Google account configured for this installation.
 The private organizer page links to the public event preview. Sign-out revokes the current
 session and returns to the sign-in page. These entry forms work without browser JavaScript.
+Select an event with `/?eventId=<stable-id>`, or use **Create event** to open `/?create=1`.
+Creation replaces the details editor and shows booking rules after the event exists.
+New events use app defaults for their rules. Each event keeps its own details and rules.
+Working hours, timezone, overrides, and conflict calendars remain shared across all events.
+An uncertain creation keeps the draft and offers **Refresh events** to inspect explicit selection candidates.
+The app does not automatically repeat the creation request.
 The organizer page edits the event title, URL slug, description, duration, and optional static location with browser JavaScript.
 Saving these details preserves scheduling rules and booking policies. The private page also edits
 working hours, dated overrides and booking rules. These are functional checkpoints; upstream editor pixel parity remains open.
@@ -238,6 +244,9 @@ page at 900px and 1280px with zero different pixels under the declared Chromium 
 Full week-page, toolbar, and dialog pixel parity remain unverified.
 Uncertain results retain that identity for a safe retry after reload. Acknowledged bookings
 replace the pending attendee data with a private receipt in this tab's session storage.
+Pending requests and receipts use `calflare:create:v2:<eventId>` with the event ID in each envelope.
+They survive slug changes. Only the default event imports a v1 record matching the current pathname,
+after saving v2 durably. Other old-path records stay untouched. Clearing an imported receipt cannot restore it again.
 Optional **Additional notes** are trimmed and limited to 1,000 UTF-16 units after trimming.
 Interior whitespace and literal text are preserved in the immutable provider description,
 including through retries and rescheduling. Notes share the existing server retention and

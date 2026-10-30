@@ -305,7 +305,8 @@ export async function verifyConflictCalendarsUI(browser) {
       await publicPage.getByLabel("Email address*", { exact: true }).fill("conflict@example.test");
       const response = publicPage.waitForResponse(
         (response) =>
-          new URL(response.url()).pathname === "/api/bookings" && response.request().method() === "POST"
+          new URL(response.url()).pathname === "/api/events/default/bookings" &&
+          response.request().method() === "POST"
       );
       await publicPage.getByRole("button", { name: "Confirm", exact: true }).click();
       const booking = await (await response).json();

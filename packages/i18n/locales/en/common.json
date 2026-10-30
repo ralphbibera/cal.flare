@@ -4853,5 +4853,10 @@
   "flare_conflict_clear": "Clear selection",
   "flare_conflict_limit": "Select up to 50 calendars, then save.",
   "flare_conflict_javascript": "Enable JavaScript to select conflict calendars.",
+  "flare_owner_events": "Your events",
+  "flare_create_event": "Create event",
+  "flare_event_create_uncertain": "We couldn't confirm whether this event was created. Your draft is still here. Refresh your events and select an event to inspect it before starting another creation.",
+  "flare_event_refresh": "Refresh events",
+  "flare_event_candidates": "Select an event to inspect",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

@@ -4,13 +4,15 @@ import common from "../../../../packages/i18n/locales/en/common.json";
 import { bookingLabels as labels } from "../components/booking-labels.ts";
 import { PublicBooker } from "../components/PublicBooker.tsx";
 import { getPublicBooking } from "../server/app.ts";
+import { findEventBySlug } from "../server/settings.ts";
 import "../styles/globals.css";
 
 let booking: Awaited<ReturnType<typeof getPublicBooking>> | undefined;
 let status = 200;
+let eventId: string | null = null;
 try {
-  const current = await getPublicBooking(env);
-  if (current.event.slug === Astro.params.slug) booking = current;
+  eventId = await findEventBySlug(env.DB, Astro.params.slug ?? "");
+  if (eventId) booking = await getPublicBooking(env, eventId);
   else status = 404;
 } catch {
   status = 503;
@@ -30,7 +32,7 @@ const fallback = status === 404 ? common.flare_event_not_found : common.flare_ev
     <title>{booking ? `${booking.event.title} | ${booking.organizer.name}` : fallback}</title>
   </head>
   <body class="bg-subtle dark:bg-default text-default min-h-screen font-sans">
-    {booking ? <main class="flex h-full min-h-dvh items-center justify-center"><PublicBooker client:load organizer={booking.organizer} event={booking.event} labels={labels} /></main> : <main class="mx-auto max-w-xl p-6"><h1>{fallback}</h1></main>}
+    {booking && eventId ? <main class="flex h-full min-h-dvh items-center justify-center"><PublicBooker client:load eventId={eventId} organizer={booking.organizer} event={booking.event} labels={labels} /></main> : <main class="mx-auto max-w-xl p-6"><h1>{fallback}</h1></main>}
     <noscript><p>{common.flare_javascript_required}</p></noscript>
   </body>
 </html>

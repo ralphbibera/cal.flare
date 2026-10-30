@@ -100,7 +100,11 @@ export async function verifyManagement(browser, fixture, date) {
     requests = [],
     bookingPosts = [];
   context.on("request", (request) => {
-    if (new URL(request.url()).pathname.startsWith("/api/bookings") && request.method() === "POST")
+    if (
+      (new URL(request.url()).pathname.startsWith("/api/bookings") ||
+        new URL(request.url()).pathname === "/api/events/default/bookings") &&
+      request.method() === "POST"
+    )
       bookingPosts.push(request.url());
   });
   try {
@@ -117,7 +121,8 @@ export async function verifyManagement(browser, fixture, date) {
     const before = fixture.google.writes.length;
     const creation = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === "/api/bookings" && response.request().method() === "POST"
+        new URL(response.url()).pathname === "/api/events/default/bookings" &&
+        response.request().method() === "POST"
     );
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     const created = await (await creation).json();
@@ -145,7 +150,7 @@ export async function verifyManagement(browser, fixture, date) {
     };
     await canonicalDetails(page);
     const receipt = await page.evaluate(() =>
-      JSON.parse(sessionStorage.getItem(`calflare:create:v1:${encodeURIComponent(location.pathname)}`))
+      JSON.parse(sessionStorage.getItem("calflare:create:v2:default"))
     );
     const hiddenExports = async () =>
       assert.equal(await page.getByText("Add to calendar", { exact: true }).count(), 0);
@@ -798,7 +803,10 @@ export async function verifyManagement(browser, fixture, date) {
       fixture.google.writes.slice(before).map((write) => write.action),
       ["insert", "update", "update", "delete"]
     );
-    assert.equal(bookingPosts.filter((url) => new URL(url).pathname === "/api/bookings").length, 1);
+    assert.equal(
+      bookingPosts.filter((url) => new URL(url).pathname === "/api/events/default/bookings").length,
+      1
+    );
     assert.equal(bookingPosts.filter((url) => new URL(url).pathname === `${path}/retry`).length, 1);
     assert.equal(bookingPosts.length, requests.length + 2);
     assert.equal(

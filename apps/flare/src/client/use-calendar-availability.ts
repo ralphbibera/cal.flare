@@ -3,14 +3,13 @@ import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 import { useEffect, useMemo, useState } from "react";
 import { EARLIEST, isValidTimeZone, LATEST } from "../domain/scheduling.ts";
-import type { BookingAccess } from "./bookings.ts";
+import type { CalendarAccess } from "./bookings.ts";
 import { BookerClient } from "./bookings.ts";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 const client = new BookerClient();
 type Days = Record<string, { time: string }[]>;
-export type CalendarAccess = BookingAccess | { kind: "owner"; id: string };
 type Query = { month: string; timeZone: string; access?: CalendarAccess };
 type Result = { query: Query } & (
   | { status: "loading" | "error" }
@@ -19,19 +18,20 @@ type Result = { query: Query } & (
 
 function useCalendarAvailability(month: string, timeZone: string, access?: CalendarAccess) {
   const id = access?.id,
-    owner = access && "kind" in access && access.kind === "owner",
+    kind = access && "kind" in access ? access.kind : "attendee",
     token = access && "token" in access ? access.token : undefined;
   const query = useMemo(
     (): Query => ({
       month,
       timeZone,
-      access: owner
-        ? { kind: "owner", id: id ?? "" }
-        : id !== undefined || token !== undefined
-          ? { id: id ?? "", token: token ?? "" }
-          : undefined,
+      access:
+        kind !== "attendee"
+          ? { kind, id: id ?? "" }
+          : id !== undefined || token !== undefined
+            ? { id: id ?? "", token: token ?? "" }
+            : undefined,
     }),
-    [month, timeZone, id, token, owner]
+    [month, timeZone, id, token, kind]
   );
   const [result, setResult] = useState<Result>({ query, status: "loading" });
   const [revision, setRevision] = useState(0);
@@ -68,12 +68,7 @@ function useCalendarAvailability(month: string, timeZone: string, access?: Calen
         const endMonth = dayjs(`${query.month}-01`).add(2, "month").format("YYYY-MM-DD");
         const to = Math.max(from, Math.min(dayjs.tz(endMonth, query.timeZone).valueOf(), horizon));
         const options = { from, to, timeZone: query.timeZone, signal: controller.signal };
-        const slots =
-          from >= to
-            ? []
-            : query.access && "kind" in query.access
-              ? await client.ownerSlots(query.access.id, options)
-              : await client.slots({ ...options, access: query.access });
+        const slots = from >= to ? [] : await client.calendarSlots(query.access, options);
         const formatter = new Intl.DateTimeFormat("en", {
           timeZone: query.timeZone,
           year: "numeric",
@@ -116,4 +111,4 @@ function useCalendarAvailability(month: string, timeZone: string, access?: Calen
   return { result: current, refresh };
 }
 
-export { useCalendarAvailability };
+export { useCalendarAvailability, type CalendarAccess };

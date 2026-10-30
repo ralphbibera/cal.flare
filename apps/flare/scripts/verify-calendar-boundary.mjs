@@ -44,7 +44,7 @@ export async function verifyCalendarBoundary(browser) {
       const requests = [];
       page.on("request", (request) => {
         const url = new URL(request.url());
-        if (url.pathname === "/api/slots") requests.push(url);
+        if (url.pathname === "/api/events/default/slots") requests.push(url);
       });
       const times = page.getByTestId(layout === "week_view" ? "calendar-empty-cell" : "time");
       await page.goto(`${fixture.origin}/${settings.event.slug}?layout=${layout}`);

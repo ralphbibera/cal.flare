@@ -9,8 +9,20 @@ createRoot(document.getElementById("root")).render(
       const [timeZone, setTimeZone] = useState("UTC");
       const [selected, setSelected] = useState();
       const [visible, setVisible] = useState(true);
+      const [eventId, setEventId] = useState("default");
+      const secondId = new URL(location.href).searchParams.get("eventId");
       return (
         <main className="mx-auto grid max-w-2xl md:grid-cols-2">
+          <label>
+            Event
+            <select
+              aria-label="Event"
+              value={eventId}
+              onChange={(event) => setEventId(event.currentTarget.value)}>
+              <option value="default">Event A</option>
+              {secondId && <option value={secondId}>Event B</option>}
+            </select>
+          </label>
           <label>
             Time zone
             <select value={timeZone} onChange={(event) => setTimeZone(event.target.value)}>
@@ -20,6 +32,7 @@ createRoot(document.getElementById("root")).render(
           </label>
           {visible && (
             <BookingCalendar
+              access={{ kind: "event", id: eventId }}
               locale="en-US"
               timeZone={timeZone}
               timeFormat="h:mma"

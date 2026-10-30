@@ -116,9 +116,11 @@ export async function verifyPublic(browser) {
     }
     const releaseSlots = Promise.withResolvers();
     const holdSlots = (route) => releaseSlots.promise.then(() => route.continue());
-    await page.route("**/api/slots?**", holdSlots, { times: 1 });
+    await page.route("**/api/events/default/slots?**", holdSlots, { times: 1 });
     try {
-      const request = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/slots");
+      const request = page.waitForRequest(
+        (request) => new URL(request.url()).pathname === "/api/events/default/slots"
+      );
       await page.goto(`${fixture.origin}/${settings.event.slug}`);
       await request;
       await page.getByRole("status").filter({ hasText: "Loading" }).waitFor();
@@ -177,7 +179,7 @@ export async function verifyPublic(browser) {
       await zoneSelect.fill(city);
       const queried = page.waitForRequest((request) => {
         const url = new URL(request.url());
-        return url.pathname === "/api/slots" && url.searchParams.get("timeZone") === zone;
+        return url.pathname === "/api/events/default/slots" && url.searchParams.get("timeZone") === zone;
       });
       await page.getByRole("option", { name: new RegExp(`^${city} GMT `) }).click();
       await queried;

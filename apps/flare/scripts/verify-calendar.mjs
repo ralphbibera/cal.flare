@@ -31,7 +31,7 @@ async function verifyCalendar(browser, origin) {
     });
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/slots") requests.push(new URL(request.url()));
+      if (new URL(request.url()).pathname.endsWith("/slots")) requests.push(new URL(request.url()));
     });
     await page.clock.install({ time: new Date("2030-01-01T00:00:00Z") });
     await page.addInitScript(() => {
@@ -42,13 +42,15 @@ async function verifyCalendar(browser, origin) {
         return original.call(
           window,
           resource,
-          url.searchParams.get("from") === "2030-02-01T00:00:00.000Z" ? { ...init, signal: undefined } : init
+          window.ignoreCalendarAbort || url.searchParams.get("from") === "2030-02-01T00:00:00.000Z"
+            ? { ...init, signal: undefined }
+            : init
         );
       };
     });
     const first = Promise.withResolvers(),
       permit = Promise.withResolvers();
-    await page.route("**/api/slots?**", async (route) => {
+    await page.route("**/api/events/*/slots?**", async (route) => {
       try {
         const response = await route.fetch();
         first.resolve();
@@ -58,7 +60,9 @@ async function verifyCalendar(browser, origin) {
         first.reject(error);
       }
     });
-    const initial = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/slots");
+    const initial = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === "/api/events/default/slots"
+    );
     await page.goto(`${origin}/calendar-api.html`);
     await initial;
     await first.promise;
@@ -90,7 +94,7 @@ async function verifyCalendar(browser, origin) {
     assert.equal(await page.locator("header").textContent(), "Tue01");
     assert.equal(requests[0].searchParams.get("from"), "2030-01-01T00:00:00.000Z");
     assert.equal(requests[0].searchParams.get("to"), "2030-03-01T00:00:00.000Z");
-    await page.unroute("**/api/slots?**");
+    await page.unroute("**/api/events/*/slots?**");
     await page.getByTestId("time").first().click();
     assert.equal(await page.getByTestId("selection").textContent(), "2030-01-01T23:00:00.000Z");
     await page.getByLabel("Time zone").selectOption("Asia/Kolkata");
@@ -112,7 +116,7 @@ async function verifyCalendar(browser, origin) {
     );
     assert.equal(await page.locator("header").textContent(), "Wed02");
     const held = Promise.withResolvers();
-    await page.route("**/api/slots?**", async (route) => {
+    await page.route("**/api/events/*/slots?**", async (route) => {
       if (new URL(route.request().url()).searchParams.get("from") !== "2030-02-01T00:00:00.000Z")
         return route.continue();
       try {
@@ -143,8 +147,8 @@ async function verifyCalendar(browser, origin) {
       await page.getByTestId("time").first().getAttribute("data-time"),
       "2030-03-01T23:00:00.000Z"
     );
-    await page.unroute("**/api/slots?**");
-    await page.route("**/api/slots?**", (route) => {
+    await page.unroute("**/api/events/*/slots?**");
+    await page.route("**/api/events/*/slots?**", (route) => {
       failedRequests.add(route.request().url());
       return route.fulfill({
         status: 503,
@@ -156,10 +160,12 @@ async function verifyCalendar(browser, origin) {
     await page.getByRole("alert").waitFor();
     assert.equal(await page.getByTestId("time").count(), 0);
     assert.ok(!(await page.getByRole("alert").textContent()).includes("calendar_unavailable"));
-    await page.unroute("**/api/slots?**");
+    await page.unroute("**/api/events/*/slots?**");
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await page.getByTestId("time").first().waitFor();
-    const poll = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/slots");
+    const poll = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/events/default/slots"
+    );
     await page.clock.fastForward(300_000);
     await (await poll).finished();
     fixture.calendar.events.set("busy", {
@@ -206,6 +212,53 @@ async function verifyCalendar(browser, origin) {
       path: new URL("../.verification/calendar-api-mobile.png", import.meta.url).pathname,
       fullPage: true,
     });
+    const created = await fixture.send(
+      "/api/owner/events",
+      {
+        title: "Calendar B",
+        slug: "calendar-b",
+        description: "",
+        durationMinutes: 60,
+      },
+      fixture.ownerHeaders
+    );
+    assert.equal(created.status, 201);
+    const second = await created.json();
+    const saved = await fixture.send(
+      `/api/owner/events/${second.id}/booking-rules`,
+      {
+        intervalMinutes: 60,
+        beforeMinutes: 0,
+        afterMinutes: 0,
+        noticeMinutes: 0,
+        disableCancelling: false,
+        disableRescheduling: false,
+      },
+      fixture.ownerHeaders,
+      "PATCH"
+    );
+    assert.equal(saved.status, 200);
+    await page.goto(`${origin}/calendar-api.html?eventId=${second.id}`);
+    await page.getByTestId("time").first().waitFor();
+    const releaseA = Promise.withResolvers();
+    await page.route("**/api/events/default/slots?**", async (route) => {
+      releaseA.resolve({ route, response: await route.fetch() });
+    });
+    await page.evaluate(() => {
+      window.ignoreCalendarAbort = true;
+      window.dispatchEvent(new Event("focus"));
+    });
+    const delayedA = await releaseA.promise;
+    await page.getByLabel("Event", { exact: true }).selectOption(second.id);
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="time"]').length === 1);
+    const beforeLateA = await page.getByTestId("time").allTextContents();
+    await delayedA.route.fulfill({ response: delayedA.response });
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    );
+    assert.deepEqual(await page.getByTestId("time").allTextContents(), beforeLateA);
+    assert.equal(await page.getByLabel("Event", { exact: true }).inputValue(), second.id);
+    await page.unroute("**/api/events/default/slots?**");
     await page.getByRole("button", { name: "Hide calendar" }).click();
     const before = requests.length;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));

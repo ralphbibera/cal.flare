@@ -2,7 +2,117 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BookerClient, ErrorWithCode } from "../src/client/bookings.ts";
 import { calendarExport } from "../src/client/calendar-export.ts";
+import { defaultSettings } from "../src/domain/settings.ts";
 import { apiFixture, hour } from "./fixtures/api.ts";
+
+test("event transport binds metadata, slots and unchanged create bodies to the selected ID", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const calls: { path: string; body: RequestInit["body"] }[] = [];
+  const client = new BookerClient((path, init) => {
+    calls.push({ path, body: init.body });
+    const headers = new Headers(init.headers);
+    for (const [key, value] of Object.entries(f.ownerHeaders)) headers.set(key, value);
+    headers.set("Origin", f.env.PUBLIC_ORIGIN);
+    return f.request(path, { ...init, headers });
+  });
+  const details = { slug: "client-b", title: "Client B", description: "Literal <B>", durationMinutes: 45 };
+  const created = await client.ownerCreateEvent(details);
+  assert.deepEqual(created.event, { ...defaultSettings.event, ...details });
+  assert.deepEqual(
+    (await client.ownerEvents()).map((event) => event.id),
+    ["default", created.id]
+  );
+  assert.deepEqual(await client.ownerEvent(created.id), created);
+  await client.ownerSaveRules(created.id, {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+  });
+  await client.ownerSaveEvent(created.id, { ...details, location: "Private B" });
+  const data = await client.eventData(created.id);
+  assert.equal(data.id, created.id);
+  assert.equal(data.event.title, details.title);
+  assert.equal(data.event.location, undefined);
+  const start = f.now() + 10 * hour;
+  const slots = await client.slots({
+    access: { kind: "event", id: created.id },
+    from: start,
+    to: start + hour,
+    timeZone: "UTC",
+  });
+  assert.deepEqual(slots[0], { start, end: start + 45 * 60_000 });
+  const input = {
+    requestKey: crypto.randomUUID(),
+    start,
+    name: "B",
+    email: "b@example.test",
+    timeZone: "UTC",
+  };
+  const booking = await client.create(input, created.id);
+  assert.equal(booking.title, details.title);
+  assert.equal(booking.location, "Private B");
+  const call = calls.find((call) => call.path === `/api/events/${created.id}/bookings`);
+  assert.equal(call?.body, JSON.stringify(input));
+  assert.equal(Object.hasOwn(JSON.parse(String(call?.body)), "eventId"), false);
+  assert.equal((await client.create(input, created.id)).id, booking.id);
+  assert.equal(f.calendar.writes.length, 1);
+});
+
+test("event and owner acknowledgments fail closed on wrong IDs, duplicates and malformed policy", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const entry = { id, event: defaultSettings.event };
+  for (const value of [
+    null,
+    { events: [entry, entry] },
+    { events: [{ ...entry, id: "wrong" }] },
+    { events: [{ ...entry, event: { ...entry.event, noticeMinutes: "120" } }] },
+    { events: [entry], private: true },
+  ]) {
+    await assert.rejects(new BookerClient(async () => Response.json(value)).ownerEvents(), ErrorWithCode);
+  }
+  for (const value of [
+    { ...defaultSettings, id: "default", organizer: { name: "Owner" } },
+    {
+      ...defaultSettings,
+      id,
+      event: { ...defaultSettings.event, location: "private" },
+      organizer: { name: "Owner" },
+    },
+  ]) {
+    await assert.rejects(new BookerClient(async () => Response.json(value)).eventData(id), ErrorWithCode);
+  }
+  const details = { slug: "intro", title: "Intro call", description: "", durationMinutes: 30 };
+  await assert.rejects(
+    new BookerClient(async () => Response.json({ ...entry, id: "default" })).ownerEvent(id),
+    ErrorWithCode
+  );
+  for (const value of [
+    { ...entry, id: "default" },
+    { ...entry, event: { ...entry.event, title: "Other" } },
+    { ...entry, extra: true },
+  ]) {
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value)).ownerCreateEvent(details),
+      ErrorWithCode
+    );
+  }
+  for (const value of [null, { saved: "true" }, { saved: true, id }])
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value)).ownerSaveEvent(id, details),
+      ErrorWithCode
+    );
+  let requests = 0;
+  const client = new BookerClient(async () => {
+    requests++;
+    return Response.json({});
+  });
+  assert.throws(() => client.eventData("invalid"), ErrorWithCode);
+  assert.equal(requests, 0);
+});
 
 test("calendar prefetch crosses months through HTTP/D1 and rejects oversized ranges before Calendar work", async (t) => {
   const fixture = await apiFixture();

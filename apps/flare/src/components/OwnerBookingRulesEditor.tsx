@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BookerClient } from "../client/bookings.ts";
 import type { BookingRules } from "../domain/settings.ts";
 import { parseBookingRules } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
@@ -19,12 +20,29 @@ type Labels = Record<
   string
 >;
 
-export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules; labels: Labels }) {
+const client = new BookerClient();
+export function OwnerBookingRulesEditor({
+  eventId,
+  rules,
+  labels,
+}: {
+  eventId: string;
+  rules: BookingRules;
+  labels: Labels;
+}) {
+  const active = useRef(0);
+  const locked = useRef(true);
   const [limited, setLimited] = useState(typeof rules.bookingWindowDays === "number");
   const [status, setStatus] = useState<"loading" | "idle" | "saving" | "saved" | "invalid" | "failed">(
     "loading"
   );
-  useEffect(() => setStatus("idle"), []);
+  useEffect(() => {
+    locked.current = false;
+    setStatus("idle");
+    return () => {
+      active.current++;
+    };
+  }, []);
   return (
     <section className="border-subtle border-t pt-6">
       <h2 id="owner-booking-rules-title" className="text-emphasis mb-4 font-semibold">
@@ -32,13 +50,14 @@ export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules
       </h2>
       <form
         aria-labelledby="owner-booking-rules-title"
-        action="/api/owner/booking-rules"
+        action={`/api/owner/events/${eventId}/booking-rules`}
         method="post"
         onChange={() => {
           if (status !== "loading" && status !== "saving") setStatus("idle");
         }}
         onSubmit={async (event) => {
           event.preventDefault();
+          if (locked.current) return;
           const form = new FormData(event.currentTarget);
           let input: BookingRules;
           try {
@@ -55,29 +74,18 @@ export function OwnerBookingRulesEditor({ rules, labels }: { rules: BookingRules
             setStatus("invalid");
             return;
           }
+          locked.current = true;
+          const ticket = ++active.current;
           setStatus("saving");
           try {
-            const response = await fetch("/api/owner/booking-rules", {
-              method: "PATCH",
-              credentials: "same-origin",
-              cache: "no-store",
-              redirect: "error",
-              signal: AbortSignal.timeout(30_000),
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(input),
-            });
-            const result: unknown = await response.json();
-            if (
-              !response.ok ||
-              typeof result !== "object" ||
-              result === null ||
-              !("saved" in result) ||
-              result.saved !== true
-            )
-              throw new Error();
+            await client.ownerSaveRules(eventId, input);
+            if (ticket !== active.current) return;
             setStatus("saved");
           } catch {
+            if (ticket !== active.current) return;
             setStatus("failed");
+          } finally {
+            locked.current = false;
           }
         }}>
         <fieldset disabled={status === "loading" || status === "saving"} className="min-w-0 space-y-4">
