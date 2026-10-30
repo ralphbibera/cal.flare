@@ -6,6 +6,11 @@ const cancellationReason = 'Plans changed\n\n<img src="/unexpected-reason" onerr
   "界"
 );
 const cancellationDraft = ` \n${cancellationReason}\t `;
+const rescheduleReason = 'Schedule changed\n\n<img src="/unexpected-move" onerror="alert(1)"> é 😀\n'.padEnd(
+  1000,
+  "界"
+);
+const rescheduleDraft = ` \n${rescheduleReason}\t `;
 
 export async function verifyManagement(browser, fixture, date) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
@@ -83,6 +88,7 @@ export async function verifyManagement(browser, fixture, date) {
           created.name,
           "/booking/",
           "#token=",
+          rescheduleReason,
         ])
           assert.ok(!decodeURIComponent(href).includes(privateValue));
         if (index === 3) continue;
@@ -134,7 +140,14 @@ export async function verifyManagement(browser, fixture, date) {
       ])
         assert.ok(unfolded.split("\r\n").includes(line));
       assert.doesNotMatch(unfolded, /\r\n(?:METHOD|ATTENDEE|ORGANIZER|DESCRIPTION|LOCATION|URL):/);
-      for (const privateValue of [receipt.access.token, created.email, created.name, "/booking/", "#token="])
+      for (const privateValue of [
+        receipt.access.token,
+        created.email,
+        created.name,
+        "/booking/",
+        "#token=",
+        rescheduleReason,
+      ])
         assert.ok(!unfolded.includes(privateValue));
       assert.equal(bookingPosts.length, mutations);
       assert.equal(fixture.google.writes.length, writes);
@@ -276,10 +289,12 @@ export async function verifyManagement(browser, fixture, date) {
     await page.getByRole("button", { name: "Cancel event", exact: true }).waitFor();
     await fixture.read(await fixture.send("/api/owner", original, owner, "PUT"));
     await privatePage.close();
-    const choose = async () => {
+    const choose = async (excluded) => {
       const previous = await currentTime();
       await page.getByRole("button", { name: "Reschedule", exact: true }).click();
       await hiddenExports();
+      assert.equal(await page.locator("textarea").count(), 0);
+      assert.equal(await page.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
       const slots = page.getByTestId("time");
       await slots.first().waitFor();
       for (const width of [390, 768, 1024, 1280]) {
@@ -294,28 +309,86 @@ export async function verifyManagement(browser, fixture, date) {
       });
       for (let i = 0; i < (await slots.count()); i++) {
         const time = await slots.nth(i).getAttribute("data-time");
-        if (time !== previous) {
+        if (time !== previous && time !== excluded) {
           await slots.nth(i).click();
           await hiddenExports();
           return time;
         }
       }
-      await page.locator('[data-testid="day"]:not(:disabled)').last().click();
+      const days = page.locator('[data-testid="day"]:not(:disabled)');
+      if (excluded) await days.nth((await days.count()) - 2).click();
+      else await days.last().click();
       await page.waitForFunction(
-        (previous) => document.querySelector('[data-testid="time"]')?.getAttribute("data-time") !== previous,
-        previous
+        ({ previous, excluded }) => {
+          const time = document.querySelector('[data-testid="time"]')?.getAttribute("data-time");
+          return time && time !== previous && time !== excluded;
+        },
+        { previous, excluded }
       );
       const time = await slots.first().getAttribute("data-time");
-      assert.ok(time && time !== previous);
+      assert.ok(time && time !== previous && time !== excluded);
       await slots.first().click();
       return time;
     };
     let selected = await choose();
     assert.ok(selected);
+    const moveEditor = page.getByRole("textbox", { name: "Reason for reschedule", exact: true });
+    await moveEditor.waitFor({ timeout: 3000 });
+    assert.equal(await moveEditor.inputValue(), "");
+    assert.equal(await moveEditor.getAttribute("rows"), "3");
+    assert.equal(await moveEditor.getAttribute("placeholder"), "Let others know why you need to reschedule");
+    assert.equal(await moveEditor.getAttribute("maxlength"), null);
+    assert.equal(await moveEditor.getAttribute("required"), null);
+    await moveEditor.fill("Draft é 😀");
+    await moveEditor.press("End");
+    await moveEditor.press("Enter");
+    assert.equal(await moveEditor.inputValue(), "Draft é 😀\n");
+    assert.ok(await moveEditor.evaluate((node) => node === document.activeElement));
     await page.getByRole("button", { name: "Back", exact: true }).click();
+    assert.equal(await page.locator("textarea").count(), 0);
     assert.equal(requests.length, 0);
-    selected = await choose();
+    const firstSelection = selected;
+    selected = await choose(firstSelection);
     assert.ok(selected);
+    assert.notEqual(selected, firstSelection);
+    assert.equal(await moveEditor.inputValue(), "Draft é 😀\n");
+    assert.equal(await page.locator("section > time").getAttribute("datetime"), selected);
+    await page.evaluate(() => {
+      window.changeStorageWrites = 0;
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key.startsWith("calflare:change:v1:")) window.changeStorageWrites++;
+        return setItem.call(this, key, value);
+      };
+    });
+    const unchangedStorage = await page.evaluate(() => JSON.stringify({ ...sessionStorage }));
+    const unchangedWrites = fixture.google.writes.length;
+    const invalidMove = ` \n${"😀".repeat(500)}x\t `;
+    await moveEditor.fill(invalidMove);
+    await page.getByRole("button", { name: "Reschedule", exact: true }).click();
+    const moveError = page.getByRole("alert").filter({ hasText: "Must be 1000 or fewer characters long" });
+    await moveError.waitFor();
+    assert.equal(await moveEditor.getAttribute("aria-invalid"), "true");
+    assert.equal(await moveEditor.getAttribute("aria-describedby"), await moveError.getAttribute("id"));
+    assert.equal(await moveEditor.inputValue(), invalidMove);
+    assert.ok(await moveEditor.isEditable());
+    assert.equal(await page.evaluate(() => JSON.stringify({ ...sessionStorage })), unchangedStorage);
+    assert.equal(await page.evaluate(() => window.changeStorageWrites), 0);
+    assert.equal(requests.length, 0);
+    assert.equal(fixture.google.writes.length, unchangedWrites);
+    await moveEditor.fill(rescheduleDraft);
+    assert.equal(await moveEditor.getAttribute("aria-invalid"), "false");
+    assert.equal(await moveError.count(), 0);
+    assert.equal(await page.locator("section > time").getAttribute("datetime"), selected);
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({
+        path: new URL(`../.verification/reschedule-intent-${width}.png`, import.meta.url).pathname,
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     for (const action of ["reschedule", "cancel"]) {
       const previousRequests = requests.length;
       if (action === "cancel") {
@@ -432,6 +505,13 @@ export async function verifyManagement(browser, fixture, date) {
         writes = fixture.google.writes.length;
       assert.equal(pending.action, action);
       assert.deepEqual(pending, requests.at(-1));
+      if (action === "reschedule") {
+        assert.equal(pending.rescheduleReason, rescheduleReason);
+        assert.equal(await moveEditor.inputValue(), rescheduleReason);
+        assert.equal(await moveEditor.getAttribute("readonly"), "");
+        assert.equal(await page.locator("section > time").getAttribute("datetime"), selected);
+        assert.equal(await page.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
+      }
       if (action === "cancel") {
         assert.equal(pending.cancellationReason, cancellationReason);
         const editor = page.getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true });
@@ -467,6 +547,18 @@ export async function verifyManagement(browser, fixture, date) {
         0
       );
       assert.deepEqual(await saved(), pending);
+      if (action === "reschedule") {
+        assert.equal(await moveEditor.inputValue(), rescheduleReason);
+        assert.equal(await moveEditor.getAttribute("readonly"), "");
+        assert.equal(await page.locator("section > time").getAttribute("datetime"), selected);
+        assert.equal(await page.getByRole("button", { name: "Reschedule", exact: true }).count(), 0);
+        assert.equal(await page.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
+        await page.screenshot({
+          path: new URL("../.verification/reschedule-pending-390.png", import.meta.url).pathname,
+          fullPage: true,
+          animations: "disabled",
+        });
+      }
       if (action === "cancel") {
         const editor = page.getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true });
         assert.equal(await editor.inputValue(), cancellationReason);
@@ -506,14 +598,55 @@ export async function verifyManagement(browser, fixture, date) {
         assert.equal(await page.getByRole("button", { name: "Cancel event", exact: true }).count(), 0);
         await page.getByRole("button", { name: "Check booking status", exact: true }).click();
         await page.getByRole("button", { name: "Reschedule", exact: true }).waitFor();
+        await choose();
+        assert.equal(await moveEditor.inputValue(), "");
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+        const privateMoved = await context.newPage();
+        try {
+          await privateMoved.clock.install({ time: date });
+          await privateMoved.goto(
+            `${fixture.origin}/booking/${receipt.access.id}#token=${receipt.access.token}`
+          );
+          for (const width of [390, 1280]) {
+            for (const target of [page, privateMoved]) {
+              await target.setViewportSize({ width, height: 900 });
+              await target.reload();
+              await target.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+              await target.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
+              const reason = target.locator("dt").getByText("Reschedule reason", { exact: true });
+              const value = reason.locator("xpath=following-sibling::dd[1]");
+              assert.equal(await reason.count(), 1);
+              assert.equal(await value.textContent(), rescheduleReason);
+              assert.equal(await value.evaluate((node) => getComputedStyle(node).whiteSpace), "pre-wrap");
+              assert.equal(await target.locator("dl img, dl script, textarea").count(), 0);
+              assert.equal(await target.locator("dl time").first().getAttribute("datetime"), selected);
+              assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+              assert.ok(!decodeURIComponent(target.url()).includes(rescheduleReason));
+              assert.ok(!(await target.content()).includes(receipt.access.token));
+              await verifyExports(target, result.booking);
+            }
+            await privateMoved.screenshot({
+              path: new URL(`../.verification/reschedule-reason-${width}.png`, import.meta.url).pathname,
+              fullPage: true,
+              animations: "disabled",
+            });
+          }
+        } finally {
+          await privateMoved.close();
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
         selected = await choose();
         assert.ok(selected);
+        assert.equal(await moveEditor.inputValue(), "");
+        assert.equal(await page.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
         fixture.google.loseResponseAfter("update");
         await page.getByRole("button", { name: "Reschedule", exact: true }).click();
         await page
           .getByRole("heading", { name: "This booking needs the organizer's attention.", exact: true })
           .waitFor();
         await hiddenExports();
+        assert.ok(!Object.hasOwn(requests.at(-1), "rescheduleReason"));
+        assert.equal(await page.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
         const writes = fixture.google.writes.length;
         assert.equal(await saved(), null);
         assert.equal(
@@ -528,6 +661,7 @@ export async function verifyManagement(browser, fixture, date) {
         await page.getByRole("button", { name: "Check booking status", exact: true }).click();
         await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
         assert.equal(await currentTime(), selected);
+        assert.equal(await page.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
         assert.equal(fixture.google.writes.length, writes);
       }
     }
@@ -552,6 +686,7 @@ export async function verifyManagement(browser, fixture, date) {
           await target.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
           await target.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
           const reason = target.locator("dt").getByText("Reason", { exact: true });
+          assert.equal(await target.locator("dt").getByText("Reschedule reason", { exact: true }).count(), 0);
           assert.equal(await reason.count(), 1);
           const value = reason.locator("xpath=following-sibling::dd[1]");
           assert.equal(await value.textContent(), cancellationReason);

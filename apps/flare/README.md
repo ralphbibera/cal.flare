@@ -155,13 +155,24 @@ Completed cancellations show a literal, whitespace-preserving **Reason** row whe
 The existing built Worker/local D1 browser journey checks these functional flows at 390px and
 1280px with mocked Google. Native intent and terminal-page pixel parity remain unverified.
 This does not send a reason email or promise guest delivery.
-Rescheduling has a backend prerequisite for optional `rescheduleReason` with the same strict
+Rescheduling accepts optional `rescheduleReason` with the same strict
 trimmed 1,000 UTF-16 unit limit. Blank text is omitted. The immutable command records the
 literal reason locally through replay and recovery. Authorized confirmed views and the owner
 list return only the completed reschedule reason for the current booking version. A later move
 without a reason or a cancellation removes that projection. Reasons do not enter provider
-snapshots, calendar descriptions, exports, or Google PATCH requests. The reschedule editor
-is deferred. This prerequisite does not send reason emails or prove native interactive parity.
+snapshots, calendar descriptions, exports, or Google PATCH requests. After selecting a new time,
+receipts and private pages offer the native three-row **Reason for reschedule** field.
+Back and reselection retain the mounted draft. Each acknowledged move clears it, so a later
+move starts blank rather than resubmitting a previous completed reason. Validation runs before
+command storage; padded valid text is trimmed without a DOM length cap. Pending moves show
+the frozen reason read-only through malformed acknowledgments, reload, and exact retry.
+Confirmed actions show a literal, whitespace-preserving **Reschedule reason** row only after
+completion. Editing, blocked storage, and uncertain results hide that completed row.
+The existing built Worker/local D1 browser journeys check these functional flows, blank omission,
+and exports at 390px and 1280px with mocked Google and unchanged provider write counts.
+Native interactive typing, submission, and reason-page pixel parity remain deferred because the
+shared built Next fixture lacks the reschedule route. This flow does not send reason emails
+or establish live invitation arrival.
 Fresh cancellations are refused after the booking ends. Previously accepted requests remain recoverable.
 The authenticated settings API accepts optional `event.disableCancelling` and
 `event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.
