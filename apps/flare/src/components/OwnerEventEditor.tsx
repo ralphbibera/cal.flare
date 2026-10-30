@@ -10,6 +10,9 @@ type Labels = Record<
   | "title"
   | "slug"
   | "description"
+  | "location"
+  | "locationHelp"
+  | "locationLimit"
   | "duration"
   | "minutes"
   | "save"
@@ -45,6 +48,7 @@ export function OwnerEventEditor({ details, labels }: { details: EventDetails; l
               title: form.get("title"),
               slug: form.get("slug"),
               description: form.get("description"),
+              location: form.get("location"),
               durationMinutes: Number(form.get("durationMinutes")),
             });
           } catch {
@@ -60,7 +64,7 @@ export function OwnerEventEditor({ details, labels }: { details: EventDetails; l
               redirect: "error",
               signal: AbortSignal.timeout(30_000),
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(next),
+              body: JSON.stringify({ ...next, location: next.location ?? "" }),
             });
             const result: unknown = await response.json();
             if (
@@ -99,6 +103,21 @@ export function OwnerEventEditor({ details, labels }: { details: EventDetails; l
             maxLength={2000}
             rows={4}
           />
+          <Label htmlFor="event-location">{labels.location}</Label>
+          <TextArea
+            id="event-location"
+            name="location"
+            defaultValue={details.location ?? ""}
+            rows={3}
+            aria-invalid={status === "invalid"}
+            aria-describedby="event-location-help event-location-limit"
+          />
+          <p id="event-location-help" className="text-subtle text-sm">
+            {labels.locationHelp}
+          </p>
+          <p id="event-location-limit" className="text-subtle text-sm">
+            {labels.locationLimit}
+          </p>
           <Label htmlFor="event-duration">
             {labels.duration} ({labels.minutes})
           </Label>

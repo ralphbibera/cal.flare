@@ -50,6 +50,7 @@ export const bookingLabels = {
   back: common.back,
   confirmed: common.meeting_is_scheduled,
   what: common.what,
+  where: common.where,
   addToCalendar: common.add_to_calendar,
   google: common.flare_calendar_google,
   outlook: common.flare_calendar_outlook,

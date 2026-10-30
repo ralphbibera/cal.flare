@@ -234,6 +234,12 @@ export function BookingManagement({
           <p>{booking.name}</p>
           <p>{booking.email}</p>
         </dd>
+        {stage.kind === "actions" && confirmed && booking.location && (
+          <>
+            <dt className="font-medium">{labels.where}</dt>
+            <dd className="col-span-2 min-w-0 whitespace-pre-wrap break-words">{booking.location}</dd>
+          </>
+        )}
         {stage.kind === "actions" && booking.status === "cancelled" && booking.cancellationReason && (
           <>
             <dt className="font-medium">{labels.reason}</dt>

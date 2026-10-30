@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { verifyCalendarBoundary } from "./verify-calendar-boundary.mjs";
 import { verifyManagement } from "./verify-management.mjs";
-import { verifyMeetingLocationPrivacy } from "./verify-meeting-location.mjs";
+import { verifyMeetingLocationFlow, verifyMeetingLocationPrivacy } from "./verify-meeting-location.mjs";
 import { verifyOwner, verifyOwnerBookings } from "./verify-owner.mjs";
 import { verifyOwnerCancellation } from "./verify-owner-cancellation.mjs";
 import { verifyOwnerReschedule } from "./verify-owner-reschedule.mjs";
@@ -297,6 +297,7 @@ export async function verifyPublic(browser) {
     await verifyOwnerBookings(browser, fixture);
     await verifyOwnerCancellation(browser, fixture);
     await verifyOwnerReschedule(browser, fixture);
+    await verifyMeetingLocationFlow(browser, fixture, browserDate);
   } finally {
     try {
       await context?.close();

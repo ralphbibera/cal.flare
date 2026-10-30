@@ -1,6 +1,6 @@
 import type { BookingView } from "../server/booking-model.ts";
 
-type CalendarBooking = Pick<BookingView, "id" | "title" | "start" | "end" | "version">;
+type CalendarBooking = Pick<BookingView, "id" | "title" | "start" | "end" | "version" | "location">;
 const encoder = new TextEncoder();
 const utc = (instant: number) => new Date(instant).toISOString().replace(/[-:]|\.\d{3}/g, "");
 
@@ -22,14 +22,23 @@ function foldLine(line: string): string {
   return segments.join("\r\n ");
 }
 
-export function calendarExport(booking: CalendarBooking, exportedAt: number) {
-  const title = new TextDecoder("utf-8", { ignoreBOM: true })
-    .decode(encoder.encode(booking.title))
+function calendarText(value: string): string {
+  return new TextDecoder("utf-8", { ignoreBOM: true })
+    .decode(encoder.encode(value))
     .replace(/\p{Cc}/gu, (character) => (["\r", "\n", "\t"].includes(character) ? character : "\uFFFD"));
-  const summary = title
+}
+
+function escapeText(value: string): string {
+  return value
     .replace(/\\/g, "\\\\")
     .replace(/\r\n|\r|\n/g, "\\n")
     .replace(/[,;]/g, "\\$&");
+}
+
+export function calendarExport(booking: CalendarBooking, exportedAt: number) {
+  const title = calendarText(booking.title);
+  const location = booking.location === undefined ? undefined : calendarText(booking.location);
+  const locationParameter: Record<string, string> = location === undefined ? {} : { location };
   const calendar = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -40,7 +49,8 @@ export function calendarExport(booking: CalendarBooking, exportedAt: number) {
     `DTSTAMP:${utc(exportedAt)}`,
     `DTSTART:${utc(booking.start)}`,
     `DTEND:${utc(booking.end)}`,
-    `SUMMARY:${summary}`,
+    `SUMMARY:${escapeText(title)}`,
+    ...(location === undefined ? [] : [`LOCATION:${escapeText(location)}`]),
     "END:VEVENT",
     "END:VCALENDAR",
     "",
@@ -54,11 +64,13 @@ export function calendarExport(booking: CalendarBooking, exportedAt: number) {
       startdt: new Date(booking.start).toISOString(),
       enddt: new Date(booking.end).toISOString(),
       subject: title,
+      ...locationParameter,
     })}`;
   return {
     google: `https://calendar.google.com/calendar/r/eventedit?${new URLSearchParams({
       dates: `${utc(booking.start)}/${utc(booking.end)}`,
       text: title,
+      ...locationParameter,
     })}`,
     outlook: microsoft("outlook.live.com"),
     office: microsoft("outlook.office.com"),

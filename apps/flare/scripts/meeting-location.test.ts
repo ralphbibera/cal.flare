@@ -118,8 +118,16 @@ test("configured location freezes across settings edits, exact replay and attend
   assert.equal((await owner.ownerView(created.id)).location, address);
   const ownerData = await (await f.request("/api/owner", { headers: f.ownerHeaders })).json();
   assert.equal(ownerData.bookings.find((row: BookingView) => row.id === created.id).location, address);
-  for (const value of Object.values(calendarExport(moved, f.now())))
-    assert.equal(decodeURIComponent(value).includes("Room-private-marker"), false);
+  const exports = calendarExport(moved, f.now());
+  for (const href of [exports.google, exports.outlook, exports.office])
+    assert.equal(new URL(href).searchParams.get("location"), address);
+  const ics = decodeURIComponent(exports.ics).replace(/\r\n /g, "");
+  assert.ok(ics.includes('LOCATION:Room-private-marker\\n東京 😀 <script>"&</script> Floor 2\r\n'));
+  for (const value of Object.values(exports))
+    assert.doesNotMatch(
+      decodeURIComponent(value),
+      /Private notes|Private cancellation|manageToken|guest@example/
+    );
   for (const path of [
     "/api/public",
     "/api/owner",

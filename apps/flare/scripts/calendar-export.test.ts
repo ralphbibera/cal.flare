@@ -104,3 +104,49 @@ test("midnight and DST intervals retain literal instants and stable identity aft
         );
   }
 });
+
+test("location is literal composer text and one escaped ICS property without other private facts", () => {
+  const location = `\uFEFFRoom &location=evil#fragment,semicolon;backslash\\\r\nEND:VEVENT\nBEGIN:VEVENT\rATTENDEE:evil\n${"界😀é".repeat(40)}\ud800\u0000`;
+  const normalized = location.replace("\ud800\u0000", "��");
+  const links = calendarExport(
+    {
+      ...booking,
+      location,
+      ...{
+        name: "Private Attendee",
+        email: "private@example.test",
+        notes: "secret-notes",
+        guests: ["guest-secret@example.test"],
+        manageToken: "secret-token",
+        credential: { key: "provider-secret" },
+        url: "https://private.invalid/booking#secret-token",
+      },
+    },
+    exportedAt
+  );
+  for (const link of [links.google, links.outlook, links.office]) {
+    const params = new URL(link).searchParams;
+    assert.deepEqual(params.getAll("location"), [normalized]);
+    assert.equal(params.has("ATTENDEE"), false);
+  }
+  const ics = calendar(links.ics);
+  for (const line of ics.split("\r\n")) {
+    assert.ok(Buffer.byteLength(line, "utf8") <= 75);
+    assert.equal(Buffer.from(line).toString("utf8"), line);
+  }
+  const lines = unfold(ics).split("\r\n");
+  assert.deepEqual(
+    lines.filter((line) => line.startsWith("LOCATION:")),
+    [
+      `LOCATION:\uFEFFRoom &location=evil#fragment\\,semicolon\\;backslash\\\\\\nEND:VEVENT\\nBEGIN:VEVENT\\nATTENDEE:evil\\n${"界😀é".repeat(40)}��`,
+    ]
+  );
+  assert.equal(lines.filter((line) => line === "BEGIN:VEVENT").length, 1);
+  assert.equal(lines.filter((line) => line === "END:VEVENT").length, 1);
+  assert.doesNotMatch(unfold(ics), /\r\n(?:ATTENDEE|ORGANIZER|METHOD|DESCRIPTION|URL):/);
+  for (const value of Object.values(links))
+    assert.doesNotMatch(
+      decodeURIComponent(value),
+      /secret|private@example|Private Attendee|private\.invalid/
+    );
+});

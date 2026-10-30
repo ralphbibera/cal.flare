@@ -213,7 +213,10 @@ async function verifyEventEditor(browser, fixture) {
     fail = false;
     await save.click();
     await page.getByRole("status").filter({ hasText: "Saved" }).waitFor();
-    assert.deepEqual(attempts, [details, details]);
+    assert.deepEqual(attempts, [
+      { ...details, location: "" },
+      { ...details, location: "" },
+    ]);
     await page.reload();
     assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), details.title);
     assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), details.description);
