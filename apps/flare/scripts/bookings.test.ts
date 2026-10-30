@@ -23,7 +23,7 @@ test("booking service admits, manages and replays bookings safely across competi
   const temporary = await mkdtemp(join(tmpdir(), "flare-booking-service-"));
   let platform: Awaited<ReturnType<typeof getPlatformProxy<{ DB: D1Database }>>> | undefined;
   try {
-    for (const name of ["0002_settings.sql", "0003_bookings.sql"]) {
+    for (const name of ["0002_settings.sql", "0003_bookings.sql", "0005_events.sql"]) {
       await promisify(execFile)(
         process.execPath,
         [

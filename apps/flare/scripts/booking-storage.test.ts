@@ -12,6 +12,7 @@ import { getPlatformProxy } from "wrangler";
 
 type Input = {
   id: string | null;
+  eventId?: string;
   requestKey?: string;
   booking: string;
   start: number;
@@ -32,7 +33,7 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
   const temporary = await mkdtemp(join(tmpdir(), "flare-booking-storage-"));
   let platform: Awaited<ReturnType<typeof getPlatformProxy<{ DB: D1Database }>>> | undefined;
   try {
-    for (const name of ["0002_settings.sql", "0003_bookings.sql"]) {
+    for (const name of ["0002_settings.sql", "0003_bookings.sql", "0005_events.sql"]) {
       await promisify(execFile)(
         process.execPath,
         [
@@ -59,18 +60,20 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
       });
     platform = await connect();
     let db = platform.env.DB;
-    await db.prepare("INSERT INTO organizer_settings VALUES ('owner', '{}', 1)").run();
+    await db.prepare("UPDATE organizer_settings SET json='{}'").run();
+    await db.prepare("UPDATE event_type SET json='{}'").run();
+    await db.prepare("INSERT INTO event_type VALUES ('second','{}',1)").run();
     const statement = (input: Input) =>
       db
         .prepare(`
       INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
-        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
+        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
         id=excluded.id, request_key=excluded.request_key, booking_id=excluded.booking_id,
         action=excluded.action, payload=excluded.payload, expected_version=excluded.expected_version,
         desired_json=excluded.desired_json, settings_json=excluded.settings_json,
         token_hash=excluded.token_hash, occupied_start=excluded.occupied_start,
-        occupied_end=excluded.occupied_end, precondition=excluded.precondition
+        occupied_end=excluded.occupied_end, precondition=excluded.precondition,event_id=excluded.event_id
     `)
         .bind(
           input.id,
@@ -80,12 +83,13 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
           input.payload ?? "canonical-input",
           input.version ?? 0,
           input.desired ?? JSON.stringify({ label: input.id }),
-          input.settings ?? "{}",
+          input.settings ?? '{"event":{}}',
           input.tokenHash ?? "management-hash",
           input.start,
           input.end,
           input.precondition ?? "accepted",
-          0
+          0,
+          input.eventId ?? "default"
         );
     const submit = (input: Input) => db.batch([statement(input)]);
     const outcome = (id: string) =>
@@ -128,11 +132,28 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
     );
     assert.deepEqual((await ranges("first")).results, [{ role: "candidate", start: 0, end: 10 }]);
     const accepted = await snapshot();
+    await assert.rejects(
+      submit({
+        id: "wrong-event",
+        booking: "first",
+        start: 0,
+        end: 10,
+        action: "cancel",
+        version: 1,
+        eventId: "second",
+      }),
+      /event_mismatch/
+    );
+    await assert.rejects(
+      db.prepare("UPDATE booking SET event_id='second' WHERE id='first'").run(),
+      /immutable_event/
+    );
     await submit(first);
     assert.deepEqual(await snapshot(), accepted);
     await assert.rejects(submit({ ...first, payload: "changed" }), /idempotency_mismatch/);
     const mismatches: Partial<Input>[] = [
       { booking: "different-booking" },
+      { eventId: "second" },
       { start: 1 },
       { end: 11 },
       { action: "cancel" },
@@ -151,6 +172,7 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
       ["id", "different-command"],
       ["request_key", "different-key"],
       ["booking_id", "other-booking"],
+      ["event_id", "second"],
       ["action", "cancel"],
       ["expected_version", 1],
       ["desired_json", '{"changed":true}'],
@@ -225,6 +247,7 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
       const inputs = ["a", "b"].map((side) => ({
         id: `race-${index}-${side}`,
         booking: `race-${index}-${side}`,
+        eventId: side === "a" ? "default" : "second",
         start,
         end: start + 10,
       }));

@@ -5,7 +5,7 @@ import { defaultSettings, parseBookingRules, parseSettings, SettingsError } from
 import { snapshot } from "../src/server/booking-model.ts";
 import { BookingService } from "../src/server/bookings.ts";
 import { getSettings } from "../src/server/settings.ts";
-import { apiFixture, hour, settings } from "./fixtures/api.ts";
+import { apiFixture, hour, settings, storedSettings } from "./fixtures/api.ts";
 
 const rules = {
   intervalMinutes: 30,
@@ -613,8 +613,7 @@ test("rolling calendar dates include the final booker-local day by start across 
 test("rolling window partial writes preserve canonical bytes, independent fields and actual admission", async (t) => {
   const f = await apiFixture();
   t.after(f.close);
-  const raw = () =>
-    f.db.prepare("SELECT json,version FROM organizer_settings").first<{ json: string; version: number }>();
+  const raw = () => storedSettings(f.db);
   const patch = async (path: string, value: unknown) => {
     const before = await raw();
     assert.equal((await f.send(path, value, f.ownerHeaders, "PATCH")).status, 200);
@@ -704,11 +703,28 @@ test("rolling window partial writes preserve canonical bytes, independent fields
   assert.equal((await f.send("/api/owner", settings, f.ownerHeaders, "PUT")).status, 200);
   assert.equal(Object.hasOwn((await getSettings(f.db)).event, "bookingWindowDays"), false);
   for (const bookingWindowDays of [30, null, undefined]) {
+    assert.equal((await f.send("/api/owner", settings, f.ownerHeaders, "PUT")).status, 200);
     await f.db.prepare("DELETE FROM organizer_settings").run();
-    await patch("/api/owner/booking-rules", {
-      ...rules,
-      ...(bookingWindowDays === undefined ? {} : { bookingWindowDays }),
-    });
-    assert.equal((await getSettings(f.db)).event.bookingWindowDays, bookingWindowDays ?? undefined);
+    const unchanged = await f.db.prepare("SELECT * FROM event_type").all();
+    assert.equal(
+      (
+        await f.send(
+          "/api/owner/booking-rules",
+          {
+            ...rules,
+            ...(bookingWindowDays === undefined ? {} : { bookingWindowDays }),
+          },
+          f.ownerHeaders,
+          "PATCH"
+        )
+      ).status,
+      400
+    );
+    assert.deepEqual((await f.db.prepare("SELECT * FROM event_type").all()).results, unchanged.results);
+    assert.equal(await raw(), null);
+    await f.db
+      .prepare("INSERT INTO organizer_settings VALUES ('owner',?,1)")
+      .bind(JSON.stringify({ schedule: settings.schedule }))
+      .run();
   }
 });

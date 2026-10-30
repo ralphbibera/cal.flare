@@ -18,8 +18,16 @@ import type {
 import { parseChange, parseCreate, snapshot } from "./booking-model.ts";
 import { ErrorWithCode, record } from "./http.ts";
 import { base64url, encryptionKey, hash } from "./secrets.ts";
+import type { CurrentActionPolicy } from "./settings.ts";
+import { currentActionPolicy, DEFAULT_EVENT_ID, getCurrentActionPolicy, getSettings } from "./settings.ts";
 
-type Options = { db: D1Database; calendar: Calendar; settings: Settings; secret: string; now?: () => number };
+type Options = {
+  db: D1Database;
+  calendar: Calendar;
+  settings?: Settings;
+  secret: string;
+  now?: () => number;
+};
 type Pending = Pick<Command, "action" | "error">;
 const MINUTE = 60_000;
 const encoder = new TextEncoder();
@@ -31,14 +39,12 @@ async function identity(context: string, value: string): Promise<string> {
 export class BookingService {
   private readonly db: D1DatabaseSession;
   private readonly calendar: Calendar;
-  private readonly settings: Settings;
   private readonly secret: string;
   private readonly now: () => number;
   private readonly delivery: BookingDelivery;
   constructor(options: Options) {
     this.db = options.db.withSession("first-primary");
     this.calendar = options.calendar;
-    this.settings = structuredClone(options.settings);
     this.secret = options.secret;
     this.now = options.now ?? Date.now;
     this.delivery = new BookingDelivery({
@@ -46,11 +52,14 @@ export class BookingService {
       calendar: this.calendar,
       now: this.now,
       availability: {
-        condition: (desired, exclude, settings) => this.scheduler(settings).condition(desired, exclude),
+        condition: (desired, exclude, settings) => {
+          if (!settings) throw new ErrorWithCode("missing_command_settings");
+          return this.scheduler(settings).condition(desired, exclude);
+        },
       },
     });
   }
-  private scheduler(settings: Settings = this.settings): BookingAvailability {
+  private scheduler(settings: Settings): BookingAvailability {
     return new BookingAvailability(this.db, this.calendar, settings, this.now);
   }
   private async token(id: string): Promise<string> {
@@ -83,26 +92,37 @@ export class BookingService {
       throw new ErrorWithCode("not_found", 404);
     return this.booking(id, token);
   }
-  private async result(command: Command, payload: string, manage = false): Promise<BookingView> {
-    if (command.payload !== payload) throw new ErrorWithCode("idempotency_mismatch", 409);
+  private async result(
+    command: Command,
+    payload: string,
+    eventId: string,
+    manage = false
+  ): Promise<BookingView> {
+    if (command.payload !== payload || command.event_id !== eventId)
+      throw new ErrorWithCode("idempotency_mismatch", 409);
     if (command.outcome !== "accepted") throw new ErrorWithCode(command.outcome, 409);
     await this.delivery.process(command.id);
     const view = await this.render(await this.booking(command.booking_id));
     return manage ? { ...view, manageToken: await this.token(command.booking_id) } : view;
   }
-  private async replay(requestKey: string, payload: string, manage = false): Promise<BookingView | null> {
+  private async replay(
+    requestKey: string,
+    payload: string,
+    eventId: string,
+    manage = false
+  ): Promise<BookingView | null> {
     const command = await this.db
       .prepare("SELECT * FROM booking_command WHERE request_key=?")
       .bind(requestKey)
       .first<Command>();
-    return command ? this.result(command, payload, manage) : null;
+    return command ? this.result(command, payload, eventId, manage) : null;
   }
-  async create(input: unknown): Promise<BookingView> {
+  async create(input: unknown, eventId = DEFAULT_EVENT_ID): Promise<BookingView> {
     const data = parseCreate(input),
       payload = JSON.stringify(data);
-    const replay = await this.replay(data.requestKey, payload, true);
+    const replay = await this.replay(data.requestKey, payload, eventId, true);
     if (replay) return replay;
-    const settings = parseSettings(this.settings);
+    const settings = await getSettings(this.db, eventId);
     const id = await identity("calflare:booking:v1", data.requestKey);
     const commandId = await identity("calflare:command:v1", data.requestKey);
     const desired: BookingSnapshot = {
@@ -122,6 +142,8 @@ export class BookingService {
     return this.admit(
       {
         requestKey: data.requestKey,
+        eventId,
+        settings,
         payload,
         id,
         commandId,
@@ -129,7 +151,7 @@ export class BookingService {
         version: 0,
         desired,
         tokenHash: await hash(await this.token(id)),
-        precondition: await this.scheduler().condition(desired),
+        precondition: await this.scheduler(settings).condition(desired),
       },
       true
     );
@@ -164,11 +186,11 @@ export class BookingService {
         ? { cancellationReason: data.cancellationReason }
         : {}),
     });
-    const replay = await this.replay(requestKey, payload);
+    const replay = await this.replay(requestKey, payload, booking.event_id);
     if (replay) return replay;
     if (actor === "owner" && data.action === "cancel" && !data.cancellationReason)
       throw new ErrorWithCode("invalid_input");
-    parseSettings(this.settings);
+    const settings = await getSettings(this.db, booking.event_id);
     const commandId = await identity("calflare:command:v1", requestKey);
     const original = snapshot(booking.confirmed_json ?? booking.initial_json);
     const desired = {
@@ -177,7 +199,7 @@ export class BookingService {
       privateMetadata: { ...original.privateMetadata, operation: commandId },
     };
     const disabled =
-      action === "cancel" ? this.settings.event.disableCancelling : this.settings.event.disableRescheduling;
+      action === "cancel" ? settings.event.disableCancelling : settings.event.disableRescheduling;
     const precondition =
       disabled || ((action === "cancel" || actor === "owner") && original.end < this.now())
         ? "invalid_slot"
@@ -186,9 +208,11 @@ export class BookingService {
             booking.version !== version ||
             booking.state !== "active"
           ? "accepted"
-          : await this.scheduler().condition(desired, id);
+          : await this.scheduler(settings).condition(desired, id);
     return this.admit({
       requestKey,
+      eventId: booking.event_id,
+      settings,
       payload,
       id,
       commandId,
@@ -202,6 +226,8 @@ export class BookingService {
   private async admit(
     input: {
       requestKey: string;
+      eventId: string;
+      settings: Settings;
       payload: string;
       id: string;
       commandId: string;
@@ -213,15 +239,15 @@ export class BookingService {
     },
     manage = false
   ): Promise<BookingView> {
-    const { beforeMinutes, afterMinutes } = this.settings.event;
+    const { beforeMinutes, afterMinutes } = input.settings.event;
     try {
       await this.db.batch([
         this.db
           .prepare(`INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
-        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
+        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
         id=excluded.id,request_key=excluded.request_key,booking_id=excluded.booking_id,
-        action=excluded.action,payload=excluded.payload,expected_version=excluded.expected_version,
+        action=excluded.action,payload=excluded.payload,expected_version=excluded.expected_version,event_id=excluded.event_id,
         desired_json=excluded.desired_json,settings_json=excluded.settings_json,token_hash=excluded.token_hash,
         occupied_start=excluded.occupied_start,occupied_end=excluded.occupied_end,precondition=excluded.precondition`)
           .bind(
@@ -232,20 +258,21 @@ export class BookingService {
             input.payload,
             input.version,
             JSON.stringify(input.desired),
-            JSON.stringify(parseSettings(this.settings)),
+            JSON.stringify(parseSettings(input.settings)),
             input.tokenHash,
             input.desired.start - beforeMinutes * MINUTE,
             input.desired.end + afterMinutes * MINUTE,
             input.precondition,
-            this.now()
+            this.now(),
+            input.eventId
           ),
       ]);
     } catch (error) {
-      const replay = await this.replay(input.requestKey, input.payload, manage);
+      const replay = await this.replay(input.requestKey, input.payload, input.eventId, manage);
       if (replay) return replay;
       throw error;
     }
-    const result = await this.replay(input.requestKey, input.payload, manage);
+    const result = await this.replay(input.requestKey, input.payload, input.eventId, manage);
     if (!result) throw new ErrorWithCode("temporarily_unavailable", 503);
     return result;
   }
@@ -271,8 +298,10 @@ export class BookingService {
     const now = this.now();
     const rows = await this.db
       .prepare(`SELECT b.*, b.rowid AS cursor, c.action AS pending_action, c.error AS pending_error,
-      completed.payload AS completed_payload
+      completed.payload AS completed_payload, e.json AS event_json, o.json AS preferences_json
       FROM booking b LEFT JOIN booking_command c ON c.id = b.pending_id
+      LEFT JOIN event_type e ON e.id=b.event_id
+      LEFT JOIN organizer_settings o ON o.id='owner'
       LEFT JOIN booking_command completed ON completed.booking_id=b.id
       AND completed.accepted_version=b.version
       AND ((b.state='cancelled' AND completed.action='cancel') OR (b.state='active' AND completed.action='reschedule'))
@@ -300,6 +329,8 @@ export class BookingService {
           pending_action: Action | null;
           pending_error: string | null;
           completed_payload: string | null;
+          event_json: string | null;
+          preferences_json: string | null;
         }
       >();
     const visible = rows.results.slice(0, limit);
@@ -310,7 +341,8 @@ export class BookingService {
           this.render(
             row,
             row.pending_action ? { action: row.pending_action, error: row.pending_error } : null,
-            row.completed_payload
+            row.completed_payload,
+            currentActionPolicy(row)
           )
         )
       ),
@@ -319,9 +351,11 @@ export class BookingService {
   private async render(
     booking: Booking,
     loadedPending?: Pending | null,
-    loadedCompleted?: string | null
+    loadedCompleted?: string | null,
+    loadedPolicy?: CurrentActionPolicy
   ): Promise<BookingView> {
     const event = snapshot(booking.confirmed_json ?? booking.initial_json);
+    const policy = loadedPolicy ?? (await getCurrentActionPolicy(this.db, booking.event_id));
     const pending =
       loadedPending !== undefined
         ? loadedPending
@@ -375,12 +409,10 @@ export class BookingService {
       email: event.attendee.email,
       timeZone: event.timeZone,
       title: event.title,
-      ...(this.settings.event.disableCancelling === undefined
+      ...(policy.disableCancelling === undefined ? {} : { disableCancelling: policy.disableCancelling }),
+      ...(policy.disableRescheduling === undefined
         ? {}
-        : { disableCancelling: this.settings.event.disableCancelling }),
-      ...(this.settings.event.disableRescheduling === undefined
-        ? {}
-        : { disableRescheduling: this.settings.event.disableRescheduling }),
+        : { disableRescheduling: policy.disableRescheduling }),
       ...(pending ? { pendingAction: pending.action } : {}),
       ...(pending?.error ? { error: pending.error } : {}),
       ...(cancellationReason ? { cancellationReason } : {}),
@@ -394,10 +426,12 @@ export class BookingService {
     from: number,
     to: number,
     visitorTimeZone: string,
-    exclude?: { id: string; token: string }
+    exclude?: { id: string; token: string },
+    eventId = DEFAULT_EVENT_ID
   ): Promise<Interval[]> {
     const booking = exclude ? await this.authorized(exclude.id, exclude.token) : undefined;
-    return this.scheduler().slots(from, to, visitorTimeZone, booking);
+    const settings = await getSettings(this.db, booking?.event_id ?? eventId);
+    return this.scheduler(settings).slots(from, to, visitorTimeZone, booking);
   }
   async ownerAvailability(
     id: string,
@@ -406,11 +440,12 @@ export class BookingService {
     visitorTimeZone: string
   ): Promise<Interval[]> {
     const booking = await this.booking(id);
+    const settings = await getSettings(this.db, booking.event_id);
     if (booking.pending_id) throw new ErrorWithCode("busy", 409);
     const original = snapshot(booking.confirmed_json ?? booking.initial_json);
-    if (booking.state !== "active" || this.settings.event.disableRescheduling || original.end < this.now())
+    if (booking.state !== "active" || settings.event.disableRescheduling || original.end < this.now())
       throw new ErrorWithCode("invalid_slot", 409);
-    return this.scheduler().slots(from, to, visitorTimeZone, booking);
+    return this.scheduler(settings).slots(from, to, visitorTimeZone, booking);
   }
   async recover(limit = 20): Promise<void> {
     return this.delivery.recover(limit);

@@ -18,7 +18,11 @@ import { GoogleCalendar as CalendarClient } from "./google.ts";
 import { bearer, body, ErrorWithCode, json, record, sameOrigin } from "./http.ts";
 import { hash } from "./secrets.ts";
 import {
+  createEvent,
+  DEFAULT_EVENT_ID,
+  eventId,
   getSettings,
+  listEvents,
   saveBookingRules,
   saveConflictCalendars,
   saveEventDetails,
@@ -31,6 +35,12 @@ type Dependencies = {
   env: AuthEnv;
   calendar?: Pick<GoogleCalendar, "busy" | "insert" | "get" | "update" | "delete">;
   now?: () => number;
+};
+type PublicEventMetadata = {
+  id: string;
+  organizer: { name: string };
+  event: Omit<Settings["event"], "location">;
+  schedule: Settings["schedule"];
 };
 
 async function limitCreate(db: D1Database, request: Request, input: unknown, now: number): Promise<void> {
@@ -95,9 +105,9 @@ async function connectedOwner(env: AuthEnv): Promise<{ name: string }> {
   return { name: !name || name.toLowerCase().includes(email) ? common.organizer : name };
 }
 
-async function getPublicBooking(env: AuthEnv) {
+async function getPublicBooking(env: AuthEnv, id = DEFAULT_EVENT_ID) {
   const organizer = await connectedOwner(env);
-  const { event, schedule } = await getSettings(env.DB);
+  const { event, schedule } = await getSettings(env.DB, id);
   const { location: _location, ...publicEvent } = event;
   return { organizer, event: publicEvent, schedule };
 }
@@ -108,11 +118,10 @@ function bookingResponse(value: Awaited<ReturnType<BookingService["view"]>>, cre
   return json(value);
 }
 
-function bookingService(dependencies: Dependencies, settings: Settings): BookingService {
+function bookingService(dependencies: Dependencies): BookingService {
   return new BookingService({
     db: dependencies.env.DB,
     calendar: dependencies.calendar ?? new CalendarClient(dependencies.env),
-    settings,
     secret: dependencies.env.TOKEN_ENCRYPTION_KEY,
     now: dependencies.now,
   });
@@ -125,11 +134,33 @@ async function validateConflictCalendars(env: AuthEnv, ids?: string[] | null): P
   if (ids.some((id) => !allowed.has(id))) throw new ErrorWithCode("invalid_calendar_selection");
 }
 
+async function ownerEvents(request: Request, { env }: Dependencies, url: URL): Promise<Response> {
+  await owner(env, request);
+  if (url.search) throw new ErrorWithCode("invalid_query");
+  const method = request.method;
+  if (url.pathname === "/api/owner/events") {
+    if (method === "GET") return json({ events: await listEvents(env.DB) });
+    if (method === "POST")
+      return json(await createEvent(env.DB, parseEventDetails(await body(request))), 201);
+    return json({ error: "not_found" }, 404);
+  }
+  const target = /^\/api\/owner\/events\/([^/]+)(\/booking-rules)?$/.exec(url.pathname);
+  if (!target) throw new ErrorWithCode("not_found", 404);
+  const id = eventId(target[1]);
+  const selected = await getSettings(env.DB, id);
+  if (method === "GET" && !target[2]) return json({ id, event: selected.event });
+  if (method !== "PATCH") return json({ error: "not_found" }, 404);
+  const input = await body(request);
+  if (target[2]) await saveBookingRules(env.DB, parseBookingRules(input), id);
+  else await saveEventDetails(env.DB, parseEventDetails(input), id);
+  return json({ saved: true });
+}
+
 export async function getOwnerData(request: Request, dependencies: Dependencies) {
   const identity = await requireOwner(dependencies.env, request);
   if (!identity) return null;
   const settings = await getSettings(dependencies.env.DB);
-  return { owner: identity, settings, bookings: await bookingService(dependencies, settings).ownerList() };
+  return { owner: identity, settings, bookings: await bookingService(dependencies).ownerList() };
 }
 
 export async function getOwnerBookings(request: Request, dependencies: Dependencies) {
@@ -139,13 +170,13 @@ export async function getOwnerBookings(request: Request, dependencies: Dependenc
   return {
     query,
     timeZone: settings.schedule.timeZone,
-    ...(await bookingService(dependencies, settings).ownerPage(query)),
+    ...(await bookingService(dependencies).ownerPage(query)),
   };
 }
 
 export async function getOwnerBooking(request: Request, dependencies: Dependencies, id: string) {
   if (!(await requireOwner(dependencies.env, request))) return null;
-  return bookingService(dependencies, await getSettings(dependencies.env.DB)).ownerView(id);
+  return bookingService(dependencies).ownerView(id);
 }
 
 export async function handleApi(request: Request, dependencies: Dependencies): Promise<Response> {
@@ -157,6 +188,29 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   if (path === "/api/auth/login" && method === "GET") return beginLogin(env, request);
   if (path === "/api/auth/callback" && method === "GET") return finishLogin(env, request);
   if (path === "/api/auth/logout" && method === "POST") return logout(env, request);
+  if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
+    return ownerEvents(request, dependencies, url);
+  }
+  const publicTarget = /^\/api\/events\/([^/]+)(\/(?:slots|bookings))?$/.exec(path);
+  const selectedEventId = publicTarget ? eventId(publicTarget[1]) : DEFAULT_EVENT_ID;
+  if (publicTarget) {
+    if (!publicTarget[2] && method === "GET") {
+      if (url.search) throw new ErrorWithCode("invalid_query");
+      return json({
+        id: selectedEventId,
+        ...(await getPublicBooking(env, selectedEventId)),
+      } satisfies PublicEventMetadata);
+    }
+    const exists = await env.DB.prepare("SELECT id FROM event_type WHERE id=?")
+      .bind(selectedEventId)
+      .first<string>("id");
+    if (!exists) throw new ErrorWithCode("not_found", 404);
+    const allowed = publicTarget[2] === "/slots" ? ["from", "to", "timeZone"] : [];
+    for (const key of url.searchParams.keys()) {
+      if (!allowed.includes(key) || url.searchParams.getAll(key).length !== 1)
+        throw new ErrorWithCode("invalid_query");
+    }
+  }
   if (path === "/api/public" && method === "GET") return json(await getPublicBooking(env));
   if (path === "/api/owner" && method === "GET") {
     const data = await getOwnerData(request, dependencies);
@@ -172,6 +226,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
         conflictCalendarIds: (await getSettings(env.DB)).conflictCalendarIds ?? null,
       });
     if (method === "PATCH") {
+      await getSettings(env.DB);
       const ids = parseConflictCalendars(await body(request));
       await validateConflictCalendars(env, ids);
       await saveConflictCalendars(env.DB, ids);
@@ -202,17 +257,18 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   const ownerBooking = /^\/api\/owner\/bookings\/([^/]+)$/.exec(path);
   if (ownerBooking) {
     await owner(env, request);
-    const service = bookingService(dependencies, await getSettings(env.DB));
+    const service = bookingService(dependencies);
     if (method === "GET") return json(await service.ownerView(ownerBooking[1]));
     if (method === "POST")
       return bookingResponse(await service.ownerChange(ownerBooking[1], await body(request)));
     return json({ error: "not_found" }, 404);
   }
 
-  const settings = await getSettings(env.DB);
-  const service = bookingService(dependencies, settings);
+  if (path.startsWith("/api/owner")) await owner(env, request);
+  const service = bookingService(dependencies);
   if (path === "/api/owner") {
     await owner(env, request);
+    await getSettings(env.DB);
     if (method === "PUT") {
       const replacement = parseSettings(await body(request));
       await validateConflictCalendars(env, replacement.conflictCalendarIds);
@@ -230,7 +286,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (typeof input.id !== "string") throw new ErrorWithCode("invalid_booking");
     return bookingResponse(await service.ownerRetry(input.id));
   }
-  if ((path === "/api/slots" || ownerSlots) && method === "GET") {
+  if ((path === "/api/slots" || ownerSlots || publicTarget?.[2] === "/slots") && method === "GET") {
     await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
     await connectedOwner(env);
     if (ownerSlots) {
@@ -259,14 +315,14 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (ownerSlots) return json({ slots: await service.ownerAvailability(ownerSlots[1], from, to, zone) });
     const id = url.searchParams.get("bookingId");
     const exclude = id ? { id, token: bearer(request) } : undefined;
-    return json({ slots: await service.availability(from, to, zone, exclude) });
+    return json({ slots: await service.availability(from, to, zone, exclude, selectedEventId) });
   }
-  if (path === "/api/bookings" && method === "POST") {
+  if ((path === "/api/bookings" || publicTarget?.[2] === "/bookings") && method === "POST") {
     await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
     await connectedOwner(env);
     const input = await body(request);
     await limitCreate(env.DB, request, input, (dependencies.now ?? Date.now)());
-    return bookingResponse(await service.create(input), true);
+    return bookingResponse(await service.create(input, selectedEventId), true);
   }
   const target = /^\/api\/bookings\/([a-z0-9-]{5,128})(\/retry)?$/.exec(path);
   if (target) {

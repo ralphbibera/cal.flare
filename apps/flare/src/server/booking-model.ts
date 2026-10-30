@@ -43,6 +43,7 @@ export type BookingView = {
 };
 export type Booking = {
   id: string;
+  event_id: string;
   version: number;
   state: "unconfirmed" | "active" | "cancelled";
   confirmed_json: string | null;
@@ -52,6 +53,7 @@ export type Booking = {
 };
 export type Command = {
   id: string;
+  event_id: string;
   request_key: string;
   booking_id: string;
   action: Action;
