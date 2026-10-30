@@ -106,6 +106,42 @@ try {
     { id: "read-only", name: "Name read-only", primary: false },
   ]);
   assert.equal(listPages, 2);
+  for (const first of [
+    { id: "same", deleted: true },
+    entry("same", "none"),
+    entry("same#holiday@group.v.calendar.google.com"),
+    { ...entry("excluded-owner", "none"), primary: true },
+  ]) {
+    listPages = 0;
+    handler = async () =>
+      Response.json(
+        listPages++ === 0
+          ? { items: [first], nextPageToken: "next" }
+          : {
+              items: ["primary" in first ? { ...entry("different-owner"), primary: true } : entry(first.id)],
+            }
+      );
+    await assert.rejects(client.listCalendars(), {
+      kind: "retryable",
+      status: 200,
+      dispatched: true,
+      message: "Invalid Google Calendar response",
+    });
+    assert.equal(listPages, 2);
+  }
+  listPages = 0;
+  handler = async (url) => {
+    const tokens = [undefined, " A+ ", "a+", " A+ "];
+    assert.equal(new URL(String(url)).searchParams.get("pageToken") ?? undefined, tokens[listPages]);
+    return Response.json({ items: [], nextPageToken: tokens[++listPages] });
+  };
+  await assert.rejects(client.listCalendars(), {
+    kind: "retryable",
+    status: 200,
+    dispatched: true,
+    message: "Google repeated a pagination cursor",
+  });
+  assert.equal(listPages, 3);
   for (const items of [
     [entry("same"), entry("same")],
     [
@@ -287,6 +323,20 @@ try {
   await assert.rejects(client.get(input.id), failure("retryable", 503));
   handler = async () => new Response(null, { status: 429 });
   await assert.rejects(client.insert(input), failure("retryable", 429));
+  for (const status of [408, 412, 429, 500, 599]) {
+    handler = async () => new Response(null, { status });
+    for (const [write, operation] of [
+      [false, () => client.get(input.id)],
+      [false, () => client.freeBusy("2026-11-02T00:00:00Z", "2026-11-03T00:00:00Z")],
+      [true, () => client.insert(input)],
+    ] as const)
+      await assert.rejects(operation(), {
+        kind: status === 412 ? "definite" : status === 429 || !write ? "retryable" : "ambiguous",
+        status,
+        dispatched: true,
+        message: `Google Calendar returned ${status}`,
+      });
+  }
   handler = async () => {
     throw new Error("connection reset after write");
   };

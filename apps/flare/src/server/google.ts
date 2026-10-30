@@ -50,6 +50,18 @@ const calendarPage = z.object({
     .refine((value) => value.trim().length > 0)
     .optional(),
 });
+function discoveredCalendar(
+  item: Exclude<z.infer<typeof calendarEntry>, { deleted: true }>
+): ConflictCalendar | null {
+  if (
+    item.accessRole === "none" ||
+    ["#holiday@group.v.calendar.google.com", "#contacts@group.v.calendar.google.com"].some((suffix) =>
+      item.id.endsWith(suffix)
+    )
+  )
+    return null;
+  return { id: item.primary ? "primary" : item.id, name: item.summary, primary: item.primary };
+}
 const bookingOwnership = z.object({
   extendedProperties: z.object({
     private: z.object({ application: z.literal("calflare"), booking: z.string() }),
@@ -372,6 +384,12 @@ async function rateLimited(response: Response): Promise<boolean> {
     reader.releaseLock();
   }
 }
+async function rejectedKind(response: Response, write: boolean): Promise<GoogleFailureKind> {
+  if (response.status >= 500 || response.status === 408) return write ? "ambiguous" : "retryable";
+  if (response.status === 429 || (response.status === 403 && (await rateLimited(response))))
+    return "retryable";
+  return "definite";
+}
 export class GoogleCalendar {
   private readonly env: AuthEnv;
   private readonly fetcher: typeof fetch;
@@ -412,14 +430,7 @@ export class GoogleCalendar {
     }
     if (response.ok || (allowMissing && (response.status === 404 || response.status === 410)))
       return response;
-    const kind =
-      response.status >= 500 || response.status === 408
-        ? write
-          ? "ambiguous"
-          : "retryable"
-        : response.status === 429 || (response.status === 403 && (await rateLimited(response)))
-          ? "retryable"
-          : "definite";
+    const kind = await rejectedKind(response, write);
     throw new GoogleCalendarError(kind, response.status, `Google Calendar returned ${response.status}`);
   }
   private async parsed<T>(response: Response, write: boolean, parse: (data: unknown) => T): Promise<T> {
@@ -440,6 +451,18 @@ export class GoogleCalendar {
     let page: string | undefined;
     let total = 0;
     let primary = false;
+    const append = (item: z.infer<typeof calendarEntry>): void => {
+      if (ids.has(item.id)) throw new Error();
+      ids.add(item.id);
+      if (item.deleted === true) return;
+      if (item.id === "primary" && !item.primary) throw new Error();
+      if (item.primary) {
+        if (primary) throw new Error();
+        primary = true;
+      }
+      const calendar = discoveredCalendar(item);
+      if (calendar) calendars.push(calendar);
+    };
     for (let count = 0; count < 10; count++) {
       const query = new URLSearchParams({ maxResults: "250", showHidden: "true", showDeleted: "false" });
       if (page) query.set("pageToken", page);
@@ -448,28 +471,7 @@ export class GoogleCalendar {
         const parsed = calendarPage.parse(value);
         total += parsed.items.length;
         if (total > 1000) throw new Error();
-        for (const item of parsed.items) {
-          if (ids.has(item.id)) throw new Error();
-          ids.add(item.id);
-          if (item.deleted === true) continue;
-          if (item.id === "primary" && !item.primary) throw new Error();
-          if (item.primary) {
-            if (primary) throw new Error();
-            primary = true;
-          }
-          if (
-            item.accessRole === "none" ||
-            ["#holiday@group.v.calendar.google.com", "#contacts@group.v.calendar.google.com"].some((suffix) =>
-              item.id.endsWith(suffix)
-            )
-          )
-            continue;
-          calendars.push({
-            id: item.primary ? "primary" : item.id,
-            name: item.summary,
-            primary: item.primary,
-          });
-        }
+        for (const item of parsed.items) append(item);
         return parsed;
       });
       if (!data.nextPageToken) return calendars;
