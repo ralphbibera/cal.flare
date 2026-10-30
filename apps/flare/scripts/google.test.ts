@@ -354,6 +354,93 @@ try {
     attendeesOmitted: true,
     calendarOwnerEmail: env.GOOGLE_OWNER_EMAIL,
   });
+  for (const extendedProperties of [undefined, {}, { private: undefined }]) {
+    const record = {
+      ...expected,
+      attendees: undefined,
+      extendedProperties,
+      attendeesOmitted: undefined,
+      summary: undefined,
+    };
+    handler = async () => {
+      const response = Response.json({});
+      response.json = async () => record;
+      return response;
+    };
+    assert.deepEqual(await client.get(input.id), {
+      id: expected.id,
+      etag: expected.etag,
+      start: expected.start,
+      end: expected.end,
+      attendees: [],
+      extendedProperties: { private: {} },
+      calendarOwnerEmail: env.GOOGLE_OWNER_EMAIL,
+    });
+  }
+  const privateMetadata = JSON.parse('{"__proto__":"prototype","constructor":"ctor","toString":"text"}');
+  const recordAttendees = [
+    { email: " padded@example.com ", responseStatus: " accepted ", self: false, additionalGuests: 0 },
+    { email: "extra@example.com", displayName: "", additionalGuests: Number.MAX_SAFE_INTEGER },
+    { email: "omitted@example.com" },
+  ];
+  handler = async () =>
+    Response.json({
+      ...expected,
+      attendees: recordAttendees,
+      attendeesOmitted: false,
+      summary: "",
+      description: "",
+      location: "",
+      extendedProperties: { private: privateMetadata },
+    });
+  const record = await client.get(input.id);
+  assert.deepEqual(record, {
+    ...expected,
+    attendees: recordAttendees,
+    attendeesOmitted: false,
+    summary: "",
+    description: "",
+    location: "",
+    extendedProperties: { private: privateMetadata },
+    calendarOwnerEmail: env.GOOGLE_OWNER_EMAIL,
+  });
+  assert.deepEqual(Object.keys(record.extendedProperties.private), ["__proto__", "constructor", "toString"]);
+  for (const [key, value] of Object.entries(privateMetadata))
+    assert.deepEqual(Object.getOwnPropertyDescriptor(record.extendedProperties.private, key), {
+      value,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    });
+  for (const partial of [
+    { attendees: null },
+    { attendees: [null] },
+    ...["", 1, null].map((email) => ({ attendees: [{ email }] })),
+    ...["", 1, null].map((responseStatus) => ({ attendees: [{ email: "guest", responseStatus }] })),
+    ...[0, "false", null].map((self) => ({ attendees: [{ email: "guest", self }] })),
+    ...[Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1].map((additionalGuests) => ({
+      attendees: [{ email: "guest", additionalGuests }],
+    })),
+    { extendedProperties: null },
+    { extendedProperties: { private: null } },
+    { extendedProperties: { private: { bookingId: 1 } } },
+  ]) {
+    handler = async () => {
+      const response = Response.json({});
+      response.json = async () => ({ ...expected, ...partial });
+      return response;
+    };
+    await assert.rejects(
+      client.get(input.id),
+      (error: unknown) =>
+        error instanceof GoogleCalendarError &&
+        error.code === "GOOGLE_CALENDAR" &&
+        error.kind === "retryable" &&
+        error.status === 200 &&
+        error.dispatched === true &&
+        error.message === "Invalid Google Calendar response"
+    );
+  }
   for (const partial of [
     { attendeesOmitted: "true" },
     ...[-1, 0.5, "1", null].map((additionalGuests) => ({
