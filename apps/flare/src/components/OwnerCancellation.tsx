@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { type ComponentPropsWithRef, useEffect, useId, useRef, useState } from "react";
 import common from "../../../../packages/i18n/locales/en/common.json";
 import { BookerClient, type ChangeRequest, ErrorWithCode } from "../client/bookings.ts";
 import { ChangeAttempts } from "../client/change-attempt.ts";
@@ -19,6 +19,108 @@ type Stage =
   | { kind: "confirm"; action: "reschedule"; start: number }
   | { kind: "refreshing" | "refreshFailed" | "unavailable"; action: Action }
   | { kind: "pending"; request: Readonly<ChangeRequest> };
+type ReasonPanel =
+  | { kind: "absent" }
+  | ({ action: Action; value: string; proposedStart: number | undefined } & (
+      | { kind: "editable"; confirmable: boolean }
+      | { kind: "frozen" }
+    ));
+
+function reasonPanel(stage: Stage, draft: string, moveDraft: string): ReasonPanel {
+  switch (stage.kind) {
+    case "pending": {
+      const request = stage.request;
+      return {
+        kind: "frozen",
+        action: request.action,
+        value:
+          request.action === "reschedule"
+            ? (request.rescheduleReason ?? "")
+            : (request.cancellationReason ?? ""),
+        proposedStart: request.action === "reschedule" ? request.start : undefined,
+      };
+    }
+    case "confirm":
+    case "refreshing":
+    case "refreshFailed":
+    case "unavailable":
+      return {
+        kind: "editable",
+        action: stage.action,
+        value: stage.action === "reschedule" ? moveDraft : draft,
+        confirmable: stage.kind === "confirm",
+        proposedStart: stage.kind === "confirm" && stage.action === "reschedule" ? stage.start : undefined,
+      };
+    default:
+      return { kind: "absent" };
+  }
+}
+
+function OwnerReasonPanel({
+  panel,
+  labels,
+  duration,
+  busy,
+  input,
+  onBack,
+  onConfirm,
+}: {
+  panel: Exclude<ReasonPanel, { kind: "absent" }>;
+  labels: typeof bookingLabels;
+  duration: number;
+  busy: boolean;
+  input: Pick<
+    ComponentPropsWithRef<typeof TextArea>,
+    "id" | "ref" | "onChange" | "aria-invalid" | "aria-describedby"
+  >;
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
+  const moving = panel.action === "reschedule";
+  const confirming = panel.kind === "editable" && panel.confirmable;
+  const actionable = confirming || panel.kind === "frozen";
+  const confirmLabel = moving ? labels.confirm : labels.cancelEvent;
+  return (
+    <>
+      {panel.proposedStart !== undefined && (
+        <p className="break-words">
+          {labels.selectedTime}:{" "}
+          <span>
+            {new Date(panel.proposedStart).toISOString()} /{" "}
+            {new Date(panel.proposedStart + duration).toISOString()} (UTC)
+          </span>
+        </p>
+      )}
+      {!moving && actionable && <p>{labels.cancelPrompt}</p>}
+      <Label htmlFor={input.id}>{moving ? labels.rescheduleReason : `${labels.cancellationReason} *`}</Label>
+      <TextArea
+        ref={input.ref}
+        id={input.id}
+        required={!moving}
+        rows={3}
+        readOnly={panel.kind === "frozen"}
+        value={panel.value}
+        aria-invalid={input["aria-invalid"]}
+        aria-describedby={input["aria-describedby"]}
+        placeholder={moving ? labels.rescheduleReasonPlaceholder : labels.cancellationReasonPlaceholder}
+        onChange={input.onChange}
+      />
+      <div className="flex flex-wrap gap-2">
+        {confirming && (
+          <Button color="minimal" onClick={onBack}>
+            {moving ? labels.back : labels.nevermind}
+          </Button>
+        )}
+        {actionable && (
+          <Button color={moving ? "primary" : "destructive"} loading={busy} onClick={onConfirm}>
+            {panel.kind === "frozen" ? labels.retry : confirmLabel}
+          </Button>
+        )}
+      </div>
+    </>
+  );
+}
+
 const status: Record<BookingView["status"], string> = {
   pending: common.pending,
   confirmed: common.flare_booking_status_confirmed,
@@ -177,16 +279,7 @@ export function OwnerCancellation({
       setBusy(false);
     }
   }
-  const pending = stage.kind === "pending" ? stage.request : undefined;
-  const moving = pending
-    ? pending.action === "reschedule"
-    : "action" in stage && stage.action === "reschedule";
-  const proposedStart =
-    pending?.action === "reschedule"
-      ? pending.start
-      : stage.kind === "confirm" && stage.action === "reschedule"
-        ? stage.start
-        : undefined;
+  const panel = reasonPanel(stage, draft, moveDraft);
   const range =
     stage.kind === "restore"
       ? initialRange
@@ -292,62 +385,30 @@ export function OwnerCancellation({
           </div>
         </>
       )}
-      {(["confirm", "refreshing", "refreshFailed", "unavailable"].includes(stage.kind) || pending) && (
-        <>
-          {proposedStart !== undefined && (
-            <p className="break-words">
-              {labels.selectedTime}:{" "}
-              <span>
-                {new Date(proposedStart).toISOString()} /{" "}
-                {new Date(proposedStart + booking.end - booking.start).toISOString()} (UTC)
-              </span>
-            </p>
-          )}
-          {!moving && (stage.kind === "confirm" || pending) && <p>{labels.cancelPrompt}</p>}
-          <Label htmlFor={id}>{moving ? labels.rescheduleReason : `${labels.cancellationReason} *`}</Label>
-          <TextArea
-            ref={reason}
-            id={id}
-            required={!moving}
-            rows={3}
-            readOnly={!!pending}
-            value={
-              pending
-                ? pending.action === "reschedule"
-                  ? (pending.rescheduleReason ?? "")
-                  : (pending.cancellationReason ?? "")
-                : moving
-                  ? moveDraft
-                  : draft
-            }
-            aria-invalid={!!error}
-            aria-describedby={error ? `${id}-error` : undefined}
-            placeholder={moving ? labels.rescheduleReasonPlaceholder : labels.cancellationReasonPlaceholder}
-            onChange={(event) => {
-              if (moving) setMoveDraft(event.target.value);
+      {panel.kind !== "absent" && (
+        <OwnerReasonPanel
+          panel={panel}
+          labels={labels}
+          duration={booking.end - booking.start}
+          busy={busy}
+          input={{
+            ref: reason,
+            id,
+            "aria-invalid": !!error,
+            "aria-describedby": error ? `${id}-error` : undefined,
+            onChange: (event) => {
+              if (panel.action === "reschedule") setMoveDraft(event.target.value);
               else setDraft(event.target.value);
               if (stage.kind === "confirm") setError("");
-            }}
-          />
-          <div className="flex flex-wrap gap-2">
-            {stage.kind === "confirm" && (
-              <Button
-                color="minimal"
-                onClick={() => {
-                  setStage({ kind: moving ? "select" : "actions" });
-                  setError("");
-                  requestAnimationFrame(() => trigger.current?.focus());
-                }}>
-                {moving ? labels.back : labels.nevermind}
-              </Button>
-            )}
-            {(stage.kind === "confirm" || pending) && (
-              <Button color={moving ? "primary" : "destructive"} loading={busy} onClick={() => void change()}>
-                {pending ? labels.retry : moving ? labels.confirm : labels.cancelEvent}
-              </Button>
-            )}
-          </div>
-        </>
+            },
+          }}
+          onBack={() => {
+            setStage({ kind: panel.action === "reschedule" ? "select" : "actions" });
+            setError("");
+            requestAnimationFrame(() => trigger.current?.focus());
+          }}
+          onConfirm={() => void change()}
+        />
       )}
       {error && (
         <p id={`${id}-error`} role="alert">
