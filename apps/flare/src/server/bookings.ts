@@ -117,6 +117,7 @@ export class BookingService {
       attendee: { name: data.name, email: data.email },
       privateMetadata: { application: "calflare", booking: id, operation: commandId },
       ...(data.guests ? { guests: data.guests } : {}),
+      ...(settings.event.location === undefined ? {} : { location: settings.event.location }),
     };
     return this.admit(
       {
@@ -384,6 +385,9 @@ export class BookingService {
       ...(pending?.error ? { error: pending.error } : {}),
       ...(cancellationReason ? { cancellationReason } : {}),
       ...(rescheduleReason ? { rescheduleReason } : {}),
+      ...(status === "confirmed" && booking.confirmed_json && event.location !== undefined
+        ? { location: event.location }
+        : {}),
     };
   }
   async availability(

@@ -171,8 +171,7 @@ test("owner location writes remain private, canonical and admissible across part
     });
     assert.equal(created.status, 201);
   }
-  for (const event of f.calendar.events.values())
-    assert.equal(JSON.stringify(event).includes("Room-private-marker"), false);
+  for (const event of f.calendar.events.values()) assert.equal(event.location, address);
   for (const location of ["A\ud800B", "A\udfffB", "A\u0000B", address]) {
     await patch("/api/owner", { ...details, location });
     await patch("/api/owner/booking-rules", rules);

@@ -81,6 +81,36 @@ try {
     return Response.json({ id: input.id, etag: '"v1"' });
   };
   assert.deepEqual(await client.insert(input), { id: input.id, etag: '"v1"' });
+  for (const location of [undefined, 'Room A\r\n東京 😀 <literal>"&']) {
+    const located = { ...input, ...(location === undefined ? {} : { location }) };
+    handler = async (url, init) => {
+      assert.equal(new URL(String(url)).searchParams.get("sendUpdates"), "all");
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(Object.hasOwn(payload, "location"), location !== undefined);
+      assert.equal(payload.location, location);
+      if (init?.method === "PATCH") assert.equal(new Headers(init.headers).get("If-Match"), '"v1"');
+      else assert.equal(init?.method, "POST");
+      return Response.json({ id: input.id, etag: '"v2"' });
+    };
+    await client.insert(located);
+    await client.update(input.id, '"v1"', located);
+  }
+  for (const location of ["", " padded ", "x".repeat(1001)]) {
+    await assert.rejects(client.insert({ ...input, location }), /Invalid event location/);
+    await assert.rejects(client.update(input.id, '"v1"', { ...input, location }), /Invalid event location/);
+  }
+  for (const location of ["", "x".repeat(1001), " External\r\n東京 <literal> ", null, 3]) {
+    handler = async () =>
+      Response.json({
+        id: input.id,
+        etag: '"v1"',
+        location,
+        start: { dateTime: input.start },
+        end: { dateTime: input.end },
+      });
+    if (typeof location === "string") assert.equal((await client.get(input.id))?.location, location);
+    else await assert.rejects(client.get(input.id), failure("retryable", 200));
+  }
   for (const operation of ["PATCH", "DELETE"]) {
     handler = async (url, init) => {
       assert.equal(

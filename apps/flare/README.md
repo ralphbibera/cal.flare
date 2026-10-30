@@ -39,8 +39,12 @@ Flare policy accepts strings only, trims surrounding whitespace, and limits the 
 Internal whitespace, Unicode, and literal markup remain text. Blank strings clear the setting.
 PATCH omission preserves it; full PUT omission clears it. Legacy settings retain no location member.
 The address stays private before confirmation and is removed from public JSON, SSR, and hydration props.
-This prerequisite adds no editor control and does not yet freeze addresses into bookings or send them
-to providers, booking details, or exports. Native location parity and live delivery remain unverified.
+New bookings freeze the configured address into their initial and provider snapshots. Later settings
+edits, moves and retries retain that historical value. Google event requests include the literal location;
+recovery requires an exact remote match when the snapshot has one. Legacy snapshots omit location
+and preserve unknown provider locations on moves. Only authorized confirmed booking API/client views
+expose the frozen address. Pending, attention and cancelled views omit it. Editor controls, rendered
+booking details and calendar exports remain the next layer. Native parity and live delivery remain unverified.
 
 The private home page also lists the latest 1,000 bookings, newest recorded first, with attendee
 details, times in the organizer's schedule timezone, and lifecycle status. Viewing this list
