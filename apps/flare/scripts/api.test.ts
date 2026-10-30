@@ -7,6 +7,91 @@ import { GoogleCalendarError } from "../src/server/google.ts";
 import { record } from "../src/server/http.ts";
 import { apiFixture, hour, settings } from "./fixtures/api.ts";
 
+test("calendar discovery is owner-only, private and independent of settings and booking work", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const realFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  let calls = 0;
+  let status = 200;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).startsWith("https://www.googleapis.com/")) {
+      calls++;
+      assert.equal(init?.method, "GET");
+      assert.equal(new URL(String(input)).pathname, "/calendar/v3/users/me/calendarList");
+      return Response.json(
+        status === 200
+          ? {
+              items: [
+                {
+                  id: "private-calendar-id",
+                  summary: "Private calendar name",
+                  accessRole: "reader",
+                  selected: false,
+                },
+              ],
+            }
+          : { error: { message: "Private calendar name private-calendar-id TOKEN" } },
+        { status }
+      );
+    }
+    return realFetch(input, init);
+  };
+  const path = "/api/owner/conflict-calendars";
+  const snapshot = async () =>
+    Promise.all([
+      ...[
+        "organizer_settings",
+        "booking",
+        "booking_command",
+        "booking_reservation",
+        "http_attempt",
+        "http_rate",
+        "google_connection",
+        "owner_session",
+      ].map(async (table) => (await f.db.prepare(`SELECT * FROM ${table}`).all()).results),
+    ]);
+  const before = await snapshot();
+  for (const headers of [
+    {},
+    { Authorization: `Bearer ${"B".repeat(43)}` },
+    { Cookie: `flare_session=${"A".repeat(43)}` },
+  ]) {
+    const response = await f.request(`${path}?invalid=%ZZ`, { headers });
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(await response.json(), { error: "unauthorized", message: "unauthorized" });
+  }
+  assert.equal((await f.request(`${path}?invalid=%ZZ`, { headers: f.ownerHeaders })).status, 400);
+  assert.equal(calls, 0);
+  const response = await f.request(path, { headers: f.ownerHeaders });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  assert.match(response.headers.get("Content-Type") ?? "", /application\/json/);
+  assert.deepEqual(await response.json(), {
+    calendars: [{ id: "private-calendar-id", name: "Private calendar name", primary: false }],
+  });
+  status = 403;
+  const failed = await f.request(path, { headers: f.ownerHeaders });
+  assert.equal(failed.status, 503);
+  assert.deepEqual(await failed.json(), { error: "GOOGLE_CALENDAR" });
+  for (const route of ["/api/owner", "/api/public"]) {
+    const ordinary = await f.request(route, { headers: f.ownerHeaders });
+    assert.equal(ordinary.status, 200);
+    assert.ok(!(await ordinary.text()).includes("private-calendar"));
+  }
+  assert.equal(calls, 2);
+  assert.deepEqual(await snapshot(), before);
+  assert.equal(f.calendar.writes.length, 0);
+  await f.db.prepare("UPDATE owner_session SET expires_at=0").run();
+  assert.equal((await f.request(path, { headers: f.ownerHeaders })).status, 401);
+  await f.db.prepare("DELETE FROM owner_session").run();
+  assert.equal((await f.request(path, { headers: f.ownerHeaders })).status, 401);
+  assert.equal(calls, 2);
+});
+
 test("owner details and required-reason cancellation use session authorization and immutable replay", async (t) => {
   const f = await apiFixture();
   t.after(f.close);

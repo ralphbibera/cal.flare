@@ -36,7 +36,7 @@ let tokenReply: Record<string, unknown> = {
   token_type: "Bearer",
   expires_in: 3600,
   scope:
-    "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy",
+    "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 };
 globalThis.fetch = async (input, init) => {
   requests++;
@@ -66,6 +66,17 @@ async function attempt() {
   const url = new URL(response.headers.get("Location") ?? "");
   const cookie = response.headers.get("Set-Cookie")?.split(";")[0] ?? "";
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+  assert.deepEqual(url.searchParams.get("scope")?.split(" "), [
+    "openid",
+    "email",
+    "profile",
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.events.freebusy",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  ]);
+  assert.equal(url.searchParams.get("include_granted_scopes"), "true");
+  assert.equal(url.searchParams.get("access_type"), "offline");
+  assert.equal(url.searchParams.get("prompt"), "consent");
   assert.equal(url.searchParams.get("redirect_uri"), `${env.PUBLIC_ORIGIN}/api/auth/callback`);
   assert.match(response.headers.get("Set-Cookie") ?? "", /HttpOnly; SameSite=Lax; Max-Age=600; Secure/);
   const code = `test-code-${challenges.size}`;
@@ -163,6 +174,44 @@ try {
   assert.ok(
     !connection.ciphertext.includes("access-secret") && !connection.ciphertext.includes("refresh-secret")
   );
+  const preserved = async () => ({
+    connection: await db.prepare("SELECT ciphertext,version FROM google_connection").first(),
+    sessions: (await db.prepare("SELECT * FROM owner_session ORDER BY token_hash").all()).results,
+    owner: await db.prepare("SELECT * FROM owner").first(),
+  });
+  const beforeRejectedConsent = await preserved();
+  const requiredCalendarScopes = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.events.freebusy",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  ];
+  for (const missing of requiredCalendarScopes) {
+    tokenReply = {
+      ...fullConsent,
+      scope: requiredCalendarScopes.filter((scope) => scope !== missing).join(" "),
+    };
+    const partial = await attempt();
+    await assert.rejects(callback(partial), { code: "FORBIDDEN" });
+    await assert.rejects(callback(partial), { code: "OAUTH_STATE" });
+    assert.deepEqual(await preserved(), beforeRejectedConsent);
+  }
+  tokenReply = {
+    ...fullConsent,
+    scope:
+      "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  };
+  await assert.rejects(callback(await attempt()), { code: "FORBIDDEN" });
+  assert.deepEqual(await preserved(), beforeRejectedConsent);
+  const denied = await attempt();
+  await assert.rejects(
+    finishLogin(
+      env,
+      new Request(`${denied.callback}&error=access_denied`, { headers: { Cookie: denied.cookie } })
+    ),
+    { code: "OAUTH_CODE" }
+  );
+  assert.deepEqual(await preserved(), beforeRejectedConsent);
+  tokenReply = fullConsent;
   const key = await encryptionKey(env.TOKEN_ENCRYPTION_KEY);
   await assert.rejects(unseal(key, connection.ciphertext, "oauth-pkce"), /authenticated/);
   await assert.rejects(
@@ -177,7 +226,16 @@ try {
     "pinned-subject"
   );
   assert.equal((await db.prepare("SELECT count(*) AS n FROM owner_session").first<{ n: number }>())?.n, 1);
+  assert.deepEqual(await preserved(), beforeRejectedConsent);
   identity = { sub: "pinned-subject", email: "owner@example.com", email_verified: true };
+  for (const scope of [
+    "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.calendarlist",
+  ]) {
+    tokenReply = { ...fullConsent, scope };
+    assert.equal((await callback(await attempt())).status, 303);
+  }
+  tokenReply = fullConsent;
   env.TOKEN_ENCRYPTION_KEY = btoa("r".repeat(32));
   await callback(await attempt());
   const recovered = await db

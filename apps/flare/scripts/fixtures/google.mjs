@@ -28,7 +28,7 @@ async function exchangeTokens(request, codes, refresh, origin, access, grants) {
     token_type: "Bearer",
     expires_in: 3600,
     scope:
-      "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy",
+      "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.calendarlist.readonly",
   });
 }
 
@@ -37,6 +37,8 @@ export function createGoogleFixture(origin) {
   const refresh = randomBytes(32).toString("base64url");
   const codes = new Map();
   const events = new Map();
+  const calendars = [];
+  const calendarReads = [];
   const writes = [];
   const denied = [];
   const grants = [];
@@ -49,6 +51,8 @@ export function createGoogleFixture(origin) {
   };
   return {
     events,
+    calendars,
+    calendarReads,
     writes,
     denied,
     grants,
@@ -57,6 +61,11 @@ export function createGoogleFixture(origin) {
       assert.equal(url.origin, "https://accounts.google.com");
       assert.equal(url.searchParams.get("redirect_uri"), `${origin}/api/auth/callback`);
       assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+      assert.equal(url.searchParams.get("include_granted_scopes"), "true");
+      assert.equal(
+        url.searchParams.get("scope"),
+        "openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+      );
       const code = randomBytes(32).toString("base64url");
       codes.set(code, url.searchParams.get("code_challenge"));
       return code;
@@ -79,6 +88,25 @@ export function createGoogleFixture(origin) {
           email: "organizer@example.test",
           email_verified: true,
           name: "Organizer",
+        });
+      }
+      if (
+        url.origin === "https://www.googleapis.com" &&
+        url.pathname === "/calendar/v3/users/me/calendarList"
+      ) {
+        assert.ok(
+          request.headers.get("Authorization") === `Bearer ${access}`,
+          "valid fixture access token required"
+        );
+        assert.equal(request.method, "GET");
+        assert.equal(url.searchParams.get("maxResults"), "250");
+        assert.equal(url.searchParams.get("showHidden"), "true");
+        assert.equal(url.searchParams.get("showDeleted"), "false");
+        calendarReads.push(url.search);
+        const offset = Number(url.searchParams.get("pageToken") ?? 0);
+        return json({
+          items: calendars.slice(offset, offset + 250),
+          ...(offset + 250 < calendars.length ? { nextPageToken: String(offset + 250) } : {}),
         });
       }
       const root = "/calendar/v3/calendars/primary/events";

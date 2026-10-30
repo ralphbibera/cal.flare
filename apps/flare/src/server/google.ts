@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
 import { accessToken } from "./auth.ts";
 import { ErrorWithCode, nonempty, object } from "./secrets.ts";
@@ -16,6 +17,37 @@ export class GoogleCalendarError extends ErrorWithCode {
   }
 }
 export type BusyRange = { start: number; end: number };
+export type ConflictCalendar = { id: string; name: string; primary: boolean };
+const calendarId = z
+  .string()
+  .min(1)
+  .max(1024)
+  .regex(/^\S+$/u)
+  .refine((value) => !/\p{Cc}/u.test(value));
+const calendarEntry = z.union([
+  z.object({ id: calendarId, deleted: z.literal(true) }),
+  z.object({
+    id: calendarId,
+    summary: z
+      .string()
+      .max(4096)
+      .refine((value) => value.trim().length > 0),
+    primary: z.boolean().default(false),
+    deleted: z.literal(false).optional(),
+    hidden: z.boolean().optional(),
+    selected: z.boolean().optional(),
+    accessRole: z.enum(["none", "freeBusyReader", "reader", "writer", "owner"]),
+  }),
+]);
+const calendarPage = z.object({
+  items: z.array(calendarEntry).max(250),
+  nextPageToken: z
+    .string()
+    .min(1)
+    .max(2048)
+    .refine((value) => value.trim().length > 0)
+    .optional(),
+});
 export type EventInput = {
   id: string;
   start: string | number;
@@ -312,6 +344,53 @@ export class GoogleCalendar {
         "Invalid Google Calendar response"
       );
     }
+  }
+  async listCalendars(): Promise<ConflictCalendar[]> {
+    const calendars: ConflictCalendar[] = [];
+    const ids = new Set<string>(),
+      cursors = new Set<string>();
+    let page: string | undefined;
+    let total = 0;
+    let primary = false;
+    for (let count = 0; count < 10; count++) {
+      const query = new URLSearchParams({ maxResults: "250", showHidden: "true", showDeleted: "false" });
+      if (page) query.set("pageToken", page);
+      const response = await this.request(`/users/me/calendarList?${query}`);
+      const data = await this.parsed(response, false, (value) => {
+        const parsed = calendarPage.parse(value);
+        total += parsed.items.length;
+        if (total > 1000) throw new Error();
+        for (const item of parsed.items) {
+          if (ids.has(item.id)) throw new Error();
+          ids.add(item.id);
+          if (item.deleted === true) continue;
+          if (item.id === "primary" && !item.primary) throw new Error();
+          if (item.primary) {
+            if (primary) throw new Error();
+            primary = true;
+          }
+          if (
+            item.accessRole === "none" ||
+            ["#holiday@group.v.calendar.google.com", "#contacts@group.v.calendar.google.com"].some((suffix) =>
+              item.id.endsWith(suffix)
+            )
+          )
+            continue;
+          calendars.push({
+            id: item.primary ? "primary" : item.id,
+            name: item.summary,
+            primary: item.primary,
+          });
+        }
+        return parsed;
+      });
+      if (!data.nextPageToken) return calendars;
+      if (cursors.has(data.nextPageToken))
+        throw new GoogleCalendarError("retryable", 200, "Google repeated a pagination cursor");
+      cursors.add(data.nextPageToken);
+      page = data.nextPageToken;
+    }
+    throw new GoogleCalendarError("retryable", 200, "Google Calendar pagination limit exceeded");
   }
   async freeBusy(fromISO: string, toISO: string): Promise<BusyRange[]> {
     interval(fromISO, toISO);

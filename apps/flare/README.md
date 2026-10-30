@@ -33,6 +33,23 @@ The organizer page edits the event title, URL slug, description, duration, and o
 Saving these details preserves scheduling rules and booking policies. The private page also edits
 working hours, dated overrides and booking rules. These are functional checkpoints; upstream editor pixel parity remains open.
 
+Owner-session-authenticated `GET /api/owner/conflict-calendars` is the private backend prerequisite
+for selectable conflict calendars. It returns only `{ calendars: [{ id, name, primary }] }` with
+no-store JSON. Discovery includes hidden subscriptions and readable/free-busy-only calendars,
+excludes deleted, holiday and contacts calendars, and preserves custom group calendar IDs.
+The primary calendar is normalized to `primary`. Pagination fails without partial results on
+malformed data, duplicate IDs, ambiguous primary flags, repeated cursors, more than 10 pages or
+1,000 entries. Names and IDs are not stored or added to owner home data or public surfaces.
+Discovery does not write settings, bookings, commands, reservations or rate-limit counters.
+Existing credential refresh can still persist a renewed token. Failure does not affect owner home.
+New consent requests `calendar.events`, `calendar.events.freebusy` and
+`calendar.calendarlist.readonly` with incremental authorization. Existing connections remain
+usable for the old primary-calendar flow until the owner reauthorizes. Refresh alone cannot add
+permissions. See [Google configuration and reauthorization](SETUP.md#configure-google-calendar-access).
+Selection storage, availability aggregation and selection UI follow in later units. All event
+reads, writes and recovery still use the primary calendar. Local mocked-provider checks do not
+establish a live Google grant or live discovery.
+
 The static-location flow accepts optional `event.location` through authenticated
 `PUT /api/owner`, or `location` alongside the four event-detail fields in `PATCH /api/owner`.
 Flare policy accepts strings only, trims surrounding whitespace, and limits the result to 1,000 UTF-16 units.

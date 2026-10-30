@@ -154,6 +154,12 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (!data) throw new ErrorWithCode("unauthorized", 401);
     return json(data);
   }
+  if (path === "/api/owner/conflict-calendars") {
+    await owner(env, request);
+    if (method !== "GET") return json({ error: "not_found" }, 404);
+    if (url.search) throw new ErrorWithCode("invalid_query");
+    return json({ calendars: await new CalendarClient(env).listCalendars() });
+  }
   if (path === "/api/owner/schedule" && method === "PATCH") {
     await owner(env, request);
     await getSettings(env.DB);
