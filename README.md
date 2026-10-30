@@ -35,7 +35,7 @@ Follow [Configure and run Cal.flare](apps/flare/SETUP.md) in order.
 It covers local configuration, Google consent, local D1, and the production procedure.
 For production, prepare a Cloudflare account with Workers and D1 access, its account ID and Workers subdomain,
 a Google OAuth web client, and the owner's verified Google email.
-The guide uses a Workers hostname, private Wrangler secret prompts, five app migrations, and an explicit deploy command.
+The guide uses a Workers hostname, private Wrangler secret prompts, D1 migrations, and an explicit deploy command.
 Complete its post-deploy checklist before relying on bookings, then use its upgrade and recovery steps.
 
 For local commands and implementation details, use the [development guide](apps/flare/README.md).
