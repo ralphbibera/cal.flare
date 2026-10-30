@@ -61,13 +61,8 @@ test("owner details and required-reason cancellation use session authorization a
   for (const cancellationReason of [undefined, "", " \n\t", "x".repeat(1001), `${"😀".repeat(500)}x`])
     assert.equal((await f.send(path, { ...input, cancellationReason }, f.ownerHeaders)).status, 400);
   assert.equal(
-    (
-      await f.send(
-        path,
-        { ...input, action: "reschedule", start: f.now() + 10 * hour, cancellationReason: undefined },
-        f.ownerHeaders
-      )
-    ).status,
+    (await f.send(path, { ...input, action: "reschedule", start: f.now() + 10 * hour }, f.ownerHeaders))
+      .status,
     400
   );
   assert.equal(await f.db.prepare("SELECT count(*) FROM booking_command").first("count(*)"), 1);
@@ -79,7 +74,7 @@ test("owner details and required-reason cancellation use session authorization a
     now: () => f.now() + 48 * hour,
   });
   await assert.rejects(
-    later.ownerCancel(id, { ...input, requestKey: "ended-owner-cancel-0001" }),
+    later.ownerChange(id, { ...input, requestKey: "ended-owner-cancel-0001" }),
     /invalid_slot/
   );
   const accepted = await client.ownerCancel(id, { ...input, action: "cancel" });

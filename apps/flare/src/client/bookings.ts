@@ -127,6 +127,11 @@ function accessHeaders(access: BookingAccess): { Authorization: string } {
     throw new ErrorWithCode("invalid_access", 400);
   return { Authorization: `Bearer ${access.token}` };
 }
+function slots(value: unknown): Interval[] {
+  const data = object(value);
+  if (!Array.isArray(data.slots) || data.slots.length > MAX_QUERY_DAYS * 1440) throw new Error();
+  return data.slots.map(interval);
+}
 
 class BookerClient {
   private readonly transport: Transport;
@@ -197,15 +202,7 @@ class BookerClient {
     });
     const headers = access ? accessHeaders(access) : undefined;
     if (access) query.set("bookingId", access.id);
-    return this.request(
-      `/api/slots?${query}`,
-      (value) => {
-        const data = object(value);
-        if (!Array.isArray(data.slots) || data.slots.length > MAX_QUERY_DAYS * 1440) throw new Error();
-        return data.slots.map(interval);
-      },
-      { headers, signal }
-    );
+    return this.request(`/api/slots?${query}`, slots, { headers, signal });
   }
   create(input: CreateRequest): Promise<BookingView & { manageToken: string }> {
     return this.request(
@@ -235,6 +232,25 @@ class BookerClient {
   }
   ownerView(id: string): Promise<BookingView> {
     return this.ownerBooking(id);
+  }
+  ownerSlots(
+    id: string,
+    { from, to, timeZone, signal }: { from: number; to: number; timeZone: string; signal?: AbortSignal }
+  ): Promise<Interval[]> {
+    if (!/^[0-9a-f]{64}$/.test(id)) throw new ErrorWithCode("invalid_access", 400);
+    const query = new URLSearchParams({
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+      timeZone,
+    });
+    return this.request(`/api/owner/bookings/${id}/slots?${query}`, slots, { signal });
+  }
+  ownerReschedule(id: string, input: Extract<ChangeRequest, { action: "reschedule" }>): Promise<BookingView> {
+    return this.ownerBooking(id, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
   }
   ownerCancel(id: string, input: Extract<ChangeRequest, { action: "cancel" }>): Promise<BookingView> {
     return this.ownerBooking(id, {
