@@ -33,8 +33,15 @@ The organizer page edits the event title, URL slug, description, duration, and o
 Saving these details preserves scheduling rules and booking policies. The private page also edits
 working hours, dated overrides and booking rules. These are functional checkpoints; upstream editor pixel parity remains open.
 
-Owner-session-authenticated `GET /api/owner/conflict-calendars` is the private backend prerequisite
-for selectable conflict calendars. It returns `{ calendars: [{ id, name, primary }], conflictCalendarIds }` with
+The private home has a **Conflict calendars** control with labelled checkboxes and explicit **Save**,
+**Clear selection**, and **Reset to primary** actions. Loading calendars runs independently of the
+home and other editors. Failed loads offer reload and Google reconnection. Saved IDs missing from
+discovery stay visible as unavailable until explicitly removed. Reloading discovery preserves drafts;
+failed or unacknowledged saves retain them for explicit retry. Clear selection edits the draft and
+requires Save. Reset immediately restores the primary-only default. Both empty saves and reset
+remain available after discovery fails. Names and IDs render as literal text on the private page.
+Owner-session-authenticated `GET /api/owner/conflict-calendars` returns
+`{ calendars: [{ id, name, primary }], conflictCalendarIds }` with
 no-store JSON. Discovery includes hidden subscriptions and readable/free-busy-only calendars,
 excludes deleted, holiday and contacts calendars, and preserves custom group calendar IDs.
 The primary calendar is normalized to `primary`. Pagination fails without partial results on
@@ -53,12 +60,16 @@ Discovery failures save nothing. `null` removes the setting and restores legacy 
 checks. `[]` skips external conflicts while local booking reservations still block overlaps.
 Full settings PUT accepts the optional array; omission resets it and null is invalid.
 Selection IDs persist in private owner settings and frozen commands. Public settings, SSR,
-slots and booking views omit them. Names are not persisted. No selection UI exists yet.
+slots and booking views omit them. Names are not persisted.
 Selected primary conflicts use the existing event list. Secondaries use one free/busy request,
 without event details. Missing entries, revoked access and provider failures fail availability
 as a whole. Queued recovery uses its frozen selection against current busy data. Event
 reads, writes and reconciliation still use the primary calendar. Local mocked-provider checks do not
-establish a live Google grant or live discovery.
+establish a live Google grant or live discovery. The existing built Worker browser runner checks
+default, selected, empty and reset settings, reloads, failed and malformed responses, unavailable
+IDs, keyboard input and overflow at 390px and 1280px. It exercises secondary busy admission and
+local holds through public confirmation using the actual Google adapter with mocked HTTP.
+Native calendar-control pixel parity, live Google access and deployed behavior remain unverified.
 
 The static-location flow accepts optional `event.location` through authenticated
 `PUT /api/owner`, or `location` alongside the four event-detail fields in `PATCH /api/owner`.

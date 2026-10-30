@@ -4,6 +4,7 @@ import common from "../../../../packages/i18n/locales/en/common.json";
 import { Button } from "../components/Button.tsx";
 import { OwnerBookingRulesEditor } from "../components/OwnerBookingRulesEditor.tsx";
 import OwnerBookings from "../components/OwnerBookings.astro";
+import { OwnerConflictCalendars } from "../components/OwnerConflictCalendars.tsx";
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
 import { OwnerOverridesEditor } from "../components/OwnerOverridesEditor.tsx";
 import { OwnerScheduleEditor } from "../components/OwnerScheduleEditor.tsx";
@@ -80,6 +81,17 @@ Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
               windowHelp: common.flare_booking_window_help,
               minutes: common.minutes, save: common.save, saved: common.saved, invalid: common.flare_booking_rules_invalid,
               failed: common.flare_booking_rules_failed, javascript: common.flare_booking_rules_javascript,
+            }} />
+            <OwnerConflictCalendars client:load selection={state.data.settings.conflictCalendarIds ?? null} labels={{
+              heading: common.flare_conflict_calendars, help: common.flare_conflict_help,
+              primary: common.flare_conflict_primary, default: common.flare_conflict_default,
+              empty: common.flare_conflict_empty, unavailable: common.flare_conflict_unavailable,
+              removeUnavailable: common.flare_conflict_remove_unavailable, loading: common.flare_conflict_loading,
+              loadFailed: common.flare_conflict_load_failed, saveFailed: common.flare_conflict_save_failed,
+              retry: common.flare_conflict_retry, reconnect: common.flare_conflict_reconnect,
+              save: common.save, saved: common.saved, reset: common.flare_conflict_reset,
+              clear: common.flare_conflict_clear, limit: common.flare_conflict_limit,
+              javascript: common.flare_conflict_javascript,
             }} />
             <OwnerScheduleEditor client:load schedule={{ timeZone: state.data.settings.schedule.timeZone,
               rules: state.data.settings.schedule.rules }} labels={{
