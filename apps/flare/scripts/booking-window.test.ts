@@ -704,6 +704,10 @@ test("rolling window partial writes preserve canonical bytes, independent fields
   assert.equal(Object.hasOwn((await getSettings(f.db)).event, "bookingWindowDays"), false);
   for (const bookingWindowDays of [30, null, undefined]) {
     assert.equal((await f.send("/api/owner", settings, f.ownerHeaders, "PUT")).status, 200);
+    const preferences = await f.db
+      .prepare("SELECT json,version,default_schedule_id FROM organizer_settings")
+      .first<{ json: string; version: number; default_schedule_id: string }>();
+    assert.ok(preferences);
     await f.db.prepare("DELETE FROM organizer_settings").run();
     const unchanged = await f.db.prepare("SELECT * FROM event_type").all();
     assert.equal(
@@ -723,8 +727,8 @@ test("rolling window partial writes preserve canonical bytes, independent fields
     assert.deepEqual((await f.db.prepare("SELECT * FROM event_type").all()).results, unchanged.results);
     assert.equal(await raw(), null);
     await f.db
-      .prepare("INSERT INTO organizer_settings VALUES ('owner',?,1)")
-      .bind(JSON.stringify({ schedule: settings.schedule }))
+      .prepare("INSERT INTO organizer_settings VALUES ('owner',?,?,?)")
+      .bind(preferences.json, preferences.version, preferences.default_schedule_id)
       .run();
   }
 });

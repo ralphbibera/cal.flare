@@ -32,7 +32,16 @@ function minutes(value: string): number {
   return Number(hour) * 60 + Number(minute);
 }
 
-export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySchedule; labels: Labels }) {
+export function OwnerScheduleEditor({
+  schedule,
+  scheduleId,
+  labels,
+}: {
+  schedule: WeeklySchedule;
+  scheduleId: string;
+  labels: Labels;
+}) {
+  const endpoint = `/api/owner/schedules/${scheduleId}/weekly`;
   const [rows, setRows] = useState<Row[]>(() =>
     schedule.rules.map((rule, index) => ({
       id: `range-${index}`,
@@ -62,7 +71,7 @@ export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySche
       </h2>
       <form
         aria-labelledby="owner-schedule-title"
-        action="/api/owner/schedule"
+        action={endpoint}
         method="post"
         onChange={() => {
           if (status !== "saving" && status !== "loading") setStatus("idle");
@@ -86,7 +95,7 @@ export function OwnerScheduleEditor({ schedule, labels }: { schedule: WeeklySche
           }
           setStatus("saving");
           try {
-            const response = await fetch("/api/owner/schedule", {
+            const response = await fetch(endpoint, {
               method: "PATCH",
               credentials: "same-origin",
               cache: "no-store",

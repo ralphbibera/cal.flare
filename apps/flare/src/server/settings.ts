@@ -24,6 +24,7 @@ import { ErrorWithCode } from "./http.ts";
 type SettingsDatabase = Pick<D1Database, "prepare" | "batch">;
 type StoredSettings = {
   event_json: string | null;
+  schedule_json: string | null;
   preferences_json: string | null;
   lifecycle: "listed" | "hidden" | "removed" | null;
 };
@@ -35,30 +36,65 @@ function eventId(value: string): string {
 }
 
 function storedSettings(row: StoredSettings): Settings {
-  if (row.event_json === null || row.preferences_json === null)
+  if (row.event_json == null || row.preferences_json == null || row.schedule_json == null)
     throw new SettingsError("Missing current settings");
   let event: unknown;
   let preferences: unknown;
+  let schedule: unknown;
   try {
     preferences = JSON.parse(row.preferences_json);
     event = JSON.parse(row.event_json);
+    schedule = JSON.parse(row.schedule_json);
   } catch (error) {
     if (error instanceof SyntaxError) throw new SettingsError("Stored settings contain invalid JSON");
     throw error;
   }
   if (typeof preferences !== "object" || preferences === null || Array.isArray(preferences))
     throw new SettingsError("Owner preferences must be an object");
-  if (Object.keys(preferences).some((key) => !["schedule", "conflictCalendarIds"].includes(key)))
+  if (Object.keys(preferences).some((key) => key !== "conflictCalendarIds"))
     throw new SettingsError("Owner preferences contain unsupported fields");
-  return parseSettings({ ...preferences, event });
+  return parseSettings({ event, schedule, ...preferences });
 }
 
-async function readSettings(db: SettingsDatabase, id: string): Promise<StoredSettings | null> {
+type AdmissionContext = {
+  settings: Settings;
+  settingsJson: string;
+  eventScheduleId: string | null;
+  resolvedScheduleId: string;
+  policy: CurrentActionPolicy;
+};
+type ResolvedSettings = StoredSettings & {
+  event_schedule_id: string | null;
+  resolved_schedule_id: string | null;
+};
+async function readSettings(db: SettingsDatabase, id: string): Promise<ResolvedSettings | null> {
   return db
-    .prepare(`SELECT e.json AS event_json, e.lifecycle, o.json AS preferences_json FROM event_type e
-      LEFT JOIN organizer_settings o ON o.id='owner' WHERE e.id=?`)
+    .prepare(`SELECT e.json AS event_json, e.lifecycle, o.json AS preferences_json,
+      s.json AS schedule_json,e.schedule_id AS event_schedule_id,s.id AS resolved_schedule_id FROM event_type e
+      LEFT JOIN organizer_settings o ON o.id='owner'
+      LEFT JOIN availability_schedule s ON s.id=COALESCE(e.schedule_id,o.default_schedule_id) WHERE e.id=?`)
     .bind(eventId(id))
-    .first<StoredSettings>();
+    .first<ResolvedSettings>();
+}
+
+async function getAdmissionContext(
+  db: SettingsDatabase,
+  id: string,
+  bookable = false
+): Promise<AdmissionContext> {
+  const row = await readSettings(db, id);
+  if (!row || (bookable && row.lifecycle === "removed")) throw new ErrorWithCode("not_found", 404);
+  const settings = storedSettings(row);
+  if (row.resolved_schedule_id === null) throw new SettingsError("Missing current schedule");
+  return {
+    settings,
+    settingsJson: `{"event":${row.event_json},"schedule":${row.schedule_json}${
+      settings.conflictCalendarIds === undefined ? "" : `,${row.preferences_json?.slice(1, -1)}`
+    }}`,
+    eventScheduleId: row.event_schedule_id,
+    resolvedScheduleId: row.resolved_schedule_id,
+    policy: currentActionPolicy(row),
+  };
 }
 
 async function getSettings(db: SettingsDatabase, id: string = DEFAULT_EVENT_ID): Promise<Settings> {
@@ -74,11 +110,13 @@ async function getBookableSettings(db: SettingsDatabase, id: string = DEFAULT_EV
 }
 
 async function getOwnerPreferences(db: SettingsDatabase): Promise<Omit<Settings, "event">> {
-  const preferences_json = await db
-    .prepare("SELECT json FROM organizer_settings WHERE id='owner'")
-    .first<string>("json");
+  const row = await db
+    .prepare(`SELECT o.json AS preferences_json,s.json AS schedule_json FROM organizer_settings o
+      LEFT JOIN availability_schedule s ON s.id=o.default_schedule_id WHERE o.id='owner'`)
+    .first<{ preferences_json: string; schedule_json: string | null }>();
+  if (!row) throw new SettingsError("Missing owner preferences");
   const { event: _event, ...preferences } = storedSettings({
-    preferences_json,
+    ...row,
     event_json: JSON.stringify(defaultSettings.event),
     lifecycle: null,
   });
@@ -107,8 +145,9 @@ async function getCurrentActionPolicy(db: SettingsDatabase, id: string): Promise
 
 async function listEvents(db: SettingsDatabase): Promise<OwnerEvent[]> {
   const rows = await db
-    .prepare(`SELECT e.id,e.lifecycle,e.json AS event_json,o.json AS preferences_json
+    .prepare(`SELECT e.id,e.lifecycle,e.json AS event_json,o.json AS preferences_json,s.json AS schedule_json
     FROM event_type e LEFT JOIN organizer_settings o ON o.id='owner'
+    LEFT JOIN availability_schedule s ON s.id=COALESCE(e.schedule_id,o.default_schedule_id)
     WHERE e.lifecycle <> 'removed' ORDER BY e.rowid`)
     .all<StoredSettings & { id: string; lifecycle: "listed" | "hidden" }>();
   return rows.results.map((row) => ({
@@ -176,9 +215,9 @@ async function duplicateEvent(
   const id = crypto.randomUUID();
   await eventWrite(
     db
-      .prepare(`INSERT INTO event_type(id,json,version,lifecycle)
+      .prepare(`INSERT INTO event_type(id,json,version,lifecycle,schedule_id)
     SELECT ?,json_set(json,'$.slug',?,'$.title',json(?),'$.description',json(?),
-      '$.durationMinutes',CAST(? AS INTEGER)),1,lifecycle FROM event_type WHERE id=? AND lifecycle <> 'removed'`)
+      '$.durationMinutes',CAST(? AS INTEGER)),1,lifecycle,schedule_id FROM event_type WHERE id=? AND lifecycle <> 'removed'`)
       .bind(
         id,
         details.slug,
@@ -204,13 +243,19 @@ async function removeEvent(db: SettingsDatabase, id: string): Promise<void> {
 }
 
 async function saveSettings(db: D1Database, settings: Settings): Promise<void> {
-  const { event, ...preferences } = parseSettings(settings);
+  const { event, schedule, ...preferences } = parseSettings(settings);
   try {
     const results = await db.batch([
       db
         .prepare(`UPDATE event_type SET json=?,version=version+1 WHERE id='default' AND lifecycle <> 'removed'
-          AND EXISTS(SELECT 1 FROM organizer_settings WHERE id='owner')`)
+          AND EXISTS(SELECT 1 FROM organizer_settings o JOIN availability_schedule s
+            ON s.id=COALESCE(event_type.schedule_id,o.default_schedule_id) WHERE o.id='owner')`)
         .bind(JSON.stringify(event)),
+      db
+        .prepare(`UPDATE availability_schedule SET json=?,version=version+1 WHERE id=(
+        SELECT COALESCE(e.schedule_id,o.default_schedule_id) FROM event_type e JOIN organizer_settings o ON o.id='owner'
+        WHERE e.id='default' AND e.lifecycle <> 'removed')`)
+        .bind(JSON.stringify(schedule)),
       db
         .prepare(`UPDATE organizer_settings SET json=?,version=version+1 WHERE id='owner'
           AND EXISTS(SELECT 1 FROM event_type WHERE id='default' AND lifecycle <> 'removed')`)
@@ -269,24 +314,25 @@ async function saveEventDetails(
   );
 }
 
-async function saveWeeklySchedule(db: D1Database, input: WeeklySchedule): Promise<void> {
+async function saveWeeklySchedule(db: D1Database, input: WeeklySchedule, id?: string): Promise<void> {
   const weekly = parseWeeklySchedule(input);
   await preferencesWrite(
     db
-      .prepare(`UPDATE organizer_settings SET json = json_set(organizer_settings.json,
-      '$.schedule.timeZone', json(?), '$.schedule.rules', json(?)),
-      version = version + 1 WHERE id='owner'`)
-      .bind(JSON.stringify(weekly.timeZone), JSON.stringify(weekly.rules))
+      .prepare(`UPDATE availability_schedule SET json = json_set(json,
+      '$.timeZone', json(?), '$.rules', json(?)),
+      version = version + 1 WHERE id=COALESCE(?,(SELECT default_schedule_id FROM organizer_settings WHERE id='owner'))`)
+      .bind(JSON.stringify(weekly.timeZone), JSON.stringify(weekly.rules), id ?? null)
   );
 }
 
-async function saveScheduleOverrides(db: D1Database, input: ScheduleOverrides): Promise<void> {
+async function saveScheduleOverrides(db: D1Database, input: ScheduleOverrides, id?: string): Promise<void> {
   const { overrides } = parseScheduleOverrides(input);
   await preferencesWrite(
     db
-      .prepare(`UPDATE organizer_settings SET json = json_set(organizer_settings.json,
-      '$.schedule.overrides', json(?)), version = version + 1 WHERE id='owner'`)
-      .bind(JSON.stringify(overrides))
+      .prepare(`UPDATE availability_schedule SET json = json_set(json,
+      '$.overrides', json(?)), version = version + 1
+      WHERE id=COALESCE(?,(SELECT default_schedule_id FROM organizer_settings WHERE id='owner'))`)
+      .bind(JSON.stringify(overrides), id ?? null)
   );
 }
 
@@ -327,7 +373,7 @@ async function saveBookingRules(
   );
 }
 
-export type { CurrentActionPolicy, OwnerEvent };
+export type { AdmissionContext, CurrentActionPolicy, OwnerEvent };
 export {
   createEvent,
   duplicateEvent,
@@ -336,6 +382,7 @@ export {
   eventId,
   findEventBySlug,
   getCurrentActionPolicy,
+  getAdmissionContext,
   getBookableSettings,
   getOwnerEvent,
   getOwnerPreferences,

@@ -72,6 +72,7 @@ async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
       "0004_http.sql",
       "0005_events.sql",
       "0006_event_lifecycle.sql",
+      "0007_availability_schedules.sql",
     ]) {
       await promisify(execFile)(
         process.execPath,

@@ -1,7 +1,6 @@
 import common from "../../../../packages/i18n/locales/en/common.json" with { type: "json" };
 import type { Interval } from "../domain/scheduling.ts";
 import type { Settings } from "../domain/settings.ts";
-import { parseSettings } from "../domain/settings.ts";
 import type { SlotCondition } from "./booking-availability.ts";
 import { BookingAvailability } from "./booking-availability.ts";
 import { BookingDelivery } from "./booking-delivery.ts";
@@ -18,10 +17,11 @@ import type {
 import { parseChange, parseCreate, snapshot } from "./booking-model.ts";
 import { ErrorWithCode, record } from "./http.ts";
 import { base64url, encryptionKey, hash } from "./secrets.ts";
-import type { CurrentActionPolicy } from "./settings.ts";
+import type { AdmissionContext, CurrentActionPolicy } from "./settings.ts";
 import {
   currentActionPolicy,
   DEFAULT_EVENT_ID,
+  getAdmissionContext,
   getBookableSettings,
   getCurrentActionPolicy,
   getSettings,
@@ -128,7 +128,8 @@ export class BookingService {
       payload = JSON.stringify(data);
     const replay = await this.replay(data.requestKey, payload, eventId, true);
     if (replay) return replay;
-    const settings = await getBookableSettings(this.db, eventId);
+    const context = await getAdmissionContext(this.db, eventId, true);
+    const { settings } = context;
     const id = await identity("calflare:booking:v1", data.requestKey);
     const commandId = await identity("calflare:command:v1", data.requestKey);
     const desired: BookingSnapshot = {
@@ -149,7 +150,7 @@ export class BookingService {
       {
         requestKey: data.requestKey,
         eventId,
-        settings,
+        context,
         payload,
         id,
         commandId,
@@ -196,8 +197,8 @@ export class BookingService {
     if (replay) return replay;
     if (actor === "owner" && data.action === "cancel" && !data.cancellationReason)
       throw new ErrorWithCode("invalid_input");
-    const settings = await getSettings(this.db, booking.event_id);
-    const policy = await getCurrentActionPolicy(this.db, booking.event_id);
+    const context = await getAdmissionContext(this.db, booking.event_id);
+    const { settings, policy } = context;
     const commandId = await identity("calflare:command:v1", requestKey);
     const original = snapshot(booking.confirmed_json ?? booking.initial_json);
     const desired = {
@@ -218,7 +219,7 @@ export class BookingService {
     return this.admit({
       requestKey,
       eventId: booking.event_id,
-      settings,
+      context,
       payload,
       id,
       commandId,
@@ -233,7 +234,7 @@ export class BookingService {
     input: {
       requestKey: string;
       eventId: string;
-      settings: Settings;
+      context: AdmissionContext;
       payload: string;
       id: string;
       commandId: string;
@@ -245,17 +246,19 @@ export class BookingService {
     },
     manage = false
   ): Promise<BookingView> {
-    const { beforeMinutes, afterMinutes } = input.settings.event;
+    const { settings } = input.context;
+    const { beforeMinutes, afterMinutes } = settings.event;
     try {
       await this.db.batch([
         this.db
           .prepare(`INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
-        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
+        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id,event_schedule_id,resolved_schedule_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
         id=excluded.id,request_key=excluded.request_key,booking_id=excluded.booking_id,
         action=excluded.action,payload=excluded.payload,expected_version=excluded.expected_version,event_id=excluded.event_id,
         desired_json=excluded.desired_json,settings_json=excluded.settings_json,token_hash=excluded.token_hash,
-        occupied_start=excluded.occupied_start,occupied_end=excluded.occupied_end,precondition=excluded.precondition`)
+        occupied_start=excluded.occupied_start,occupied_end=excluded.occupied_end,precondition=excluded.precondition,
+        event_schedule_id=excluded.event_schedule_id,resolved_schedule_id=excluded.resolved_schedule_id`)
           .bind(
             input.commandId,
             input.requestKey,
@@ -264,13 +267,15 @@ export class BookingService {
             input.payload,
             input.version,
             JSON.stringify(input.desired),
-            JSON.stringify(parseSettings(input.settings)),
+            input.context.settingsJson,
             input.tokenHash,
             input.desired.start - beforeMinutes * MINUTE,
             input.desired.end + afterMinutes * MINUTE,
             input.precondition,
             this.now(),
-            input.eventId
+            input.eventId,
+            input.context.eventScheduleId,
+            input.context.resolvedScheduleId
           ),
       ]);
     } catch (error) {
@@ -304,10 +309,12 @@ export class BookingService {
     const now = this.now();
     const rows = await this.db
       .prepare(`SELECT b.*, b.rowid AS cursor, c.action AS pending_action, c.error AS pending_error,
-      completed.payload AS completed_payload, e.json AS event_json, e.lifecycle, o.json AS preferences_json
+      completed.payload AS completed_payload, e.json AS event_json, e.lifecycle, o.json AS preferences_json,
+      s.json AS schedule_json
       FROM booking b LEFT JOIN booking_command c ON c.id = b.pending_id
       LEFT JOIN event_type e ON e.id=b.event_id
       LEFT JOIN organizer_settings o ON o.id='owner'
+      LEFT JOIN availability_schedule s ON s.id=COALESCE(e.schedule_id,o.default_schedule_id)
       LEFT JOIN booking_command completed ON completed.booking_id=b.id
       AND completed.accepted_version=b.version
       AND ((b.state='cancelled' AND completed.action='cancel') OR (b.state='active' AND completed.action='reschedule'))
@@ -337,6 +344,7 @@ export class BookingService {
           completed_payload: string | null;
           event_json: string | null;
           preferences_json: string | null;
+          schedule_json: string | null;
           lifecycle: "listed" | "hidden" | "removed" | null;
         }
       >();

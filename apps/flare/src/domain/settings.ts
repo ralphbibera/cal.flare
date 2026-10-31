@@ -19,6 +19,14 @@ type OwnerEventMode =
   | { kind: "create" }
   | { kind: "duplicate"; id: string }
   | { kind: "edit"; id: string; lifecycle: OwnerEvent["lifecycle"] };
+export type AvailabilitySchedule = { id: string; name: string; schedule: Settings["schedule"] };
+export function isScheduleId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    (value === "legacy" ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value))
+  );
+}
 function isEventId(value: unknown): value is string {
   return (
     typeof value === "string" &&

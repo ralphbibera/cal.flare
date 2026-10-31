@@ -13,6 +13,8 @@ import { getPlatformProxy } from "wrangler";
 type Input = {
   id: string | null;
   eventId?: string;
+  eventScheduleId?: string | null;
+  resolvedScheduleId?: string | null;
   requestKey?: string;
   booking: string;
   start: number;
@@ -38,6 +40,7 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
       "0003_bookings.sql",
       "0005_events.sql",
       "0006_event_lifecycle.sql",
+      "0007_availability_schedules.sql",
     ]) {
       await promisify(execFile)(
         process.execPath,
@@ -67,18 +70,20 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
     let db = platform.env.DB;
     await db.prepare("UPDATE organizer_settings SET json='{}'").run();
     await db.prepare("UPDATE event_type SET json='{}'").run();
+    await db.prepare("UPDATE availability_schedule SET json='{}'").run();
     await db.prepare("INSERT INTO event_type(id,json,version) VALUES ('second','{}',1)").run();
     const statement = (input: Input) =>
       db
         .prepare(`
       INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
-        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
+        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id,event_schedule_id,resolved_schedule_id)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
         id=excluded.id, request_key=excluded.request_key, booking_id=excluded.booking_id,
         action=excluded.action, payload=excluded.payload, expected_version=excluded.expected_version,
         desired_json=excluded.desired_json, settings_json=excluded.settings_json,
         token_hash=excluded.token_hash, occupied_start=excluded.occupied_start,
-        occupied_end=excluded.occupied_end, precondition=excluded.precondition,event_id=excluded.event_id
+        occupied_end=excluded.occupied_end, precondition=excluded.precondition,event_id=excluded.event_id,
+        event_schedule_id=excluded.event_schedule_id,resolved_schedule_id=excluded.resolved_schedule_id
     `)
         .bind(
           input.id,
@@ -88,13 +93,15 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
           input.payload ?? "canonical-input",
           input.version ?? 0,
           input.desired ?? JSON.stringify({ label: input.id }),
-          input.settings ?? '{"event":{}}',
+          input.settings ?? '{"event":{},"schedule":{}}',
           input.tokenHash ?? "management-hash",
           input.start,
           input.end,
           input.precondition ?? "accepted",
           0,
-          input.eventId ?? "default"
+          input.eventId ?? "default",
+          input.eventScheduleId ?? null,
+          input.resolvedScheduleId === undefined ? "legacy" : input.resolvedScheduleId
         );
     const submit = (input: Input) => db.batch([statement(input)]);
     const outcome = (id: string) =>
@@ -159,6 +166,8 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
     const mismatches: Partial<Input>[] = [
       { booking: "different-booking" },
       { eventId: "second" },
+      { eventScheduleId: "legacy" },
+      { resolvedScheduleId: null },
       { start: 1 },
       { end: 11 },
       { action: "cancel" },
@@ -178,6 +187,8 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
       ["request_key", "different-key"],
       ["booking_id", "other-booking"],
       ["event_id", "second"],
+      ["event_schedule_id", "legacy"],
+      ["resolved_schedule_id", null],
       ["action", "cancel"],
       ["expected_version", 1],
       ["desired_json", '{"changed":true}'],
@@ -272,6 +283,15 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
         assert.ok(left.booking_id === right.booking_id || left.end <= right.start || right.end <= left.start);
       }
     }
+    await submit({
+      id: "missing-provenance",
+      booking: "missing-provenance",
+      start: 2000,
+      end: 2010,
+      resolvedScheduleId: null,
+    });
+    assert.equal(await outcome("missing-provenance"), "settings_changed");
+    assert.equal(await db.prepare("SELECT id FROM booking WHERE id='missing-provenance'").first(), null);
     const persisted = await snapshot();
     await platform.dispose();
     platform = undefined;

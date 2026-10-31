@@ -72,7 +72,7 @@ test("booking-rule partial saves canonicalize every existing policy-key presence
           );
           assert.equal(created.status, 201, `${label}: ${await created.text()}`);
           assert.equal(raw?.json, JSON.stringify(current.event), label);
-          const { event: _event, ...preferences } = current;
+          const { event: _event, schedule: _schedule, ...preferences } = current;
           assert.equal(
             await f.db.prepare("SELECT json FROM organizer_settings").first("json"),
             JSON.stringify(preferences)
@@ -118,12 +118,14 @@ test("owner location writes remain private, canonical and admissible across part
   t.after(f.close);
   const raw = () =>
     f.db
-      .prepare(`SELECT e.json AS event_json,o.json AS preferences_json,e.version+o.version AS version
-      FROM event_type e JOIN organizer_settings o ON o.id='owner' WHERE e.id='default'`)
-      .first<{ event_json: string; preferences_json: string; version: number }>();
+      .prepare(`SELECT e.json AS event_json,o.json AS preferences_json,s.json AS schedule_json,e.version+o.version+s.version AS version
+      FROM event_type e JOIN organizer_settings o ON o.id='owner'
+      JOIN availability_schedule s ON s.id=COALESCE(e.schedule_id,o.default_schedule_id) WHERE e.id='default'`)
+      .first<{ event_json: string; preferences_json: string; schedule_json: string; version: number }>();
   const canonical = async () => {
     const stored = await raw();
-    const { event, ...preferences } = await getSettings(f.db);
+    const { event, schedule, ...preferences } = await getSettings(f.db);
+    assert.equal(stored?.schedule_json, JSON.stringify(schedule));
     assert.equal(stored?.event_json, JSON.stringify(event), "stored event must admit bookings");
     assert.equal(
       stored?.preferences_json,

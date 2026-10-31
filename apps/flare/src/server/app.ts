@@ -17,12 +17,25 @@ import { BookingService } from "./bookings.ts";
 import type { GoogleCalendar } from "./google.ts";
 import { GoogleCalendar as CalendarClient } from "./google.ts";
 import { bearer, body, ErrorWithCode, json, record, sameOrigin } from "./http.ts";
+import {
+  assignSchedule,
+  createSchedule,
+  deleteSchedule,
+  duplicateSchedule,
+  getSchedule,
+  listSchedules,
+  renameSchedule,
+  scheduleId,
+  scheduleName,
+  setDefaultSchedule,
+} from "./schedules.ts";
 import { hash } from "./secrets.ts";
 import {
   createEvent,
   DEFAULT_EVENT_ID,
   duplicateEvent,
   eventId,
+  getAdmissionContext,
   getBookableSettings,
   getOwnerEvent,
   getOwnerPreferences,
@@ -175,6 +188,7 @@ async function eventLifecycle(
 
 async function ownerEvents(request: Request, { env }: Dependencies, url: URL): Promise<Response> {
   await owner(env, request);
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) sameOrigin(request, env.PUBLIC_ORIGIN);
   if (url.search) throw new ErrorWithCode("invalid_query");
   const method = request.method;
   if (url.pathname === "/api/owner/events") {
@@ -183,20 +197,85 @@ async function ownerEvents(request: Request, { env }: Dependencies, url: URL): P
       return json(await createEvent(env.DB, parseEventDetails(await body(request))), 201);
     return json({ error: "not_found" }, 404);
   }
-  const target = /^\/api\/owner\/events\/([^/]+)(\/(?:booking-rules|duplicate|visibility))?$/.exec(
+  const target = /^\/api\/owner\/events\/([^/]+)(\/(?:booking-rules|duplicate|visibility|schedule))?$/.exec(
     url.pathname
   );
   if (!target) throw new ErrorWithCode("not_found", 404);
   const id = eventId(target[1]);
   const lifecycle = await eventLifecycle(request, env.DB, id, target[2]);
   if (lifecycle) return lifecycle;
-  const selected = await getOwnerEvent(env.DB, id);
+  const selected = target[2] === "/schedule" ? null : await getOwnerEvent(env.DB, id);
   if (method === "GET" && !target[2]) return json(selected);
   if (method !== "PATCH") return json({ error: "not_found" }, 404);
   const input = await body(request);
-  if (target[2] === "/booking-rules") await saveBookingRules(env.DB, parseBookingRules(input), id);
-  else if (target[2]) return json({ error: "not_found" }, 404);
-  else await saveEventDetails(env.DB, parseEventDetails(input), id);
+  await ownerEventPatch(env.DB, id, target[2], input);
+  return json({ saved: true });
+}
+
+async function ownerEventPatch(
+  db: D1Database,
+  id: string,
+  action: string | undefined,
+  input: unknown
+): Promise<void> {
+  if (action === "/schedule") {
+    const data = record(input);
+    if (Object.keys(data).length !== 1 || !Object.hasOwn(data, "scheduleId"))
+      throw new ErrorWithCode("invalid_input");
+    await assignSchedule(db, id, data.scheduleId === null ? null : scheduleId(data.scheduleId));
+    return;
+  }
+  if (action === "/booking-rules") return saveBookingRules(db, parseBookingRules(input), id);
+  if (action) throw new ErrorWithCode("not_found", 404);
+  await saveEventDetails(db, parseEventDetails(input), id);
+}
+
+async function ownerSchedulePatch(
+  db: D1Database,
+  id: string,
+  action: string | undefined,
+  input: unknown
+): Promise<void> {
+  if (!action) return renameSchedule(db, id, scheduleName(input));
+  if (action === "/default") {
+    if (Object.keys(record(input)).length) throw new ErrorWithCode("invalid_input");
+    return setDefaultSchedule(db, id);
+  }
+  await getSchedule(db, id);
+  if (action === "/weekly") return saveWeeklySchedule(db, parseWeeklySchedule(input), id);
+  if (action === "/overrides") return saveScheduleOverrides(db, parseScheduleOverrides(input), id);
+  throw new ErrorWithCode("not_found", 404);
+}
+
+async function ownerScheduleCatalog(request: Request, db: D1Database): Promise<Response> {
+  if (request.method === "GET") return json(await listSchedules(db));
+  if (request.method === "POST")
+    return json(await createSchedule(db, scheduleName(await body(request))), 201);
+  throw new ErrorWithCode("not_found", 404);
+}
+
+async function ownerSchedules(request: Request, { env }: Dependencies, url: URL): Promise<Response> {
+  await owner(env, request);
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) sameOrigin(request, env.PUBLIC_ORIGIN);
+  if (url.search) throw new ErrorWithCode("invalid_query");
+  const method = request.method;
+  if (url.pathname === "/api/owner/schedules") return ownerScheduleCatalog(request, env.DB);
+  const target = /^\/api\/owner\/schedules\/([^/]+)(\/(?:weekly|overrides|duplicate|default))?$/.exec(
+    url.pathname
+  );
+  if (!target) throw new ErrorWithCode("not_found", 404);
+  const id = scheduleId(target[1]);
+  const action = target[2];
+  if (!action && method === "GET") return json(await getSchedule(env.DB, id));
+  if (!action && method === "DELETE") {
+    if ((await request.text()) !== "") throw new ErrorWithCode("invalid_input");
+    await deleteSchedule(env.DB, id);
+    return json({ saved: true });
+  }
+  if (action === "/duplicate" && method === "POST")
+    return json(await duplicateSchedule(env.DB, id, scheduleName(await body(request))), 201);
+  if (method !== "PATCH") throw new ErrorWithCode("not_found", 404);
+  await ownerSchedulePatch(env.DB, id, action, await body(request));
   return json({ saved: true });
 }
 
@@ -230,13 +309,17 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
   if (selected) mode = { kind: "edit", id: selected.id, lifecycle: selected.lifecycle };
   if (selected && duplicates.length) mode = { kind: "duplicate", id: selected.id };
   const preferences = await getOwnerPreferences(dependencies.env.DB);
-  const settings = {
-    ...preferences,
-    event: selected?.event ?? defaultSettings.event,
-  };
+  const context = selected ? await getAdmissionContext(dependencies.env.DB, selected.id) : null;
+  const settings = context?.settings ?? { ...preferences, event: defaultSettings.event };
+  const defaultScheduleId = await dependencies.env.DB.prepare(
+    "SELECT default_schedule_id FROM organizer_settings WHERE id='owner'"
+  ).first<string>("default_schedule_id");
+  if (!defaultScheduleId) throw new ErrorWithCode("temporarily_unavailable", 503);
   return {
     owner: identity,
     settings,
+    scheduleId: context?.resolvedScheduleId ?? defaultScheduleId,
+    bookingsTimeZone: preferences.schedule.timeZone,
     selectedId,
     creating,
     mode,
@@ -266,13 +349,15 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
+  if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
+    return ownerEvents(request, dependencies, url);
+  }
+  if (path === "/api/owner/schedules" || path.startsWith("/api/owner/schedules/"))
+    return ownerSchedules(request, dependencies, url);
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) sameOrigin(request, env.PUBLIC_ORIGIN);
   if (path === "/api/auth/login" && method === "GET") return beginLogin(env, request);
   if (path === "/api/auth/callback" && method === "GET") return finishLogin(env, request);
   if (path === "/api/auth/logout" && method === "POST") return logout(env, request);
-  if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
-    return ownerEvents(request, dependencies, url);
-  }
   const publicTarget = /^\/api\/events\/([^/]+)(\/(?:slots|bookings))?$/.exec(path);
   const selectedEventId = publicTarget ? eventId(publicTarget[1]) : DEFAULT_EVENT_ID;
   if (publicTarget) {

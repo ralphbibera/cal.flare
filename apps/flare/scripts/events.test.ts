@@ -526,8 +526,8 @@ test("historical private views tolerate missing policy rows but propagate broken
     expected
   );
   await f.db
-    .prepare("INSERT INTO organizer_settings VALUES (?,?,?)")
-    .bind(preferences.id, preferences.json, preferences.version)
+    .prepare("INSERT INTO organizer_settings VALUES (?,?,?,?)")
+    .bind(preferences.id, preferences.json, preferences.version, preferences.default_schedule_id)
     .run();
   const stored = await f.db
     .prepare("SELECT confirmed_json FROM booking WHERE id=?")
@@ -571,7 +571,7 @@ test("event admission fences only selected definitions and shared preferences wi
         id
       );
       const current = await getSettings(f.db, id);
-      const { event, ...preferences } = current;
+      const { event, schedule: _schedule, ...preferences } = current;
       assert.equal(
         await f.db.prepare("SELECT json FROM event_type WHERE id=?").bind(id).first("json"),
         JSON.stringify(event)
@@ -616,7 +616,10 @@ test("event admission fences only selected definitions and shared preferences wi
     }
   }
   for (const corruption of ["raw", "missing-preferences"] as const) {
-    const preferences = await f.db.prepare("SELECT json FROM organizer_settings").first<string>("json");
+    const preferences = await f.db
+      .prepare("SELECT json,version,default_schedule_id FROM organizer_settings")
+      .first<{ json: string; version: number; default_schedule_id: string }>();
+    assert.ok(preferences);
     const event = await f.db.prepare("SELECT json FROM event_type WHERE id=?").bind(id).first<string>("json");
     f.calendar.busy = async (...args) => {
       f.calendar.busy = originalBusy;
@@ -636,7 +639,11 @@ test("event admission fences only selected definitions and shared preferences wi
     );
     if (corruption === "raw")
       await f.db.prepare("UPDATE event_type SET json=? WHERE id=?").bind(event, id).run();
-    else await f.db.prepare("INSERT INTO organizer_settings VALUES ('owner',?,1)").bind(preferences).run();
+    else
+      await f.db
+        .prepare("INSERT INTO organizer_settings VALUES ('owner',?,?,?)")
+        .bind(preferences.json, preferences.version, preferences.default_schedule_id)
+        .run();
   }
   assert.equal(initial.event.noticeMinutes, 120);
 });
