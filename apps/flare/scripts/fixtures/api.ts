@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -162,7 +162,12 @@ export async function apiFixture({
     }
   };
   try {
-    const migrate = async (name: string) => {
+    const migrate = async (...names: string[]) => {
+      const sql = await Promise.all(
+        names.map((name) => readFile(new URL(`../../migrations/${name}`, import.meta.url), "utf8"))
+      );
+      const migrationFile = join(temporary, "migrations.sql");
+      await writeFile(migrationFile, sql.join("\n"));
       await promisify(execFile)(process.execPath, [
         wrangler,
         "d1",
@@ -172,12 +177,12 @@ export async function apiFixture({
         "--persist-to",
         temporary,
         "--file",
-        fileURLToPath(new URL(`../../migrations/${name}`, import.meta.url)),
+        migrationFile,
         "--config",
         configPath,
       ]);
     };
-    for (const name of [
+    await migrate(
       "0001_identity.sql",
       "0002_settings.sql",
       "0003_bookings.sql",
@@ -185,9 +190,8 @@ export async function apiFixture({
       ...(legacyEvents ? [] : ["0005_events.sql"]),
       ...(legacyEvents || legacyLifecycle ? [] : ["0006_event_lifecycle.sql"]),
       ...(legacyEvents || legacyLifecycle || legacySchedules ? [] : ["0007_availability_schedules.sql"]),
-      ...(legacyProfile ? [] : ["0008_public_profile.sql"]),
-    ])
-      await migrate(name);
+      ...(legacyProfile ? [] : ["0008_public_profile.sql"])
+    );
     const connect = () =>
       getPlatformProxy<{ DB: D1Database }>({
         configPath,

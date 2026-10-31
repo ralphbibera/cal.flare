@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -65,7 +65,7 @@ async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
   };
   try {
     const wrangler = join(dirname(require.resolve("wrangler/package.json")), "bin/wrangler.js");
-    for (const name of [
+    const migrations = [
       "0001_identity.sql",
       "0002_settings.sql",
       "0003_bookings.sql",
@@ -74,25 +74,27 @@ async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
       "0006_event_lifecycle.sql",
       "0007_availability_schedules.sql",
       "0008_public_profile.sql",
-    ]) {
-      await promisify(execFile)(
-        process.execPath,
-        [
-          wrangler,
-          "d1",
-          "execute",
-          "calflare",
-          "--local",
-          "--persist-to",
-          temporary,
-          "--file",
-          join(app, "migrations", name),
-          "--config",
-          join(app, "wrangler.jsonc"),
-        ],
-        { env: { ...process.env, WRANGLER_SEND_METRICS: "false" } }
-      );
-    }
+    ];
+    const sql = await Promise.all(migrations.map((name) => readFile(join(app, "migrations", name), "utf8")));
+    const migrationFile = join(temporary, "migrations.sql");
+    await writeFile(migrationFile, sql.join("\n"));
+    await promisify(execFile)(
+      process.execPath,
+      [
+        wrangler,
+        "d1",
+        "execute",
+        "calflare",
+        "--local",
+        "--persist-to",
+        temporary,
+        "--file",
+        migrationFile,
+        "--config",
+        join(app, "wrangler.jsonc"),
+      ],
+      { env: { ...process.env, WRANGLER_SEND_METRICS: "false" } }
+    );
     const { workerOptions, main } = unstable_getMiniflareWorkerOptions(
       join(app, "dist/server/wrangler.json")
     );
