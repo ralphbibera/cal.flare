@@ -1,6 +1,6 @@
 import { parseSettings } from "../domain/settings.ts";
 import type { BookingAvailability } from "./booking-availability.ts";
-import type { Booking, Calendar, Command } from "./booking-model.ts";
+import type { Booking, BookingSnapshot, Calendar, Command } from "./booking-model.ts";
 import { integer, matches, snapshot } from "./booking-model.ts";
 import { GoogleCalendarError } from "./google.ts";
 import { ErrorWithCode } from "./http.ts";
@@ -16,6 +16,29 @@ function notApplied(error: unknown): error is GoogleCalendarError {
   if (!(error instanceof GoogleCalendarError)) return false;
   if (!error.dispatched) return true;
   return error.kind !== "ambiguous" && [400, 401, 403, 404, 405, 422, 429].includes(error.status);
+}
+
+type RecoveryFact =
+  | { kind: "complete"; etag: string | null }
+  | { kind: "attention"; reason: string }
+  | { kind: "continue"; baseEtag: string | null }
+  | { kind: "stale" };
+type Remote = Awaited<ReturnType<Calendar["get"]>>;
+
+function sentRecovery(command: Command, desired: BookingSnapshot, remote: Remote): RecoveryFact {
+  if (command.execution === "sent") {
+    if (command.action === "cancel" && !remote) return { kind: "complete", etag: null };
+    if (
+      remote &&
+      command.action !== "cancel" &&
+      matches(remote, desired) &&
+      (command.action === "create" || remote.etag !== command.base_etag)
+    )
+      return { kind: "complete", etag: remote.etag };
+    if (command.action === "create")
+      return { kind: "attention", reason: remote ? "event_mismatch" : "insert_unresolved" };
+  }
+  return { kind: "continue", baseEtag: command.base_etag };
 }
 
 export class BookingDelivery {
@@ -81,7 +104,6 @@ export class BookingDelivery {
 
   private async run(command: Command, nonce: string): Promise<void> {
     const desired = snapshot(command.desired_json);
-    let baseEtag = command.base_etag;
     const booking = await this.db
       .prepare("SELECT * FROM booking WHERE id=?")
       .bind(command.booking_id)
@@ -91,34 +113,11 @@ export class BookingDelivery {
       command.execution === "sent" || command.action !== "create"
         ? await this.calendar.get(desired.id)
         : null;
-    if (command.execution === "sent") {
-      if (command.action === "cancel" && !remote) return this.finish(command, nonce, null);
-      if (
-        remote &&
-        command.action !== "cancel" &&
-        matches(remote, desired) &&
-        (command.action === "create" || remote.etag !== command.base_etag)
-      )
-        return this.finish(command, nonce, remote.etag);
-      if (command.action === "create")
-        return this.attention(command, nonce, remote ? "event_mismatch" : "insert_unresolved");
-    }
-    if (command.action !== "create") {
-      const confirmed = booking.confirmed_json ? snapshot(booking.confirmed_json) : null;
-      if (!remote || !confirmed || !matches(remote, confirmed))
-        return this.attention(command, nonce, "event_changed");
-      if (baseEtag === null && command.execution === "queued") {
-        const fixed = await this.db
-          .prepare(`UPDATE booking_command SET base_etag=?
-          WHERE id=? AND nonce=? AND terminal=0 AND execution='queued' AND base_etag IS NULL
-          AND EXISTS(SELECT 1 FROM booking WHERE pending_id=booking_command.id AND version=booking_command.accepted_version)`)
-          .bind(remote.etag, command.id, nonce)
-          .run();
-        if (fixed.meta.changes !== 1) return;
-        baseEtag = remote.etag;
-      }
-      if (remote.etag !== baseEtag) return this.attention(command, nonce, "event_changed");
-    }
+    const recovery = await this.reconcile(command, nonce, booking, desired, remote);
+    if (recovery.kind === "complete") return this.finish(command, nonce, recovery.etag);
+    if (recovery.kind === "attention") return this.attention(command, nonce, recovery.reason);
+    if (recovery.kind === "stale") return;
+    const baseEtag = recovery.baseEtag;
     if (command.execution === "queued" && command.action !== "cancel") {
       const condition = await this.availability.condition(
         desired,
@@ -135,28 +134,43 @@ export class BookingDelivery {
       .bind(nonce, command.id, nonce, command.execution)
       .run();
     if (sent.meta.changes !== 1) return;
-    if (command.action === "create") {
-      let result: Awaited<ReturnType<Calendar["insert"]>>;
-      try {
-        result = await this.calendar.insert(desired);
-      } catch (error) {
-        if (!notApplied(error)) throw error;
-        // Only this dispatch can prove its own rejection, even after a lease takeover.
-        await this.db
-          .prepare(`UPDATE booking_command SET execution='queued',dispatch_nonce=NULL,nonce=NULL,
-          lease_until=0,due=?,error=? WHERE id=? AND dispatch_nonce=? AND execution='sent' AND terminal=0`)
-          .bind(
-            this.now() + Math.min(3600_000, 30_000 * 2 ** Math.min(command.attempts, 7)),
-            `calendar_rejected_${error.status}`,
-            command.id,
-            nonce
-          )
-          .run();
-        return;
-      }
-      if (result.id !== desired.id) return this.attention(command, nonce, "event_mismatch");
-      return this.finish(command, nonce, result.etag);
+    return this.dispatch(command, nonce, desired, baseEtag);
+  }
+
+  private async reconcile(
+    command: Command,
+    nonce: string,
+    booking: Booking,
+    desired: BookingSnapshot,
+    remote: Remote
+  ): Promise<RecoveryFact> {
+    const recovery = sentRecovery(command, desired, remote);
+    if (recovery.kind !== "continue" || command.action === "create") return recovery;
+    let baseEtag = recovery.baseEtag;
+    const confirmed = booking.confirmed_json ? snapshot(booking.confirmed_json) : null;
+    if (!remote || !confirmed || !matches(remote, confirmed))
+      return { kind: "attention", reason: "event_changed" };
+    if (baseEtag === null && command.execution === "queued") {
+      const fixed = await this.db
+        .prepare(`UPDATE booking_command SET base_etag=?
+          WHERE id=? AND nonce=? AND terminal=0 AND execution='queued' AND base_etag IS NULL
+          AND EXISTS(SELECT 1 FROM booking WHERE pending_id=booking_command.id AND version=booking_command.accepted_version)`)
+        .bind(remote.etag, command.id, nonce)
+        .run();
+      if (fixed.meta.changes !== 1) return { kind: "stale" };
+      baseEtag = remote.etag;
     }
+    if (remote.etag !== baseEtag) return { kind: "attention", reason: "event_changed" };
+    return { kind: "continue", baseEtag };
+  }
+
+  private async dispatch(
+    command: Command,
+    nonce: string,
+    desired: BookingSnapshot,
+    baseEtag: string | null
+  ): Promise<void> {
+    if (command.action === "create") return this.insert(command, nonce, desired);
     if (!baseEtag) return this.attention(command, nonce, "missing_etag");
     if (command.action === "cancel") {
       await this.calendar.delete(desired.id, baseEtag);
@@ -165,6 +179,29 @@ export class BookingDelivery {
     const result = await this.calendar.update(desired.id, baseEtag, desired);
     if (result.id !== desired.id || result.etag === baseEtag)
       return this.attention(command, nonce, "event_mismatch");
+    return this.finish(command, nonce, result.etag);
+  }
+
+  private async insert(command: Command, nonce: string, desired: BookingSnapshot): Promise<void> {
+    let result: Awaited<ReturnType<Calendar["insert"]>>;
+    try {
+      result = await this.calendar.insert(desired);
+    } catch (error) {
+      if (!notApplied(error)) throw error;
+      // Only this dispatch can prove its own rejection, even after a lease takeover.
+      await this.db
+        .prepare(`UPDATE booking_command SET execution='queued',dispatch_nonce=NULL,nonce=NULL,
+          lease_until=0,due=?,error=? WHERE id=? AND dispatch_nonce=? AND execution='sent' AND terminal=0`)
+        .bind(
+          this.now() + Math.min(3600_000, 30_000 * 2 ** Math.min(command.attempts, 7)),
+          `calendar_rejected_${error.status}`,
+          command.id,
+          nonce
+        )
+        .run();
+      return;
+    }
+    if (result.id !== desired.id) return this.attention(command, nonce, "event_mismatch");
     return this.finish(command, nonce, result.etag);
   }
 }
