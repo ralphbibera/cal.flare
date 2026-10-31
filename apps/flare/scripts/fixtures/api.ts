@@ -162,7 +162,14 @@ export async function apiFixture({
     }
   };
   try {
-    const migrate = async (name: string) => {
+    const migrate = async (name: string, ...remaining: string[]) => {
+      const migrationFile = join(temporary, "migrations.sql");
+      const sql = await Promise.all(
+        [name, ...remaining].map((file) =>
+          Bun.file(new URL(`../../migrations/${file}`, import.meta.url)).text()
+        )
+      );
+      await Bun.write(migrationFile, sql.join("\n"));
       await promisify(execFile)(process.execPath, [
         wrangler,
         "d1",
@@ -172,12 +179,12 @@ export async function apiFixture({
         "--persist-to",
         temporary,
         "--file",
-        fileURLToPath(new URL(`../../migrations/${name}`, import.meta.url)),
+        migrationFile,
         "--config",
         configPath,
       ]);
     };
-    for (const name of [
+    await migrate(
       "0001_identity.sql",
       "0002_settings.sql",
       "0003_bookings.sql",
@@ -185,9 +192,8 @@ export async function apiFixture({
       ...(legacyEvents ? [] : ["0005_events.sql"]),
       ...(legacyEvents || legacyLifecycle ? [] : ["0006_event_lifecycle.sql"]),
       ...(legacyEvents || legacyLifecycle || legacySchedules ? [] : ["0007_availability_schedules.sql"]),
-      ...(legacyProfile ? [] : ["0008_public_profile.sql"]),
-    ])
-      await migrate(name);
+      ...(legacyProfile ? [] : ["0008_public_profile.sql"])
+    );
     const connect = () =>
       getPlatformProxy<{ DB: D1Database }>({
         configPath,
