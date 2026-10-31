@@ -47,6 +47,8 @@ This is a manually reviewed mapping, not an automatic proof of SQL or TypeScript
 
 Migration `0008_public_profile.sql` creates only the owner-linked profile table. Profile writes do not change bookings, commands, reservations, or their triggers, so they stutter in this model. The SQLite witness applies this migration too.
 
+The scheduling validation helpers preserve rejection order and errors. They remain within the same policy-gate projection and do not alter admission or finalization transactions.
+
 At the sync commit, `utcWorkingIntervals`, `subtractBusyIntervals`, and `freeWorkingIntervals` separate availability planning without changing this policy-gate projection. The admission and finalization transactions, occupied interval calculation, and both overlap guards remain unchanged.
 
 ## Understand the bound
