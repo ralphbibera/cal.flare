@@ -38,6 +38,10 @@ function isEventId(value: unknown): value is string {
 
 type MinuteRange = { startMinute: number; endMinute: number };
 type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes" | "location">;
+type OptionalEventPolicy = Pick<
+  EventSettings,
+  "disableCancelling" | "disableRescheduling" | "bookingWindowDays" | "minimumRescheduleNotice"
+>;
 type BookingRules = Required<
   Pick<
     EventSettings,
@@ -146,6 +150,45 @@ function rejectOverlaps(ranges: MinuteRange[]): void {
   }
 }
 
+function parseOptionalEventPolicy(event: Record<string, unknown>): OptionalEventPolicy {
+  const policy: OptionalEventPolicy = {};
+  const flags: ("disableCancelling" | "disableRescheduling")[] = ["disableCancelling", "disableRescheduling"];
+  for (const key of flags) {
+    if (event[key] !== undefined) {
+      if (typeof event[key] !== "boolean") throw new SettingsError(`${key} must be a boolean`);
+      policy[key] = event[key];
+    }
+  }
+  if (Object.hasOwn(event, "bookingWindowDays")) {
+    policy.bookingWindowDays = integer(event.bookingWindowDays, "bookingWindowDays", 1, 365);
+  }
+  if (Object.hasOwn(event, "minimumRescheduleNotice")) {
+    policy.minimumRescheduleNotice = rescheduleNotice(event.minimumRescheduleNotice);
+  }
+  return policy;
+}
+
+function parseDatedOverrides(input: unknown): ScheduleOverrides["overrides"] {
+  const dates = new Set<string>();
+  return list(input, "overrides", 366).map((input) => {
+    const override = object(input, "override");
+    const date = text(override.date, "date", 10, 10);
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== date ||
+      dates.has(date)
+    ) {
+      throw new SettingsError("Overrides require unique valid YYYY-MM-DD dates");
+    }
+    dates.add(date);
+    const ranges = list(override.ranges, "ranges", 100).map(range);
+    rejectOverlaps(ranges);
+    return { date, ranges };
+  });
+}
+
 function parseSettings(input: unknown): Settings {
   const root = object(input, "settings");
   const event = object(root.event, "event");
@@ -181,44 +224,16 @@ function parseSettings(input: unknown): Settings {
       beforeMinutes: integer(event.beforeMinutes, "beforeMinutes", 0, 120),
       afterMinutes: integer(event.afterMinutes, "afterMinutes", 0, 120),
       noticeMinutes: integer(event.noticeMinutes, "noticeMinutes", 0, 43200),
+      ...parseOptionalEventPolicy(event),
     },
     schedule: { timeZone, rules },
   };
-  for (const key of ["disableCancelling", "disableRescheduling"] as const) {
-    if (event[key] !== undefined) {
-      if (typeof event[key] !== "boolean") throw new SettingsError(`${key} must be a boolean`);
-      result.event[key] = event[key];
-    }
-  }
-  if (Object.hasOwn(event, "bookingWindowDays")) {
-    result.event.bookingWindowDays = integer(event.bookingWindowDays, "bookingWindowDays", 1, 365);
-  }
-  if (Object.hasOwn(event, "minimumRescheduleNotice")) {
-    result.event.minimumRescheduleNotice = rescheduleNotice(event.minimumRescheduleNotice);
-  }
   if (Object.hasOwn(event, "location")) {
     const location = locationText(event.location);
     if (location) result.event.location = location;
   }
   if (schedule.overrides !== undefined) {
-    const dates = new Set<string>();
-    result.schedule.overrides = list(schedule.overrides, "overrides", 366).map((input) => {
-      const override = object(input, "override");
-      const date = text(override.date, "date", 10, 10);
-      const parsed = new Date(`${date}T00:00:00Z`);
-      if (
-        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        !Number.isFinite(parsed.getTime()) ||
-        parsed.toISOString().slice(0, 10) !== date ||
-        dates.has(date)
-      ) {
-        throw new SettingsError("Overrides require unique valid YYYY-MM-DD dates");
-      }
-      dates.add(date);
-      const ranges = list(override.ranges, "ranges", 100).map(range);
-      rejectOverlaps(ranges);
-      return { date, ranges };
-    });
+    result.schedule.overrides = parseDatedOverrides(schedule.overrides);
   }
   if (Object.hasOwn(root, "conflictCalendarIds"))
     result.conflictCalendarIds = parseConflictCalendarIds(root.conflictCalendarIds);
