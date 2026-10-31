@@ -1,0 +1,19 @@
+diff --git a/wrangler-dist/cli.js b/wrangler-dist/cli.js
+index ba7b0eaa50fe22ad788897acee9a29d4cdcfc0c9..54577370b624bffbaf225a711c0f074aa9bbf3f3 100644
+--- a/wrangler-dist/cli.js
++++ b/wrangler-dist/cli.js
+@@ -213862,13 +213862,7 @@ var init_ProxyController = __esm({
+                 }, "PROXY_CONTROLLER")
+               },
+               bindings: {
+-                PROXY_CONTROLLER_AUTH_SECRET: this.secret,
+-                // Bun's `fetch()` ignores the undici `dispatcher` that carries
+-                // control messages here, so the ProxyWorker would queue every
+-                // request forever waiting for a `play` message.
+-                ...isBun() && {
+-                  UNSUPPORTED_RUNTIME_MESSAGE: BUN_UNSUPPORTED_MESSAGE
+-                }
++                PROXY_CONTROLLER_AUTH_SECRET: this.secret
+               },
+               // no need to use file-system, so don't
+               cacheAPI: false,

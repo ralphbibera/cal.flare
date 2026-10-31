@@ -1,6 +1,7 @@
 import * as ToggleGroup from "@radix-ui/react-toggle-group";
 import { Provider } from "@radix-ui/react-tooltip";
 import dayjs from "dayjs";
+import type { ComponentProps, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import avatar from "../../../web/public/avatar.svg?url";
 import { BookerClient, ErrorWithCode, type PublicBooking } from "../client/bookings.ts";
@@ -155,14 +156,7 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
   useEffect(() => {
     if (stage.kind === "form") nameInput.current?.focus();
   }, [stage.kind]);
-  const start =
-    stage.kind === "form"
-      ? stage.start
-      : stage.kind === "pending"
-        ? stage.request.start
-        : stage.kind === "receipt"
-          ? stage.booking?.start
-          : undefined;
+  const start = selectedStart(stage);
   const selected = start === undefined ? undefined : new Date(start).toISOString();
   function back() {
     if (busy || stage.kind !== "form") return;
@@ -283,50 +277,248 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
   );
   const timeFormatToggle = <TimeFormatToggle value={format} onChange={setFormat} labels={labels} />;
   const formActive = stage.kind === "form" || stage.kind === "pending";
-  const view: CalendarView =
-    width <= 768 || (stage.kind !== "calendar" && !formActive) || layout === "month_view"
-      ? { kind: "month" }
-      : layout === "week_view"
-        ? { kind: "week", count: width <= 1024 ? 4 : 7, duration: event.durationMinutes }
-        : { kind: "column", count: width <= 1024 ? 2 : 6 };
+  const calendar = calendarPresentation(stage, width, layout, event.durationMinutes);
+  const { view, showCalendar } = calendar;
   const wide = view.kind !== "month";
-  const showCalendar = stage.kind === "calendar" || (wide && formActive);
   if (stage.kind === "receipt") {
     return (
-      <div className="text-default mx-auto min-h-full w-full self-start px-4 py-8">
-        {stage.booking ? (
-          <BookingManagement
-            booking={stage.booking}
-            access={stage.receipt.access}
-            labels={labels}
-            timeFormat={format}
-            onUpdated={(booking) => setStage({ ...stage, booking })}
-          />
-        ) : (
-          <section className="border-subtle mx-auto max-w-xl space-y-4 rounded-lg border p-8">
-            <h1 className="text-emphasis text-2xl font-semibold" aria-live="polite">
-              {busy ? labels.loading : labels.statusUnavailable}
-            </h1>
-            {error && <p role="alert">{error}</p>}
-            <Button color="secondary" loading={busy} onClick={() => void loadReceipt(stage.receipt)}>
-              {labels.checkStatus}
-            </Button>
-          </section>
-        )}
-      </div>
+      <BookingReceipt
+        stage={stage}
+        labels={labels}
+        format={format}
+        busy={busy}
+        error={error}
+        onUpdated={(booking) => setStage({ ...stage, booking })}
+        onCheckStatus={() => void loadReceipt(stage.receipt)}
+      />
     );
   }
   const layoutToggle = (
+    <BookerLayoutToggle
+      value={wide ? layout : "month_view"}
+      labels={labels}
+      onChange={setLayout}
+      onCursorChange={setCursor}
+    />
+  );
+  const metadata = (
+    <BookerMetadata
+      organizer={organizer}
+      event={event}
+      labels={labels}
+      stage={stage}
+      calendar={calendar}
+      timeZone={timeZone}
+      zones={zones}
+      onTimeZoneChange={setTimeZone}
+      selected={selected}
+      selectedLabel={selectedLabel}
+      durationLabel={durationLabel}
+      timeFormatToggle={timeFormatToggle}
+    />
+  );
+  return (
+    <BookerFrame calendar={calendar} stage={stage} layoutToggle={layoutToggle}>
+      {showCalendar ? (
+        <BookingCalendar
+          access={{ kind: "event", id: eventId }}
+          metadata={metadata}
+          view={view}
+          layoutToggle={layoutToggle}
+          cursor={cursor}
+          onCursorChange={setCursor}
+          returnFocusTime={returnFocusTime}
+          locale="en-US"
+          timeZone={timeZone}
+          timeFormat={format}
+          timeFormatToggle={timeFormatToggle}
+          labels={labels}
+          selectedTime={selected}
+          onTimeSelect={(value) => {
+            setReturnFocusTime(undefined);
+            setError("");
+            setStage({ kind: "form", start: Date.parse(value) });
+          }}
+        />
+      ) : (
+        metadata
+      )}
+      {stage.kind !== "calendar" && (
+        <BookingFormDialog
+          active={formActive}
+          forceModal={wide}
+          heading={labels.confirmDetails}
+          summary={
+            selected && (
+              <div className="my-4 flex flex-wrap gap-2 rounded-md leading-none">
+                <div className="inline-flex items-center justify-center gap-x-1 rounded-lg bg-gray-100 px-1.5 py-1 font-medium text-gray-800 text-sm leading-none dark:bg-darkgray-200 dark:text-darkgray-800">
+                  <Icon name="calendar" size={12} className="shrink-0 stroke-[3px]" />
+                  <time dateTime={selected} className="contents">
+                    {appointment?.date}, {appointment?.time}
+                  </time>
+                </div>
+                <div className="inline-flex items-center justify-center gap-x-1 rounded-lg bg-gray-100 px-1.5 py-1 font-medium text-gray-800 text-sm leading-none dark:bg-darkgray-200 dark:text-darkgray-800">
+                  <Icon name="clock" size={12} className="shrink-0 stroke-[3px]" />
+                  <span>{durationLabel}</span>
+                </div>
+                <span className="text-subtle w-full text-sm">{selectedZone}</span>
+              </div>
+            )
+          }
+          locked={busy || stage.kind === "pending"}
+          onBack={back}>
+          {stage.kind === "loading" && <p role="status">{labels.loading}</p>}
+          {(stage.kind === "form" || stage.kind === "pending") && (
+            <BookingDraftForm
+              stage={stage}
+              draft={draft}
+              onDraftChange={setDraft}
+              guestInvalid={guestInvalid}
+              onGuestInvalidChange={setGuestInvalid}
+              nameInput={nameInput}
+              emailInput={emailInput}
+              busy={busy}
+              error={error}
+              labels={labels}
+              onSubmit={submit}
+              onBack={back}
+            />
+          )}
+          {stage.kind === "blocked" && (
+            <>
+              <p role="alert">{error}</p>
+              <Button onClick={restore}>{labels.retry}</Button>
+            </>
+          )}
+        </BookingFormDialog>
+      )}
+    </BookerFrame>
+  );
+}
+
+type CalendarPresentation = { view: CalendarView; showCalendar: boolean };
+
+function BookerFrame({
+  calendar,
+  stage,
+  layoutToggle,
+  children,
+}: {
+  calendar: CalendarPresentation;
+  stage: Stage;
+  layoutToggle: ReactElement;
+  children: ReactNode;
+}): ReactElement {
+  const wide = calendar.view.kind !== "month";
+  const formActive = stage.kind === "form" || stage.kind === "pending";
+  return (
+    <div
+      className={`main text-default flex min-h-full w-full flex-col items-center ${wide ? "overflow-clip" : "overflow-visible min-[769px]:my-20"}`}>
+      <div className="fixed right-4 top-4 z-20 hidden min-[769px]:block">{layoutToggle}</div>
+      <div
+        data-testid="booker-container"
+        className={
+          wide
+            ? "bg-default grid min-h-screen h-auto w-screen max-w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header_header'_'meta_main_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px] sm:transition-[width] sm:duration-300 sm:motion-reduce:transition-none"
+            : formActive
+              ? "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:420px] [--booker-meta-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_var(--booker-main-width)] min-[769px]:grid-rows-[1fr_0fr] lg:[--booker-meta-width:340px]"
+              : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
+        }>
+        {children}
+      </div>
+      {!wide && <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />}
+    </div>
+  );
+}
+
+function selectedStart(stage: Stage): number | undefined {
+  if (stage.kind === "form") return stage.start;
+  if (stage.kind === "pending") return stage.request.start;
+  if (stage.kind === "receipt") return stage.booking?.start;
+}
+
+function calendarPresentation(
+  stage: Stage,
+  width: number,
+  layout: BookerLayout,
+  duration: number
+): CalendarPresentation {
+  const formActive = stage.kind === "form" || stage.kind === "pending";
+  let view: CalendarView = { kind: "month" };
+  if (width > 768 && (stage.kind === "calendar" || formActive) && layout !== "month_view") {
+    if (layout === "week_view") view = { kind: "week", count: width <= 1024 ? 4 : 7, duration };
+    else view = { kind: "column", count: width <= 1024 ? 2 : 6 };
+  }
+  return { view, showCalendar: stage.kind === "calendar" || (view.kind !== "month" && formActive) };
+}
+
+function BookingReceipt({
+  stage,
+  labels,
+  format,
+  busy,
+  error,
+  onUpdated,
+  onCheckStatus,
+}: {
+  stage: Extract<Stage, { kind: "receipt" }>;
+  labels: PublicBookerProps["labels"];
+  format: ComponentProps<typeof TimeFormatToggle>["value"];
+  busy: boolean;
+  error: string;
+  onUpdated: (booking: Booking) => void;
+  onCheckStatus: () => void;
+}): ReactElement {
+  return (
+    <div className="text-default mx-auto min-h-full w-full self-start px-4 py-8">
+      {stage.booking ? (
+        <BookingManagement
+          booking={stage.booking}
+          access={stage.receipt.access}
+          labels={labels}
+          timeFormat={format}
+          onUpdated={onUpdated}
+        />
+      ) : (
+        <section className="border-subtle mx-auto max-w-xl space-y-4 rounded-lg border p-8">
+          <h1 className="text-emphasis text-2xl font-semibold" aria-live="polite">
+            {busy ? labels.loading : labels.statusUnavailable}
+          </h1>
+          {error && <p role="alert">{error}</p>}
+          <Button color="secondary" loading={busy} onClick={onCheckStatus}>
+            {labels.checkStatus}
+          </Button>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function BookerLayoutToggle({
+  value,
+  labels,
+  onChange,
+  onCursorChange,
+}: {
+  value: BookerLayout;
+  labels: PublicBookerProps["labels"];
+  onChange: (layout: BookerLayout) => void;
+  onCursorChange: Dispatch<SetStateAction<CalendarCursor>>;
+}): ReactElement {
+  return (
     <Provider>
       <ToggleGroup.Root
         type="single"
-        value={wide ? layout : "month_view"}
+        value={value}
         aria-label={labels.layout}
         onValueChange={(next) => {
           if (next !== "month_view" && next !== "column_view" && next !== "week_view") return;
-          setLayout(next);
+          onChange(next);
           if (next !== "month_view")
-            setCursor((previous) => ({ ...previous, date: previous.date ?? dayjs().format("YYYY-MM-DD") }));
+            onCursorChange((previous) => ({
+              ...previous,
+              date: previous.date ?? dayjs().format("YYYY-MM-DD"),
+            }));
           const url = new URL(location.href);
           url.searchParams.set("layout", next);
           history.replaceState(null, "", url);
@@ -345,7 +537,33 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
       </ToggleGroup.Root>
     </Provider>
   );
-  const metadata = (
+}
+
+function BookerMetadata({
+  organizer,
+  event,
+  labels,
+  stage,
+  calendar,
+  timeZone,
+  zones,
+  onTimeZoneChange,
+  selected,
+  selectedLabel,
+  durationLabel,
+  timeFormatToggle,
+}: Pick<PublicBookerProps, "organizer" | "event" | "labels"> & {
+  stage: Stage;
+  calendar: CalendarPresentation;
+  timeZone: string;
+  zones: ComponentProps<typeof TimezoneSelect>["data"];
+  onTimeZoneChange: (zone: string) => void;
+  selected: string | undefined;
+  selectedLabel: string | undefined;
+  durationLabel: ReturnType<typeof formatDuration>;
+  timeFormatToggle: ReactElement;
+}): ReactElement {
+  return (
     <section className="relative z-10 p-6" data-testid="event-meta">
       <ul className="border-muted flex items-center">
         <li className="-mr-1 inline-block">
@@ -373,11 +591,11 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
           icon="globe"
           className="cursor-pointer [&_.current-timezone:before]:focus-within:opacity-100 [&_.current-timezone:before]:hover:opacity-100"
           contentClassName="relative max-w-[90%]">
-          {showCalendar || stage.kind === "loading" ? (
+          {calendar.showCalendar || stage.kind === "loading" ? (
             <span className="current-timezone before:bg-subtle min-w-32 -mt-[2px] flex h-6 max-w-full items-center justify-start before:absolute before:inset-0 before:bottom-[-3px] before:left-[-30px] before:top-[-3px] before:w-[calc(100%+35px)] before:rounded-md before:py-3 before:opacity-0 before:transition-opacity">
               <TimezoneSelect
                 value={timeZone}
-                onChange={setTimeZone}
+                onChange={onTimeZoneChange}
                 data={zones}
                 label={labels.timeZone}
                 disabled={stage.kind !== "calendar"}
@@ -387,8 +605,8 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
             timeZone
           )}
         </EventMetaBlock>
-        {!showCalendar && timeFormatToggle}
-        {selected && !wide && (
+        {!calendar.showCalendar && timeFormatToggle}
+        {selected && calendar.view.kind === "month" && (
           <EventMetaBlock icon="calendar" role="status">
             {labels.selectedTime}
             <br />
@@ -398,193 +616,147 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
       </div>
     </section>
   );
+}
+
+function BookingDraftForm({
+  stage,
+  draft,
+  onDraftChange,
+  guestInvalid,
+  onGuestInvalidChange,
+  nameInput,
+  emailInput,
+  busy,
+  error,
+  labels,
+  onSubmit,
+  onBack,
+}: {
+  stage: Extract<Stage, { kind: "form" | "pending" }>;
+  draft: BookingDraft;
+  onDraftChange: (draft: BookingDraft) => void;
+  guestInvalid: boolean;
+  onGuestInvalidChange: (invalid: boolean) => void;
+  nameInput: ComponentProps<typeof Input>["ref"];
+  emailInput: ComponentProps<typeof Input>["ref"];
+  busy: boolean;
+  error: string;
+  labels: PublicBookerProps["labels"];
+  onSubmit: () => Promise<void>;
+  onBack: () => void;
+}): ReactElement {
+  const readOnly = busy || stage.kind === "pending";
   return (
-    <div
-      className={`main text-default flex min-h-full w-full flex-col items-center ${wide ? "overflow-clip" : "overflow-visible min-[769px]:my-20"}`}>
-      <div className="fixed right-4 top-4 z-20 hidden min-[769px]:block">{layoutToggle}</div>
-      <div
-        data-testid="booker-container"
-        className={
-          wide
-            ? "bg-default grid min-h-screen h-auto w-screen max-w-full grid-cols-[var(--booker-meta-width)_1fr] grid-rows-[70px_auto] [grid-template-areas:'meta_header_header'_'meta_main_main'] [--booker-meta-width:340px] lg:[--booker-meta-width:424px] sm:transition-[width] sm:duration-300 sm:motion-reduce:transition-none"
-            : formActive
-              ? "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:420px] [--booker-meta-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_var(--booker-main-width)] min-[769px]:grid-rows-[1fr_0fr] lg:[--booker-meta-width:340px]"
-              : "bg-default border-subtle dark:bg-cal-muted grid w-full max-w-full items-start [--booker-main-width:480px] [--booker-meta-width:240px] [--booker-timeslots-width:240px] min-[769px]:min-h-[450px] min-[769px]:w-[calc(var(--booker-meta-width)+var(--booker-main-width)+var(--booker-timeslots-width))] min-[769px]:rounded-md min-[769px]:border min-[769px]:grid-cols-[var(--booker-meta-width)_1fr_var(--booker-timeslots-width)] lg:[--booker-meta-width:280px] lg:[--booker-timeslots-width:280px]"
-        }>
-        {showCalendar ? (
-          <BookingCalendar
-            access={{ kind: "event", id: eventId }}
-            metadata={metadata}
-            view={view}
-            layoutToggle={layoutToggle}
-            cursor={cursor}
-            onCursorChange={setCursor}
-            returnFocusTime={returnFocusTime}
-            locale="en-US"
-            timeZone={timeZone}
-            timeFormat={format}
-            timeFormatToggle={timeFormatToggle}
-            labels={labels}
-            selectedTime={selected}
-            onTimeSelect={(value) => {
-              setReturnFocusTime(undefined);
-              setError("");
-              setStage({ kind: "form", start: Date.parse(value) });
-            }}
+    <form
+      noValidate
+      className="flex h-full flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit();
+      }}>
+      <div className="flex flex-col gap-4 pb-4">
+        <div>
+          <Label htmlFor="booker-name">
+            {labels.publicName}
+            <span aria-hidden="true" className="text-default ml-1 font-medium">
+              *
+            </span>
+          </Label>
+          <Input
+            ref={nameInput}
+            className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
+            id="booker-name"
+            name="name"
+            autoComplete="name"
+            required
+            maxLength={200}
+            pattern=".*\S.*"
+            readOnly={readOnly}
+            value={stage.kind === "pending" ? stage.request.name : draft.name}
+            onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
           />
-        ) : (
-          metadata
-        )}
-        {stage.kind !== "calendar" && (
-          <BookingFormDialog
-            active={formActive}
-            forceModal={wide}
-            heading={labels.confirmDetails}
-            summary={
-              selected && (
-                <div className="my-4 flex flex-wrap gap-2 rounded-md leading-none">
-                  <div className="inline-flex items-center justify-center gap-x-1 rounded-lg bg-gray-100 px-1.5 py-1 font-medium text-gray-800 text-sm leading-none dark:bg-darkgray-200 dark:text-darkgray-800">
-                    <Icon name="calendar" size={12} className="shrink-0 stroke-[3px]" />
-                    <time dateTime={selected} className="contents">
-                      {appointment?.date}, {appointment?.time}
-                    </time>
-                  </div>
-                  <div className="inline-flex items-center justify-center gap-x-1 rounded-lg bg-gray-100 px-1.5 py-1 font-medium text-gray-800 text-sm leading-none dark:bg-darkgray-200 dark:text-darkgray-800">
-                    <Icon name="clock" size={12} className="shrink-0 stroke-[3px]" />
-                    <span>{durationLabel}</span>
-                  </div>
-                  <span className="text-subtle w-full text-sm">{selectedZone}</span>
-                </div>
-              )
-            }
-            locked={busy || stage.kind === "pending"}
-            onBack={back}>
-            {stage.kind === "loading" && <p role="status">{labels.loading}</p>}
-            {(stage.kind === "form" || stage.kind === "pending") && (
-              <form
-                noValidate
-                className="flex h-full flex-col"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submit();
-                }}>
-                <div className="flex flex-col gap-4 pb-4">
-                  <div>
-                    <Label htmlFor="booker-name">
-                      {labels.publicName}
-                      <span aria-hidden="true" className="text-default ml-1 font-medium">
-                        *
-                      </span>
-                    </Label>
-                    <Input
-                      ref={nameInput}
-                      className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
-                      id="booker-name"
-                      name="name"
-                      autoComplete="name"
-                      required
-                      maxLength={200}
-                      pattern=".*\S.*"
-                      readOnly={busy || stage.kind === "pending"}
-                      value={stage.kind === "pending" ? stage.request.name : draft.name}
-                      onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="booker-email" className="flex w-fit items-center">
-                      <span>{labels.publicEmail}</span>
-                      <span
-                        aria-hidden="true"
-                        className="text-emphasis -mb-1 ml-1 text-sm font-medium leading-none">
-                        *
-                      </span>
-                    </Label>
-                    <Input
-                      ref={emailInput}
-                      className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
-                      id="booker-email"
-                      type="email"
-                      name="email"
-                      autoComplete="email"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      required
-                      maxLength={254}
-                      readOnly={busy || stage.kind === "pending"}
-                      value={stage.kind === "pending" ? stage.request.email : draft.email}
-                      onChange={(event) => setDraft({ ...draft, email: event.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="notes" className="flex w-fit items-center">
-                      <span>{labels.notes}</span>
-                      <span aria-hidden="true" className="-mb-1 ml-1" />
-                    </Label>
-                    <TextArea
-                      id="notes"
-                      name="notes"
-                      rows={3}
-                      placeholder={labels.notesPlaceholder}
-                      className="mb-2 resize-y leading-5"
-                      readOnly={busy || stage.kind === "pending"}
-                      value={stage.kind === "pending" ? (stage.request.notes ?? "") : draft.notes}
-                      onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
-                    />
-                  </div>
-                  <GuestFields
-                    rows={
-                      stage.kind === "pending"
-                        ? (stage.request.guests ?? []).map((value) => ({ id: value, value }))
-                        : draft.guests
-                    }
-                    onChange={(guests) => {
-                      setDraft({ ...draft, guests });
-                      setGuestInvalid(false);
-                    }}
-                    readOnly={busy || stage.kind === "pending"}
-                    invalid={guestInvalid}
-                    labels={labels}
-                  />
-                </div>
-                {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
-                {error && <p role="alert">{error}</p>}
-                <div className="my-3 w-full text-subtle text-xs">
-                  {labels.agreement.split(/(<0>.*?<\/0>|<1>.*?<\/1>)/).map((part) =>
-                    part.startsWith("<0>") || part.startsWith("<1>") ? (
-                      <a
-                        key={part}
-                        className="text-emphasis hover:underline"
-                        href={part.startsWith("<0>") ? "https://cal.com/terms" : "https://cal.com/privacy"}
-                        target="_blank"
-                        rel="noopener noreferrer">
-                        {part.slice(3, -4)}
-                      </a>
-                    ) : (
-                      part
-                    )
-                  )}
-                </div>
-                <div className="modalsticky mt-auto flex justify-end space-x-2">
-                  <Button color="minimal" disabled={busy || stage.kind === "pending"} onClick={back}>
-                    {labels.back}
-                  </Button>
-                  <Button type="submit" loading={busy}>
-                    {stage.kind === "pending" ? labels.retry : labels.confirm}
-                  </Button>
-                </div>
-              </form>
-            )}
-            {stage.kind === "blocked" && (
-              <>
-                <p role="alert">{error}</p>
-                <Button onClick={restore}>{labels.retry}</Button>
-              </>
-            )}
-          </BookingFormDialog>
+        </div>
+        <div>
+          <Label htmlFor="booker-email" className="flex w-fit items-center">
+            <span>{labels.publicEmail}</span>
+            <span aria-hidden="true" className="text-emphasis -mb-1 ml-1 text-sm font-medium leading-none">
+              *
+            </span>
+          </Label>
+          <Input
+            ref={emailInput}
+            className="min-w-0 truncate rounded-lg font-medium leading-none focus:outline-none focus:ring-0"
+            id="booker-email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            required
+            maxLength={254}
+            readOnly={readOnly}
+            value={stage.kind === "pending" ? stage.request.email : draft.email}
+            onChange={(event) => onDraftChange({ ...draft, email: event.target.value })}
+          />
+        </div>
+        <div>
+          <Label htmlFor="notes" className="flex w-fit items-center">
+            <span>{labels.notes}</span>
+            <span aria-hidden="true" className="-mb-1 ml-1" />
+          </Label>
+          <TextArea
+            id="notes"
+            name="notes"
+            rows={3}
+            placeholder={labels.notesPlaceholder}
+            className="mb-2 resize-y leading-5"
+            readOnly={readOnly}
+            value={stage.kind === "pending" ? (stage.request.notes ?? "") : draft.notes}
+            onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
+          />
+        </div>
+        <GuestFields
+          rows={
+            stage.kind === "pending"
+              ? (stage.request.guests ?? []).map((value) => ({ id: value, value }))
+              : draft.guests
+          }
+          onChange={(guests) => {
+            onDraftChange({ ...draft, guests });
+            onGuestInvalidChange(false);
+          }}
+          readOnly={readOnly}
+          invalid={guestInvalid}
+          labels={labels}
+        />
+      </div>
+      {stage.kind === "pending" && <p role="status">{labels.pending}</p>}
+      {error && <p role="alert">{error}</p>}
+      <div className="my-3 w-full text-subtle text-xs">
+        {labels.agreement.split(/(<0>.*?<\/0>|<1>.*?<\/1>)/).map((part) =>
+          part.startsWith("<0>") || part.startsWith("<1>") ? (
+            <a
+              key={part}
+              className="text-emphasis hover:underline"
+              href={part.startsWith("<0>") ? "https://cal.com/terms" : "https://cal.com/privacy"}
+              target="_blank"
+              rel="noopener noreferrer">
+              {part.slice(3, -4)}
+            </a>
+          ) : (
+            part
+          )
         )}
       </div>
-      {!wide && <span className="mb-6 mt-auto hidden pt-6 min-[769px]:block" aria-hidden="true" />}
-    </div>
+      <div className="modalsticky mt-auto flex justify-end space-x-2">
+        <Button color="minimal" disabled={readOnly} onClick={onBack}>
+          {labels.back}
+        </Button>
+        <Button type="submit" loading={busy}>
+          {stage.kind === "pending" ? labels.retry : labels.confirm}
+        </Button>
+      </div>
+    </form>
   );
 }
 

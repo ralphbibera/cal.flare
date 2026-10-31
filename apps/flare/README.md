@@ -9,46 +9,66 @@ This page is the development and implementation reference.
 
 ## Install and run
 
-Use Node 24.22.1 and Yarn 4.12.0. `mise.toml` pins the project Node version without changing your global default.
+Use Bun 1.4.4. `mise.toml` pins the project Bun version without changing your global default.
 With Mise installed, run these commands from the repository root:
 
 ```sh
 mise install
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs install --immutable
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs dev
+mise exec -- bun install --frozen-lockfile
+mise exec -- bun run dev
 ```
 
-If Node 24.22.1 is already active, omit `mise exec --` from these commands.
+If Bun 1.4.4 is already active, omit `mise exec --` from these commands.
+`package.json` and CI select the same version. `bun.lock` pins dependencies.
+The hoisted linker lets the unchanged upstream UI reference files resolve shared packages.
+Only `esbuild` and `workerd` lifecycle scripts are trusted during installation.
+Their pinned patches run `install.js` with Bun because `run.bun` does not affect install lifecycle commands.
+The root and app `bunfig.toml` files run Node-shebang tool entrypoints with Bun, including Astro, Wrangler,
+TypeScript, and Playwright. Child processes using `process.execPath` also use Bun.
+Worker and D1 execution remains in workerd, browser execution remains in Chromium,
+and the SQLite reservation check uses Python. Inherited apps and packages remain archival.
+
+The two pinned Miniflare patches load npm `undici/index.js` explicitly. Bun 1.4.4's
+built-in `undici` ignores the custom dispatcher used to route local Worker requests.
+The Wrangler patch removes its local proxy's unsupported-runtime response after
+Miniflare uses npm Undici. Keep these patches until the existing type, D1, Worker,
+browser, and local preview checks pass without them.
 
 Request `/api/health` on the printed local URL.
 A successful response is `{"status":"ok","storage":"d1"}`.
 It executes a query through the configured D1 binding.
 No Cloudflare account, database provisioning, or Google credentials are needed for this local check.
 
-For a built Worker, run `build` followed by `preview` through the same bundled Yarn command.
+For a built Worker, run `bun run build` followed by `bun run preview`.
 `preview` invokes local Wrangler against Astro's generated deployment configuration.
 No deploy command is provided by the root scripts.
 The [production procedure](SETUP.md#deploy-to-cloudflare-workers) builds after source configuration,
-then deploys with `yarn workspace @calflare/web exec wrangler deploy --config dist/server/wrangler.json`.
+then deploys with `bun run --cwd apps/flare wrangler deploy --config dist/server/wrangler.json`.
 Local preview and mocked-provider checks do not establish production readiness.
 
 ## Verify the focused port
 
-Run these root scripts with the same Node/Yarn command:
+Run these root scripts with Bun:
 
 ```sh
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs type-check
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs type-check:ci --force
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs lint
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs test
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs test:sqlite
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs build
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs verify:worker
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs verify:ui
+mise exec -- bun run type-check
+mise exec -- bun run type-check:ci --force
+mise exec -- bun run lint
+mise exec -- bun run test
+mise exec -- bun run test:sqlite
+mise exec -- bun run build
+mise exec -- bun run verify:worker
+mise exec -- bun run verify:ui
 ```
 
+For reservation admission, hold, retry, or finalization changes, follow the
+[reservation verification skill](../../.agents/skills/verify-booking-reservations/SKILL.md)
+and run `mise exec -- bun run verify:formal`. The Bun/TypeScript wrapper checks real SQL,
+covered-source drift, and a bounded TLA+ model. It also requires Java 11+ and `gh` for the
+first download of the pinned verifier. Read the skill's bounds before interpreting a pass.
+
 The browser verifier requires the build and Playwright's matching Chromium installation.
-CI installs it with `yarn workspace @calflare/web exec playwright install --with-deps --only-shell chromium`.
+CI installs it with `bun run --cwd apps/flare playwright install --with-deps --only-shell chromium`.
 It compares shared components with pinned upstream rendering and drives the public Astro page
 through the built local Worker. Provider responses are controlled fixtures.
 The page journey covers hydration, static assets, escaped event text, timezone selection,

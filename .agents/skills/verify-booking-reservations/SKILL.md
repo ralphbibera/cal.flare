@@ -21,10 +21,10 @@ Harm: A broken hold lets the organizer accept two appointments for the same time
 2. From the checkout root, run the single check command:
 
    ```sh
-   python3 .agents/skills/verify-booking-reservations/resources/check.py
+   bun run verify:formal
    ```
 
-   Requires Python 3 with SQLite JSON operators, Java 11+, and `gh` for the first download. No package install or server is needed. It downloads TLA+ Tools release v1.7.4 (TLC 2.19) to ignored `.verification/formal/tla2tools.jar`, checks SHA256 `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`, executes real migration/service SQL against temporary SQLite, and runs TLC with one worker. Temporary databases and TLC state are removed. Exit 0 requires both checks and the drift gate to pass. Other exits need diagnosis; never treat a tool failure as a finding or a pass.
+   Requires the repository's pinned Bun version, Java 11+, and `gh` for the first download. The TypeScript wrapper uses Bun's built-in SQLite driver. No server is needed. It downloads TLA+ Tools release v1.7.4 (TLC 2.19) to ignored `.verification/formal/tla2tools.jar`, checks SHA256 `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`, executes real migration/service SQL against temporary SQLite, and runs TLC with one worker. Temporary databases and TLC state are removed. Exit 0 requires both checks and the drift gate to pass. Other exits need diagnosis; never treat a tool failure as a finding or a pass.
 3. Read every TLA+ result with Kitchen `/statechart`. Follow that skill's current instructions in a scratch directory, using this model and config and the checked jar. Do not copy machine-specific statechart commands into this skill. Use the action map below to explain the shortest counterexample in booking terms. Above its chart budget, statechart reports counts and bug paths without a full passing chart.
 4. If a counterexample appears, replay each transaction against the actual SQL. A model trace alone is not a product bug. Preserve real findings; do not weaken `NoOverlap`, hide interleavings, or add an overlap assumption to get a pass. Do not change product code without task authorization.
 

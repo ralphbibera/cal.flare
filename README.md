@@ -29,11 +29,11 @@ Install [Mise](https://mise.jdx.dev/), then run:
 git clone https://github.com/ralphbibera/cal.flare.git
 cd cal.flare
 mise install
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs install --immutable
-mise exec -- node .yarn/releases/yarn-4.12.0.cjs dev
+mise exec -- bun install --frozen-lockfile
+mise exec -- bun run dev
 ```
 
-Mise selects Node 24.22.1. The repository includes Yarn 4.12.0.
+Mise selects Bun 1.4.4 for dependency installation and JavaScript/TypeScript tooling.
 Complete the [local configuration](apps/flare/SETUP.md#create-local-configuration) to enable Google sign-in and bookings.
 See the [development guide](apps/flare/README.md) for build and test commands.
 

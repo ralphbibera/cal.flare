@@ -8,6 +8,7 @@ import process from "node:process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { CoreHeaders, convertV4MiniflareOptions, Headers, Miniflare, ProxyOps } from "miniflare";
 import { getPlatformProxy } from "wrangler";
 
 type Input = {
@@ -27,6 +28,53 @@ type Input = {
   tokenHash?: string;
   precondition?: "accepted" | "conflict" | "invalid_slot";
 };
+
+test("D1 detached methods and in-flight native arguments survive garbage collection", async () => {
+  const mf = new Miniflare(
+    convertV4MiniflareOptions({
+      modules: true,
+      script: "export default { fetch() { return new Response('ok'); } }",
+      d1Databases: ["DB"],
+    })
+  );
+  const dispatch = mf.dispatchFetch;
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const freed = Promise.withResolvers<void>();
+  let pauseBatch = false;
+  let collecting: ReturnType<typeof setInterval> | undefined;
+  mf.dispatchFetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    if (pauseBatch && headers.get(CoreHeaders.OP_KEY) === "batch") {
+      started.resolve();
+      await release.promise;
+    }
+    const response = await dispatch(input, init);
+    if (headers.get(CoreHeaders.OP) === ProxyOps.FREE) freed.resolve();
+    return response;
+  };
+  try {
+    const db = await mf.getD1Database("DB");
+    await db.batch([db.prepare("SELECT 1 AS value")]);
+    const first = db.prepare("SELECT 42 AS value").first;
+    const statements = [db.prepare("SELECT 43 AS value")];
+    pauseBatch = true;
+    const pending = db.batch(statements);
+    await started.promise;
+    statements.length = 0;
+    // Wait for real native cleanup while the serialized batch is still in transit.
+    collecting = setInterval(() => Bun.gc(true), 10);
+    await freed.promise;
+    clearInterval(collecting);
+    release.resolve();
+    assert.deepEqual((await pending)[0].results, [{ value: 43 }]);
+    assert.equal(await first("value"), 42);
+  } finally {
+    clearInterval(collecting);
+    release.resolve();
+    await mf.dispose();
+  }
+});
 
 test("D1 booking commands atomically retain intent and occupancy through lifecycle transitions", async () => {
   const configPath = fileURLToPath(new URL("../wrangler.jsonc", import.meta.url));
