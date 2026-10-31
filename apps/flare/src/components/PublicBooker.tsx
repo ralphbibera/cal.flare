@@ -33,6 +33,7 @@ type PublicBookerProps = Pick<PublicBooking, "organizer" | "event"> & {
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
 type BookingDraft = { name: string; email: string; notes: string; guests: GuestRow[] };
+type PreparedCreate = { store: CreateAttempts; pending: PendingCreate };
 type BookerLayout = "month_view" | "week_view" | "column_view";
 const layouts = [
   { value: "month_view", label: "monthView", icon: "calendar" },
@@ -170,33 +171,11 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
     setGuestInvalid(false);
     setStage({ kind: "calendar" });
   }
-  async function submit() {
+  async function submit(): Promise<void> {
     if (submitting.current || busy || (stage.kind !== "form" && stage.kind !== "pending")) return;
-    if (stage.kind === "form") {
-      setError("");
-      if (!nameInput.current?.reportValidity() || !emailInput.current?.reportValidity()) return;
-      const invalid = parseGuests(draft.guests.map((row) => row.value)) === null;
-      setGuestInvalid(invalid);
-      if (invalid) return;
-    }
-    let pending: PendingCreate;
-    let store: CreateAttempts;
-    try {
-      store = attempts();
-      pending =
-        stage.kind === "pending"
-          ? stage
-          : store.begin({
-              start: stage.start,
-              ...draft,
-              guests: draft.guests.map((row) => row.value),
-              timeZone,
-            });
-      store.verify(pending);
-    } catch (failure) {
-      invalidAttempt(failure);
-      return;
-    }
+    const prepared = prepareSubmission(stage);
+    if (!prepared) return;
+    const { store, pending } = prepared;
     submitting.current = true;
     const ticket = ++operation.current;
     setStage(pending);
@@ -212,21 +191,7 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
       setDraft({ name: "", email: "", notes: "", guests: [] });
       setStage({ kind: "receipt", receipt, booking });
     } catch (failure) {
-      if (ticket !== operation.current) return;
-      try {
-        if (store.reject(pending.request.requestKey, failure)) {
-          setStage({ kind: "form", start: pending.request.start });
-          setDraft({
-            name: pending.request.name,
-            email: pending.request.email,
-            notes: pending.request.notes ?? "",
-            guests: (pending.request.guests ?? []).map((value) => ({ id: crypto.randomUUID(), value })),
-          });
-          setError(labels.slotConflict);
-        } else setError(labels.bookingError);
-      } catch {
-        setError(labels.storageError);
-      }
+      failedSubmission(prepared, ticket, failure);
     } finally {
       if (ticket === operation.current) {
         submitting.current = false;
@@ -234,7 +199,51 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
       }
     }
   }
-  function invalidAttempt(failure: unknown) {
+  function prepareSubmission(
+    activeStage: Extract<Stage, { kind: "form" | "pending" }>
+  ): PreparedCreate | undefined {
+    if (activeStage.kind === "form") {
+      setError("");
+      if (!nameInput.current?.reportValidity() || !emailInput.current?.reportValidity()) return;
+      const invalid = parseGuests(draft.guests.map((row) => row.value)) === null;
+      setGuestInvalid(invalid);
+      if (invalid) return;
+    }
+    try {
+      const store = attempts();
+      const pending =
+        activeStage.kind === "pending"
+          ? activeStage
+          : store.begin({
+              start: activeStage.start,
+              ...draft,
+              guests: draft.guests.map((row) => row.value),
+              timeZone,
+            });
+      store.verify(pending);
+      return { store, pending };
+    } catch (failure) {
+      invalidAttempt(failure);
+    }
+  }
+  function failedSubmission({ store, pending }: PreparedCreate, ticket: number, failure: unknown): void {
+    if (ticket !== operation.current) return;
+    try {
+      if (store.reject(pending.request.requestKey, failure)) {
+        setStage({ kind: "form", start: pending.request.start });
+        setDraft({
+          name: pending.request.name,
+          email: pending.request.email,
+          notes: pending.request.notes ?? "",
+          guests: (pending.request.guests ?? []).map((value) => ({ id: crypto.randomUUID(), value })),
+        });
+        setError(labels.slotConflict);
+      } else setError(labels.bookingError);
+    } catch {
+      setError(labels.storageError);
+    }
+  }
+  function invalidAttempt(failure: unknown): void {
     if (failure instanceof ErrorWithCode && failure.code === "invalid_input") {
       setError(labels.invalidInput);
       return;
