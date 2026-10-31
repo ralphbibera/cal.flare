@@ -442,6 +442,18 @@ Fresh cancellations are refused after the booking ends. Previously accepted requ
 The authenticated settings API accepts optional `event.disableCancelling` and
 `event.disableRescheduling` booleans; omitted flags preserve the existing enabled behavior.
 Each flag refuses new requests for that action without changing accepted commands or their recovery.
+Event rules also accept optional integer `minimumRescheduleNotice` minutes. Absence and zero
+preserve unrestricted attendee rescheduling. A positive value blocks a fresh attendee move when
+the current booking start is strictly in the future and strictly less than that many minutes away.
+The exact cutoff remains allowed. Owners are exempt from this notice, while unconditional flags,
+removed events and existing state restrictions still apply. New booking availability is unchanged.
+The rules editor saves explicitly and retains drafts after failed or malformed acknowledgments.
+Selected-event rule PATCH omission preserves the stored notice. `null` removes it.
+Full settings PUT replaces it, and event duplication copies it. Accepted commands replay frozen facts.
+API/service checks cover millisecond boundaries, durable refusal, policy races and replay.
+The built Worker/local D1 browser journey checks configuration, attendee blocking, owner moves,
+reset and cancellation at 390px and 1280px with mocked Google. Live delivery and native UI parity
+remain unverified.
 Refusals use the existing HTTP 409 `invalid_slot` outcome and remain stable on replay.
 Receipts and private management pages hide each disabled action after loading or refreshing
 the booking. Existing saved attempts remain available for safe retry and reconciliation.

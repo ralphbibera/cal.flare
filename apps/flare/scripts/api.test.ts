@@ -388,6 +388,179 @@ test("booking rule updates preserve concurrent settings and change slot spacing,
   assert.equal(calendar.writes.length, 0);
 });
 
+test("selected event rules persist minimum reschedule notice without changing new booking admission", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const rules = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+    minimumRescheduleNotice: 600,
+  };
+  const response = await f.send("/api/owner/events/default/booking-rules", rules, f.ownerHeaders, "PATCH");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { saved: true });
+  const created = await f.send("/api/bookings", {
+    requestKey: crypto.randomUUID(),
+    start: f.now() + hour,
+    name: "Notice guest",
+    email: "notice@example.test",
+    timeZone: "UTC",
+  });
+  assert.equal(created.status, 201);
+  const booking = record(await created.json());
+  assert.equal(booking.disableRescheduling, true);
+  const id = String(booking.id),
+    auth = { Authorization: `Bearer ${booking.manageToken}` };
+  let reads = 0;
+  f.calendar.busy = async () => {
+    reads++;
+    return [];
+  };
+  const query = new URLSearchParams({
+    from: new Date(f.now() + hour).toISOString(),
+    to: new Date(f.now() + 3 * hour).toISOString(),
+    timeZone: "UTC",
+    bookingId: id,
+  });
+  const slots = await f.request(`/api/slots?${query}`, { headers: auth });
+  assert.equal(slots.status, 409);
+  assert.deepEqual(await slots.json(), { error: "invalid_slot", message: "invalid_slot" });
+  const privateView = await f.request(`/api/bookings/${id}`, { headers: auth });
+  assert.equal(privateView.headers.get("cache-control"), "no-store");
+  assert.equal(record(await privateView.json()).disableRescheduling, true);
+  const holds = (await f.db.prepare("SELECT * FROM booking_reservation").all()).results;
+  const move = {
+    action: "reschedule",
+    requestKey: crypto.randomUUID(),
+    version: 1,
+    start: f.now() + 2 * hour,
+  };
+  const blocked = await f.send(`/api/bookings/${id}`, move, auth);
+  assert.equal(blocked.status, 409);
+  assert.deepEqual(await blocked.json(), { error: "invalid_slot", message: "invalid_slot" });
+  assert.equal(reads, 0);
+  assert.equal(f.calendar.writes.length, 1);
+  assert.deepEqual((await f.db.prepare("SELECT * FROM booking_reservation").all()).results, holds);
+  const publicQuery = new URLSearchParams(query);
+  publicQuery.delete("bookingId");
+  const publicSlots = record(await (await f.request(`/api/slots?${publicQuery}`)).json()).slots;
+  assert.ok(
+    Array.isArray(publicSlots) && publicSlots.length > 0,
+    "Notice does not restrict new-booking availability"
+  );
+  for (const [headers, status] of [
+    [{}, 401],
+    [{ Authorization: `Bearer ${"a".repeat(43)}` }, 404],
+  ] as const)
+    assert.equal((await f.send(`/api/bookings/${id}`, move, headers)).status, status);
+  assert.equal((await f.send(`/api/bookings/${id}`, { ...move, actor: "owner" }, auth)).status, 400);
+  assert.equal(
+    (await f.send(`/api/bookings/${id}`, move, { ...auth, Origin: "https://foreign.test" })).status,
+    403
+  );
+  const path = "/api/owner/events/default/booking-rules";
+  assert.equal(
+    (await f.send(path, { ...rules, minimumRescheduleNotice: null }, f.ownerHeaders, "PATCH")).status,
+    200
+  );
+  assert.equal(
+    (await f.send(`/api/bookings/${id}`, move, auth)).status,
+    409,
+    "A refused intent stays refused after reset"
+  );
+  const owner = record(
+    await (await f.request(`/api/owner/bookings/${id}`, { headers: f.ownerHeaders })).json()
+  );
+  assert.equal(owner.disableRescheduling, false);
+  assert.equal((await f.send(path, rules, f.ownerHeaders, "PATCH")).status, 200);
+  assert.equal(
+    record(
+      await (
+        await f.send(
+          `/api/owner/bookings/${id}`,
+          { ...move, requestKey: crypto.randomUUID() },
+          f.ownerHeaders
+        )
+      ).json()
+    ).start,
+    move.start
+  );
+});
+
+test("minimum reschedule rule patches preserve selected events, raw text and concurrent partial writes", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const rules = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+  };
+  const patch = (id: string, value: unknown) =>
+    f.send(`/api/owner/events/${id}/booking-rules`, value, f.ownerHeaders, "PATCH");
+  const details = {
+    slug: "notice-b",
+    title: "Raw\u0000é\ud800",
+    description: "Keep\udc00",
+    durationMinutes: 30,
+  };
+  const b = record(await (await f.send("/api/owner/events", details, f.ownerHeaders)).json());
+  const id = String(b.id);
+  assert.equal((await patch(id, { ...rules, minimumRescheduleNotice: 60 })).status, 200);
+  assert.equal((await patch("default", { ...rules, minimumRescheduleNotice: 0 })).status, 200);
+  const read = async (eventId: string) =>
+    record(
+      record(await (await f.request(`/api/owner/events/${eventId}`, { headers: f.ownerHeaders })).json())
+        .event
+    );
+  assert.equal((await read("default")).minimumRescheduleNotice, 0);
+  assert.equal((await patch(id, rules)).status, 200);
+  assert.equal((await read(id)).minimumRescheduleNotice, 60);
+  const duplicate = record(
+    await (
+      await f.send(`/api/owner/events/${id}/duplicate`, { ...details, slug: "notice-copy" }, f.ownerHeaders)
+    ).json()
+  );
+  assert.equal(record(duplicate.event).minimumRescheduleNotice, 60);
+  const edited = { ...details, title: "Retained\u0000😀\ud800", location: "Room\u0000\udc00" };
+  const responses = await Promise.all([
+    patch(id, { ...rules, minimumRescheduleNotice: 120, bookingWindowDays: 14 }),
+    f.send(`/api/owner/events/${id}`, edited, f.ownerHeaders, "PATCH"),
+    f.send(
+      "/api/owner/overrides",
+      { overrides: [{ date: "2030-01-02", ranges: [] }] },
+      f.ownerHeaders,
+      "PATCH"
+    ),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [200, 200, 200]
+  );
+  assert.deepEqual(await read(id), {
+    ...settings.event,
+    ...rules,
+    ...edited,
+    minimumRescheduleNotice: 120,
+    bookingWindowDays: 14,
+  });
+  assert.equal((await patch(id, { ...rules, minimumRescheduleNotice: null })).status, 200);
+  const cleared = await read(id);
+  assert.equal(Object.hasOwn(cleared, "minimumRescheduleNotice"), false);
+  assert.equal(cleared.bookingWindowDays, 14);
+  assert.equal(cleared.location, edited.location);
+  assert.equal((await read("default")).minimumRescheduleNotice, 0);
+  assert.equal((await f.send("/api/owner", settings, f.ownerHeaders, "PUT")).status, 200);
+  assert.equal(Object.hasOwn(await read("default"), "minimumRescheduleNotice"), false);
+  assert.equal((await read(String(duplicate.id))).minimumRescheduleNotice, 60);
+});
+
 test("dated override updates preserve independent settings and reject invalid or unauthorized input", async (t) => {
   const fixture = await apiFixture();
   t.after(fixture.close);

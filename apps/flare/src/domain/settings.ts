@@ -9,6 +9,7 @@ type EventSettings = {
   noticeMinutes: number;
   disableCancelling?: boolean;
   disableRescheduling?: boolean;
+  minimumRescheduleNotice?: number;
   bookingWindowDays?: number;
   location?: string;
 };
@@ -47,7 +48,7 @@ type BookingRules = Required<
     | "disableCancelling"
     | "disableRescheduling"
   >
-> & { bookingWindowDays?: number | null };
+> & { bookingWindowDays?: number | null; minimumRescheduleNotice?: number | null };
 type Settings = {
   event: EventSettings;
   schedule: {
@@ -88,6 +89,17 @@ function integer(input: unknown, path: string, min: number, max: number): number
     throw new SettingsError(`${path} must be an integer between ${min} and ${max}`);
   }
   return input;
+}
+
+const MAX_RESCHEDULE_NOTICE_MINUTES = Math.floor(Number.MAX_SAFE_INTEGER / 60_000);
+
+function rescheduleNotice(input: unknown): number {
+  return integer(input, "minimumRescheduleNotice", 0, MAX_RESCHEDULE_NOTICE_MINUTES);
+}
+
+function isWithinMinimumRescheduleNotice(start: number, now: number, minutes?: number): boolean {
+  const remaining = start - now;
+  return minutes !== undefined && minutes > 0 && remaining > 0 && remaining < minutes * 60_000;
 }
 
 function locationText(input: unknown): string {
@@ -180,6 +192,9 @@ function parseSettings(input: unknown): Settings {
   }
   if (Object.hasOwn(event, "bookingWindowDays")) {
     result.event.bookingWindowDays = integer(event.bookingWindowDays, "bookingWindowDays", 1, 365);
+  }
+  if (Object.hasOwn(event, "minimumRescheduleNotice")) {
+    result.event.minimumRescheduleNotice = rescheduleNotice(event.minimumRescheduleNotice);
   }
   if (Object.hasOwn(event, "location")) {
     const location = locationText(event.location);
@@ -293,6 +308,7 @@ function parseBookingRules(input: unknown): BookingRules {
           "disableCancelling",
           "disableRescheduling",
           "bookingWindowDays",
+          "minimumRescheduleNotice",
         ].includes(key)
     ) ||
     typeof disableCancelling !== "boolean" ||
@@ -319,6 +335,12 @@ function parseBookingRules(input: unknown): BookingRules {
     noticeMinutes: event.noticeMinutes,
     disableCancelling,
     disableRescheduling,
+    ...(Object.hasOwn(value, "minimumRescheduleNotice")
+      ? {
+          minimumRescheduleNotice:
+            value.minimumRescheduleNotice === null ? null : rescheduleNotice(value.minimumRescheduleNotice),
+        }
+      : {}),
     ...(Object.hasOwn(value, "bookingWindowDays")
       ? {
           bookingWindowDays:
@@ -341,6 +363,8 @@ export type {
   WeeklySchedule,
 };
 export {
+  MAX_RESCHEDULE_NOTICE_MINUTES,
+  isWithinMinimumRescheduleNotice,
   DEFAULT_EVENT_ID,
   isEventId,
   defaultSettings,

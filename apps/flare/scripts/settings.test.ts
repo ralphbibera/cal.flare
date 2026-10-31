@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Settings } from "../src/domain/settings.ts";
-import { defaultSettings, parseSettings, SettingsError } from "../src/domain/settings.ts";
+import {
+  defaultSettings,
+  isWithinMinimumRescheduleNotice,
+  MAX_RESCHEDULE_NOTICE_MINUTES,
+  parseBookingRules,
+  parseSettings,
+  SettingsError,
+} from "../src/domain/settings.ts";
 import { getSettings, saveSettings } from "../src/server/settings.ts";
 import { apiFixture } from "./fixtures/api.ts";
 
@@ -71,6 +78,59 @@ test("guest change policies preserve absent defaults and accept only explicit bo
         () => parseSettings({ ...settings(), event: { ...settings().event, [key]: value } }),
         SettingsError
       );
+    }
+  }
+});
+
+test("minimum reschedule notice preserves legacy absence and validates safe integer minutes", () => {
+  assert.equal(Object.hasOwn(parseSettings(defaultSettings).event, "minimumRescheduleNotice"), false);
+  const rules = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+  };
+  for (const value of [0, 1, 43201, MAX_RESCHEDULE_NOTICE_MINUTES]) {
+    assert.equal(
+      parseSettings({ ...settings(), event: { ...settings().event, minimumRescheduleNotice: value } }).event
+        .minimumRescheduleNotice,
+      value
+    );
+    assert.equal(
+      parseBookingRules({ ...rules, minimumRescheduleNotice: value }).minimumRescheduleNotice,
+      value
+    );
+  }
+  for (const value of [-1, 0.5, MAX_RESCHEDULE_NOTICE_MINUTES + 1, NaN, Infinity, "60", undefined]) {
+    assert.throws(
+      () => parseSettings({ ...settings(), event: { ...settings().event, minimumRescheduleNotice: value } }),
+      SettingsError
+    );
+    assert.throws(() => parseBookingRules({ ...rules, minimumRescheduleNotice: value }), SettingsError);
+  }
+  assert.throws(
+    () => parseSettings({ ...settings(), event: { ...settings().event, minimumRescheduleNotice: null } }),
+    SettingsError
+  );
+  assert.equal(parseBookingRules({ ...rules, minimumRescheduleNotice: null }).minimumRescheduleNotice, null);
+  assert.equal(Object.hasOwn(parseBookingRules(rules), "minimumRescheduleNotice"), false);
+});
+
+test("native minimum reschedule boundary is strict and uses instants across DST", () => {
+  for (const instant of ["2030-01-01T00:00:00Z", "2030-11-03T01:30:00-04:00", "2030-11-03T01:30:00-05:00"]) {
+    const now = Date.parse(instant);
+    for (const [delta, blocked] of [
+      [3_600_000, false],
+      [3_599_999, true],
+      [3_600_001, false],
+      [0, false],
+      [-1, false],
+    ] as const) {
+      assert.equal(isWithinMinimumRescheduleNotice(now + delta, now, 60), blocked);
+      assert.equal(isWithinMinimumRescheduleNotice(now + delta, now, 0), false);
+      assert.equal(isWithinMinimumRescheduleNotice(now + delta, now), false);
     }
   }
 });

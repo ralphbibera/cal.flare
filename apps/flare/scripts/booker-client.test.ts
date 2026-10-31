@@ -290,6 +290,45 @@ test("event and owner acknowledgments fail closed on wrong IDs, duplicates and m
   assert.equal(requests, 0);
 });
 
+test("notice rules decode optional minutes and require an exact successful save acknowledgment", async () => {
+  const event = { ...defaultSettings.event, minimumRescheduleNotice: 60 };
+  const entry = { id: "default", event, lifecycle: "listed" };
+  assert.deepEqual(
+    (await new BookerClient(async () => Response.json(entry)).ownerEvent("default")).event,
+    event
+  );
+  for (const value of [-1, 0.5, Number.MAX_SAFE_INTEGER, null, "60"])
+    await assert.rejects(
+      new BookerClient(async () =>
+        Response.json({ ...entry, event: { ...event, minimumRescheduleNotice: value } })
+      ).ownerEvent("default"),
+      /invalid_response/
+    );
+  const rules = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+    minimumRescheduleNotice: 60,
+  };
+  for (const [status, value] of [
+    [201, { saved: true }],
+    [202, { saved: true }],
+    [200, {}],
+    [200, { saved: true, extra: true }],
+  ] as const)
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value, { status })).ownerSaveRules("default", rules),
+      /invalid_response/
+    );
+  await new BookerClient(async (_path, init) => {
+    assert.equal(init.body, JSON.stringify(rules));
+    return Response.json({ saved: true });
+  }).ownerSaveRules("default", rules);
+});
+
 test("lifecycle transport copies saved state, sends explicit visibility and bodyless removal, and decodes acknowledgments strictly", async (t) => {
   const f = await apiFixture();
   t.after(f.close);

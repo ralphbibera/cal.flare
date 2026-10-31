@@ -956,7 +956,7 @@ async function verifyOverridesEditor(browser, fixture) {
   }
 }
 
-async function verifyBookingRulesEditor(browser, fixture) {
+export async function verifyBookingRulesEditor(browser, fixture) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "UTC" });
   const id = "a".repeat(32);
   try {
@@ -993,7 +993,7 @@ async function verifyBookingRulesEditor(browser, fixture) {
     const page = await context.newPage();
     const errors = [],
       requests = [];
-    let fail = true;
+    let fail = "http";
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
       if (
@@ -1008,11 +1008,17 @@ async function verifyBookingRulesEditor(browser, fixture) {
     await page.route("**/api/owner/events/default/booking-rules", async (route) => {
       if (route.request().method() !== "PATCH") return route.continue();
       requests.push(route.request().postDataJSON());
-      if (fail)
+      if (fail === "http")
         return route.fulfill({
           status: 503,
           contentType: "application/json",
           body: '{"error":"private-rules-detail"}',
+        });
+      if (fail)
+        return route.fulfill({
+          status: fail === "status" ? 201 : 200,
+          contentType: "application/json",
+          body: fail === "status" ? '{"saved":true}' : "{}",
         });
       return route.continue();
     });
@@ -1022,6 +1028,10 @@ async function verifyBookingRulesEditor(browser, fixture) {
     const field = (name) => form.getByRole("spinbutton", { name: `${name} (Minutes)`, exact: true });
     const cancelling = form.getByRole("checkbox", { name: "Disable Cancelling", exact: true });
     const rescheduling = form.getByRole("checkbox", { name: "Disable rescheduling", exact: true });
+    const notice = form.getByRole("checkbox", {
+      name: "Limit attendee rescheduling before the event",
+      exact: true,
+    });
     assert.equal(await cancelling.isChecked(), false);
     assert.equal(await rescheduling.isChecked(), false);
     await field("Time-slot intervals").fill("4");
@@ -1036,12 +1046,22 @@ async function verifyBookingRulesEditor(browser, fixture) {
     ])
       await field(label).fill(value);
     await cancelling.check();
+    await notice.check();
+    assert.equal(await field("Minimum reschedule notice").inputValue(), "60");
+    await field("Minimum reschedule notice").fill("600");
     await save.click();
     await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
     assert.equal(await field("Time-slot intervals").inputValue(), "60");
     assert.equal(await cancelling.isChecked(), true);
+    assert.equal(await field("Minimum reschedule notice").inputValue(), "600");
     assert.ok(!(await page.content()).includes("private-rules-detail"));
-    fail = false;
+    for (const mode of ["status", "malformed"]) {
+      fail = mode;
+      await save.click();
+      await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+      assert.equal(await field("Minimum reschedule notice").inputValue(), "600");
+    }
+    fail = "";
     await save.click();
     await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
     const rules = {
@@ -1052,17 +1072,22 @@ async function verifyBookingRulesEditor(browser, fixture) {
       disableCancelling: true,
       disableRescheduling: false,
     };
-    assert.deepEqual(requests, [
-      { ...rules, bookingWindowDays: null },
-      { ...rules, bookingWindowDays: null },
-    ]);
+    assert.deepEqual(
+      requests,
+      Array.from({ length: 4 }, () => ({ ...rules, bookingWindowDays: null, minimumRescheduleNotice: 600 }))
+    );
     await page.reload();
     assert.equal(await field("Time-slot intervals").inputValue(), "60");
     assert.equal(await cancelling.isChecked(), true);
     assert.equal(await rescheduling.isChecked(), false);
+    assert.equal(await notice.isChecked(), true);
+    assert.equal(await field("Minimum reschedule notice").inputValue(), "600");
     const readSettings = async () =>
       (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
-    assert.deepEqual(await readSettings(), { ...configured, event: { ...configured.event, ...rules } });
+    assert.deepEqual(await readSettings(), {
+      ...configured,
+      event: { ...configured.event, ...rules, minimumRescheduleNotice: 600 },
+    });
     const slots = async () =>
       (
         await fixture.read(
@@ -1081,12 +1106,13 @@ async function verifyBookingRulesEditor(browser, fixture) {
     );
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await form.screenshot({
-      path: new URL("../.verification/booking-rules-mobile.png", import.meta.url).pathname,
+      path: new URL("../.verification/booking-rules-reschedule-notice-mobile.png", import.meta.url).pathname,
       animations: "disabled",
     });
     await field("Minimum notice").fill("43200");
     await cancelling.uncheck();
     await rescheduling.check();
+    assert.equal(await notice.isChecked(), false);
     await save.click();
     await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
     await page.reload();
