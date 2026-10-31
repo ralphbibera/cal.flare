@@ -1,0 +1,51 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../../packages/i18n/locales/en/common.json";
+import { OwnerProfileEditor } from "../../components/OwnerProfileEditor.tsx";
+import { getOwnerProfile } from "../../server/app.ts";
+import { ErrorWithCode } from "../../server/http.ts";
+import "../../styles/globals.css";
+
+type State =
+  | { kind: "anonymous" | "invalid" | "unavailable" }
+  | { kind: "owner"; profile: NonNullable<Awaited<ReturnType<typeof getOwnerProfile>>> };
+let state: State = { kind: "unavailable" };
+try {
+  const profile = await getOwnerProfile(Astro.request, { env });
+  state = profile ? { kind: "owner", profile } : { kind: "anonymous" };
+} catch (error) {
+  state = {
+    kind: error instanceof ErrorWithCode && error.code === "invalid_query" ? "invalid" : "unavailable",
+  };
+}
+Astro.response.status = state.kind === "unavailable" ? 503 : state.kind === "invalid" ? 404 : 200;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "same-origin");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{common.profile} | Cal.flare</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    <main class="mx-auto w-full max-w-xl space-y-6 px-4 py-10">
+      <a href="/" class="underline">{common.organizer}</a>
+      {state.kind === "owner" ? <>
+        <OwnerProfileEditor client:load initial={state.profile} labels={{
+          heading: common.profile, name: common.flare_profile_name, bio: common.bio,
+          help: common.flare_profile_help, save: common.save, saved: common.saved,
+          invalid: common.flare_profile_invalid, failed: common.flare_profile_failed,
+          javascript: common.flare_profile_javascript,
+        }} />
+        <a href="/public/events" class="underline">{common.flare_public_events}</a>
+      </> : <>
+        <p role="alert">{state.kind === "anonymous" ? common.flare_owner_signin_help : common.flare_owner_unavailable}</p>
+        <a href={state.kind === "anonymous" ? "/" : "/owner/profile"} class="underline">{common.retry}</a>
+      </>}
+    </main>
+  </body>
+</html>

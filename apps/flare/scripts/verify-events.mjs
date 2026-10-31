@@ -73,6 +73,7 @@ async function verifyEvents(browser, { schedulesOnly = false } = {}) {
     assert.equal(slots[0].start, start);
     assert.equal(slots[0].end, start + 45 * 60_000);
     await bookBothEvents(browser, f, owner, created, details, start + 12 * hour);
+    await verifyProfile(browser, f, owner, created.id, details);
     const initialWrites = google.writes.length;
     const input = {
       requestKey: randomUUID(),
@@ -193,6 +194,239 @@ async function verifyEvents(browser, { schedulesOnly = false } = {}) {
     );
   } finally {
     await f.close();
+  }
+}
+
+async function profileContext(browser, f, owner) {
+  const context = await browser.newContext({ timezoneId: "UTC" });
+  await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
+  return context;
+}
+
+async function verifyProfile(browser, f, owner, eventId, details) {
+  const context = await profileContext(browser, f, owner);
+  const visitors = await browser.newContext({ timezoneId: "UTC" });
+  const original = await f.read(await f.request(`/api/events/${eventId}`));
+  const writes = structuredClone(f.google.writes);
+  const frozen = async () =>
+    Promise.all(
+      [
+        "booking",
+        "booking_command",
+        "booking_reservation",
+        "organizer_settings",
+        "event_type",
+        "availability_schedule",
+        "owner",
+        "google_connection",
+      ].map((table) =>
+        f.db
+          .prepare(`SELECT rowid AS cursor,* FROM ${table} ORDER BY rowid`)
+          .all()
+          .then(({ results }) => results)
+      )
+    );
+  const before = await frozen();
+  try {
+    const page = await context.newPage();
+    const visitor = await visitors.newPage();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await visitor.setViewportSize({ width, height: 900 });
+      await page.goto(f.origin);
+      await page.getByRole("link", { name: "Profile", exact: true }).click();
+      const form = page.getByRole("form", { name: "Profile", exact: true });
+      const name = `${"界".repeat(95)}<x>`;
+      const bio = `<script>profileLiteral</script>\n**literal** ${"文".repeat(1800)}`;
+      await form.getByLabel("Public display name", { exact: true }).fill(name);
+      await form.getByLabel("Bio", { exact: true }).fill(bio);
+      await verifyProfileFailures(page, form, { displayName: name, bio });
+      await verifyProfilePending(page, form);
+      await page.reload();
+      await expect(form.getByLabel("Public display name", { exact: true })).toHaveValue(name);
+      await expect(form.getByLabel("Bio", { exact: true })).toHaveValue(bio);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const metadata = await f.read(await f.request(`/api/events/${eventId}`));
+      assert.deepEqual(metadata.organizer, { name });
+      assert.equal(JSON.stringify(metadata).includes(bio), false);
+      await visitor.goto(`${f.origin}/${details.slug}`);
+      await expect(visitor.getByText(name, { exact: true })).toBeVisible();
+      assert.equal(await visitor.getByText(bio, { exact: true }).count(), 0);
+      assert.ok(await visitor.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const ssr = await (await f.request(`/${details.slug}`)).text();
+      assert.ok(ssr.includes(`${"界".repeat(95)}&lt;x&gt;`), "Public SSR uses saved escaped name");
+      await visitor.goto(`${f.origin}/public/events`);
+      assert.equal(await visitor.getByText(bio, { exact: true }).textContent(), bio);
+      assert.equal(await visitor.locator("script").filter({ hasText: "profileLiteral" }).count(), 0);
+      assert.ok(await visitor.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const directory = await (await f.request("/public/events")).text();
+      for (const secret of [
+        ...Object.values(f.secrets),
+        ...f.google.secrets,
+        "organizer@example.test",
+        details.location,
+      ])
+        assert.ok(!directory.includes(secret));
+      await verifyProfileAbandoned(page, form, f);
+    }
+    assert.deepEqual(
+      await frozen(),
+      before,
+      "Profile reads and saves leave historical and admission state untouched"
+    );
+    assert.deepEqual(f.google.writes, writes);
+    await verifyProfileIndependence(f, owner, eventId, details);
+    await page.goto(`${f.origin}/owner/profile`);
+    const form = page.getByRole("form", { name: "Profile", exact: true });
+    await form.getByLabel("Public display name", { exact: true }).fill("");
+    await form.getByLabel("Bio", { exact: true }).fill("");
+    await form.getByRole("button", { name: "Save", exact: true }).click();
+    await form.getByRole("status").waitFor();
+    await page.reload();
+    await expect(form.getByLabel("Public display name", { exact: true })).toHaveValue("");
+    assert.deepEqual((await f.read(await f.request(`/api/events/${eventId}`))).organizer, original.organizer);
+    await visitor.goto(`${f.origin}/public/events`);
+    assert.equal(await visitor.getByText("New unsaved draft", { exact: true }).count(), 0);
+  } finally {
+    await f.read(await f.send("/api/owner/profile", { displayName: null, bio: "" }, owner, "PUT"));
+    await context.close();
+    await visitors.close();
+  }
+}
+
+async function verifyProfileFailures(page, form, draft) {
+  for (const [status, body] of [
+    [503, '{"error":"fixture"}'],
+    [201, '{"saved":true}'],
+    [200, "broken"],
+    [200, "{}"],
+    [200, '{"saved":false}'],
+    [200, '{"saved":true,"extra":true}'],
+  ]) {
+    await page.route(
+      "**/api/owner/profile",
+      (route) => route.fulfill({ status, contentType: "application/json", body }),
+      { times: 1 }
+    );
+    await form.getByRole("button", { name: "Save", exact: true }).click();
+    await form.getByRole("alert").waitFor();
+    await expect(form.getByLabel("Public display name", { exact: true })).toHaveValue(draft.displayName);
+    await expect(form.getByLabel("Bio", { exact: true })).toHaveValue(draft.bio);
+    assert.equal(await form.getByRole("status").count(), 0);
+  }
+}
+
+async function verifyProfilePending(page, form) {
+  const applied = Promise.withResolvers(),
+    release = Promise.withResolvers(),
+    finished = Promise.withResolvers();
+  let puts = 0;
+  const route = async (request) => {
+    puts++;
+    const response = await request.fetch();
+    applied.resolve();
+    await release.promise;
+    await request.fulfill({ response });
+    finished.resolve();
+  };
+  await page.route("**/api/owner/profile", route);
+  try {
+    await form.getByRole("button", { name: "Save", exact: true }).click();
+    await applied.promise;
+    await form.evaluate((element) => {
+      element.requestSubmit();
+      element.requestSubmit();
+    });
+    assert.equal(puts, 1, "Only one PUT may be in flight");
+    assert.equal(await form.getByLabel("Public display name", { exact: true }).isDisabled(), true);
+    release.resolve();
+    await form.getByRole("status").waitFor();
+    await finished.promise;
+  } finally {
+    release.resolve();
+    await page.unroute("**/api/owner/profile", route);
+  }
+}
+
+async function verifyProfileAbandoned(page, form, f) {
+  const applied = Promise.withResolvers(),
+    release = Promise.withResolvers(),
+    finished = Promise.withResolvers();
+  const route = async (request) => {
+    const response = await request.fetch();
+    applied.resolve();
+    await release.promise;
+    await request.fulfill({ response }).catch(() => {});
+    finished.resolve();
+  };
+  await page.route("**/api/owner/profile", route, { times: 1 });
+  try {
+    await form.getByRole("button", { name: "Save", exact: true }).click();
+    await applied.promise;
+    await page.goto(`${f.origin}/owner/profile`);
+    await form.getByLabel("Public display name", { exact: true }).fill("New unsaved draft");
+    release.resolve();
+    await finished.promise;
+    await expect(form.getByLabel("Public display name", { exact: true })).toHaveValue("New unsaved draft");
+    assert.equal(await form.getByRole("status").count(), 0);
+  } finally {
+    release.resolve();
+    await page.unroute("**/api/owner/profile", route);
+  }
+}
+
+async function verifyProfileIndependence(f, owner, eventId, details) {
+  const saved = await f.read(await f.request("/api/owner/profile", { headers: owner }));
+  await f.read(
+    await f.send(
+      `/api/owner/events/${eventId}`,
+      { ...details, description: "Independent event edit" },
+      owner,
+      "PATCH"
+    )
+  );
+  await f.read(await f.send(`/api/owner/events/${eventId}`, details, owner, "PATCH"));
+  const catalog = await f.read(await f.request("/api/owner/schedules", { headers: owner }));
+  const selected = catalog.schedules.find((schedule) => schedule.id === catalog.defaultScheduleId);
+  await f.read(
+    await f.send(
+      `/api/owner/schedules/${selected.id}/weekly`,
+      { timeZone: "Europe/London", rules: selected.schedule.rules },
+      owner,
+      "PATCH"
+    )
+  );
+  await f.read(
+    await f.send(
+      `/api/owner/schedules/${selected.id}/weekly`,
+      { timeZone: selected.schedule.timeZone, rules: selected.schedule.rules },
+      owner,
+      "PATCH"
+    )
+  );
+  const reauthorized = await f.login();
+  assert.deepEqual(await f.read(await f.request("/api/owner/profile", { headers: reauthorized })), saved);
+  assert.deepEqual((await f.read(await f.request(`/api/events/${eventId}`))).organizer, {
+    name: saved.displayName,
+  });
+}
+
+async function verifyProfileWithoutEvents(browser, f, owner) {
+  assert.deepEqual((await f.read(await f.request("/api/owner/events", { headers: owner }))).events, []);
+  const context = await profileContext(browser, f, owner);
+  try {
+    const page = await context.newPage();
+    await page.goto(f.origin);
+    await page.getByRole("link", { name: "Profile", exact: true }).click();
+    await page.getByLabel("Public display name", { exact: true }).fill("After final event removal");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("status").waitFor();
+    await page.reload();
+    await expect(page.getByLabel("Public display name", { exact: true })).toHaveValue(
+      "After final event removal"
+    );
+  } finally {
+    await context.close();
   }
 }
 
@@ -924,6 +1158,7 @@ async function verifyLifecycle(browser, f, owner, sourceId, start, rules) {
   assert.equal(empty.status, 200);
   assert.match(await empty.text(), /There are no listed events/);
   assert.equal(google.writes.length, beforeWrites + 2);
+  await verifyProfileWithoutEvents(browser, f, owner);
   await createAfterRemoval(browser, f, owner);
 }
 

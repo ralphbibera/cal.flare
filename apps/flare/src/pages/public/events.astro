@@ -27,7 +27,8 @@ Astro.response.headers.set("X-Content-Type-Options", "nosniff");
       <a href="/" class="underline">{common.organizer}</a>
       <h1 class="font-cal text-2xl text-emphasis">{common.flare_public_events}</h1>
       {directory ? <>
-        <p class="break-words">{directory.organizer.name}</p>
+        <p class="[overflow-wrap:anywhere]">{directory.organizer.name}</p>
+        {directory.organizer.bio && <p class="whitespace-pre-wrap [overflow-wrap:anywhere]">{directory.organizer.bio}</p>}
         {directory.events.length === 0 ? <p>{common.flare_public_events_empty}</p> :
           <ul class="space-y-4">{directory.events.map((event) => <li class="bg-default border-subtle space-y-3 rounded-xl border p-6 [overflow-wrap:anywhere]">
             <h2 class="text-lg font-semibold text-emphasis"><a class="underline" href={`/${event.slug}`}>{event.title}</a></h2>

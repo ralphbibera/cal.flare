@@ -4902,5 +4902,10 @@
   "flare_schedule_assignment_help": "Choose a schedule and save. Following the owner default uses its current schedule. Explicit choices stay assigned when the default changes.",
   "flare_schedule_manage": "Manage this event's resolved schedule",
   "flare_schedule_assignment_failed": "We couldn't confirm the assignment. Your selection is still here. Save again to apply this choice.",
+  "flare_profile_name": "Public display name",
+  "flare_profile_help": "Your display name and biography are public. Leave the name blank to use your connected Google name. The name allows 100 characters and the biography allows 2,000. Biography is plain text.",
+  "flare_profile_invalid": "Use a name of at most 100 characters and a biography of at most 2,000 characters.",
+  "flare_profile_failed": "We couldn't confirm the save. Your draft is still here. Save again to apply this profile.",
+  "flare_profile_javascript": "Enable JavaScript to edit your public profile.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
