@@ -20,6 +20,7 @@ const covered: string[] = [
   "apps/flare/src/server/settings.ts",
   "apps/flare/src/domain/settings.ts",
   "apps/flare/src/domain/scheduling.ts",
+  "apps/flare/src/domain/booking-window.ts",
 ];
 
 function sqlFrom(file: string, prefix: string): string {
