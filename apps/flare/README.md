@@ -305,7 +305,7 @@ Both dates are inclusive. Only the appointment start date is restricted, includi
 `event.bookingWindowRange` contains exactly `{ start: "YYYY-MM-DD", end: "YYYY-MM-DD" }` with real dates within 2000..2099 and start no later than end.
 Rolling and fixed windows are mutually exclusive. Booking-rules PATCH omission preserves each field and `null` removes it.
 The editor explicitly clears the inactive field on mode changes. Full settings PUT replaces the policy. Event duplication copies it.
-Accepted recovery uses the frozen range and schedule. The fixed-range browser journey is implemented in `verify-booking-window.mjs` and awaits coordinated execution.
+Accepted recovery uses the frozen range and schedule. The existing `verify:ui` journey checks fixed-range mode changes, failed-save drafts, reloads, and public date/slot limits through `verify-booking-window.mjs` with local Worker/D1 and mocked Google.
 
 ## Public booking
 
