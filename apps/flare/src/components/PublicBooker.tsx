@@ -345,7 +345,7 @@ function BookingSession({ eventId, organizer, event, labels }: PublicBookerProps
           </span>
         </li>
       </ul>
-      <p className="text-subtle mt-2 text-sm font-semibold">{organizer.name}</p>
+      <p className="text-subtle mt-2 text-sm font-semibold [overflow-wrap:anywhere]">{organizer.name}</p>
       <EventTitle className="my-2">{event.title}</EventTitle>
       {event.description && (
         <EventMetaBlock contentClassName="mb-8">

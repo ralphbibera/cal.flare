@@ -18,6 +18,7 @@ import { BookingService } from "./bookings.ts";
 import type { GoogleCalendar } from "./google.ts";
 import { GoogleCalendar as CalendarClient } from "./google.ts";
 import { bearer, body, ErrorWithCode, json, record, sameOrigin } from "./http.ts";
+import { getProfile, profileInput, saveProfile, storedProfile } from "./profile.ts";
 import {
   assignSchedule,
   createSchedule,
@@ -116,22 +117,34 @@ async function owner(env: AuthEnv, request: Request) {
   return identity;
 }
 
-async function connectedOwner(env: AuthEnv): Promise<{ name: string }> {
+async function connectedOwner(env: AuthEnv): Promise<{ name: string; bio: string }> {
   const email = env.GOOGLE_OWNER_EMAIL?.toLowerCase() ?? "";
-  const identity = await env.DB.prepare(`SELECT o.name FROM owner o
-    JOIN google_connection g ON g.owner_id = o.id WHERE o.id = 'owner' AND o.email = ?`)
-    .bind(email)
-    .first<{ name: string }>();
+  const identity =
+    await env.DB.prepare(`SELECT o.name, p.owner_id AS profile_id, p.display_name, p.bio FROM owner o
+    JOIN google_connection g ON g.owner_id = o.id LEFT JOIN organizer_profile p ON p.owner_id=o.id
+    WHERE o.id = 'owner' AND o.email = ?`)
+      .bind(email)
+      .first<{ name: string; profile_id: string | null; display_name: unknown; bio: unknown }>()
+      .catch(() => {
+        throw new ErrorWithCode("temporarily_unavailable", 503);
+      });
   if (!identity) throw new ErrorWithCode("setup_required", 503);
   const name = identity.name.trim();
-  return { name: !name || name.toLowerCase().includes(email) ? common.organizer : name };
+  const profile =
+    identity.profile_id === null
+      ? { displayName: null, bio: "" }
+      : storedProfile(identity.display_name, identity.bio);
+  return {
+    name: profile.displayName ?? (!name || name.toLowerCase().includes(email) ? common.organizer : name),
+    bio: profile.bio,
+  };
 }
 
 async function getPublicBooking(env: AuthEnv, id = DEFAULT_EVENT_ID) {
-  const organizer = await connectedOwner(env);
+  const { name } = await connectedOwner(env);
   const { event, schedule } = await getBookableSettings(env.DB, id);
   const { location: _location, ...publicEvent } = event;
-  return { organizer, event: publicEvent, schedule };
+  return { organizer: { name }, event: publicEvent, schedule };
 }
 
 async function getPublicDirectory(env: AuthEnv) {
@@ -280,6 +293,24 @@ async function ownerSchedules(request: Request, { env }: Dependencies, url: URL)
   return json({ saved: true });
 }
 
+async function ownerProfile(request: Request, { env }: Dependencies, url: URL): Promise<Response> {
+  const identity = await owner(env, request);
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) sameOrigin(request, env.PUBLIC_ORIGIN);
+  if (url.search) throw new ErrorWithCode("invalid_query");
+  if (request.method === "GET") return json(await getProfile(env.DB, identity.id));
+  if (request.method !== "PUT") throw new ErrorWithCode("not_found", 404);
+  await getProfile(env.DB, identity.id);
+  await saveProfile(env.DB, identity.id, profileInput(await body(request)));
+  return json({ saved: true });
+}
+
+export async function getOwnerProfile(request: Request, { env }: Dependencies) {
+  const identity = await requireOwner(env, request);
+  if (!identity) return null;
+  if (new URL(request.url).search) throw new ErrorWithCode("invalid_query");
+  return getProfile(env.DB, identity.id);
+}
+
 export async function getOwnerData(request: Request, dependencies: Dependencies) {
   const identity = await requireOwner(dependencies.env, request);
   if (!identity) return null;
@@ -374,6 +405,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
+  if (path === "/api/owner/profile") return ownerProfile(request, dependencies, url);
   if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
     return ownerEvents(request, dependencies, url);
   }
