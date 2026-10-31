@@ -496,7 +496,7 @@ test("dated override updates preserve independent settings and reject invalid or
   assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
   const stored = await row();
   assert.ok(stored && before);
-  assert.equal(stored.version, before.version + 5);
+  assert.equal(stored.version, before.version + 6);
   assert.equal(stored.json, JSON.stringify(expected));
   assert.equal((await patch({ overrides: [] })).status, 200);
   assert.equal(
@@ -596,7 +596,7 @@ test("weekly updates preserve overrides and concurrent event edits, rejecting in
   assert.deepEqual(parseSettings(await (await request("/api/public")).json()), expected);
   const stored = await row();
   assert.ok(stored && before);
-  assert.equal(stored.version, before.version + 4);
+  assert.equal(stored.version, before.version + 5);
   assert.equal(stored.json, JSON.stringify(expected));
   assert.equal(
     (await send("/api/owner/schedule", { timeZone: "UTC", rules: [] }, ownerHeaders, "PATCH")).status,
@@ -724,7 +724,7 @@ test("owner detail edits preserve independent scheduling settings and require au
   assert.deepEqual(await read(), expected);
   const stored = await row();
   assert.ok(stored && before);
-  assert.equal(stored.version, before.version + 3);
+  assert.equal(stored.version, before.version + 4);
   assert.equal(
     stored.json,
     JSON.stringify(expected),

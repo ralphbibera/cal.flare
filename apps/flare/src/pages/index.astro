@@ -120,7 +120,7 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               clear: common.flare_conflict_clear, limit: common.flare_conflict_limit,
               javascript: common.flare_conflict_javascript,
             }} />
-            <OwnerScheduleEditor client:load schedule={{ timeZone: state.data.settings.schedule.timeZone,
+            <OwnerScheduleEditor client:load scheduleId={state.data.scheduleId} schedule={{ timeZone: state.data.settings.schedule.timeZone,
               rules: state.data.settings.schedule.rules }} labels={{
               heading: common.flare_working_hours, zone: common.flare_time_zone, day: common.flare_working_day,
               interval: common.interval, start: common.start_time, end: common.end_time,
@@ -131,7 +131,7 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               weekdays: [common.sunday, common.monday, common.tuesday, common.wednesday,
                 common.thursday, common.friday, common.saturday],
             }} />
-            <OwnerOverridesEditor client:load overrides={state.data.settings.schedule.overrides ?? []} labels={{
+            <OwnerOverridesEditor client:load scheduleId={state.data.scheduleId} overrides={state.data.settings.schedule.overrides ?? []} labels={{
               heading: common.date_overrides, date: common.date, interval: common.interval,
               start: common.start_time, end: common.end_time, addDate: common.add_an_override,
               add: common.add, remove: common.remove, delete: common.delete, save: common.save, saved: common.saved,
@@ -140,7 +140,7 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               midnight: common.flare_working_hours_midnight, javascript: common.flare_overrides_javascript,
             }} />
             <a href="/owner/bookings" class="text-default underline">{common.bookings}</a>
-            <OwnerBookings bookings={state.data.bookings} timeZone={state.data.settings.schedule.timeZone} />
+            <OwnerBookings bookings={state.data.bookings} timeZone={state.data.bookingsTimeZone} />
             <form action="/api/auth/logout" method="post" class="mt-6">
               <Button type="submit" color="secondary">{common.sign_out}</Button>
             </form>

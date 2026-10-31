@@ -36,7 +36,12 @@ function minutes(value: string): number {
   return Number(hour) * 60 + Number(minute);
 }
 
-export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & { labels: Labels }) {
+export function OwnerOverridesEditor({
+  overrides,
+  scheduleId,
+  labels,
+}: ScheduleOverrides & { scheduleId: string; labels: Labels }) {
+  const endpoint = `/api/owner/schedules/${scheduleId}/overrides`;
   const [rows, setRows] = useState<Row[]>(() =>
     overrides.map((override, index) => ({
       id: `override-${index}`,
@@ -64,7 +69,7 @@ export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & 
       </h2>
       <form
         aria-labelledby="owner-overrides-title"
-        action="/api/owner/overrides"
+        action={endpoint}
         method="post"
         onSubmit={async (event) => {
           event.preventDefault();
@@ -85,7 +90,7 @@ export function OwnerOverridesEditor({ overrides, labels }: ScheduleOverrides & 
           }
           setStatus("saving");
           try {
-            const response = await fetch("/api/owner/overrides", {
+            const response = await fetch(endpoint, {
               method: "PATCH",
               credentials: "same-origin",
               cache: "no-store",

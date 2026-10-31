@@ -121,10 +121,12 @@ export async function verifyOwner(browser, fixture) {
     assert.ok(!(await page.content()).includes(email));
     await page.goto(fixture.origin);
     const preferences = await fixture.db
-      .prepare("SELECT json,version FROM organizer_settings WHERE id='owner'")
+      .prepare("SELECT json,version,default_schedule_id FROM organizer_settings WHERE id='owner'")
       .first();
     assert.ok(preferences);
-    await fixture.db.prepare("UPDATE organizer_settings SET json='{}' WHERE id='owner'").run();
+    await fixture.db
+      .prepare("UPDATE organizer_settings SET json='{\"unexpected\":true}' WHERE id='owner'")
+      .run();
     const unavailable = await check(await fixture.request("/", { headers: ownerHeaders }), 503);
     assert.ok(unavailable.includes("Organizer sign-in is currently unavailable."));
     assert.ok(!unavailable.includes(email));
@@ -143,8 +145,8 @@ export async function verifyOwner(browser, fixture) {
     assert.deepEqual(fixture.upstreamFailures, []);
     assert.deepEqual(errors, []);
     await fixture.db
-      .prepare("INSERT INTO organizer_settings(id,json,version) VALUES ('owner',?,?)")
-      .bind(preferences.json, preferences.version)
+      .prepare("INSERT INTO organizer_settings(id,json,version,default_schedule_id) VALUES ('owner',?,?,?)")
+      .bind(preferences.json, preferences.version, preferences.default_schedule_id)
       .run();
     console.log(
       "PASS native organizer sign-in, OAuth redirect landing, private SSR, event preview and revoked-session sign-out without JavaScript. Built Worker/local D1; Google is mocked."
@@ -693,13 +695,13 @@ async function verifyWeeklyEditor(browser, fixture) {
       if (
         message.type() === "error" &&
         !(
-          message.location().url === `${fixture.origin}/api/owner/schedule` &&
+          /\/api\/owner\/schedules\/[^/]+\/weekly$/.test(message.location().url) &&
           message.text().startsWith("Failed to load resource: the server responded with a status of 503")
         )
       )
         errors.push(message.text());
     });
-    await page.route("**/api/owner/schedule", async (route) => {
+    await page.route("**/api/owner/schedules/*/weekly", async (route) => {
       if (route.request().method() !== "PATCH") return route.continue();
       requests.push(route.request().postDataJSON());
       if (fail)
@@ -838,13 +840,13 @@ async function verifyOverridesEditor(browser, fixture) {
       if (
         message.type() === "error" &&
         !(
-          message.location().url === `${fixture.origin}/api/owner/overrides` &&
+          /\/api\/owner\/schedules\/[^/]+\/overrides$/.test(message.location().url) &&
           message.text().startsWith("Failed to load resource: the server responded with a status of 503")
         )
       )
         errors.push(message.text());
     });
-    await page.route("**/api/owner/overrides", async (route) => {
+    await page.route("**/api/owner/schedules/*/overrides", async (route) => {
       if (route.request().method() !== "PATCH") return route.continue();
       requests.push(route.request().postDataJSON());
       if (fail)

@@ -227,8 +227,8 @@ test("removed default and final event preserve owner entry, shared preferences, 
     (await read(await f.request("/api/owner", { headers: f.ownerHeaders }))).settings.schedule.timeZone,
     "Asia/Tokyo"
   );
-  await f.db.prepare("UPDATE organizer_settings SET json='{}'").run();
-  await assert.rejects(page("?create=1"), /schedule/);
+  await f.db.prepare("UPDATE availability_schedule SET json='{}'").run();
+  await assert.rejects(page("?create=1"), /timeZone/);
   assert.equal(f.calendar.writes.length, 1);
 });
 
@@ -555,7 +555,7 @@ test("removed cancellation obeys policy and durable rejections while accepted cr
     s.availability(data.start, data.start + hour, "UTC", { id: booked.id, token: booked.manageToken }),
     /not_found/
   );
-  await f.db.prepare("UPDATE organizer_settings SET json='{}'").run();
+  await f.db.prepare("UPDATE organizer_settings SET json='{\"unsupported\":true}'").run();
   const replay = await s.create(data);
   assert.equal(replay.id, booked.id);
   assert.equal(replay.manageToken, booked.manageToken);

@@ -7,7 +7,7 @@ import { chromium, expect } from "@playwright/test";
 import { hour } from "./fixtures/api.ts";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
-async function verifyEvents(browser) {
+async function verifyEvents(browser, { schedulesOnly = false } = {}) {
   const f = await createWorkerFixture({ port: 8797 });
   try {
     const { request, send, read, google, db } = f;
@@ -44,6 +44,10 @@ async function verifyEvents(browser) {
       disableRescheduling: false,
     };
     await read(await send(`${ownerPath}/booking-rules`, rules, owner, "PATCH"));
+    if (schedulesOnly) {
+      await verifyReusableSchedules(browser, f, owner, created.id);
+      return;
+    }
     assert.equal((await read(await request("/api/owner/events", { headers: owner }))).events.length, 2);
     const metadata = await read(await request(publicPath));
     assert.equal(metadata.id, created.id);
@@ -189,6 +193,103 @@ async function verifyEvents(browser) {
     );
   } finally {
     await f.close();
+  }
+}
+
+async function verifyReusableSchedules(browser, f, owner, eventId) {
+  const { request, send, read } = f;
+  const catalog = await read(await request("/api/owner/schedules", { headers: owner }));
+  const original = catalog.schedules.find((s) => s.id === catalog.defaultScheduleId);
+  const selected = await read(
+    await send(`/api/owner/schedules/${original.id}/duplicate`, { name: "Private named hours" }, owner),
+    201
+  );
+  const path = `/api/owner/schedules/${selected.id}`;
+  await read(
+    await send(`${path}/weekly`, { rules: original.schedule.rules, timeZone: "Asia/Tokyo" }, owner, "PATCH")
+  );
+  await read(
+    await send(`/api/owner/events/${eventId}/schedule`, { scheduleId: selected.id }, owner, "PATCH")
+  );
+  const context = await browser.newContext({ timezoneId: "UTC" });
+  try {
+    await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
+    const page = await context.newPage();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${f.origin}/?eventId=${eventId}`);
+      const weekly = page.getByRole("form", { name: "Working hours", exact: true });
+      await expect(weekly.locator('select[name="timeZone"]')).toHaveValue(
+        width === 390 ? "Asia/Tokyo" : "Europe/London"
+      );
+      assert.equal(await weekly.getAttribute("action"), `${path}/weekly`);
+      await weekly.locator('select[name="timeZone"]').selectOption("Europe/London");
+      await page.route(
+        `**${path}/weekly`,
+        (route) => route.fulfill({ status: 503, json: { error: "fixture" } }),
+        { times: 1 }
+      );
+      await weekly.getByRole("button", { name: "Save", exact: true }).click();
+      await weekly.getByRole("alert").waitFor();
+      await expect(weekly.locator('select[name="timeZone"]')).toHaveValue("Europe/London");
+      await weekly.getByRole("button", { name: "Save", exact: true }).click();
+      await weekly.getByRole("status").waitFor();
+      const overrides = page.getByRole("form", { name: "Date overrides", exact: true });
+      assert.equal(await overrides.getAttribute("action"), `${path}/overrides`);
+      await page.route(
+        `**${path}/overrides`,
+        (route) => route.fulfill({ status: 503, json: { error: "fixture" } }),
+        { times: 1 }
+      );
+      await overrides.getByRole("button", { name: "Save", exact: true }).click();
+      await overrides.getByRole("alert").waitFor();
+      await overrides.getByRole("button", { name: "Save", exact: true }).click();
+      await overrides.getByRole("status").waitFor();
+      await page.reload();
+      await expect(weekly.locator('select[name="timeZone"]')).toHaveValue("Europe/London");
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      const saved = await read(await request(path, { headers: owner }));
+      assert.equal(saved.schedule.timeZone, "Europe/London");
+      assert.deepEqual(saved.schedule.overrides, []);
+      assert.deepEqual(
+        (await read(await request(`/api/owner/schedules/${original.id}`, { headers: owner }))).schedule,
+        original.schedule
+      );
+      await page.goto(`${f.origin}/?duplicate=${eventId}`);
+      assert.equal(await weekly.getAttribute("action"), `${path}/weekly`);
+      await page.goto(`${f.origin}/?create=1`);
+      assert.equal(await weekly.getAttribute("action"), `/api/owner/schedules/${original.id}/weekly`);
+    }
+    const publicData = JSON.stringify(await read(await request(`/api/events/${eventId}`)));
+    assert.ok(!publicData.includes(selected.id) && !publicData.includes(selected.name));
+    const start = Math.ceil((Date.now() + 24 * hour) / hour) * hour;
+    const booked = await read(
+      await send(`/api/events/${eventId}/bookings`, {
+        requestKey: randomUUID(),
+        start,
+        name: "Schedule guest",
+        email: "schedule@example.test",
+        timeZone: "UTC",
+      }),
+      201
+    );
+    assert.equal(booked.status, "confirmed");
+    assert.equal(f.google.writes.filter((write) => write.id === booked.id).length, 1);
+    await read(
+      await send(
+        `/api/bookings/${booked.id}`,
+        { action: "cancel", requestKey: randomUUID(), version: booked.version },
+        { Authorization: `Bearer ${booked.manageToken}` }
+      )
+    );
+    assert.deepEqual(f.google.denied, []);
+    assert.deepEqual(f.upstreamFailures, []);
+    process.stdout.write(
+      "PASS reusable schedule private HTTP, explicit event resolution, ID-scoped weekly/override saves with failed-save retry, reload, duplicate/create editor targets and public booking at 390/1280. Built Worker/local D1; actual Google adapter uses mocked transport.\n"
+    );
+  } finally {
+    await context.close();
+    await read(await send(`/api/owner/schedules/${selected.id}`, undefined, owner, "DELETE"));
   }
 }
 
@@ -850,15 +951,13 @@ async function createFromOwner(browser, f, owner, details) {
     await page.getByLabel("Description", { exact: true }).fill("Independent B <literal>");
     await bDetails.getByRole("button", { name: "Save", exact: true }).click();
     await bDetails.getByRole("status").waitFor();
-    const schedule = page.locator('form[action="/api/owner/schedule"]');
+    const schedule = page.getByRole("form", { name: "Working hours", exact: true });
     await schedule.locator('select[name="timeZone"]').selectOption("America/New_York");
     await schedule.getByRole("button", { name: "Save", exact: true }).click();
     await schedule.getByRole("status").waitFor();
     await page.getByRole("link", { name: "Owner A <literal> /intro", exact: true }).click();
     await expect(page.getByLabel("Description", { exact: true })).toHaveValue(f.settings.event.description);
-    await expect(page.locator('form[action="/api/owner/schedule"] select[name="timeZone"]')).toHaveValue(
-      "America/New_York"
-    );
+    await expect(schedule.locator('select[name="timeZone"]')).toHaveValue("America/New_York");
     await f.read(await f.send("/api/owner/schedule", f.settings.schedule, owner, "PATCH"));
     await f.read(await f.send(`/api/owner/events/${created.id}`, details, owner, "PATCH"));
     const htmlA = await (await f.request("/intro")).text();
@@ -1011,7 +1110,7 @@ async function bookBothEvents(browser, f, owner, created, details, start) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const browser = await chromium.launch({ args: ["--disable-partial-raster"] });
   try {
-    await verifyEvents(browser);
+    await verifyEvents(browser, { schedulesOnly: process.argv.includes("--schedules-only") });
   } finally {
     await browser.close();
   }

@@ -5,12 +5,15 @@ Astro and React serve one configured organizer with multiple events, Google sign
 conflict-calendar selection, public booking, attendee and owner changes, calendar exports, and durable recovery.
 Google event operations use the owner's primary calendar. Selected calendars can block availability.
 The owner creates and selects events at `/` using stable event IDs. Each event has independent details,
-booking rules, and a public slug page. Working hours, timezone, dated overrides, and conflict calendars
-are shared. Renaming a slug preserves pending requests, receipts, and historical private booking links.
+booking rules, and a public slug page. Private APIs support named reusable schedules with weekly hours,
+timezone, dated overrides, and per-event assignment or owner-default fallback. Existing hours and override
+editors save the displayed event's resolved schedule. Conflict calendars remain owner-wide.
+Renaming a slug preserves pending requests, receipts, and historical private booking links.
 Owners can duplicate saved events, explicitly save directory visibility, and permanently remove events.
 Visitors browse listed events at `/public/events`. Hidden events remain directly bookable.
 Removal closes new bookings and rescheduling while retaining history and recovery. Removed slugs cannot be reused.
-Reusable schedules, additional organizers, and destination calendars are not supported.
+The named schedule manager and event-assignment controls are pending. Additional organizers and destination
+calendars are not supported.
 
 Local Worker, D1, and browser checks use mocked Google responses.
 Live Google authorization, invitation arrival, deployed behavior, and production usage remain unverified.

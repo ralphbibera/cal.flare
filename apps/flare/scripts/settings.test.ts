@@ -212,12 +212,15 @@ test("D1 composes authoritative event and preferences, persists updates and reje
       await db.prepare("SELECT json -> '$.event' AS event FROM organizer_settings").first("event"),
       null
     );
-    await assert.rejects(db.prepare("INSERT INTO organizer_settings VALUES ('other', '{}', 1)").run());
+    await assert.rejects(
+      db.prepare("INSERT INTO organizer_settings VALUES ('other', '{}', 1,'legacy')").run(),
+      /CHECK constraint/
+    );
     await assert.rejects(db.prepare("UPDATE organizer_settings SET version = 0").run());
     input.event.durationMinutes = 0;
     await assert.rejects(saveSettings(db, input), SettingsError);
     assert.equal((await getSettings(db)).event.durationMinutes, 45);
-    for (const json of ["invalid", "{}"]) {
+    for (const json of ["invalid", '{"schedule":{}}']) {
       await db.prepare("UPDATE organizer_settings SET json = ?").bind(json).run();
       await assert.rejects(getSettings(db), SettingsError);
     }

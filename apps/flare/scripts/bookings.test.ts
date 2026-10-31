@@ -28,6 +28,7 @@ test("booking service admits, manages and replays bookings safely across competi
       "0003_bookings.sql",
       "0005_events.sql",
       "0006_event_lifecycle.sql",
+      "0007_availability_schedules.sql",
     ]) {
       await promisify(execFile)(
         process.execPath,

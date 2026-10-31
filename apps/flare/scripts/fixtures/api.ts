@@ -22,8 +22,9 @@ import { saveSettings } from "../../src/server/settings.ts";
 export const hour = 3_600_000;
 export function storedSettings(db: D1Database) {
   return db
-    .prepare(`SELECT '{"event":'||e.json||','||substr(o.json,2) AS json,
-    e.version+o.version AS version FROM event_type e JOIN organizer_settings o ON o.id='owner'
+    .prepare(`SELECT '{"event":'||e.json||',"schedule":'||s.json||CASE WHEN o.json='{}' THEN '}' ELSE ','||substr(o.json,2) END AS json,
+    e.version+o.version+s.version AS version FROM event_type e JOIN organizer_settings o ON o.id='owner'
+    JOIN availability_schedule s ON s.id=COALESCE(e.schedule_id,o.default_schedule_id)
     WHERE e.id='default'`)
     .first<{ json: string; version: number }>();
 }
@@ -129,10 +130,12 @@ export async function apiFixture({
   port = 0,
   legacyEvents = false,
   legacyLifecycle = false,
+  legacySchedules = false,
 }: {
   port?: number;
   legacyEvents?: boolean;
   legacyLifecycle?: boolean;
+  legacySchedules?: boolean;
 } = {}) {
   const configPath = fileURLToPath(new URL("../../wrangler.jsonc", import.meta.url));
   const require = createRequire(import.meta.url);
@@ -179,6 +182,7 @@ export async function apiFixture({
       "0004_http.sql",
       ...(legacyEvents ? [] : ["0005_events.sql"]),
       ...(legacyEvents || legacyLifecycle ? [] : ["0006_event_lifecycle.sql"]),
+      ...(legacyEvents || legacyLifecycle || legacySchedules ? [] : ["0007_availability_schedules.sql"]),
     ])
       await migrate(name);
     const connect = () =>
@@ -223,7 +227,7 @@ export async function apiFixture({
         .prepare("INSERT INTO organizer_settings VALUES ('owner',?,1)")
         .bind(JSON.stringify(settings))
         .run();
-    else if (legacyLifecycle) {
+    else if (legacyLifecycle || legacySchedules) {
       const { event, ...preferences } = settings;
       await db.batch([
         db.prepare("UPDATE event_type SET json=? WHERE id='default'").bind(JSON.stringify(event)),
@@ -234,6 +238,16 @@ export async function apiFixture({
       await platform?.dispose();
       try {
         await migrate(lifecycle ? "0006_event_lifecycle.sql" : "0005_events.sql");
+      } finally {
+        platform = await connect();
+        db = platform.env.DB;
+        env.DB = db;
+      }
+    };
+    const migrateSchedules = async () => {
+      await platform?.dispose();
+      try {
+        await migrate("0007_availability_schedules.sql");
       } finally {
         platform = await connect();
         db = platform.env.DB;
@@ -284,6 +298,7 @@ export async function apiFixture({
         return db;
       },
       migrateEvents,
+      migrateSchedules,
       calendar,
       env,
       ciphertext,

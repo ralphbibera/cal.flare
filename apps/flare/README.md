@@ -110,7 +110,11 @@ An unacknowledged removal can be retried safely against the same event.
 Anonymous visitors browse listed events at `/public/events`. This directory is server-rendered and
 contains only public event details and the sanitized organizer name. Hidden events retain direct links.
 After default removal, owner entry selects the first remaining event. With no events, entry opens creation with shared preferences and booking history.
-Working hours, timezone, overrides, and conflict calendars remain shared across all events.
+Events resolve an explicit reusable schedule or the owner's current default. Working hours, timezone,
+and dated overrides are shared only by events using that schedule. Conflict calendars remain owner-wide.
+The existing hours and override editors save the resolved schedule shown for the selected event,
+including duplicate-source mode. Creation and empty-event mode edit the owner's default schedule.
+The named schedule manager and event-assignment controls remain pending.
 An uncertain creation keeps the draft and offers **Refresh events** to inspect explicit selection candidates.
 The app does not automatically repeat the creation request.
 The organizer page edits the event title, URL slug, description, duration, and optional static location with browser JavaScript.
@@ -174,21 +178,42 @@ The existing built Worker browser journey checks the editor, privacy, historical
 and actual downloads at 390px and 1280px with mocked Google. Native location pixel parity, live
 calendar imports, invitation arrival, and other location types remain unverified.
 
-Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the current weekly
+Authenticated `PATCH /api/owner/schedule` accepts `{ timeZone, rules }` for the owner-default weekly
 schedule. Each rule contains `weekday` (Sunday 0 through Saturday 6), `startMinute`, and
 `endMinute` within that local day. Multiple nonoverlapping ranges per day are supported;
 an empty rules array closes weekly availability. This update preserves event settings and
-dated overrides. The private working-hours editor uses this endpoint to add or remove ranges,
+dated overrides. The private working-hours editor uses the ID-scoped weekly endpoint to add or remove ranges,
 change timezone, and close weekly availability. An end time of `00:00` represents minute 1440.
 Failed saves retain the draft. Full editor pixel parity remains migration work.
 
-Authenticated `PATCH /api/owner/overrides` replaces only the schedule's dated overrides.
+Authenticated `PATCH /api/owner/overrides` replaces only the owner-default schedule's dated overrides.
 Send `{ overrides: [{ date: "YYYY-MM-DD", ranges: [{ startMinute, endMinute }] }] }`.
 Dates and minute ranges use the organizer's schedule timezone. Empty ranges close that date;
 nonempty ranges replace its weekly hours. Send `{ overrides: [] }` to restore weekly hours
 for every date. Event settings, timezone and weekly rules stay unchanged. The private
-date-override editor supports dated closures and replacement intervals through this endpoint.
+date-override editor supports dated closures and replacement intervals through the ID-scoped endpoint.
 Saves are explicit, and failed saves retain the draft. Full editor pixel parity remains open.
+
+The private reusable-schedule API uses the existing owner session, same-origin mutation checks,
+strict bodies, and no-store responses. `GET /api/owner/schedules` returns
+`{ defaultScheduleId, schedules: [{ id, name, schedule }] }`. `POST` accepts only `{ name }` and
+returns a new record with status 201. New schedules use app weekly defaults in the owner's default
+timezone, with no dated overrides. They do not change assignments or the default.
+`GET /api/owner/schedules/:id` returns `{ id, name, schedule }`. `PATCH` accepts only `{ name }`.
+`PATCH /:id/weekly` accepts the existing weekly body, and `PATCH /:id/overrides` accepts the existing
+override body. Weekly edits preserve dated overrides, including an absent override key.
+Override edits preserve weekly hours and timezone.
+`POST /:id/duplicate` accepts `{ name }` and copies all saved schedule fields under an independent ID.
+Names need not be unique. `PATCH /:id/default` accepts `{}` and changes fallback events only.
+`PATCH /api/owner/events/:id/schedule` accepts exactly `{ scheduleId: string | null }`.
+Null selects owner-default fallback. Event duplication preserves the source assignment, including null.
+`DELETE /api/owner/schedules/:id` accepts no body, clears explicit references to fallback, and replaces
+a deleted default with the earliest surviving schedule. The database rejects deleting the final schedule.
+A repeat delete of an absent valid ID succeeds. An unknown GET returns 404.
+Mutations other than create and duplicate return exactly `{ saved: true }`.
+Full settings PUT edits the stable default event's resolved schedule and preserves its assignment.
+Public metadata, booking views, slots, and request bodies do not expose or accept schedule identity.
+Accepted commands keep their frozen settings through schedule changes and deletion.
 
 Authenticated `PATCH /api/owner/booking-rules` replaces slot spacing, buffers, minimum notice
 and guest change rules. Send all six fields: `intervalMinutes`, `beforeMinutes`, `afterMinutes`,

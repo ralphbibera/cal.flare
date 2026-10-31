@@ -54,6 +54,8 @@ export type Booking = {
 export type Command = {
   id: string;
   event_id: string;
+  event_schedule_id: string | null;
+  resolved_schedule_id: string | null;
   request_key: string;
   booking_id: string;
   action: Action;
