@@ -1,9 +1,8 @@
 import { useEffect, useId, useState } from "react";
-import { BookerClient, type BookingAccess, type ChangeRequest, ErrorWithCode } from "../client/bookings.ts";
+import { type AttendeeChangeStage, captureAttendeeChange } from "../client/attendee-change.ts";
+import { BookerClient, type BookingAccess, ErrorWithCode } from "../client/bookings.ts";
 import { ChangeAttempts } from "../client/change-attempt.ts";
 import { managementLink } from "../client/management-access.ts";
-import { parseCancellationReason } from "../domain/cancellation-reason.ts";
-import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import { BookingCalendar } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
 import type { bookingLabels } from "./booking-labels.ts";
@@ -14,11 +13,7 @@ import { TextArea } from "./TextArea.tsx";
 
 type Booking = Awaited<ReturnType<BookerClient["view"]>>;
 type Labels = typeof bookingLabels;
-type Stage =
-  | { kind: "restore" | "actions" | "calendar" | "blocked" }
-  | { kind: "cancel"; invalid?: true }
-  | { kind: "move"; start: number; invalid?: true }
-  | { kind: "pending"; request: Readonly<ChangeRequest> };
+type Stage = { kind: "restore" | "actions" | "calendar" | "blocked" } | AttendeeChangeStage;
 const client = new BookerClient();
 
 export function BookingManagement({
@@ -79,41 +74,23 @@ export function BookingManagement({
   }
   async function change() {
     if (busy || (stage.kind !== "pending" && stage.kind !== "move" && stage.kind !== "cancel")) return;
-    const cancellationReason =
-      stage.kind === "cancel" ? parseCancellationReason(cancellationDraft) : undefined;
-    if (cancellationReason === null) {
-      setStage({ kind: "cancel", invalid: true });
+    const captured = captureAttendeeChange({
+      stage,
+      version: booking.version,
+      cancellationDraft,
+      rescheduleDraft,
+      store,
+    });
+    if (captured.kind === "invalid") {
+      setStage(captured.stage);
       return;
     }
-    const rescheduleReason = stage.kind === "move" ? parseRescheduleReason(rescheduleDraft) : undefined;
-    if (rescheduleReason === null && stage.kind === "move") {
-      setStage({ ...stage, invalid: true });
-      return;
-    }
-    let request: Readonly<ChangeRequest>;
-    try {
-      request =
-        stage.kind === "pending"
-          ? stage.request
-          : store().begin(
-              stage.kind === "move"
-                ? {
-                    action: "reschedule",
-                    version: booking.version,
-                    start: stage.start,
-                    ...(rescheduleReason ? { rescheduleReason } : {}),
-                  }
-                : {
-                    action: "cancel",
-                    version: booking.version,
-                    ...(cancellationReason ? { cancellationReason } : {}),
-                  }
-            );
-    } catch {
+    if (captured.kind === "storage-blocked") {
       setStage({ kind: "blocked" });
       setError(labels.storageError);
       return;
     }
+    const { request } = captured;
     setStage({ kind: "pending", request });
     setBusy(true);
     setError("");
@@ -125,17 +102,20 @@ export function BookingManagement({
       else setRescheduleDraft("");
       setStage({ kind: "actions" });
     } catch (failure) {
-      try {
-        if (store().reject(request.requestKey, failure)) {
-          setStage({ kind: "actions" });
-          setError(labels.slotConflict);
-        } else setError(labels.bookingError);
-      } catch {
-        setStage({ kind: "blocked" });
-        setError(labels.storageError);
-      }
+      rejectChange(request.requestKey, failure);
     } finally {
       setBusy(false);
+    }
+  }
+  function rejectChange(requestKey: string, failure: unknown): void {
+    try {
+      if (store().reject(requestKey, failure)) {
+        setStage({ kind: "actions" });
+        setError(labels.slotConflict);
+      } else setError(labels.bookingError);
+    } catch {
+      setStage({ kind: "blocked" });
+      setError(labels.storageError);
     }
   }
   const confirmed =
