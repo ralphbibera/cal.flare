@@ -748,6 +748,7 @@ async function verifyLostScheduleCreate(page, f) {
   await candidates.getByRole("link", { name: `${created.name} (${created.id})`, exact: true }).click();
   assert.equal(posts, 1);
   await expect(page.getByLabel("Select a schedule", { exact: true })).toHaveValue(created.id);
+  await expect(form.getByRole("textbox")).toBeEnabled();
   await page.unroute("**/api/owner/schedules");
   return created;
 }
