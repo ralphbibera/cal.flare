@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { captureAttendeeChange } from "../src/client/attendee-change.ts";
 import { BookerClient, ErrorWithCode } from "../src/client/bookings.ts";
 import { ChangeAttempts, type ChangeInput } from "../src/client/change-attempt.ts";
 import { captureOwnerChange } from "../src/client/owner-change.ts";
@@ -23,6 +24,102 @@ const hour = 3_600_000;
 const input = { action: "reschedule", version: 1, start: Date.UTC(2030, 0, 1, 10) } as const;
 const code = (expected: string) => (error: unknown) =>
   error instanceof ErrorWithCode && error.code === expected;
+test("attendee capture keeps both reasons optional and normalizes the saved request", () => {
+  for (const action of ["cancel", "reschedule"] as const) {
+    for (const draft of [" \n\t ", " \nPrivate <reason>\t ", "😀".repeat(500), ` ${"x".repeat(1000)} `]) {
+      const tab = session();
+      const store = new ChangeAttempts({ storage: tab.storage, bookingId });
+      const captured = captureAttendeeChange({
+        stage: action === "cancel" ? { kind: "cancel" } : { kind: "move", start: input.start },
+        version: 1,
+        cancellationDraft: draft,
+        rescheduleDraft: draft,
+        store: () => store,
+      });
+      assert.equal(captured.kind, "ready");
+      if (captured.kind !== "ready") return;
+      const { request } = captured;
+      assert.deepEqual(request, {
+        action,
+        requestKey: request.requestKey,
+        version: 1,
+        ...(action === "reschedule" ? { start: input.start } : {}),
+        ...(draft.trim()
+          ? { [action === "cancel" ? "cancellationReason" : "rescheduleReason"]: draft.trim() }
+          : {}),
+      });
+      assert.ok(Object.isFrozen(request));
+      assert.equal([...tab.values.values()][0], JSON.stringify(request));
+    }
+  }
+});
+
+test("attendee capture rejects reasons beyond the existing UTF-16 boundary", () => {
+  for (const stage of [{ kind: "cancel" }, { kind: "move", start: input.start }] as const) {
+    for (const draft of ["x".repeat(1001), `${"😀".repeat(500)}x`]) {
+      assert.deepEqual(
+        captureAttendeeChange({
+          stage,
+          version: 1,
+          cancellationDraft: draft,
+          rescheduleDraft: draft,
+          store: () => {
+            assert.fail("Invalid reasons must not access storage");
+          },
+        }),
+        { kind: "invalid", stage: { ...stage, invalid: true } }
+      );
+    }
+  }
+});
+
+test("attendee capture replays the restored request directly without accessing storage or drafts", () => {
+  for (const change of [{ action: "cancel", version: 1 }, input] as const) {
+    const tab = session();
+    const store = new ChangeAttempts({ storage: tab.storage, bookingId });
+    store.begin(change);
+    const request = store.read();
+    assert.ok(request);
+    const bytes = JSON.stringify(request);
+    tab.values.set(`calflare:change:v1:${bookingId}`, "{");
+    const captured = captureAttendeeChange({
+      stage: { kind: "pending", request },
+      version: 99,
+      cancellationDraft: "x".repeat(1001),
+      rescheduleDraft: "x".repeat(1001),
+      store: () => {
+        assert.fail("Pending replay must not access storage");
+      },
+    });
+    assert.equal(captured.kind, "ready");
+    if (captured.kind !== "ready") return;
+    assert.equal(captured.request, request);
+    assert.ok(Object.isFrozen(captured.request));
+    assert.equal(JSON.stringify(captured.request), bytes);
+    assert.equal(tab.values.get(`calflare:change:v1:${bookingId}`), "{");
+  }
+});
+
+test("attendee capture fails closed when fresh storage cannot be read or written", () => {
+  const fail = () => {
+    throw new Error("private storage failure");
+  };
+  for (const operation of ["getItem", "setItem"] as const) {
+    const tab = session();
+    assert.deepEqual(
+      captureAttendeeChange({
+        stage: { kind: "move", start: input.start },
+        version: 1,
+        cancellationDraft: "",
+        rescheduleDraft: "Private reason",
+        store: () => new ChangeAttempts({ storage: { ...tab.storage, [operation]: fail }, bookingId }),
+      }),
+      { kind: "storage-blocked" }
+    );
+    assert.equal(tab.values.size, 0);
+  }
+});
+
 const ownerBooking: BookingView = {
   id: bookingId,
   status: "confirmed",
