@@ -60,6 +60,9 @@ function storedSettings(row: StoredSettings): Settings {
 }
 
 type AdmissionContext = {
+  calendarId: string;
+  ownerCalendarId: string;
+  eventCalendarId: string | null;
   settings: Settings;
   settingsJson: string;
   eventScheduleId: string | null;
@@ -67,13 +70,16 @@ type AdmissionContext = {
   policy: CurrentActionPolicy;
 };
 type ResolvedSettings = StoredSettings & {
+  owner_calendar_id: string;
+  event_calendar_id: string | null;
   event_schedule_id: string | null;
   resolved_schedule_id: string | null;
 };
 async function readSettings(db: SettingsDatabase, id: string): Promise<ResolvedSettings | null> {
   return db
     .prepare(`SELECT e.json AS event_json, e.lifecycle, o.json AS preferences_json,
-      s.json AS schedule_json,e.schedule_id AS event_schedule_id,s.id AS resolved_schedule_id FROM event_type e
+      s.json AS schedule_json,e.schedule_id AS event_schedule_id,s.id AS resolved_schedule_id,
+      o.destination_calendar_id AS owner_calendar_id,e.destination_calendar_id AS event_calendar_id FROM event_type e
       LEFT JOIN organizer_settings o ON o.id='owner'
       LEFT JOIN availability_schedule s ON s.id=COALESCE(e.schedule_id,o.default_schedule_id) WHERE e.id=?`)
     .bind(eventId(id))
@@ -90,6 +96,9 @@ async function getAdmissionContext(
   const settings = storedSettings(row);
   if (row.resolved_schedule_id === null) throw new SettingsError("Missing current schedule");
   return {
+    calendarId: destinationId(row.event_calendar_id ?? row.owner_calendar_id),
+    ownerCalendarId: destinationId(row.owner_calendar_id),
+    eventCalendarId: row.event_calendar_id === null ? null : destinationId(row.event_calendar_id),
     settings,
     settingsJson: `{"event":${row.event_json},"schedule":${row.schedule_json}${
       settings.conflictCalendarIds === undefined ? "" : `,${row.preferences_json?.slice(1, -1)}`
@@ -219,9 +228,9 @@ async function duplicateEvent(
   const id = crypto.randomUUID();
   await eventWrite(
     db
-      .prepare(`INSERT INTO event_type(id,json,version,lifecycle,schedule_id)
+      .prepare(`INSERT INTO event_type(id,json,version,lifecycle,schedule_id,destination_calendar_id)
     SELECT ?,json_set(json,'$.slug',?,'$.title',json(?),'$.description',json(?),
-      '$.durationMinutes',CAST(? AS INTEGER)),1,lifecycle,schedule_id FROM event_type WHERE id=? AND lifecycle <> 'removed'`)
+      '$.durationMinutes',CAST(? AS INTEGER)),1,lifecycle,schedule_id,destination_calendar_id FROM event_type WHERE id=? AND lifecycle <> 'removed'`)
       .bind(
         id,
         details.slug,
@@ -282,6 +291,43 @@ async function saveConflictCalendars(db: D1Database, input: string[] | null): Pr
         json_remove(organizer_settings.json, '$.conflictCalendarIds'), json(?)),
         version = version + 1 WHERE id='owner'`)
       .bind(JSON.stringify(patch))
+  );
+}
+
+function destinationId(value: unknown): string {
+  return parseConflictCalendarIds([value])[0];
+}
+
+async function getDestinationCalendars(db: SettingsDatabase, id?: string) {
+  const ownerCalendarId = await db
+    .prepare("SELECT destination_calendar_id FROM organizer_settings WHERE id='owner'")
+    .first<unknown>("destination_calendar_id");
+  const ownerDefault = destinationId(ownerCalendarId);
+  if (id === undefined) return { ownerDefault, eventOverride: null };
+  const row = await db
+    .prepare("SELECT destination_calendar_id FROM event_type WHERE id=? AND lifecycle <> 'removed'")
+    .bind(eventId(id))
+    .first<{ destination_calendar_id: unknown }>();
+  if (!row) throw new ErrorWithCode("not_found", 404);
+  return {
+    ownerDefault,
+    eventOverride: row.destination_calendar_id === null ? null : destinationId(row.destination_calendar_id),
+  };
+}
+
+async function saveDestinationCalendar(db: D1Database, input: string | null, id?: string): Promise<void> {
+  if (id !== undefined) {
+    await eventWrite(
+      db
+        .prepare("UPDATE event_type SET destination_calendar_id=? WHERE id=? AND lifecycle <> 'removed'")
+        .bind(input === null ? null : destinationId(input), eventId(id))
+    );
+    return;
+  }
+  await preferencesWrite(
+    db
+      .prepare("UPDATE organizer_settings SET destination_calendar_id=? WHERE id='owner'")
+      .bind(input === null ? "primary" : destinationId(input))
   );
 }
 
@@ -413,6 +459,9 @@ export {
   eventId,
   findEventBySlug,
   getCurrentActionPolicy,
+  destinationId,
+  getDestinationCalendars,
+  saveDestinationCalendar,
   getAdmissionContext,
   getBookableSettings,
   getOwnerEvent,

@@ -50,6 +50,7 @@ async function verifyEvents(browser, { schedulesOnly = false } = {}) {
       await verifyReusableSchedules(browser, f, owner, created.id);
       return;
     }
+    await verifyDestinationCalendars(browser, f, owner, created.id);
     assert.equal((await read(await request("/api/owner/events", { headers: owner }))).events.length, 2);
     const metadata = await read(await request(publicPath));
     assert.equal(metadata.id, created.id);
@@ -203,6 +204,165 @@ async function profileContext(browser, f, owner) {
   const context = await browser.newContext({ timezoneId: "UTC" });
   await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
   return context;
+}
+
+async function verifyDestinationCalendars(browser, f, owner, eventId) {
+  const context = await profileContext(browser, f, owner);
+  const target = "team+東京@group.calendar.google.com";
+  const originalCalendars = [...f.google.calendars];
+  const path = "/api/owner/destination-calendars";
+  f.google.calendars.push(
+    { id: "organizer@example.test", summary: "Primary", primary: true, accessRole: "owner" },
+    { id: target, summary: `${"界".repeat(120)} <literal>`, accessRole: "writer" },
+    { id: "read-only", summary: "Read only", accessRole: "reader" }
+  );
+  const writes = structuredClone(f.google.writes);
+  try {
+    const page = await context.newPage();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 390)
+        await page.route(
+          "**/api/owner/destination-calendars",
+          (route) => route.fulfill({ status: 503, json: {} }),
+          { times: 1 }
+        );
+      await page.goto(`${f.origin}/?eventId=${eventId}`);
+      const ownerEditor = page.getByRole("region", { name: "Default destination calendar", exact: true });
+      const eventEditor = page.getByRole("region", { name: "Event destination calendar", exact: true });
+      const ownerChoice = ownerEditor.getByRole("combobox");
+      if (width === 390) {
+        await ownerEditor.getByRole("alert").waitFor();
+        await expect(
+          ownerEditor.getByRole("link", { name: "Reconnect Google", exact: true })
+        ).toHaveAttribute("href", "/api/auth/login");
+        await ownerEditor.getByRole("button", { name: "Reload calendars", exact: true }).click();
+      }
+      await expect(ownerChoice).toBeEnabled();
+      await expect(eventEditor.getByRole("combobox")).toBeEnabled();
+      assert.equal(await ownerChoice.locator('option[value="read-only"]').count(), 0);
+      await ownerChoice.selectOption(target);
+      await ownerEditor.getByRole("button", { name: "Reload calendars", exact: true }).click();
+      await expect(ownerChoice).toBeEnabled();
+      await expect(ownerChoice).toHaveValue(target);
+      await verifyDestinationFailures(page, ownerEditor, target);
+      await verifyDestinationPending(page, ownerEditor);
+      await page.reload();
+      await expect(ownerChoice).toBeEnabled();
+      await expect(ownerChoice).toHaveValue(target);
+      await eventEditor.getByRole("combobox").selectOption("primary");
+      await eventEditor.getByRole("button", { name: "Save", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(eventEditor.getByRole("status")).toHaveText("Saved");
+      const saved = await f.read(await f.request(`${path}?eventId=${eventId}`, { headers: owner }));
+      assert.equal(saved.ownerDefault, target);
+      assert.equal(saved.eventOverride, "primary");
+      f.google.calendars.find(({ id }) => id === target).accessRole = "reader";
+      await ownerEditor.getByRole("button", { name: "Reload calendars", exact: true }).click();
+      await expect(ownerChoice).toBeEnabled();
+      await expect(ownerChoice).toHaveValue(target);
+      await expect(ownerChoice.locator("option:checked")).toContainText("Unavailable");
+      await expect(ownerEditor.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await ownerEditor.getByRole("button", { name: "Reset to primary", exact: true }).click();
+      await expect(ownerEditor.getByRole("status")).toHaveText("Saved");
+      await eventEditor.getByRole("button", { name: "Follow owner default", exact: true }).click();
+      await expect(eventEditor.getByRole("combobox")).toHaveValue("");
+      f.google.calendars.find(({ id }) => id === target).accessRole = "writer";
+      await verifyDestinationAbandoned(page, ownerEditor, f, eventId, target);
+      await f.read(await f.send(path, { calendarId: null }, owner, "PATCH"));
+    }
+    assert.deepEqual(f.google.writes, writes, "Destination choices do not write Google events");
+  } finally {
+    await f.read(await f.send(path, { calendarId: null }, owner, "PATCH"));
+    await f.read(await f.send(`${path}?eventId=${eventId}`, { calendarId: null }, owner, "PATCH"));
+    f.google.calendars.splice(0, f.google.calendars.length, ...originalCalendars);
+    await context.close();
+  }
+}
+
+async function verifyDestinationFailures(page, editor, target) {
+  for (const [status, body] of [
+    [503, "{}"],
+    [201, '{"saved":true}'],
+    [200, "broken"],
+    [200, "{}"],
+    [200, '{"saved":false}'],
+    [200, '{"saved":true,"extra":true}'],
+  ]) {
+    await page.route(
+      "**/api/owner/destination-calendars",
+      (route) => route.fulfill({ status, contentType: "application/json", body }),
+      { times: 1 }
+    );
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await editor.getByRole("alert").waitFor();
+    await expect(editor.getByRole("combobox")).toHaveValue(target);
+    assert.equal(await editor.getByRole("status").count(), 0);
+  }
+}
+
+async function verifyDestinationPending(page, editor) {
+  const applied = Promise.withResolvers(),
+    release = Promise.withResolvers(),
+    finished = Promise.withResolvers();
+  let patches = 0;
+  const route = async (request) => {
+    patches++;
+    const response = await request.fetch();
+    applied.resolve();
+    await release.promise;
+    await request.fulfill({ response });
+    finished.resolve();
+  };
+  await page.route("**/api/owner/destination-calendars", route);
+  try {
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await applied.promise;
+    await editor.locator("form").evaluate((form) => {
+      form.requestSubmit();
+      form.requestSubmit();
+    });
+    assert.equal(patches, 1, "One explicit destination save may be in flight");
+    await expect(editor.getByRole("combobox")).toBeDisabled();
+    release.resolve();
+    await expect(editor.getByRole("status")).toHaveText("Saved");
+    await finished.promise;
+  } finally {
+    release.resolve();
+    await page.unroute("**/api/owner/destination-calendars", route);
+  }
+}
+
+async function verifyDestinationAbandoned(page, editor, f, eventId, target) {
+  await editor.getByRole("button", { name: "Reload calendars", exact: true }).click();
+  await expect(editor.getByRole("combobox")).toBeEnabled();
+  await editor.getByRole("combobox").selectOption(target);
+  const applied = Promise.withResolvers(),
+    release = Promise.withResolvers(),
+    finished = Promise.withResolvers();
+  const route = async (request) => {
+    const response = await request.fetch();
+    applied.resolve();
+    await release.promise;
+    await request.fulfill({ response }).catch(() => {});
+    finished.resolve();
+  };
+  await page.route("**/api/owner/destination-calendars", route, { times: 1 });
+  try {
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await applied.promise;
+    await page.goto(`${f.origin}/?eventId=${eventId}`);
+    await expect(editor.getByRole("combobox")).toBeEnabled();
+    await editor.getByRole("combobox").selectOption("primary");
+    release.resolve();
+    await finished.promise;
+    await expect(editor.getByRole("combobox")).toHaveValue("primary");
+    assert.equal(await editor.getByRole("status").count(), 0);
+  } finally {
+    release.resolve();
+    await page.unroute("**/api/owner/destination-calendars", route);
+  }
 }
 
 async function verifyProfile(browser, f, owner, eventId, details) {
@@ -419,6 +579,14 @@ async function verifyProfileWithoutEvents(browser, f, owner) {
   try {
     const page = await context.newPage();
     await page.goto(f.origin);
+    const destination = page.getByRole("region", { name: "Default destination calendar", exact: true });
+    await expect(destination.getByRole("combobox")).toBeEnabled();
+    assert.equal(
+      await page.getByRole("region", { name: "Event destination calendar", exact: true }).count(),
+      0
+    );
+    await destination.getByRole("button", { name: "Reset to primary", exact: true }).click();
+    await expect(destination.getByRole("status")).toHaveText("Saved");
     await page.getByRole("link", { name: "Profile", exact: true }).click();
     await page.getByLabel("Public display name", { exact: true }).fill("After final event removal");
     await page.getByRole("button", { name: "Save", exact: true }).click();

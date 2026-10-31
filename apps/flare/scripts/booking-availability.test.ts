@@ -13,6 +13,7 @@ import type { Interval } from "../src/domain/scheduling.ts";
 import { defaultSettings } from "../src/domain/settings.ts";
 import { BookingAvailability } from "../src/server/booking-availability.ts";
 import type { Booking, BookingSnapshot } from "../src/server/booking-model.ts";
+import type { CalendarExclusion } from "../src/server/google.ts";
 
 test("booking availability combines visitor rounding, D1 holds and fresh calendar checks", async () => {
   const require = createRequire(import.meta.url);
@@ -53,11 +54,11 @@ test("booking availability combines visitor rounding, D1 holds and fresh calenda
     const settings = structuredClone(defaultSettings);
     Object.assign(settings.event, { intervalMinutes: 60, noticeMinutes: 0 });
     settings.schedule.rules = [{ weekday: 1, startMinute: 540, endMinute: 720 }];
-    const calls: [string, string, string | undefined][] = [];
+    const calls: [string, string, CalendarExclusion | undefined][] = [];
     let remote: Interval[] = [],
       failure = false;
     const calendar = {
-      async busy(start: string, end: string, exclude?: string) {
+      async busy(start: string, end: string, exclude?: CalendarExclusion) {
         calls.push([start, end, exclude]);
         if (failure) throw new Error("calendar unavailable");
         return remote;
@@ -97,20 +98,21 @@ test("booking availability combines visitor rounding, D1 holds and fresh calenda
     assert.deepEqual(await starts("UTC"), []);
     remote = [];
     assert.deepEqual(await starts("UTC"), [from + 60 * minute]);
-    const booking = await db.prepare("SELECT * FROM booking WHERE id=?").bind(desired.id).first<Booking>();
-    assert.ok(booking);
+    const row = await db.prepare("SELECT * FROM booking WHERE id=?").bind(desired.id).first<Booking>();
+    assert.ok(row);
+    const booking = { ...row, calendar_id: "primary" };
     assert.deepEqual(
       (await availability.slots(from, to, "UTC", booking)).map((x) => x.start),
       [from, from + 60 * minute, from + 120 * minute]
     );
-    assert.equal(calls.at(-1)?.[2], desired.id);
+    assert.deepEqual(calls.at(-1)?.[2], { calendarId: "primary", eventId: desired.id });
     const long = { ...booking, confirmed_json: JSON.stringify({ ...desired, end: from + 90 * minute }) };
     assert.deepEqual(
       (await availability.slots(from, to, "UTC", long)).map((x) => x.start),
       [from, from + 60 * minute]
     );
     assert.equal(await availability.condition(desired, desired.id), "accepted");
-    assert.equal(calls.at(-1)?.[2], desired.id);
+    assert.deepEqual(calls.at(-1)?.[2], { calendarId: "primary", eventId: desired.id });
     assert.equal(await availability.condition({ ...desired, timeZone: "Asia/Kolkata" }), "invalid_slot");
     assert.equal(
       await availability.condition({

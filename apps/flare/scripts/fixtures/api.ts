@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -13,11 +13,25 @@ import type { Settings } from "../../src/domain/settings.ts";
 import { defaultSettings } from "../../src/domain/settings.ts";
 import { handleApi } from "../../src/server/app.ts";
 import type { AuthEnv } from "../../src/server/auth.ts";
-import type { CalendarEvent, EventInput } from "../../src/server/google.ts";
+import type { CalendarEvent, CalendarExclusion, EventInput } from "../../src/server/google.ts";
 import { GoogleCalendarError } from "../../src/server/google.ts";
 import { respond } from "../../src/server/http.ts";
 import { encryptionKey, hash, randomSecret, seal } from "../../src/server/secrets.ts";
 import { saveSettings } from "../../src/server/settings.ts";
+
+async function fixtureRequest(incoming: IncomingMessage, origin: string): Promise<Request> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(incoming.headers)) {
+    if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+  }
+  return new Request(new URL(incoming.url ?? "/", origin), {
+    method: incoming.method,
+    headers,
+    ...(["GET", "HEAD"].includes(incoming.method ?? "GET") ? {} : { body: Buffer.concat(chunks) }),
+  });
+}
 
 export const hour = 3_600_000;
 export function storedSettings(db: D1Database) {
@@ -44,23 +58,39 @@ export const settings: Settings = {
 
 export class FakeCalendar {
   readonly events = new Map<string, CalendarEvent>();
-  readonly writes: { action: string; id: string; etag?: string; attendee?: string }[] = [];
+  readonly calendars = new Map<string, Map<string, CalendarEvent>>([["primary", this.events]]);
+  readonly writes: { action: string; id: string; calendarId: string; etag?: string; attendee?: string }[] =
+    [];
+  readonly revoked = new Set<string>();
   cutAfter: "insert" | "update" | "delete" | undefined;
   private revision = 0;
 
-  async busy(from: string, to: string, exclude?: string, conflictCalendarIds?: string[]) {
-    if (conflictCalendarIds && !conflictCalendarIds.includes("primary")) return [];
-    return [...this.events.values()].flatMap((event) => {
-      assert.ok("dateTime" in event.start && "dateTime" in event.end);
-      const start = Date.parse(event.start.dateTime),
-        end = Date.parse(event.end.dateTime);
-      const owned =
-        event.extendedProperties?.private?.application === "calflare" &&
-        event.extendedProperties?.private?.booking === event.id;
-      return !(event.id === exclude && owned) && start < Date.parse(to) && end > Date.parse(from)
-        ? [{ start, end }]
-        : [];
-    });
+  async busy(from: string, to: string, exclude?: CalendarExclusion, conflictCalendarIds = ["primary"]) {
+    return conflictCalendarIds.flatMap((calendarId) =>
+      [...this.calendar(calendarId).values()].flatMap((event) => {
+        assert.ok("dateTime" in event.start && "dateTime" in event.end);
+        const start = Date.parse(event.start.dateTime),
+          end = Date.parse(event.end.dateTime);
+        const owned =
+          event.extendedProperties?.private?.application === "calflare" &&
+          event.extendedProperties?.private?.booking === event.id;
+        return !(event.id === exclude?.eventId && calendarId === exclude.calendarId && owned) &&
+          start < Date.parse(to) &&
+          end > Date.parse(from)
+          ? [{ start, end }]
+          : [];
+      })
+    );
+  }
+
+  calendar(id: string): Map<string, CalendarEvent> {
+    if (this.revoked.has(id)) throw new GoogleCalendarError("definite", 403, "Revoked calendar");
+    let events = this.calendars.get(id);
+    if (!events) {
+      events = new Map();
+      this.calendars.set(id, events);
+    }
+    return events;
   }
 
   private event(input: EventInput): CalendarEvent {
@@ -90,38 +120,41 @@ export class FakeCalendar {
     throw new GoogleCalendarError("ambiguous", 0, "Fixture response cut after remote apply");
   }
 
-  async insert(input: EventInput) {
-    if (this.events.has(input.id)) throw new GoogleCalendarError("definite", 409, "Duplicate event");
+  async insert(input: EventInput, calendarId = "primary") {
+    const events = this.calendar(calendarId);
+    if (events.has(input.id)) throw new GoogleCalendarError("definite", 409, "Duplicate event");
     const event = this.event(input);
-    this.events.set(input.id, event);
-    this.writes.push({ action: "insert", id: input.id, attendee: input.attendee.email });
+    events.set(input.id, event);
+    this.writes.push({ action: "insert", id: input.id, calendarId, attendee: input.attendee.email });
     this.cut("insert");
     return { id: event.id, etag: event.etag };
   }
 
-  async get(id: string) {
-    return structuredClone(this.events.get(id) ?? null);
+  async get(id: string, calendarId = "primary") {
+    return structuredClone(this.calendar(calendarId).get(id) ?? null);
   }
 
-  private match(id: string, etag: string) {
-    if (this.events.get(id)?.etag !== etag) throw new GoogleCalendarError("definite", 412, "Stale ETag");
+  private match(id: string, etag: string, calendarId: string) {
+    if (this.calendar(calendarId).get(id)?.etag !== etag)
+      throw new GoogleCalendarError("definite", 412, "Stale ETag");
   }
 
-  async update(id: string, etag: string, input: Omit<EventInput, "id">) {
-    this.match(id, etag);
-    const previous = this.events.get(id);
+  async update(id: string, etag: string, input: Omit<EventInput, "id">, calendarId = "primary") {
+    this.match(id, etag, calendarId);
+    const events = this.calendar(calendarId);
+    const previous = events.get(id);
     const event = this.event({ ...input, id });
     if (input.location === undefined && previous?.location !== undefined) event.location = previous.location;
-    this.events.set(id, event);
-    this.writes.push({ action: "update", id, etag, attendee: input.attendee.email });
+    events.set(id, event);
+    this.writes.push({ action: "update", id, calendarId, etag, attendee: input.attendee.email });
     this.cut("update");
     return { id, etag: event.etag };
   }
 
-  async delete(id: string, etag: string) {
-    this.match(id, etag);
-    this.events.delete(id);
-    this.writes.push({ action: "delete", id, etag });
+  async delete(id: string, etag: string, calendarId = "primary") {
+    this.match(id, etag, calendarId);
+    this.calendar(calendarId).delete(id);
+    this.writes.push({ action: "delete", id, calendarId, etag });
     this.cut("delete");
   }
 }
@@ -132,12 +165,14 @@ export async function apiFixture({
   legacyLifecycle = false,
   legacySchedules = false,
   legacyProfile = false,
+  legacyDestinations = false,
 }: {
   port?: number;
   legacyEvents?: boolean;
   legacyLifecycle?: boolean;
   legacySchedules?: boolean;
   legacyProfile?: boolean;
+  legacyDestinations?: boolean;
 } = {}) {
   const configPath = fileURLToPath(new URL("../../wrangler.jsonc", import.meta.url));
   const require = createRequire(import.meta.url);
@@ -192,7 +227,10 @@ export async function apiFixture({
       ...(legacyEvents ? [] : ["0005_events.sql"]),
       ...(legacyEvents || legacyLifecycle ? [] : ["0006_event_lifecycle.sql"]),
       ...(legacyEvents || legacyLifecycle || legacySchedules ? [] : ["0007_availability_schedules.sql"]),
-      ...(legacyProfile ? [] : ["0008_public_profile.sql"])
+      ...(legacyProfile ? [] : ["0008_public_profile.sql"]),
+      ...(legacyEvents || legacyLifecycle || legacySchedules || legacyDestinations
+        ? []
+        : ["0009_destination_calendars.sql"])
     );
     const connect = () =>
       getPlatformProxy<{ DB: D1Database }>({
@@ -273,19 +311,19 @@ export async function apiFixture({
         env.DB = db;
       }
     };
+    const migrateDestinations = async () => {
+      await platform?.dispose();
+      try {
+        await migrate("0009_destination_calendars.sql");
+      } finally {
+        platform = await connect();
+        db = platform.env.DB;
+        env.DB = db;
+      }
+    };
     server.on("request", async (incoming, outgoing) => {
       try {
-        const chunks: Buffer[] = [];
-        for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
-        const headers = new Headers();
-        for (const [name, value] of Object.entries(incoming.headers)) {
-          if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
-        }
-        const request = new Request(new URL(incoming.url ?? "/", env.PUBLIC_ORIGIN), {
-          method: incoming.method,
-          headers,
-          ...(["GET", "HEAD"].includes(incoming.method ?? "GET") ? {} : { body: Buffer.concat(chunks) }),
-        });
+        const request = await fixtureRequest(incoming, env.PUBLIC_ORIGIN);
         const response = await respond(request, () =>
           handleApi(request, { env, calendar, now: () => clock })
         );
@@ -319,6 +357,7 @@ export async function apiFixture({
       migrateEvents,
       migrateSchedules,
       migrateProfile,
+      migrateDestinations,
       calendar,
       env,
       ciphertext,

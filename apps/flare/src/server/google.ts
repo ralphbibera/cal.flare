@@ -20,6 +20,7 @@ export type BusyRange = { start: number; end: number };
 type CountedBusyRanges = { ranges: BusyRange[]; received: number };
 type PrimaryBusyPage = CountedBusyRanges & { next: string | undefined };
 export type ConflictCalendar = { id: string; name: string; primary: boolean };
+export type CalendarExclusion = { calendarId: string; eventId: string };
 const calendarId = z
   .string()
   .min(1)
@@ -51,8 +52,10 @@ const calendarPage = z.object({
     .optional(),
 });
 function discoveredCalendar(
-  item: Exclude<z.infer<typeof calendarEntry>, { deleted: true }>
+  item: Exclude<z.infer<typeof calendarEntry>, { deleted: true }>,
+  writable: boolean
 ): ConflictCalendar | null {
+  if (writable && item.accessRole !== "writer" && item.accessRole !== "owner") return null;
   if (
     item.accessRole === "none" ||
     ["#holiday@group.v.calendar.google.com", "#contacts@group.v.calendar.google.com"].some((suffix) =>
@@ -99,10 +102,13 @@ export type CalendarEvent = {
   }[];
   attendeesOmitted?: boolean;
   calendarOwnerEmail?: string;
+  requiredCalendarAttendee?: string;
   extendedProperties: { private: Record<string, string> };
 };
 const api = "https://www.googleapis.com/calendar/v3";
-const events = "/calendars/primary/events";
+function events(calendar = "primary"): string {
+  return `/calendars/${encodeURIComponent(calendarId.parse(calendar))}/events`;
+}
 function instant(value: unknown): number {
   if (
     typeof value !== "string" ||
@@ -350,6 +356,34 @@ function match(etag: string): Record<string, string> {
     throw new ErrorWithCode("INVALID_ETAG", "A concrete Google event ETag is required");
   return { "If-Match": etag };
 }
+
+function destinationBody(input: Omit<EventInput, "id">, calendar: string) {
+  const payload = body(input);
+  if (calendar === "primary") return payload;
+  const attendees = payload.attendees.filter(({ email }) => email.toLowerCase() !== calendar.toLowerCase());
+  const participant = payload.attendees.find(({ email }) => email.toLowerCase() === calendar.toLowerCase());
+  return {
+    ...payload,
+    attendees: [
+      { ...participant, email: calendar, organizer: true, responseStatus: "accepted" },
+      ...attendees,
+    ],
+  };
+}
+
+function destinationEvent(value: unknown, calendar: string, primaryOwner: string): CalendarEvent {
+  const parsed = event(value);
+  if (calendar === "primary") {
+    parsed.calendarOwnerEmail = primaryOwner;
+    return parsed;
+  }
+  const organizer = z.object({ email: z.string(), self: z.literal(true) }).parse(object(value).organizer);
+  if (organizer.email.toLowerCase() !== calendar.toLowerCase())
+    throw new ErrorWithCode("UPSTREAM_SHAPE", "Unexpected event organizer");
+  parsed.calendarOwnerEmail = organizer.email;
+  parsed.requiredCalendarAttendee = organizer.email;
+  return parsed;
+}
 async function rateLimited(response: Response): Promise<boolean> {
   const reader = response.body?.getReader();
   if (!reader) return false;
@@ -444,7 +478,7 @@ export class GoogleCalendar {
       );
     }
   }
-  async listCalendars(): Promise<ConflictCalendar[]> {
+  async listCalendars(writable = false): Promise<ConflictCalendar[]> {
     const calendars: ConflictCalendar[] = [];
     const ids = new Set<string>(),
       cursors = new Set<string>();
@@ -460,7 +494,7 @@ export class GoogleCalendar {
         if (primary) throw new Error();
         primary = true;
       }
-      const calendar = discoveredCalendar(item);
+      const calendar = discoveredCalendar(item, writable);
       if (calendar) calendars.push(calendar);
     };
     for (let count = 0; count < 10; count++) {
@@ -500,25 +534,36 @@ export class GoogleCalendar {
   async busy(
     fromISO: string,
     toISO: string,
-    excludeEventId?: string,
+    exclude?: CalendarExclusion,
     conflictCalendarIds?: string[]
   ): Promise<BusyRange[]> {
     interval(fromISO, toISO);
     const ids = conflictCalendarIds ?? ["primary"];
-    const secondary = ids.filter((id) => id !== "primary");
+    const listed = ids.filter((id) => id === "primary" || id === exclude?.calendarId);
+    const secondary = ids.filter((id) => !listed.includes(id));
     const result = secondary.length
       ? await this.readFreeBusy(fromISO, toISO, secondary)
       : { ranges: [], received: 0 };
-    if (!ids.includes("primary")) return result.ranges;
-    const primary = await this.primaryBusy(fromISO, toISO, excludeEventId, 10_000 - result.received);
-    return [...result.ranges, ...primary];
+    for (const id of listed) {
+      const page = await this.calendarBusy(
+        fromISO,
+        toISO,
+        id,
+        exclude?.calendarId === id ? exclude.eventId : undefined,
+        10_000 - result.received
+      );
+      result.ranges.push(...page.ranges);
+      result.received += page.received;
+    }
+    return result.ranges;
   }
-  private async primaryBusy(
+  private async calendarBusy(
     fromISO: string,
     toISO: string,
+    calendar: string,
     excludeEventId: string | undefined,
     limit: number
-  ): Promise<BusyRange[]> {
+  ): Promise<CountedBusyRanges> {
     const requested = interval(fromISO, toISO),
       result: BusyRange[] = [];
     const seen = new Set<string>();
@@ -533,13 +578,13 @@ export class GoogleCalendar {
         maxResults: "2500",
       });
       if (page) query.set("pageToken", page);
-      const response = await this.request(`${events}?${query}`);
+      const response = await this.request(`${events(calendar)}?${query}`);
       const parsed = await this.parsed(response, false, (value) =>
         primaryBusyPage(value, requested, excludeEventId, limit - total)
       );
       total += parsed.received;
       result.push(...parsed.ranges);
-      if (!parsed.next) return result;
+      if (!parsed.next) return { ranges: result, received: total };
       if (seen.has(parsed.next))
         throw new GoogleCalendarError("retryable", 200, "Google repeated a pagination cursor");
       seen.add(parsed.next);
@@ -547,11 +592,11 @@ export class GoogleCalendar {
     }
     throw new GoogleCalendarError("retryable", 200, "Google Calendar pagination limit exceeded");
   }
-  async insert(input: EventInput): Promise<{ id: string; etag: string }> {
+  async insert(input: EventInput, calendar = "primary"): Promise<{ id: string; etag: string }> {
     if (!/^[0-9a-v]{5,1024}$/.test(input.id))
       throw new ErrorWithCode("INVALID_EVENT", "Event ID must use Google base32hex syntax");
-    const response = await this.request(`${events}?sendUpdates=all`, "POST", {
-      ...body(input),
+    const response = await this.request(`${events(calendar)}?sendUpdates=all`, "POST", {
+      ...destinationBody(input, calendar),
       id: input.id,
     });
     return this.parsed(response, true, (value) => {
@@ -562,41 +607,45 @@ export class GoogleCalendar {
       return { id: input.id, etag };
     });
   }
-  async get(id: string): Promise<CalendarEvent | null> {
+  async get(id: string, calendar = "primary"): Promise<CalendarEvent | null> {
     const response = await this.request(
-      `${events}/${encodeURIComponent(nonempty(id))}`,
+      `${events(calendar)}/${encodeURIComponent(nonempty(id))}`,
       "GET",
       undefined,
       {},
       true
     );
     if (response.status === 404 || response.status === 410) {
-      const probe = await this.request(`${events}?maxResults=1`);
-      await this.parsed(probe, false, (value) => {
-        if (!Array.isArray(object(value).items))
-          throw new ErrorWithCode("UPSTREAM_SHAPE", "Calendar access could not be verified");
-      });
+      await this.verifyWritable(calendar);
       return null;
     }
-    return this.parsed(response, false, (value) => {
+    const result = await this.parsed(response, false, (value) => {
       const data = object(value);
       if (data.id !== id) throw new Error();
       if (data.status === "cancelled") return null;
-      const parsed = event(value);
+      const parsed = destinationEvent(value, calendar, this.env.GOOGLE_OWNER_EMAIL);
       if (parsed.id !== id) throw new Error();
-      parsed.calendarOwnerEmail = this.env.GOOGLE_OWNER_EMAIL;
       return parsed;
+    });
+    if (result === null) await this.verifyWritable(calendar);
+    return result;
+  }
+  private async verifyWritable(calendar: string): Promise<void> {
+    const probe = await this.request(`${events(calendar)}?maxResults=1`);
+    await this.parsed(probe, false, (value) => {
+      z.object({ items: z.array(z.unknown()), accessRole: z.enum(["writer", "owner"]) }).parse(value);
     });
   }
   async update(
     id: string,
     etag: string,
-    input: Omit<EventInput, "id">
+    input: Omit<EventInput, "id">,
+    calendar = "primary"
   ): Promise<{ id: string; etag: string }> {
     const response = await this.request(
-      `${events}/${encodeURIComponent(nonempty(id))}?sendUpdates=all`,
+      `${events(calendar)}/${encodeURIComponent(nonempty(id))}?sendUpdates=all`,
       "PATCH",
-      body(input),
+      destinationBody(input, calendar),
       match(etag)
     );
     return this.parsed(response, true, (value) => {
@@ -607,9 +656,9 @@ export class GoogleCalendar {
       return { id, etag };
     });
   }
-  async delete(id: string, etag: string): Promise<void> {
+  async delete(id: string, etag: string, calendar = "primary"): Promise<void> {
     await this.request(
-      `${events}/${encodeURIComponent(nonempty(id))}?sendUpdates=all`,
+      `${events(calendar)}/${encodeURIComponent(nonempty(id))}?sendUpdates=all`,
       "DELETE",
       undefined,
       match(etag)

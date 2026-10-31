@@ -56,7 +56,7 @@ bun run setup --check
 2. Enable the **Google Calendar API** under **APIs & Services > Library**.
 3. Configure the app name, support email, and audience in **Google Auth Platform**.
 4. For a personal Google account, choose **External**. While the app is in **Testing**, add `GOOGLE_OWNER_EMAIL` as a test user.
-5. Configure `https://www.googleapis.com/auth/calendar.events`, `https://www.googleapis.com/auth/calendar.events.freebusy`, and `https://www.googleapis.com/auth/calendar.calendarlist.readonly`. These are the Calendar scopes requested by this app. Event access permits primary-calendar event operations; the other grants support shared-calendar busy access and private calendar discovery.
+5. Configure `https://www.googleapis.com/auth/calendar.events`, `https://www.googleapis.com/auth/calendar.events.freebusy`, and `https://www.googleapis.com/auth/calendar.calendarlist.readonly`. These are the Calendar scopes requested by this app. Event access permits operations on writable destinations; the other grants support shared-calendar busy access and private calendar discovery.
 6. Include the identity scopes `openid`, `email`, and `profile`.
 7. Under **Clients**, create an OAuth client with application type **Web application**.
 8. Add `http://localhost:4321/api/auth/callback` as an authorized redirect URI for local development.
@@ -86,8 +86,11 @@ A nonempty selection requires the new discovery grant before saving and selected
 free/busy access when checking availability. Resetting to the primary default or an explicit
 empty selection does not require CalendarList access. Empty selection still enforces local
 booking reservations. Unavailable saved IDs remain visible until you remove them and save.
-**Clear selection** requires Save; **Reset to primary** saves immediately. Event operations and remote
-reconciliation still target the primary calendar.
+**Clear selection** requires Save; **Reset to primary** saves immediately. The separate destination controls
+offer calendars with current `writer` or `owner` access. The owner default and optional event override
+affect new bookings. Existing bookings and their pending commands retain the original destination for
+rescheduling, cancellation, retries, and reconciliation. Unavailable destinations require an explicit
+replacement or reset. Read access alone cannot establish a missing event's safe cancellation.
 The setup command does not run OAuth for you.
 The first successful owner login pins the Google subject in D1.
 Changing `GOOGLE_OWNER_EMAIL` alone does not transfer ownership to another Google account.
@@ -165,7 +168,7 @@ Retain the existing `main`, compatibility settings, assets, and `triggers.crons`
 ```
 
 The checked-in source has no production database UUID or variables. Do not rely on automatic resource provisioning.
-The eight production migrations are `0001_identity.sql` through `0008_public_profile.sql` in `apps/flare/migrations`.
+The nine production migrations are `0001_identity.sql` through `0009_destination_calendars.sql` in `apps/flare/migrations`.
 Use these migrations, not the reservation experiment or inherited Prisma schema.
 
 ### 3. Configure production Google access and secrets
@@ -203,7 +206,7 @@ bun run build
 bun run --cwd apps/flare wrangler deploy --config dist/server/wrangler.json
 ```
 
-On a fresh database, the first list shows eight unapplied migrations. After application, the last list shows none pending.
+On a fresh database, the first list shows nine unapplied migrations. After application, the last list shows none pending.
 The build must run after the production source edits. Astro generates `apps/flare/dist/server/wrangler.json`
 with `entry.mjs`, assets at `../client`, and the D1 migrations path at `../../migrations`.
 The custom `src/worker.ts` entry preserves Astro fetch handling and scheduled recovery.
@@ -232,7 +235,7 @@ Treat every unchecked item as unverified. Local fixtures and dry runs cannot com
 1. Open the chosen HTTPS origin. Confirm the sign-in page, styles, scripts, and fonts load without failed asset requests.
 2. Request `/api/health` on that origin. Expect HTTP 200 and `{"status":"ok","storage":"d1"}`.
    This runs `SELECT 1`. It proves binding access, not application tables, migrations, OAuth, or Google delivery.
-3. Run the remote migrations-list command above. Expect no pending migrations, including all eight app migrations on a fresh installation.
+3. Run the remote migrations-list command above. Expect no pending migrations, including all nine app migrations on a fresh installation.
 4. Sign in with the configured Google owner and approve the requested scopes. Expect the private organizer page.
    Reload to check the session, then sign out and confirm private pages require sign-in. Sign in again.
 5. Load **Conflict calendars**. Confirm eligible Google calendars appear, select the intended conflict calendars, save, and reload.
@@ -240,7 +243,7 @@ Treat every unchecked item as unverified. Local fixtures and dry runs cannot com
 6. Save event details, working hours, timezone, and booking rules. Open the linked public event in a signed-out browser.
    Expect the saved title and duration, valid slots in the chosen timezone, and exclusion of known selected-calendar busy intervals.
 7. Only with explicit permission to create a real booking and send Google invitations, use a separate guest mailbox you control.
-   Submit one booking. Confirm the app reaches confirmed status and the owner's primary Google calendar has the matching event and attendee.
+   Submit one booking. Confirm the app reaches confirmed status and the selected destination calendar has the matching event and attendee.
    Check invitation arrival in the guest inbox, including spam. Record app confirmation, remote event, and email arrival separately.
 8. With the same permission, reschedule that booking through its private guest link and confirm the changed time in the app and Google.
    Then cancel with a reason and confirm cancellation in both places. Inspect guest update and cancellation messages separately.

@@ -35,10 +35,12 @@ import { hash } from "./secrets.ts";
 import {
   createEvent,
   DEFAULT_EVENT_ID,
+  destinationId,
   duplicateEvent,
   eventId,
   getAdmissionContext,
   getBookableSettings,
+  getDestinationCalendars,
   getOwnerEvent,
   getOwnerPreferences,
   getSettings,
@@ -47,6 +49,7 @@ import {
   removeEvent,
   saveBookingRules,
   saveConflictCalendars,
+  saveDestinationCalendar,
   saveEventDetails,
   saveScheduleOverrides,
   saveSettings,
@@ -347,6 +350,7 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
   return {
     owner: identity,
     settings,
+    destinations: await getDestinationCalendars(dependencies.env.DB, selected?.id),
     scheduleId: context?.resolvedScheduleId ?? catalog.defaultScheduleId,
     eventScheduleId: context?.eventScheduleId ?? null,
     catalog,
@@ -456,6 +460,29 @@ async function ownerConflictCalendars(request: Request, env: AuthEnv, url: URL):
     return json({ saved: true });
   }
   return json({ error: "not_found" }, 404);
+}
+
+async function ownerDestinationCalendars(request: Request, env: AuthEnv, url: URL): Promise<Response> {
+  await owner(env, request);
+  if (request.method !== "GET") sameOrigin(request, env.PUBLIC_ORIGIN);
+  const query = url.searchParams;
+  if ([...query.keys()].some((key) => key !== "eventId") || query.getAll("eventId").length > 1)
+    throw new ErrorWithCode("invalid_query");
+  const id = query.has("eventId") ? eventId(query.get("eventId") ?? "") : undefined;
+  const selection = await getDestinationCalendars(env.DB, id);
+  if (request.method === "GET")
+    return json({ calendars: await new CalendarClient(env).listCalendars(true), ...selection });
+  if (request.method !== "PATCH") throw new ErrorWithCode("not_found", 404);
+  const input = record(await body(request));
+  if (Object.keys(input).length !== 1 || !Object.hasOwn(input, "calendarId"))
+    throw new ErrorWithCode("invalid_input");
+  const calendarId = input.calendarId === null ? null : destinationId(input.calendarId);
+  if (calendarId !== null) {
+    const calendars = await new CalendarClient(env).listCalendars(true);
+    if (!calendars.some(({ id }) => id === calendarId)) throw new ErrorWithCode("invalid_calendar_selection");
+  }
+  await saveDestinationCalendar(env.DB, calendarId, id);
+  return json({ saved: true });
 }
 
 async function ownerConfigurationRoute(
@@ -629,6 +656,8 @@ function ownerResourceRoute(
   url: URL
 ): Promise<Response> | null {
   const path = url.pathname;
+  if (path === "/api/owner/destination-calendars")
+    return ownerDestinationCalendars(request, dependencies.env, url);
   if (path === "/api/owner/profile") return ownerProfile(request, dependencies, url);
   if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
     return ownerEvents(request, dependencies, url);

@@ -273,7 +273,11 @@ test("D1 composes authoritative event and preferences, persists updates and reje
       null
     );
     await assert.rejects(
-      db.prepare("INSERT INTO organizer_settings VALUES ('other', '{}', 1,'legacy')").run(),
+      db
+        .prepare(
+          "INSERT INTO organizer_settings(id,json,version,default_schedule_id) VALUES ('other', '{}', 1,'legacy')"
+        )
+        .run(),
       /CHECK constraint/
     );
     await assert.rejects(db.prepare("UPDATE organizer_settings SET version = 0").run());

@@ -99,6 +99,7 @@ test("populated D1 upgrade retains legacy command bytes, rowids, capabilities, o
   assert.deepEqual(after[2].results, before[2].results);
   await f.migrateEvents(true);
   await f.migrateSchedules();
+  await f.migrateDestinations();
   assert.deepEqual(await getSettings(f.db), JSON.parse(rawSettings));
   assert.equal(
     await f.db.prepare("SELECT json FROM event_type WHERE id='default'").first("json"),
@@ -139,6 +140,9 @@ test("populated D1 upgrade retains legacy command bytes, rowids, capabilities, o
     event_id: "default",
     event_schedule_id: null,
     resolved_schedule_id: null,
+    calendar_id: "primary",
+    owner_calendar_id: "primary",
+    event_calendar_id: null,
   });
   await service.recover();
   assert.equal(f.calendar.writes.length, 3);
@@ -174,6 +178,7 @@ test("D1 migration seeds defaults only for absent settings and fails without rep
   await f.migrateEvents();
   await f.migrateEvents(true);
   await f.migrateSchedules();
+  await f.migrateDestinations();
   assert.deepEqual(await getSettings(f.db), defaultSettings);
   assert.equal(await f.db.prepare("SELECT count(*) AS n FROM event_type").first("n"), 1);
 });

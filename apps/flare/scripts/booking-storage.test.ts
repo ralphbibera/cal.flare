@@ -90,6 +90,7 @@ test("D1 booking commands atomically retain intent and occupancy through lifecyc
       "0006_event_lifecycle.sql",
       "0007_availability_schedules.sql",
       "0008_public_profile.sql",
+      "0009_destination_calendars.sql",
     ]) {
       await promisify(execFile)(
         process.execPath,
