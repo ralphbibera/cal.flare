@@ -11,3 +11,11 @@ const result = spawnSync(process.execPath, ["run", "type-check"], {
 });
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;
+if (process.exitCode === 0) {
+  const formal = spawnSync(process.execPath, ["run", "type-check:formal"], {
+    cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+    stdio: "inherit",
+  });
+  if (formal.error) throw formal.error;
+  process.exitCode = formal.status ?? 1;
+}

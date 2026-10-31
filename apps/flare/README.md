@@ -61,6 +61,12 @@ mise exec -- bun run verify:worker
 mise exec -- bun run verify:ui
 ```
 
+For reservation admission, hold, retry, or finalization changes, follow the
+[reservation verification skill](../../.agents/skills/verify-booking-reservations/SKILL.md)
+and run `mise exec -- bun run verify:formal`. The Bun/TypeScript wrapper checks real SQL,
+covered-source drift, and a bounded TLA+ model. It also requires Java 11+ and `gh` for the
+first download of the pinned verifier. Read the skill's bounds before interpreting a pass.
+
 The browser verifier requires the build and Playwright's matching Chromium installation.
 CI installs it with `bun run --cwd apps/flare playwright install --with-deps --only-shell chromium`.
 It compares shared components with pinned upstream rendering and drives the public Astro page

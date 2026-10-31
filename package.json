@@ -24,11 +24,13 @@
     "preview": "bun run --cwd apps/flare preview",
     "type-check": "bun run --cwd apps/flare type-check",
     "type-check:ci": "bun run --cwd apps/flare type-check:ci",
-    "lint": "bun run --cwd apps/flare lint",
+    "lint": "bun run --cwd apps/flare lint && bun run --cwd apps/flare biome check ../../.agents/skills/verify-booking-reservations/resources/check.ts",
     "test": "bun run --cwd apps/flare test",
     "test:sqlite": "TZ=UTC python3 experiments/d1-reservations/verify.py",
     "verify:worker": "bun run --cwd apps/flare verify:worker",
-    "verify:ui": "bun run --cwd apps/flare verify:ui"
+    "verify:ui": "bun run --cwd apps/flare verify:ui",
+    "type-check:formal": "bun run --cwd apps/flare tsc --noEmit --strict --skipLibCheck --target ESNext --module ESNext --moduleResolution bundler --types bun ../../.agents/skills/verify-booking-reservations/resources/check.ts",
+    "verify:formal": "bun .agents/skills/verify-booking-reservations/resources/check.ts"
   },
   "patchedDependencies": {
     "miniflare@5.20261019.2-beta": "patches/miniflare@5.20261019.2-beta.patch",
