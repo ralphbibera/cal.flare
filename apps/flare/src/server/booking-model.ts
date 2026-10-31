@@ -42,6 +42,7 @@ export type BookingView = {
   location?: string;
 };
 export type Booking = {
+  calendar_id: string;
   id: string;
   event_id: string;
   version: number;
@@ -52,6 +53,7 @@ export type Booking = {
   etag: string | null;
 };
 export type Command = {
+  calendar_id: string;
   id: string;
   event_id: string;
   event_schedule_id: string | null;
@@ -179,7 +181,11 @@ export function snapshot(json: string): BookingSnapshot {
 }
 export function matches(event: CalendarEvent, desired: BookingSnapshot): boolean {
   const expected = new Set(
-    [desired.attendee.email, ...(desired.guests ?? [])].map((email) => email.toLowerCase())
+    [
+      desired.attendee.email,
+      ...(desired.guests ?? []),
+      ...(event.requiredCalendarAttendee ? [event.requiredCalendarAttendee] : []),
+    ].map((email) => email.toLowerCase())
   );
   const actual = new Set(event.attendees.map((attendee) => attendee.email.toLowerCase()));
   const owner = event.calendarOwnerEmail?.toLowerCase();

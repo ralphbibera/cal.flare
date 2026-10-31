@@ -30,7 +30,8 @@ export class BookingAvailability {
   async condition(
     desired: BookingSnapshot,
     excludeId?: string,
-    settings: Settings = this.settings
+    settings: Settings = this.settings,
+    calendarId = "primary"
   ): Promise<SlotCondition> {
     const start = timestamp(desired.start),
       end = timestamp(desired.end),
@@ -56,7 +57,7 @@ export class BookingAvailability {
     const busy = await this.calendar.busy(
       new Date(from).toISOString(),
       new Date(to).toISOString(),
-      excludeId,
+      excludeId === undefined ? undefined : { calendarId, eventId: excludeId },
       settings.conflictCalendarIds
     );
     return busy.some((range) => range.start < to && from < range.end) ? "conflict" : "accepted";
@@ -80,7 +81,7 @@ export class BookingAvailability {
     const remote = await this.calendar.busy(
       new Date(start).toISOString(),
       new Date(end).toISOString(),
-      exclude?.id,
+      exclude ? { calendarId: exclude.calendar_id, eventId: exclude.id } : undefined,
       this.settings.conflictCalendarIds
     );
     const local = await this.db

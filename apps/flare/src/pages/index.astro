@@ -5,6 +5,7 @@ import { Button } from "../components/Button.tsx";
 import { OwnerBookingRulesEditor } from "../components/OwnerBookingRulesEditor.tsx";
 import OwnerBookings from "../components/OwnerBookings.astro";
 import { OwnerConflictCalendars } from "../components/OwnerConflictCalendars.tsx";
+import { OwnerDestinationCalendar } from "../components/OwnerDestinationCalendar.tsx";
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
 import { OwnerEventLifecycle } from "../components/OwnerEventLifecycle.tsx";
 import { OwnerOverridesEditor } from "../components/OwnerOverridesEditor.tsx";
@@ -38,6 +39,22 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 Astro.response.headers.set("X-Content-Type-Options", "nosniff");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
 const details = state.kind === "owner" ? state.data.settings.event : defaultSettings.event;
+const destinationLabels = {
+  heading: common.flare_destination_default,
+  help: common.flare_destination_help,
+  primary: common.flare_conflict_primary,
+  follow: common.flare_destination_follow,
+  unavailable: common.flare_conflict_unavailable,
+  reload: common.flare_conflict_retry,
+  loading: common.flare_conflict_loading,
+  loadFailed: common.flare_conflict_load_failed,
+  saveFailed: common.flare_destination_failed,
+  save: common.save,
+  saved: common.saved,
+  reset: common.flare_conflict_reset,
+  reconnect: common.flare_conflict_reconnect,
+  javascript: common.flare_conflict_javascript,
+};
 ---
 <!doctype html>
 <html lang="en">
@@ -74,6 +91,10 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
             </nav>
             <a href="/owner/schedules" class="block underline">{common.flare_schedules}</a>
             <a href="/owner/profile" class="block underline">{common.profile}</a>
+            <OwnerDestinationCalendar client:load selection={state.data.destinations.ownerDefault} labels={destinationLabels} />
+            {state.data.mode.kind === "edit" && <OwnerDestinationCalendar client:load
+              eventId={state.data.mode.id} selection={state.data.destinations.eventOverride}
+              labels={{ ...destinationLabels, heading: common.flare_destination_event, reset: common.flare_destination_follow }} />}
             {state.data.mode.kind === "edit" && <OwnerScheduleAssignment client:load eventId={state.data.mode.id}
               assignment={state.data.eventScheduleId} resolvedId={state.data.scheduleId} catalog={state.data.catalog}
               labels={scheduleLabels(common).assignment} />}

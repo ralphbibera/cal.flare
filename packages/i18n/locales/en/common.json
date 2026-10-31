@@ -1,4 +1,9 @@
 {
+  "flare_destination_default": "Default destination calendar",
+  "flare_destination_event": "Event destination calendar",
+  "flare_destination_help": "Choose where new bookings are created. Existing bookings keep their original calendar. Conflict calendars are selected separately.",
+  "flare_destination_follow": "Follow owner default",
+  "flare_destination_failed": "Calendar save was not acknowledged. Your choice is retained. Retry to save it.",
   "flare_limit_rescheduling": "Limit attendee rescheduling before the event",
   "flare_minimum_reschedule_notice": "Minimum reschedule notice",
   "flare_booking_window_days": "Calendar days into the future",

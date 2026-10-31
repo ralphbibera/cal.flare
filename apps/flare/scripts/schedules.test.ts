@@ -209,6 +209,7 @@ test("0006 upgrade preserves historical bytes and exact SQL schedule projection,
     await f.db.prepare("SELECT json FROM organizer_settings").first("json"),
     '{"conflictCalendarIds":[]}'
   );
+  await f.migrateDestinations();
   assert.deepEqual((await getSettings(f.db)).schedule, { timeZone: "UTC", rules: [], overrides: [] });
   await assert.rejects(service(f).create(input(f.now() + 9 * hour)), /invalid_slot/);
 });
@@ -245,6 +246,7 @@ test("0007 migration rolls back invalid structural input and leaves semantic val
     .bind(JSON.stringify({ schedule: { timeZone: "Invalid/Zone", rules: [] } }))
     .run();
   await f.migrateSchedules();
+  await f.migrateDestinations();
   await assert.rejects(getSettings(f.db), /timeZone/);
 });
 

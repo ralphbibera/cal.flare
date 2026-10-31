@@ -30,6 +30,7 @@ test("booking service admits, manages and replays bookings safely across competi
       "0006_event_lifecycle.sql",
       "0007_availability_schedules.sql",
       "0008_public_profile.sql",
+      "0009_destination_calendars.sql",
     ]) {
       await promisify(execFile)(
         process.execPath,
@@ -96,7 +97,7 @@ test("booking service admits, manages and replays bookings safely across competi
       async busy(from, to, exclude) {
         await busyGate?.();
         return [...events.values()]
-          .filter((x) => x.id !== exclude)
+          .filter((x) => !(x.id === exclude?.eventId && exclude.calendarId === "primary"))
           .flatMap((x) => {
             assert.ok("dateTime" in x.start && "dateTime" in x.end);
             const start = Date.parse(x.start.dateTime),

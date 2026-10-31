@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { getPlatformProxy } from "wrangler";
 import type { AuthEnv } from "../src/server/auth.ts";
+import { matches } from "../src/server/booking-model.ts";
 import type { EventInput } from "../src/server/google.ts";
 import { GoogleCalendar, GoogleCalendarError } from "../src/server/google.ts";
 import { encryptionKey, seal } from "../src/server/secrets.ts";
@@ -39,6 +40,7 @@ const input: EventInput = {
   privateMetadata: { bookingId: "booking-1" },
   guests: ["extra@example.com", "GUEST@example.com"],
 };
+const primaryExclusion = { calendarId: "primary", eventId: input.id };
 const failure = (kind: string, status: number) => (error: unknown) =>
   error instanceof GoogleCalendarError && error.kind === kind && error.status === status;
 try {
@@ -104,6 +106,16 @@ try {
       primary: false,
     },
     { id: "read-only", name: "Name read-only", primary: false },
+  ]);
+  assert.equal(listPages, 2);
+  listPages = 0;
+  assert.deepEqual(await client.listCalendars(true), [
+    { id: "primary", name: "Name Owner@Example.com", primary: true },
+    {
+      id: "CaseSensitive@Group.calendar.google.com",
+      name: "Name CaseSensitive@Group.calendar.google.com",
+      primary: false,
+    },
   ]);
   assert.equal(listPages, 2);
   for (const first of [
@@ -240,12 +252,133 @@ try {
   await assert.rejects(client.listCalendars(), failure("retryable", 200));
   handler = async () => Response.json({ items: [] });
   assert.deepEqual(await client.listCalendars(), []);
+  for (const scenario of ["denied", "invalid-page", "cursor"]) {
+    let page = 0;
+    handler = async () => {
+      page++;
+      if (scenario === "denied") return new Response(null, { status: 403 });
+      if (scenario === "invalid-page" && page === 2) return Response.json({ items: null });
+      return Response.json({ items: [entry(`id-${page}`, "writer")], nextPageToken: "next" });
+    };
+    await assert.rejects(
+      client.listCalendars(true),
+      failure(scenario === "denied" ? "definite" : "retryable", scenario === "denied" ? 403 : 200)
+    );
+  }
+  const destination = "team+東京@group.calendar.google.com";
+  const secondaryInput = {
+    ...input,
+    guests: ["owner@example.com", "primary-attendee@example.com", destination],
+  };
+  let secondaryPayload: Record<string, unknown> = {};
+  handler = async (url, init) => {
+    assert.equal(
+      new URL(String(url)).pathname,
+      `/calendar/v3/calendars/${encodeURIComponent(destination)}/events`
+    );
+    secondaryPayload = JSON.parse(String(init?.body));
+    assert.deepEqual(secondaryPayload.attendees, [
+      { email: destination, organizer: true, responseStatus: "accepted" },
+      { email: input.attendee.email, displayName: input.attendee.name },
+      { email: "owner@example.com" },
+      { email: "primary-attendee@example.com" },
+    ]);
+    return Response.json({ id: input.id, etag: '"secondary-1"' });
+  };
+  await client.insert(secondaryInput, destination);
+  const secondaryRemote = {
+    ...secondaryPayload,
+    etag: '"secondary-1"',
+    organizer: { email: destination, self: true },
+  };
+  const secondaryDesired = {
+    ...secondaryInput,
+    start: Date.parse(String(input.start)),
+    end: Date.parse(String(input.end)),
+  };
+  handler = async (url) => {
+    assert.equal(
+      new URL(String(url)).pathname,
+      `/calendar/v3/calendars/${encodeURIComponent(destination)}/events/${input.id}`
+    );
+    return Response.json(secondaryRemote);
+  };
+  const secondary = await client.get(input.id, destination);
+  assert.ok(secondary && matches(secondary, secondaryDesired));
+  assert.equal(secondary.calendarOwnerEmail, destination);
+  for (const identity of ["owner@example.com", "primary-attendee@example.com"])
+    assert.ok(
+      !matches(
+        { ...secondary, attendees: secondary.attendees.filter(({ email }) => email !== identity) },
+        secondaryDesired
+      )
+    );
+  assert.ok(
+    !matches(secondary, { ...secondaryDesired, guests: ["primary-attendee@example.com", destination] }),
+    "The configured owner is not silently stripped from a secondary calendar's attendees"
+  );
+  assert.ok(
+    !matches(
+      { ...secondary, attendees: secondary.attendees.filter(({ email }) => email !== destination) },
+      secondaryDesired
+    )
+  );
+  assert.ok(
+    !matches(
+      { ...secondary, attendees: [...secondary.attendees, { email: "uninvited@example.com", self: true }] },
+      secondaryDesired
+    )
+  );
+  for (const organizer of [
+    undefined,
+    { email: "owner@example.com", self: true },
+    { email: destination, self: false },
+  ]) {
+    handler = async () => Response.json({ ...secondaryRemote, organizer });
+    await assert.rejects(client.get(input.id, destination), failure("retryable", 200));
+  }
+  for (const status of [404, 410, "cancelled"] as const) {
+    for (const accessRole of [undefined, "reader", "freeBusyReader", "none", "writer", "owner"]) {
+      handler = async (url) => {
+        const parsed = new URL(String(url));
+        assert.ok(
+          parsed.pathname.startsWith(`/calendar/v3/calendars/${encodeURIComponent(destination)}/events`)
+        );
+        if (parsed.searchParams.has("maxResults")) return Response.json({ items: [], accessRole });
+        return status === "cancelled"
+          ? Response.json({ id: input.id, status })
+          : new Response(null, { status });
+      };
+      if (accessRole === "writer" || accessRole === "owner")
+        assert.equal(await client.get(input.id, destination), null);
+      else await assert.rejects(client.get(input.id, destination), failure("retryable", 200));
+    }
+  }
+  for (const method of ["PATCH", "DELETE"]) {
+    handler = async (url, init) => {
+      assert.equal(
+        String(url),
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(destination)}/events/a%2Fb%2B%40?sendUpdates=all`
+      );
+      assert.equal(init?.method, method);
+      assert.equal(new Headers(init?.headers).get("If-Match"), '"secondary-1"');
+      return method === "DELETE"
+        ? new Response(null, { status: 204 })
+        : Response.json({ id: "a/b+@", etag: '"secondary-2"' });
+    };
+    if (method === "PATCH") await client.update("a/b+@", '"secondary-1"', secondaryInput, destination);
+    else await client.delete("a/b+@", '"secondary-1"', destination);
+  }
   handler = async (url, init) => {
     assert.equal(
       String(url),
       "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all"
     );
     assert.equal(init?.method, "POST");
+    assert.equal(
+      init.body,
+      '{"summary":"Intro","description":"Booked meeting","start":{"dateTime":"2026-11-02T10:00:00Z","timeZone":"Europe/London"},"end":{"dateTime":"2026-11-02T11:00:00Z","timeZone":"Europe/London"},"attendees":[{"email":"guest@example.com","displayName":"Guest"},{"email":"extra@example.com"}],"extendedProperties":{"private":{"bookingId":"booking-1"}},"id":"abcde12345"}'
+    );
     const payload = JSON.parse(String(init?.body));
     assert.equal(payload.id, input.id, "Retries use a caller-assigned stable event ID");
     assert.deepEqual(payload.attendees, [
@@ -505,10 +638,13 @@ try {
   await assert.rejects(client.get(input.id), failure("definite", 404));
   handler = async (url) =>
     String(url).endsWith("?maxResults=1")
-      ? Response.json({ items: [] })
+      ? Response.json({ items: [], accessRole: "owner" })
       : new Response(null, { status: 404 });
   assert.equal(await client.get(input.id), null);
-  handler = async () => Response.json({ id: input.id, status: "cancelled" });
+  handler = async (url) =>
+    String(url).endsWith("?maxResults=1")
+      ? Response.json({ items: [], accessRole: "owner" })
+      : Response.json({ id: input.id, status: "cancelled" });
   assert.equal(await client.get(input.id), null, "A cancelled tombstone need not contain times");
   handler = async () => new Response(null, { status: 403 });
   await assert.rejects(client.get(input.id), failure("definite", 403));
@@ -534,6 +670,42 @@ try {
   }
   const from = "2026-11-02T00:00:00Z",
     to = "2026-11-03T00:00:00Z";
+  const self = {
+    id: input.id,
+    start: { dateTime: input.start },
+    end: { dateTime: input.end },
+    extendedProperties: { private: { application: "calflare", booking: input.id } },
+  };
+  const paths: string[] = [];
+  handler = async (url, init) => {
+    const parsed = new URL(String(url));
+    paths.push(parsed.pathname);
+    if (parsed.pathname.endsWith("/freeBusy")) {
+      assert.deepEqual(JSON.parse(String(init?.body)).items, [{ id: "mirror" }]);
+      return Response.json({ calendars: { mirror: { busy: [{ start: input.start, end: input.end }] } } });
+    }
+    return Response.json({ items: [self] });
+  };
+  assert.equal(
+    (
+      await client.busy(from, to, { calendarId: destination, eventId: input.id }, [
+        destination,
+        "primary",
+        "mirror",
+      ])
+    ).length,
+    2,
+    "Only owned self in its frozen calendar is subtracted; identical IDs and mirrored busy time still block"
+  );
+  assert.ok(paths.includes(`/calendar/v3/calendars/${encodeURIComponent(destination)}/events`));
+  handler = async () =>
+    Response.json({
+      items: [{ ...self, extendedProperties: { private: { application: "other", booking: input.id } } }],
+    });
+  assert.equal(
+    (await client.busy(from, to, { calendarId: destination, eventId: input.id }, [destination])).length,
+    1
+  );
   handler = async () =>
     Response.json({ calendars: { primary: { errors: [{ reason: "notFound" }], busy: [] } } });
   await assert.rejects(client.freeBusy(from, to), failure("retryable", 200));
@@ -571,7 +743,7 @@ try {
     });
   };
   assert.deepEqual(
-    await client.busy(from, to, input.id),
+    await client.busy(from, to, primaryExclusion),
     [
       { start: Date.parse(String(input.start)), end: Date.parse(String(input.end)) },
       { start: Date.parse(from), end: Date.parse("2026-11-02T11:00:00Z") },
@@ -584,7 +756,7 @@ try {
       items: [{ id: input.id, start: { dateTime: input.start }, end: { dateTime: input.end } }],
     });
   assert.equal(
-    (await client.busy(from, to, input.id)).length,
+    (await client.busy(from, to, primaryExclusion)).length,
     1,
     "An ID without ownership markers must still block"
   );
@@ -611,7 +783,7 @@ try {
       },
     });
   };
-  assert.deepEqual(await client.busy(from, to, input.id, ids), [
+  assert.deepEqual(await client.busy(from, to, primaryExclusion, ids), [
     { start: Date.parse(from), end: Date.parse(String(input.end)) },
   ]);
   assert.equal(secondaryReads, 1);
@@ -680,7 +852,7 @@ try {
           },
         ],
       });
-    assert.equal((await client.busy(from, to, input.id, ["primary"])).length, 1);
+    assert.equal((await client.busy(from, to, primaryExclusion, ["primary"])).length, 1);
   }
   for (const overflow of [false, true]) {
     let receivedPages = 0;
@@ -707,8 +879,8 @@ try {
         ...(page < (overflow ? 4 : 3) ? { nextPageToken: `busy-${page}` } : {}),
       });
     };
-    if (overflow) await assert.rejects(client.busy(from, to, input.id), failure("retryable", 200));
-    else assert.deepEqual(await client.busy(from, to, input.id), []);
+    if (overflow) await assert.rejects(client.busy(from, to, primaryExclusion), failure("retryable", 200));
+    else assert.deepEqual(await client.busy(from, to, primaryExclusion), []);
     assert.equal(receivedPages, overflow ? 5 : 4, "Ignored and owned rows consume the raw page budget");
   }
   for (const times of [

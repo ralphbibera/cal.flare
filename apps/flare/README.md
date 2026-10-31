@@ -94,7 +94,7 @@ The root no longer inherits the old Vite 6 override or legacy integration depend
 The [reservation model](../../experiments/d1-reservations/schema.sql) remains experimental.
 The app includes owner OAuth, D1-backed sessions, authenticated settings, public availability,
 booking lifecycle APIs, and scheduled recovery. The current model has one organizer and multiple events,
-with selected conflict calendars and primary-calendar event operations. Broader account and feature parity remain migration work.
+with selected conflict calendars and a configurable destination for new Google events. Broader account and feature parity remain migration work.
 Generated Wrangler types and local state are ignored. Checked-in Wrangler configuration has no production database UUID or variables.
 Image transformation and Astro's default session storage are disabled.
 Production resource configuration, deployed execution, live Google delivery, and measured
@@ -170,6 +170,21 @@ The organizer page edits the event title, URL slug, description, duration, and o
 Saving these details preserves scheduling rules and booking policies. The private page also edits
 working hours, dated overrides and booking rules. These are functional checkpoints; upstream editor pixel parity remains open.
 
+The private home offers **Default destination calendar** and, for a saved event, **Event destination calendar**.
+Only current Google CalendarList entries with `writer` or `owner` access are offered. The primary calendar
+uses the `primary` alias. An event can explicitly follow the owner default. Both choices live in separate
+database columns and affect only fresh creates. Duplication copies the saved nullable event override.
+The default editor remains available after removing every event. Unavailable saved targets remain visible
+until an explicit reset or replacement. Discovery reloads preserve drafts; saves require an exact acknowledgment.
+The owner-only `/api/owner/destination-calendars` endpoint supports GET and same-origin PATCH with exactly
+`{ calendarId: string | null }`; an optional `eventId` query selects an event override. Null resets the owner
+default to primary or clears an event override. Neither choice changes conflict-calendar selection.
+Bookings and every command freeze their calendar identity outside JSON. Moves, cancellations, retries,
+and recovery use that identity, event ID, and ETag. Missing-event reconciliation requires proof of current
+write capability. Secondary writes use the destination calendar as organizer attendee, following the native
+adapter contract. Primary write payloads retain their legacy shape. Local mocked checks do not establish
+live secondary-calendar invitation behavior.
+
 The private home has a **Conflict calendars** control with labelled checkboxes and explicit **Save**,
 **Clear selection**, and **Reset to primary** actions. Loading calendars runs independently of the
 home and other editors. Failed loads offer reload and Google reconnection. Saved IDs missing from
@@ -198,10 +213,12 @@ checks. `[]` skips external conflicts while local booking reservations still blo
 Full settings PUT accepts the optional array; omission resets it and null is invalid.
 Selection IDs persist in private owner settings and frozen commands. Public settings, SSR,
 slots and booking views omit them. Names are not persisted.
-Selected primary conflicts use the existing event list. Secondaries use one free/busy request,
-without event details. Missing entries, revoked access and provider failures fail availability
-as a whole. Queued recovery uses its frozen selection against current busy data. Event
-reads, writes and reconciliation still use the primary calendar. Local mocked-provider checks do not
+Selected primary conflicts use the existing event list. When rescheduling, a selected destination also
+uses its event list so only the owned event in that exact calendar can be subtracted. All other
+secondaries use one free/busy request without event details. Identical event IDs in other calendars
+and mirrored busy time remain blocking. Missing entries, revoked access and provider failures fail
+availability as a whole. Queued recovery uses its frozen selection against current busy data.
+Event reads, writes and reconciliation use the booking's frozen destination. Local mocked-provider checks do not
 establish a live Google grant or live discovery. The existing built Worker browser runner checks
 default, selected, empty and reset settings, reloads, failed and malformed responses, unavailable
 IDs, keyboard input and overflow at 390px and 1280px. It exercises secondary busy admission and

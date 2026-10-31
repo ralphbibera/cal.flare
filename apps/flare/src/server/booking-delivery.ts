@@ -109,9 +109,10 @@ export class BookingDelivery {
       .bind(command.booking_id)
       .first<Booking>();
     if (!booking) throw new ErrorWithCode("not_found", 404);
+    if (booking.calendar_id !== command.calendar_id) throw new ErrorWithCode("calendar_mismatch");
     const remote =
       command.execution === "sent" || command.action !== "create"
-        ? await this.calendar.get(desired.id)
+        ? await this.calendar.get(desired.id, command.calendar_id)
         : null;
     const recovery = await this.reconcile(command, nonce, booking, desired, remote);
     if (recovery.kind === "complete") return this.finish(command, nonce, recovery.etag);
@@ -122,7 +123,8 @@ export class BookingDelivery {
       const condition = await this.availability.condition(
         desired,
         command.action === "reschedule" ? desired.id : undefined,
-        parseSettings(JSON.parse(command.settings_json))
+        parseSettings(JSON.parse(command.settings_json)),
+        command.calendar_id
       );
       if (condition !== "accepted") return this.attention(command, nonce, condition);
     }
@@ -173,10 +175,10 @@ export class BookingDelivery {
     if (command.action === "create") return this.insert(command, nonce, desired);
     if (!baseEtag) return this.attention(command, nonce, "missing_etag");
     if (command.action === "cancel") {
-      await this.calendar.delete(desired.id, baseEtag);
+      await this.calendar.delete(desired.id, baseEtag, command.calendar_id);
       return this.finish(command, nonce, null);
     }
-    const result = await this.calendar.update(desired.id, baseEtag, desired);
+    const result = await this.calendar.update(desired.id, baseEtag, desired, command.calendar_id);
     if (result.id !== desired.id || result.etag === baseEtag)
       return this.attention(command, nonce, "event_mismatch");
     return this.finish(command, nonce, result.etag);
@@ -185,7 +187,7 @@ export class BookingDelivery {
   private async insert(command: Command, nonce: string, desired: BookingSnapshot): Promise<void> {
     let result: Awaited<ReturnType<Calendar["insert"]>>;
     try {
-      result = await this.calendar.insert(desired);
+      result = await this.calendar.insert(desired, command.calendar_id);
     } catch (error) {
       if (!notApplied(error)) throw error;
       // Only this dispatch can prove its own rejection, even after a lease takeover.

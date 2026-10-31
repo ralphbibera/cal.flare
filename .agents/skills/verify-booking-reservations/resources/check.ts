@@ -54,13 +54,15 @@ function sqlWitness(): void {
       "0006_event_lifecycle.sql",
       "0007_availability_schedules.sql",
       "0008_public_profile.sql",
+      "0009_destination_calendars.sql",
     ]) {
       db.exec(readFileSync(join(migrations, name), "utf8"));
     }
     for (const table of ["organizer_settings", "event_type", "availability_schedule"]) {
       db.run(`UPDATE ${table} SET json='{}'`);
     }
-    db.run("INSERT INTO event_type(id,json,version) VALUES('second','{}',1)");
+    db.run(`INSERT INTO event_type(id,json,version,destination_calendar_id)
+      VALUES('second','{}',1,'secondary')`);
 
     function outcome(key: string): unknown {
       return db
@@ -76,6 +78,9 @@ function sqlWitness(): void {
       action = "create",
       version = 0,
       event = "default",
+      calendar = event === "second" ? "secondary" : "primary",
+      ownerCalendar = "primary",
+      eventCalendar = event === "second" ? "secondary" : null,
     }: {
       key: string;
       booking: string;
@@ -84,6 +89,9 @@ function sqlWitness(): void {
       action?: "create" | "reschedule" | "cancel";
       version?: number;
       event?: string;
+      calendar?: string;
+      ownerCalendar?: string;
+      eventCalendar?: string | null;
     }): unknown {
       db.transaction(() => {
         db.query(admit).run(
@@ -102,7 +110,10 @@ function sqlWitness(): void {
           0,
           event,
           null,
-          "legacy"
+          "legacy",
+          calendar,
+          ownerCalendar,
+          eventCalendar
         );
       })();
       return outcome(key);
@@ -119,25 +130,130 @@ function sqlWitness(): void {
       assert.equal(overlaps.length, 0, `NoOverlap violated in real SQL: ${JSON.stringify(overlaps)}`);
     }
 
+    function absent(booking: string): void {
+      assert.equal(db.query("SELECT id FROM booking WHERE id=?").get(booking), null);
+      assert.equal(
+        db.query("SELECT booking_id FROM booking_reservation WHERE booking_id=?").get(booking),
+        null
+      );
+    }
+
+    function frozen(): void {
+      assert.equal(
+        db.query<{ calendar_id: string }, []>("SELECT calendar_id FROM booking WHERE id='first'").get()
+          ?.calendar_id,
+        "primary"
+      );
+      assert.deepEqual(
+        db
+          .query(`SELECT DISTINCT calendar_id FROM booking_command
+          WHERE booking_id='first' AND outcome='accepted'`)
+          .all(),
+        [{ calendar_id: "primary" }]
+      );
+      assert.deepEqual(
+        db.query(`SELECT owner_calendar_id,event_calendar_id FROM booking_command WHERE id='create'`).get(),
+        { owner_calendar_id: "primary", event_calendar_id: null }
+      );
+    }
+
     function complete(key: string): void {
       db.transaction(() => {
         db.query("UPDATE booking_command SET nonce='worker',execution='sent' WHERE id=?").run(key);
         db.query(finish).run('"etag"', key, "worker");
       })();
       safe();
+      frozen();
     }
 
     assert.equal(submit({ key: "create", booking: "first", start: 0, end: 10 }), "accepted");
     safe();
+    frozen();
+    assert.throws(
+      () => db.run("UPDATE booking SET calendar_id='other' WHERE id='first'"),
+      /immutable_calendar/
+    );
+    for (const column of ["calendar_id", "owner_calendar_id", "event_calendar_id"]) {
+      assert.throws(
+        () => db.run(`UPDATE booking_command SET ${column}='other' WHERE id='create'`),
+        /idempotency_mismatch/
+      );
+    }
+    assert.throws(
+      () =>
+        submit({
+          key: "wrong-change",
+          booking: "first",
+          start: 10,
+          end: 20,
+          action: "reschedule",
+          version: 1,
+          calendar: "other",
+        }),
+      /calendar_mismatch/
+    );
+    assert.equal(outcome("wrong-change"), undefined);
+    frozen();
+
+    db.run("UPDATE organizer_settings SET destination_calendar_id='owner-next'");
+    for (const event of ["default", "second"]) {
+      const key = `stale-owner-${event}`;
+      assert.equal(submit({ key, booking: key, start: 30, end: 40, event }), "settings_changed");
+      absent(key);
+    }
+    // Exact SQL replay retains the accepted target even after the owner default changes.
+    assert.equal(submit({ key: "create", booking: "first", start: 0, end: 10 }), "accepted");
+    frozen();
+    db.run("UPDATE organizer_settings SET destination_calendar_id='primary'");
+    db.run("UPDATE event_type SET destination_calendar_id='primary' WHERE id='default'");
+    assert.equal(
+      submit({ key: "stale-override", booking: "stale-override", start: 30, end: 40 }),
+      "settings_changed"
+    );
+    absent("stale-override");
+    db.run("UPDATE event_type SET destination_calendar_id=NULL WHERE id='default'");
+    assert.equal(
+      submit({ key: "wrong-target", booking: "wrong-target", start: 30, end: 40, calendar: "other" }),
+      "settings_changed"
+    );
+    absent("wrong-target");
     // Check overlap before the outcome so broken guards expose actual conflicting holds.
-    submit({ key: "blocked", booking: "second", start: 5, end: 15, event: "second" });
+    try {
+      submit({ key: "blocked", booking: "second", start: 5, end: 15, event: "second" });
+    } catch (error) {
+      assert.match(String(error), /reservation_overlap/);
+      assert.equal(outcome("blocked"), undefined);
+      absent("second");
+      safe();
+      process.stdout.write("reservation_overlap: attempted command, booking, and hold rolled back\n");
+      throw error;
+    }
     safe();
     assert.equal(outcome("blocked"), "conflict");
+    absent("second");
     complete("create");
+    db.run("UPDATE organizer_settings SET destination_calendar_id='owner-next'");
+    db.run("UPDATE event_type SET destination_calendar_id='event-next' WHERE id='default'");
     assert.equal(
-      submit({ key: "move", booking: "first", start: 10, end: 20, action: "reschedule", version: 1 }),
+      submit({
+        key: "move",
+        booking: "first",
+        start: 10,
+        end: 20,
+        action: "reschedule",
+        version: 1,
+        ownerCalendar: "owner-next",
+        eventCalendar: "event-next",
+      }),
       "accepted"
     );
+    frozen();
+    assert.deepEqual(
+      db.query(`SELECT owner_calendar_id,event_calendar_id FROM booking_command WHERE id='move'`).get(),
+      { owner_calendar_id: "owner-next", event_calendar_id: "event-next" }
+    );
+    db.run("UPDATE organizer_settings SET destination_calendar_id='primary'");
+    db.run("UPDATE event_type SET destination_calendar_id=NULL WHERE id='default'");
     for (const execution of ["queued", "sent"]) {
       db.transaction(() => {
         db.query("UPDATE booking_command SET execution=? WHERE id='move'").run(execution);
@@ -155,6 +271,13 @@ function sqlWitness(): void {
     assert.equal(
       submit({ key: "adjacent", booking: "second", start: 0, end: 10, event: "second" }),
       "accepted"
+    );
+    assert.deepEqual(
+      db
+        .query(`SELECT calendar_id,owner_calendar_id,event_calendar_id
+        FROM booking_command WHERE id='adjacent'`)
+        .get(),
+      { calendar_id: "secondary", owner_calendar_id: "primary", event_calendar_id: "secondary" }
     );
     safe();
     assert.equal(

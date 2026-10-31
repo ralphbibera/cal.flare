@@ -74,6 +74,7 @@ async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
       "0006_event_lifecycle.sql",
       "0007_availability_schedules.sql",
       "0008_public_profile.sql",
+      "0009_destination_calendars.sql",
     ];
     const sql = await Promise.all(migrations.map((name) => Bun.file(join(app, "migrations", name)).text()));
     const migrationFile = join(temporary, "migrations.sql");

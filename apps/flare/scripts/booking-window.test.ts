@@ -1076,7 +1076,7 @@ test("rolling window partial writes preserve canonical bytes, independent fields
     assert.deepEqual((await f.db.prepare("SELECT * FROM event_type").all()).results, unchanged.results);
     assert.equal(await raw(), null);
     await f.db
-      .prepare("INSERT INTO organizer_settings VALUES ('owner',?,?,?)")
+      .prepare("INSERT INTO organizer_settings(id,json,version,default_schedule_id) VALUES ('owner',?,?,?)")
       .bind(preferences.json, preferences.version, preferences.default_schedule_id)
       .run();
   }

@@ -8,13 +8,12 @@ const { Response } = createRequire(require.resolve("wrangler/package.json"))("mi
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 
-const eventRoot = "/calendar/v3/calendars/primary/events";
-
-function isPrimaryEventUrl(url) {
-  return (
-    url.origin === "https://www.googleapis.com" &&
-    (url.pathname === eventRoot || url.pathname.startsWith(`${eventRoot}/`))
-  );
+function eventTarget(url) {
+  if (url.origin !== "https://www.googleapis.com") return null;
+  const target = /^\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/(.*))?$/.exec(url.pathname);
+  return target
+    ? { calendarId: decodeURIComponent(target[1]), id: decodeURIComponent(target[2] ?? "") }
+    : null;
 }
 
 async function exchangeTokens(request, codes, refresh, origin, access, grants) {
@@ -46,6 +45,7 @@ export function createGoogleFixture(origin) {
   const refresh = randomBytes(32).toString("base64url");
   const codes = new Map();
   const events = new Map();
+  const calendarEvents = new Map([["primary", events]]);
   const calendars = [];
   const calendarReads = [];
   const busyReads = [];
@@ -56,6 +56,12 @@ export function createGoogleFixture(origin) {
   const grants = [];
   let revision = 0;
   let cutAfter;
+  const eventsFor = (id) => {
+    if (!calendarEvents.has(id)) calendarEvents.set(id, new Map());
+    return calendarEvents.get(id);
+  };
+  const accessRole = (id) =>
+    id === "primary" ? "owner" : calendars.find((entry) => entry.id === id && !entry.deleted)?.accessRole;
   const cut = (action) => {
     if (cutAfter !== action) return false;
     cutAfter = undefined;
@@ -106,14 +112,15 @@ export function createGoogleFixture(origin) {
     return json({ calendars });
   }
 
-  function readEvents(id, previous, url) {
+  function readEvents(calendarId, id, previous, url) {
     if (id) {
       if (previous) return json(previous);
       return json({ error: { code: 404 } }, 404);
     }
     return json({
       timeZone: "UTC",
-      items: [...events.values()].filter(
+      accessRole: accessRole(calendarId),
+      items: [...eventsFor(calendarId).values()].filter(
         (event) =>
           (!url.searchParams.has("timeMin") ||
             Date.parse(event.end.dateTime) > Date.parse(url.searchParams.get("timeMin"))) &&
@@ -123,43 +130,55 @@ export function createGoogleFixture(origin) {
     });
   }
 
-  async function insertEvent(request) {
+  async function insertEvent(request, calendarId) {
+    const events = eventsFor(calendarId);
     const input = await request.json();
     assert.match(input.id, /^[0-9a-v]{5,1024}$/);
     if (events.has(input.id)) return json({ error: { code: 409 } }, 409);
-    const event = { ...input, etag: `"fixture-${++revision}"` };
+    const event = {
+      ...input,
+      etag: `"fixture-${++revision}"`,
+      organizer: { email: calendarId === "primary" ? "organizer@example.test" : calendarId, self: true },
+    };
     events.set(input.id, event);
-    writes.push({ action: "insert", id: input.id });
+    writes.push({ action: "insert", id: input.id, calendarId });
     if (cut("insert")) return new Response("truncated", { status: 200 });
     return json(event);
   }
 
-  async function updateEvent(request, id, previous) {
+  async function updateEvent(request, id, previous, calendarId) {
     const event = { ...previous, ...(await request.json()), id, etag: `"fixture-${++revision}"` };
-    events.set(id, event);
-    writes.push({ action: "update", id });
+    eventsFor(calendarId).set(id, event);
+    writes.push({ action: "update", id, calendarId });
     if (cut("update")) return new Response("truncated", { status: 200 });
     return json(event);
   }
 
-  async function eventRequest(request, url) {
-    const id = decodeURIComponent(url.pathname.slice(eventRoot.length + 1));
-    const previous = events.get(id);
-    if (request.method === "GET") return readEvents(id, previous, url);
+  async function eventRequest(request, url, { calendarId, id }) {
+    const role = accessRole(calendarId);
+    if (!role || role === "none") return json({ error: "calendar_access_denied" }, 403);
+    const previous = eventsFor(calendarId).get(id);
+    if (request.method === "GET") return readEvents(calendarId, id, previous, url);
+    return writeEvent(request, url, { calendarId, id, previous, role });
+  }
+
+  async function writeEvent(request, url, { calendarId, id, previous, role }) {
+    if (role !== "owner" && role !== "writer") return json({ error: "calendar_write_denied" }, 403);
     assert.equal(url.searchParams.get("sendUpdates"), "all");
-    if (request.method === "POST" && !id) return insertEvent(request);
+    if (request.method === "POST" && !id) return insertEvent(request, calendarId);
     if (!previous) return json({ error: { code: 404 } }, 404);
     if (request.headers.get("If-Match") !== previous.etag) return json({ error: { code: 412 } }, 412);
-    if (request.method === "PATCH") return updateEvent(request, id, previous);
+    if (request.method === "PATCH") return updateEvent(request, id, previous, calendarId);
     assert.equal(request.method, "DELETE");
-    events.delete(id);
-    writes.push({ action: "delete", id });
+    eventsFor(calendarId).delete(id);
+    writes.push({ action: "delete", id, calendarId });
     if (cut("delete")) return json({ error: "response_lost_after_apply" }, 503);
     return new Response(null, { status: 204 });
   }
 
   return {
     events,
+    calendarEvents,
     calendars,
     calendarReads,
     busyReads,
@@ -211,7 +230,8 @@ export function createGoogleFixture(origin) {
       if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/freeBusy") {
         return freeBusy(request);
       }
-      if (!isPrimaryEventUrl(url)) {
+      const target = eventTarget(url);
+      if (!target) {
         denied.push(url.origin);
         return json({ error: "fixture_outbound_denied" }, 502);
       }
@@ -219,7 +239,7 @@ export function createGoogleFixture(origin) {
         request.headers.get("Authorization") === `Bearer ${access}`,
         "valid fixture access token required"
       );
-      return eventRequest(request, url);
+      return eventRequest(request, url, target);
     },
   };
 }

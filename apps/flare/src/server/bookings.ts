@@ -86,9 +86,9 @@ export class BookingService {
       calendar: this.calendar,
       now: this.now,
       availability: {
-        condition: (desired, exclude, settings) => {
+        condition: (desired, exclude, settings, calendarId) => {
           if (!settings) throw new ErrorWithCode("missing_command_settings");
-          return this.scheduler(settings).condition(desired, exclude);
+          return this.scheduler(settings).condition(desired, exclude, settings, calendarId);
         },
       },
     });
@@ -180,6 +180,7 @@ export class BookingService {
       {
         requestKey: data.requestKey,
         eventId,
+        calendarId: context.calendarId,
         context,
         payload,
         id,
@@ -241,11 +242,12 @@ export class BookingService {
       ? "invalid_slot"
       : action === "cancel" || booking.pending_id || booking.version !== version || booking.state !== "active"
         ? "accepted"
-        : await this.scheduler(settings).condition(desired, id);
+        : await this.scheduler(settings).condition(desired, id, settings, booking.calendar_id);
     return this.admit(
       {
         requestKey,
         eventId: booking.event_id,
+        calendarId: booking.calendar_id,
         context,
         payload,
         id,
@@ -264,6 +266,7 @@ export class BookingService {
     input: {
       requestKey: string;
       eventId: string;
+      calendarId: string;
       context: AdmissionContext;
       payload: string;
       id: string;
@@ -283,13 +286,15 @@ export class BookingService {
       await this.db.batch([
         this.db
           .prepare(`INSERT INTO booking_command(id,request_key,booking_id,action,payload,expected_version,
-        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id,event_schedule_id,resolved_schedule_id)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
+        desired_json,settings_json,token_hash,occupied_start,occupied_end,precondition,due,event_id,event_schedule_id,resolved_schedule_id,
+        calendar_id,owner_calendar_id,event_calendar_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(request_key) DO UPDATE SET
         id=excluded.id,request_key=excluded.request_key,booking_id=excluded.booking_id,
         action=excluded.action,payload=excluded.payload,expected_version=excluded.expected_version,event_id=excluded.event_id,
         desired_json=excluded.desired_json,settings_json=excluded.settings_json,token_hash=excluded.token_hash,
         occupied_start=excluded.occupied_start,occupied_end=excluded.occupied_end,precondition=excluded.precondition,
-        event_schedule_id=excluded.event_schedule_id,resolved_schedule_id=excluded.resolved_schedule_id`)
+        event_schedule_id=excluded.event_schedule_id,resolved_schedule_id=excluded.resolved_schedule_id,
+        calendar_id=excluded.calendar_id,owner_calendar_id=excluded.owner_calendar_id,event_calendar_id=excluded.event_calendar_id`)
           .bind(
             input.commandId,
             input.requestKey,
@@ -306,7 +311,10 @@ export class BookingService {
             this.now(),
             input.eventId,
             input.context.eventScheduleId,
-            input.context.resolvedScheduleId
+            input.context.resolvedScheduleId,
+            input.calendarId,
+            input.context.ownerCalendarId,
+            input.context.eventCalendarId
           ),
       ]);
     } catch (error) {
