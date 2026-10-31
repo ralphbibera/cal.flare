@@ -3,27 +3,42 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "packageManager": "yarn@4.12.0",
+  "packageManager": "bun@1.4.4",
   "engines": {
-    "node": ">=24.22.1"
+    "bun": "1.4.4"
   },
   "workspaces": [
     "apps/flare"
   ],
-  "resolutions": {
-    "@astrojs/react/@vitejs/plugin-react": "6.1.1"
+  "overrides": {
+    "@vitejs/plugin-react": "6.1.1"
   },
+  "trustedDependencies": [
+    "esbuild",
+    "workerd"
+  ],
   "scripts": {
-    "setup": "node apps/flare/scripts/setup.mjs",
-    "dev": "yarn workspace @calflare/web dev",
-    "build": "yarn workspace @calflare/web build",
-    "preview": "yarn workspace @calflare/web preview",
-    "type-check": "yarn workspace @calflare/web type-check",
-    "type-check:ci": "yarn workspace @calflare/web type-check:ci",
-    "lint": "yarn workspace @calflare/web lint",
-    "test": "yarn workspace @calflare/web test",
+    "setup": "bun apps/flare/scripts/setup.mjs",
+    "dev": "bun run --cwd apps/flare dev",
+    "build": "bun run --cwd apps/flare build",
+    "preview": "bun run --cwd apps/flare preview",
+    "type-check": "bun run --cwd apps/flare type-check",
+    "type-check:ci": "bun run --cwd apps/flare type-check:ci",
+    "lint": "bun run --cwd apps/flare lint",
+    "test": "bun run --cwd apps/flare test",
     "test:sqlite": "TZ=UTC python3 experiments/d1-reservations/verify.py",
-    "verify:worker": "yarn workspace @calflare/web verify:worker",
-    "verify:ui": "yarn workspace @calflare/web verify:ui"
+    "verify:worker": "bun run --cwd apps/flare verify:worker",
+    "verify:ui": "bun run --cwd apps/flare verify:ui"
+  },
+  "patchedDependencies": {
+    "miniflare@5.20261019.2-beta": "patches/miniflare@5.20261019.2-beta.patch",
+    "miniflare@5.20261023.1-beta": "patches/miniflare@5.20261023.1-beta.patch",
+    "wrangler@4.152.0": "patches/wrangler@4.152.0.patch",
+    "esbuild@0.28.2": "patches/esbuild@0.28.2.patch",
+    "workerd@1.20261019.1": "patches/workerd@1.20261019.1.patch",
+    "workerd@1.20261023.1": "patches/workerd@1.20261023.1.patch"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14"
   }
 }

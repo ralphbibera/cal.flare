@@ -4,17 +4,17 @@ Install dependencies with the [development quickstart](../../README.md#developme
 Follow the local steps below, then the production steps when you are ready to deploy.
 The setup generator writes local configuration. It never provisions resources or deploys code.
 
-Run commands from the repository root with Node 24.22.1 and Yarn 4.12.0.
+Run commands from the repository root with Bun 1.4.4.
 If you use Mise, prefix each command with `mise exec --`.
-Every `yarn` command below means the bundled `node .yarn/releases/yarn-4.12.0.cjs`.
-For example, `yarn build` becomes `mise exec -- node .yarn/releases/yarn-4.12.0.cjs build`.
+Bun runs the JavaScript and TypeScript tools through the repository's `bunfig.toml`.
+For example, `bun run build` becomes `mise exec -- bun run build`.
 
 ## Create local configuration
 
 Run the guided generator.
 
 ```sh
-yarn setup
+bun run setup
 ```
 
 The generator asks for `PUBLIC_ORIGIN`, `GOOGLE_CLIENT_ID`, and `GOOGLE_OWNER_EMAIL`.
@@ -30,7 +30,7 @@ To change existing values, edit the file privately.
 Keep the encryption key stable so stored tokens remain decryptable.
 Do not commit the file or paste its contents into logs, chat, or shell commands.
 
-Node's built-in readline input echoes characters.
+The readline input echoes characters.
 The generator therefore leaves `GOOGLE_CLIENT_SECRET` blank instead of asking you to paste it into the terminal.
 Open `.dev.vars` in a private editor and replace the empty quoted value with your real Google client secret.
 Fill any other blank Google fields there.
@@ -39,7 +39,7 @@ To create the file without prompts or Google credentials, run the following comm
 This creates blank Google fields and a random encryption key. Google integration remains pending.
 
 ```sh
-yarn setup --local
+bun run setup --local
 ```
 
 After editing the file, check that every required variable has a nonempty value.
@@ -47,7 +47,7 @@ The check prints variable names only and exits unsuccessfully if a required valu
 This checks only that required local variables are nonempty, not their formats, credentials, Google access, or production readiness.
 
 ```sh
-yarn setup --check
+bun run setup --check
 ```
 
 ## Configure Google Calendar access
@@ -102,13 +102,13 @@ Apply migrations to local D1 storage, then start development.
 These commands do not provision a remote database.
 
 ```sh
-yarn workspace @calflare/web exec wrangler d1 migrations apply calflare --local --config wrangler.jsonc
-yarn dev
+bun run --cwd apps/flare wrangler d1 migrations apply calflare --local --config wrangler.jsonc
+bun run dev
 ```
 
 Open `http://localhost:4321`.
 The current foundation exposes its D1 health endpoint at `/api/health`.
-After a build, `yarn preview` starts local Wrangler against the generated Worker configuration.
+After a build, `bun run preview` starts local Wrangler against the generated Worker configuration.
 
 ## Deploy to Cloudflare Workers
 
@@ -121,8 +121,8 @@ Keep the production encryption key and recovery information in private storage b
 Authenticate and inspect the account before creating resources.
 
 ```sh
-yarn workspace @calflare/web exec wrangler login --config wrangler.jsonc
-yarn workspace @calflare/web exec wrangler whoami --config wrangler.jsonc
+bun run --cwd apps/flare wrangler login --config wrangler.jsonc
+bun run --cwd apps/flare wrangler whoami --config wrangler.jsonc
 ```
 
 Confirm the printed account ID against the intended account in the Cloudflare dashboard.
@@ -138,7 +138,7 @@ For a new installation, create the database in the confirmed account.
 For an existing installation, use its database UUID from the dashboard instead of creating a replacement.
 
 ```sh
-yarn workspace @calflare/web exec wrangler d1 create calflare --config wrangler.jsonc --update-config=false
+bun run --cwd apps/flare wrangler d1 create calflare --config wrangler.jsonc --update-config=false
 ```
 
 Creation prints the database UUID. Merge the following fields into `apps/flare/wrangler.jsonc`.
@@ -182,13 +182,13 @@ Retain the key privately and keep it stable. Replacing it makes existing encrypt
 Enter the client secret and that retained key only at Wrangler's private prompts.
 
 ```sh
-yarn workspace @calflare/web exec wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.jsonc
-yarn workspace @calflare/web exec wrangler secret put TOKEN_ENCRYPTION_KEY --config wrangler.jsonc
+bun run --cwd apps/flare wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.jsonc
+bun run --cwd apps/flare wrangler secret put TOKEN_ENCRYPTION_KEY --config wrangler.jsonc
 ```
 
 Confirm both commands succeed for Worker `calflare` in the selected account.
 Wrangler can create an undeployed Worker when setting its first secret.
-Local `.dev.vars` is not uploaded as production secrets, and `yarn setup --check` does not inspect these secrets.
+Local `.dev.vars` is not uploaded as production secrets, and `bun run setup --check` does not inspect these secrets.
 
 ### 4. Apply remote migrations, build, and deploy
 
@@ -196,11 +196,11 @@ Confirm the source account ID and database UUID before applying migrations to re
 For an existing installation, first follow [Upgrade and recover](#upgrade-and-recover).
 
 ```sh
-yarn workspace @calflare/web exec wrangler d1 migrations list calflare --remote --config wrangler.jsonc
-yarn workspace @calflare/web exec wrangler d1 migrations apply calflare --remote --config wrangler.jsonc
-yarn workspace @calflare/web exec wrangler d1 migrations list calflare --remote --config wrangler.jsonc
-yarn build
-yarn workspace @calflare/web exec wrangler deploy --config dist/server/wrangler.json
+bun run --cwd apps/flare wrangler d1 migrations list calflare --remote --config wrangler.jsonc
+bun run --cwd apps/flare wrangler d1 migrations apply calflare --remote --config wrangler.jsonc
+bun run --cwd apps/flare wrangler d1 migrations list calflare --remote --config wrangler.jsonc
+bun run build
+bun run --cwd apps/flare wrangler deploy --config dist/server/wrangler.json
 ```
 
 On a fresh database, the first list shows eight unapplied migrations. After application, the last list shows none pending.
@@ -262,7 +262,7 @@ After correcting access or configuration, the owner's retry control resumes the 
 Reads of owner bookings do not retry writes.
 
 Use **Cron Events** for recent scheduled invocation history and existing dashboard logs or a live tail for exceptions.
-Run `yarn workspace @calflare/web exec wrangler tail --config wrangler.jsonc` while reproducing an authorized operation.
+Run `bun run --cwd apps/flare wrangler tail --config wrangler.jsonc` while reproducing an authorized operation.
 Protect logs that contain personal data. Compare invocation outcomes with the booking's app state and remote Google event.
 Check Workers requests, CPU, errors, and D1 storage, rows read, and rows written against the account's current limits and pricing.
 Collect deployed usage before choosing a plan. This guide establishes no Free or Paid plan suitability.
@@ -274,12 +274,12 @@ and [Workers logs](https://developers.cloudflare.com/workers/observability/logs/
 1. Record the current Worker version and keep a recoverable copy of the deployment's nonsecret source configuration.
    Preserve production D1 data and the original encryption key in private recovery storage.
 2. Review the release diff and migrations before updating the checkout. Confirm a usable D1 backup or Time Travel bookmark before schema changes.
-   Retrieve the current bookmark with `yarn workspace @calflare/web exec wrangler d1 time-travel info calflare --config wrangler.jsonc`.
+   Retrieve the current bookmark with `bun run --cwd apps/flare wrangler d1 time-travel info calflare --config wrangler.jsonc`.
    Retain that bookmark with the release version and time in your private recovery records.
    [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/) retains seven days on Free and thirty days on Paid.
    Check the current account plan and retention before relying on a recovery point.
-3. Install the selected release with `yarn install --immutable`. Restore its intended production configuration without replacing the encryption key.
-4. List and apply remote app migrations with the source-config commands above. Rebuild with `yarn build`, then deploy the generated config.
+3. Install the selected release with `bun install --frozen-lockfile`. Restore its intended production configuration without replacing the encryption key.
+4. List and apply remote app migrations with the source-config commands above. Rebuild with `bun run build`, then deploy the generated config.
 5. Repeat deployed acceptance. Perform real guest writes and notification checks only with the required permission.
 
 [Worker rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) can redeploy a previous compatible Worker version.

@@ -24,6 +24,7 @@ async function verifyMinimumRescheduleNotice(browser, fixture) {
     minimumRescheduleNotice: 10080,
   };
   for (const width of [390, 1280]) {
+    await fixture.db.prepare("DELETE FROM http_rate").run();
     await fixture.read(await fixture.send("/api/owner", fixture.settings, owner, "PUT"));
     const context = await browser.newContext({ viewport: { width, height: 900 }, timezoneId: "UTC" });
     try {
@@ -256,9 +257,10 @@ export async function verifyManagement(browser, fixture, date) {
       assert.equal(await target.getByTestId("event-meta").count(), 0);
       assert.equal(
         await target.locator("dd").nth(1).locator("p").first().textContent(),
-        new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: created.timeZone }).formatRange(
-          created.start,
-          created.end
+        await target.evaluate(
+          ({ start, end, timeZone }) =>
+            new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone }).formatRange(start, end),
+          { start: created.start, end: created.end, timeZone: created.timeZone }
         )
       );
     };
