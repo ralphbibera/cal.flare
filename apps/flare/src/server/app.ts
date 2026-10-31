@@ -400,64 +400,78 @@ export async function getOwnerBooking(request: Request, dependencies: Dependenci
   return bookingService(dependencies).ownerView(id);
 }
 
-export async function handleApi(request: Request, dependencies: Dependencies): Promise<Response> {
-  const { env } = dependencies;
-  const url = new URL(request.url);
-  const path = url.pathname;
+function authRoute(request: Request, env: AuthEnv, path: string): Promise<Response> | null {
   const method = request.method;
-  if (path === "/api/owner/profile") return ownerProfile(request, dependencies, url);
-  if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
-    return ownerEvents(request, dependencies, url);
-  }
-  if (path === "/api/owner/schedules" || path.startsWith("/api/owner/schedules/"))
-    return ownerSchedules(request, dependencies, url);
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) sameOrigin(request, env.PUBLIC_ORIGIN);
   if (path === "/api/auth/login" && method === "GET") return beginLogin(env, request);
   if (path === "/api/auth/callback" && method === "GET") return finishLogin(env, request);
   if (path === "/api/auth/logout" && method === "POST") return logout(env, request);
-  const publicTarget = /^\/api\/events\/([^/]+)(\/(?:slots|bookings))?$/.exec(path);
-  const selectedEventId = publicTarget ? eventId(publicTarget[1]) : DEFAULT_EVENT_ID;
-  if (publicTarget) {
-    if (!publicTarget[2] && method === "GET") {
-      if (url.search) throw new ErrorWithCode("invalid_query");
-      return json({
-        id: selectedEventId,
-        ...(await getPublicBooking(env, selectedEventId)),
-      } satisfies PublicEventMetadata);
-    }
-    const exists = await env.DB.prepare("SELECT id FROM event_type WHERE id=?")
-      .bind(selectedEventId)
-      .first<string>("id");
-    if (!exists) throw new ErrorWithCode("not_found", 404);
-    const allowed = publicTarget[2] === "/slots" ? ["from", "to", "timeZone"] : [];
-    for (const key of url.searchParams.keys()) {
-      if (!allowed.includes(key) || url.searchParams.getAll(key).length !== 1)
-        throw new ErrorWithCode("invalid_query");
-    }
+  return null;
+}
+
+async function publicEventRoute(
+  request: Request,
+  dependencies: Dependencies,
+  url: URL
+): Promise<Response | null> {
+  const target = /^\/api\/events\/([^/]+)(\/(?:slots|bookings))?$/.exec(url.pathname);
+  if (!target) return null;
+  const { env } = dependencies;
+  const selectedEventId = eventId(target[1]);
+  if (!target[2] && request.method === "GET") {
+    if (url.search) throw new ErrorWithCode("invalid_query");
+    return json({
+      id: selectedEventId,
+      ...(await getPublicBooking(env, selectedEventId)),
+    } satisfies PublicEventMetadata);
   }
-  if (path === "/api/public" && method === "GET") return json(await getPublicBooking(env));
+  const exists = await env.DB.prepare("SELECT id FROM event_type WHERE id=?")
+    .bind(selectedEventId)
+    .first<string>("id");
+  if (!exists) throw new ErrorWithCode("not_found", 404);
+  const allowed = target[2] === "/slots" ? ["from", "to", "timeZone"] : [];
+  for (const key of url.searchParams.keys()) {
+    if (!allowed.includes(key) || url.searchParams.getAll(key).length !== 1)
+      throw new ErrorWithCode("invalid_query");
+  }
+  const service = bookingService(dependencies);
+  return (
+    (await publicBookingRoute(request, dependencies, url, service, selectedEventId, undefined, target[2])) ??
+    json({ error: "not_found" }, 404)
+  );
+}
+
+async function ownerConflictCalendars(request: Request, env: AuthEnv, url: URL): Promise<Response> {
+  await owner(env, request);
+  if (url.search) throw new ErrorWithCode("invalid_query");
+  if (request.method === "GET")
+    return json({
+      calendars: await new CalendarClient(env).listCalendars(),
+      conflictCalendarIds: (await getOwnerPreferences(env.DB)).conflictCalendarIds ?? null,
+    });
+  if (request.method === "PATCH") {
+    await getOwnerPreferences(env.DB);
+    const ids = parseConflictCalendars(await body(request));
+    await validateConflictCalendars(env, ids);
+    await saveConflictCalendars(env.DB, ids);
+    return json({ saved: true });
+  }
+  return json({ error: "not_found" }, 404);
+}
+
+async function ownerConfigurationRoute(
+  request: Request,
+  dependencies: Dependencies,
+  url: URL
+): Promise<Response | null> {
+  const { env } = dependencies;
+  const path = url.pathname;
+  const method = request.method;
   if (path === "/api/owner" && method === "GET") {
     const data = await getOwnerData(request, dependencies);
     if (!data) throw new ErrorWithCode("unauthorized", 401);
     return json(data);
   }
-  if (path === "/api/owner/conflict-calendars") {
-    await owner(env, request);
-    if (url.search) throw new ErrorWithCode("invalid_query");
-    if (method === "GET")
-      return json({
-        calendars: await new CalendarClient(env).listCalendars(),
-        conflictCalendarIds: (await getOwnerPreferences(env.DB)).conflictCalendarIds ?? null,
-      });
-    if (method === "PATCH") {
-      await getOwnerPreferences(env.DB);
-      const ids = parseConflictCalendars(await body(request));
-      await validateConflictCalendars(env, ids);
-      await saveConflictCalendars(env.DB, ids);
-      return json({ saved: true });
-    }
-    return json({ error: "not_found" }, 404);
-  }
+  if (path === "/api/owner/conflict-calendars") return ownerConflictCalendars(request, env, url);
   if (path === "/api/owner/schedule" && method === "PATCH") {
     await owner(env, request);
     await getOwnerPreferences(env.DB);
@@ -476,20 +490,33 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     await saveBookingRules(env.DB, parseBookingRules(await body(request)));
     return json({ saved: true });
   }
-  const ownerSlots = /^\/api\/owner\/bookings\/([^/]+)\/slots$/.exec(path);
-  if (ownerSlots) await owner(env, request);
-  const ownerBooking = /^\/api\/owner\/bookings\/([^/]+)$/.exec(path);
-  if (ownerBooking) {
-    await owner(env, request);
-    const service = bookingService(dependencies);
-    if (method === "GET") return json(await service.ownerView(ownerBooking[1]));
-    if (method === "POST")
-      return bookingResponse(await service.ownerChange(ownerBooking[1], await body(request)));
-    return json({ error: "not_found" }, 404);
-  }
+  return null;
+}
 
-  if (path.startsWith("/api/owner")) await owner(env, request);
+async function ownerBookingRoute(
+  request: Request,
+  dependencies: Dependencies,
+  path: string
+): Promise<Response | null> {
+  const { env } = dependencies;
+  const method = request.method;
+  const ownerBooking = /^\/api\/owner\/bookings\/([^/]+)$/.exec(path);
+  if (!ownerBooking) return null;
+  await owner(env, request);
   const service = bookingService(dependencies);
+  if (method === "GET") return json(await service.ownerView(ownerBooking[1]));
+  if (method === "POST")
+    return bookingResponse(await service.ownerChange(ownerBooking[1], await body(request)));
+  return json({ error: "not_found" }, 404);
+}
+
+async function legacyOwnerMutation(
+  request: Request,
+  env: AuthEnv,
+  path: string,
+  service: BookingService
+): Promise<Response | null> {
+  const method = request.method;
   if (path === "/api/owner") {
     await owner(env, request);
     await getBookableSettings(env.DB);
@@ -503,6 +530,7 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
       await saveEventDetails(env.DB, parseEventDetails(await body(request)));
       return json({ saved: true });
     }
+    return json({ error: "not_found" }, 404);
   }
   if (path === "/api/owner/retry" && method === "POST") {
     await owner(env, request);
@@ -510,53 +538,132 @@ export async function handleApi(request: Request, dependencies: Dependencies): P
     if (typeof input.id !== "string") throw new ErrorWithCode("invalid_booking");
     return bookingResponse(await service.ownerRetry(input.id));
   }
-  if ((path === "/api/slots" || ownerSlots || publicTarget?.[2] === "/slots") && method === "GET") {
-    await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
-    await connectedOwner(env);
-    if (ownerSlots) {
-      for (const key of url.searchParams.keys()) {
-        if (!["from", "to", "timeZone"].includes(key) || url.searchParams.getAll(key).length !== 1)
-          throw new ErrorWithCode("invalid_range");
-      }
-      for (const key of ["from", "to"]) {
-        const value = url.searchParams.get(key) ?? "";
-        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value))
-          throw new ErrorWithCode("invalid_range");
-      }
-    }
-    const zone = url.searchParams.get("timeZone");
-    if (!zone || !isValidTimeZone(zone)) throw new ErrorWithCode("invalid_time_zone");
-    const from = Date.parse(url.searchParams.get("from") ?? "");
-    const to = Date.parse(url.searchParams.get("to") ?? "");
-    if (
-      !Number.isSafeInteger(from) ||
-      !Number.isSafeInteger(to) ||
-      to <= from ||
-      to - from > MAX_QUERY_DAYS * 86_400_000
-    ) {
+  return null;
+}
+
+function ownerSlotQuery(url: URL): void {
+  for (const key of url.searchParams.keys()) {
+    if (!["from", "to", "timeZone"].includes(key) || url.searchParams.getAll(key).length !== 1)
       throw new ErrorWithCode("invalid_range");
-    }
-    if (ownerSlots) return json({ slots: await service.ownerAvailability(ownerSlots[1], from, to, zone) });
-    const id = url.searchParams.get("bookingId");
-    const exclude = id ? { id, token: bearer(request) } : undefined;
-    return json({ slots: await service.availability(from, to, zone, exclude, selectedEventId) });
   }
-  if ((path === "/api/bookings" || publicTarget?.[2] === "/bookings") && method === "POST") {
+  for (const key of ["from", "to"]) {
+    const value = url.searchParams.get(key) ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value))
+      throw new ErrorWithCode("invalid_range");
+  }
+}
+
+async function bookingSlots(
+  request: Request,
+  dependencies: Dependencies,
+  url: URL,
+  service: BookingService,
+  selectedEventId: string,
+  ownerBookingId?: string
+): Promise<Response> {
+  const { env } = dependencies;
+  await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
+  await connectedOwner(env);
+  if (ownerBookingId) ownerSlotQuery(url);
+  const zone = url.searchParams.get("timeZone");
+  if (!zone || !isValidTimeZone(zone)) throw new ErrorWithCode("invalid_time_zone");
+  const from = Date.parse(url.searchParams.get("from") ?? "");
+  const to = Date.parse(url.searchParams.get("to") ?? "");
+  if (
+    !Number.isSafeInteger(from) ||
+    !Number.isSafeInteger(to) ||
+    to <= from ||
+    to - from > MAX_QUERY_DAYS * 86_400_000
+  ) {
+    throw new ErrorWithCode("invalid_range");
+  }
+  if (ownerBookingId) return json({ slots: await service.ownerAvailability(ownerBookingId, from, to, zone) });
+  const id = url.searchParams.get("bookingId");
+  const exclude = id ? { id, token: bearer(request) } : undefined;
+  return json({ slots: await service.availability(from, to, zone, exclude, selectedEventId) });
+}
+
+async function publicBookingRoute(
+  request: Request,
+  dependencies: Dependencies,
+  url: URL,
+  service: BookingService,
+  selectedEventId: string,
+  ownerBookingId?: string,
+  publicAction?: string
+): Promise<Response | null> {
+  const { env } = dependencies;
+  const path = url.pathname;
+  const method = request.method;
+  if ((path === "/api/slots" || ownerBookingId || publicAction === "/slots") && method === "GET")
+    return bookingSlots(request, dependencies, url, service, selectedEventId, ownerBookingId);
+  if ((path === "/api/bookings" || publicAction === "/bookings") && method === "POST") {
     await limitAvailability(env.DB, request, (dependencies.now ?? Date.now)());
     await connectedOwner(env);
     const input = await body(request);
     await limitCreate(env.DB, request, input, (dependencies.now ?? Date.now)());
     return bookingResponse(await service.create(input, selectedEventId), true);
   }
+  return attendeeBookingRoute(request, path, service);
+}
+
+async function attendeeBookingRoute(
+  request: Request,
+  path: string,
+  service: BookingService
+): Promise<Response | null> {
   const target = /^\/api\/bookings\/([a-z0-9-]{5,128})(\/retry)?$/.exec(path);
-  if (target) {
-    const id = target[1];
-    const token = bearer(request);
-    if (method === "GET" && !target[2]) return json(await service.view(id, token));
-    if (method === "POST" && target[2]) return bookingResponse(await service.retry(id, token));
-    if (method === "POST") return bookingResponse(await service.change(id, token, await body(request)));
-  }
+  if (!target) return null;
+  const method = request.method;
+  const id = target[1];
+  const token = bearer(request);
+  if (method === "GET" && !target[2]) return json(await service.view(id, token));
+  if (method === "POST" && target[2]) return bookingResponse(await service.retry(id, token));
+  if (method === "POST") return bookingResponse(await service.change(id, token, await body(request)));
   return json({ error: "not_found" }, 404);
+}
+
+function ownerResourceRoute(
+  request: Request,
+  dependencies: Dependencies,
+  url: URL
+): Promise<Response> | null {
+  const path = url.pathname;
+  if (path === "/api/owner/profile") return ownerProfile(request, dependencies, url);
+  if (path === "/api/owner/events" || path.startsWith("/api/owner/events/")) {
+    return ownerEvents(request, dependencies, url);
+  }
+  if (path === "/api/owner/schedules" || path.startsWith("/api/owner/schedules/"))
+    return ownerSchedules(request, dependencies, url);
+  return null;
+}
+
+export async function handleApi(request: Request, dependencies: Dependencies): Promise<Response> {
+  const { env } = dependencies;
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const resource = ownerResourceRoute(request, dependencies, url);
+  if (resource) return resource;
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) sameOrigin(request, env.PUBLIC_ORIGIN);
+  const auth = authRoute(request, env, path);
+  if (auth) return auth;
+  const publicEvent = await publicEventRoute(request, dependencies, url);
+  if (publicEvent) return publicEvent;
+  if (path === "/api/public" && request.method === "GET") return json(await getPublicBooking(env));
+  const configuration = await ownerConfigurationRoute(request, dependencies, url);
+  if (configuration) return configuration;
+  const ownerSlots = /^\/api\/owner\/bookings\/([^/]+)\/slots$/.exec(path);
+  if (ownerSlots) await owner(env, request);
+  const ownerBooking = await ownerBookingRoute(request, dependencies, path);
+  if (ownerBooking) return ownerBooking;
+  if (path.startsWith("/api/owner")) await owner(env, request);
+  const service = bookingService(dependencies);
+  const mutation = await legacyOwnerMutation(request, env, path, service);
+  if (mutation) return mutation;
+  return (
+    (await publicBookingRoute(request, dependencies, url, service, DEFAULT_EVENT_ID, ownerSlots?.[1])) ??
+    json({ error: "not_found" }, 404)
+  );
 }
 
 export { getPublicBooking, getPublicDirectory };
