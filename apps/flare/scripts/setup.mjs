@@ -26,7 +26,7 @@ async function main() {
     try {
       config = parseEnv(await readFile(file, "utf8"));
     } catch {
-      throw new Error("Cannot read .dev.vars. Run yarn setup or repair the file in an editor.");
+      throw new Error("Cannot read .dev.vars. Run bun run setup or repair the file in an editor.");
     }
     const missing = names.filter((name) => !config[name]?.trim());
     if (missing.length) {
@@ -39,7 +39,7 @@ async function main() {
   try {
     await lstat(file);
     throw new Error(
-      ".dev.vars already exists. Edit it privately, then run yarn setup --check. Nothing was overwritten."
+      ".dev.vars already exists. Edit it privately, then run bun run setup --check. Nothing was overwritten."
     );
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -112,7 +112,7 @@ async function main() {
     "Google setup is pending. Open that file in a private editor and fill the blank Google fields."
   );
   console.log(
-    "Then run yarn setup --check. No Google login, remote resource creation, or deployment was performed."
+    "Then run bun run setup --check. No Google login, remote resource creation, or deployment was performed."
   );
 }
 
