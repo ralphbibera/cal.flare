@@ -1,5 +1,5 @@
 diff --git a/dist/src/index.js b/dist/src/index.js
-index 07f6e29d75588d26bdf4fe015c07757173127b97..cd7510f87ea2cf2bfc157ad37a0a06f7fdfda05d 100644
+index 07f6e29d75588d26bdf4fe015c07757173127b97..b4db72a87edc99c6fc46af75ec56323fc9f646ee 100644
 --- a/dist/src/index.js
 +++ b/dist/src/index.js
 @@ -58849,7 +58849,7 @@ var bgWhite = init(47, 49);
@@ -79,3 +79,43 @@ index 07f6e29d75588d26bdf4fe015c07757173127b97..cd7510f87ea2cf2bfc157ad37a0a06f7
  var NODE_PLATFORM_IMPL = {
    // Node's implementation of these classes don't quite match Workers',
    // but they're close enough for us
+@@ -120440,7 +120440,8 @@ var ProxyClientBridge = class {
+       address: target[kAddress],
+       version: this.#version
+     };
+-    this.#finalizationRegistry.register(proxy, held, this);
++    // Detached methods retain the handler after the outer proxy is collected.
++    this.#finalizationRegistry.register(handler, held, this);
+     return proxy;
+   }
+   poisonProxies() {
+@@ -120745,10 +120746,18 @@ var ProxyStubHandler = class extends Function {
+     if (isFetcherFetch(targetName, key)) {
+       return this.#fetcherFetchCall(args);
+     }
++    const nativeTargets = new Set();
+     const stringified = stringifyWithStreams(
+       NODE_PLATFORM_IMPL,
+       args,
+-      reducers,
++      {
++        ...reducers,
++        Native(value) {
++          const reduced = reducers.Native(value);
++          if (reduced !== void 0) nativeTargets.add(value);
++          return reduced;
++        }
++      },
+       /* allowUnbufferedStream */
+       true
+     );
+@@ -120763,7 +120772,8 @@ var ProxyStubHandler = class extends Function {
+     // we should never expose proxies for those APIs to users.
+     stringified instanceof Promise || // (instanceof Promise if buffered `ReadableStream`/`Blob`s)
+     stringified.unbufferedStream !== void 0) {
+-      return this.#asyncCall(key, stringified);
++      // Serialized addresses do not keep their native proxies alive during dispatch.
++      return this.#asyncCall(key, stringified).finally(() => nativeTargets.clear());
+     } else {
+       const result = this.#syncCall(key, stringified.value, caller);
+       if (isR2ObjectWriteHttpMetadata(targetName, key)) {
