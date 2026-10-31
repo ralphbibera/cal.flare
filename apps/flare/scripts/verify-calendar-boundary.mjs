@@ -1,6 +1,61 @@
 import assert from "node:assert/strict";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
+async function verifyTerminalMonthNavigation(page, times, zone, layout, requests) {
+  await times.first().waitFor();
+  assert.equal(
+    await page
+      .locator(
+        layout === "week_view" ? ".auto-cols-fr > div:not(:first-child)" : '[class*="grid-area:main"] header'
+      )
+      .count(),
+    layout === "week_view" ? 7 : zone === "Asia/Tokyo" ? 2 : 1
+  );
+  assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2099-12");
+  const countBeforeNavigation = requests.length;
+  await page.getByTestId("incrementMonth").click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-testid="selected-month-label"]')?.getAttribute("datetime") === "2100-01"
+  );
+  if (zone === "Asia/Tokyo") {
+    await times.first().waitFor();
+    const query = requests.at(-1);
+    assert.equal(query.searchParams.get("from"), "2099-12-31T15:00:00.000Z");
+    assert.equal(query.searchParams.get("to"), "2100-01-01T00:00:00.000Z");
+    assert.deepEqual(
+      await times.evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-time") ?? node.getAttribute("data-slot"))
+      ),
+      [
+        "2099-12-31T15:00:00.000Z",
+        "2099-12-31T15:30:00.000Z",
+        "2099-12-31T16:00:00.000Z",
+        "2099-12-31T16:30:00.000Z",
+      ]
+    );
+    assert.deepEqual(
+      await times.locator(layout === "week_view" ? ".text-ellipsis" : ":scope").allTextContents(),
+      ["12:00am", "12:30am", "1:00am", "1:30am"]
+    );
+    await times.first().click();
+    const dialog = page.getByRole("dialog", { name: "Confirm your details" });
+    assert.equal(await dialog.locator("time").getAttribute("datetime"), "2099-12-31T15:00:00.000Z");
+    await dialog.getByRole("button", { name: "Back", exact: true }).click();
+  } else {
+    await page.getByRole("status").filter({ hasText: "No available" }).waitFor();
+    assert.equal(await times.count(), 0);
+    assert.equal(requests.length, countBeforeNavigation);
+  }
+  assert.equal(await page.getByRole("button", { name: "Next Day", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Previous Day", exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole("alert").count(), 0);
+  for (const query of requests) {
+    assert.ok(Date.parse(query.searchParams.get("from")) >= Date.UTC(2000, 0, 1));
+    assert.ok(Date.parse(query.searchParams.get("to")) <= Date.UTC(2100, 0, 1));
+  }
+}
+
 export async function verifyCalendarBoundary(browser) {
   const now = Date.parse("2099-12-31T12:00:00.000Z");
   const fixture = await createWorkerFixture({ port: 8797, fixedTime: now });
@@ -48,61 +103,7 @@ export async function verifyCalendarBoundary(browser) {
       });
       const times = page.getByTestId(layout === "week_view" ? "calendar-empty-cell" : "time");
       await page.goto(`${fixture.origin}/${settings.event.slug}?layout=${layout}`);
-      await times.first().waitFor();
-      assert.equal(
-        await page
-          .locator(
-            layout === "week_view"
-              ? ".auto-cols-fr > div:not(:first-child)"
-              : '[class*="grid-area:main"] header'
-          )
-          .count(),
-        layout === "week_view" ? 7 : zone === "Asia/Tokyo" ? 2 : 1
-      );
-      assert.equal(await page.getByTestId("selected-month-label").getAttribute("datetime"), "2099-12");
-      const countBeforeNavigation = requests.length;
-      await page.getByTestId("incrementMonth").click();
-      await page.waitForFunction(
-        () =>
-          document.querySelector('[data-testid="selected-month-label"]')?.getAttribute("datetime") ===
-          "2100-01"
-      );
-      if (zone === "Asia/Tokyo") {
-        await times.first().waitFor();
-        const query = requests.at(-1);
-        assert.equal(query.searchParams.get("from"), "2099-12-31T15:00:00.000Z");
-        assert.equal(query.searchParams.get("to"), "2100-01-01T00:00:00.000Z");
-        assert.deepEqual(
-          await times.evaluateAll((nodes) =>
-            nodes.map((node) => node.getAttribute("data-time") ?? node.getAttribute("data-slot"))
-          ),
-          [
-            "2099-12-31T15:00:00.000Z",
-            "2099-12-31T15:30:00.000Z",
-            "2099-12-31T16:00:00.000Z",
-            "2099-12-31T16:30:00.000Z",
-          ]
-        );
-        assert.deepEqual(
-          await times.locator(layout === "week_view" ? ".text-ellipsis" : ":scope").allTextContents(),
-          ["12:00am", "12:30am", "1:00am", "1:30am"]
-        );
-        await times.first().click();
-        const dialog = page.getByRole("dialog", { name: "Confirm your details" });
-        assert.equal(await dialog.locator("time").getAttribute("datetime"), "2099-12-31T15:00:00.000Z");
-        await dialog.getByRole("button", { name: "Back", exact: true }).click();
-      } else {
-        await page.getByRole("status").filter({ hasText: "No available" }).waitFor();
-        assert.equal(await times.count(), 0);
-        assert.equal(requests.length, countBeforeNavigation);
-      }
-      assert.equal(await page.getByRole("button", { name: "Next Day", exact: true }).isDisabled(), true);
-      assert.equal(await page.getByRole("button", { name: "Previous Day", exact: true }).isEnabled(), true);
-      assert.equal(await page.getByRole("alert").count(), 0);
-      for (const query of requests) {
-        assert.ok(Date.parse(query.searchParams.get("from")) >= Date.UTC(2000, 0, 1));
-        assert.ok(Date.parse(query.searchParams.get("to")) <= Date.UTC(2100, 0, 1));
-      }
+      await verifyTerminalMonthNavigation(page, times, zone, layout, requests);
     }
     assert.ok(providerQueries.length > 0);
     for (const query of providerQueries) {
