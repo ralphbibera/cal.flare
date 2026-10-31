@@ -111,6 +111,100 @@ export async function verifySubmission(browser, fixture, date) {
   };
   const saved = (page) =>
     page.evaluate(() => JSON.parse(sessionStorage.getItem("calflare:create:v2:default")));
+  const verifyResponsiveDraft = async (page, dialog) => {
+    const viewports = [
+      { width: 390, modal: true },
+      { width: 768, modal: true },
+      { width: 769, modal: false, containerWidth: 660 },
+      { width: 1024, modal: false, containerWidth: 760 },
+      { width: 1025, modal: false, containerWidth: 760 },
+      { width: 1280, modal: false, containerWidth: 760 },
+    ];
+    const focusOrder = [
+      ["Your name*", page.getByLabel("Your name*", { exact: true })],
+      ["Email address*", page.getByLabel("Email address*", { exact: true })],
+      ["Additional notes", page.getByLabel("Additional notes", { exact: true })],
+      ["Guest email 1", page.getByLabel("Guest email 1", { exact: true })],
+      ["Remove guest 1", page.getByRole("button", { name: "Remove guest 1", exact: true })],
+      ["Guest email 2", page.getByLabel("Guest email 2", { exact: true })],
+      ["Remove guest 2", page.getByRole("button", { name: "Remove guest 2", exact: true })],
+      ["Guest email 3", page.getByLabel("Guest email 3", { exact: true })],
+      ["Remove guest 3", page.getByRole("button", { name: "Remove guest 3", exact: true })],
+      ["Add another", page.getByRole("button", { name: "Add another", exact: true })],
+      ["Terms", page.getByRole("link", { name: "Terms", exact: true })],
+      ["Privacy Policy", page.getByRole("link", { name: "Privacy Policy", exact: true })],
+      ["Back", page.getByRole("button", { name: "Back", exact: true })],
+      ["Confirm", page.getByRole("button", { name: "Confirm", exact: true })],
+    ];
+    for (const { width, modal, containerWidth } of viewports) {
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.getByTestId("time").first().waitFor();
+      await page.setViewportSize({ width, height: 844 });
+      await page.getByTestId("time").first().click();
+      if (modal) {
+        await dialog.waitFor();
+        await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(await page.evaluate(() => document.activeElement === document.body));
+        for (const [name, control] of focusOrder) {
+          await page.keyboard.press("Tab");
+          assert.ok(await control.evaluate((node) => document.activeElement === node), `Tab focuses ${name}`);
+          assert.ok(
+            await dialog.evaluate(
+              (node) => node.contains(document.activeElement) || document.activeElement === document.body
+            ),
+            "Native modal keyboard navigation never reaches background controls"
+          );
+        }
+        await page.keyboard.press("Tab");
+        assert.ok(
+          await dialog.evaluate(
+            (node) => node.contains(document.activeElement) || document.activeElement === document.body
+          ),
+          "Native modal keyboard navigation never reaches background controls"
+        );
+        await page.keyboard.press("Tab");
+        assert.ok(
+          await page
+            .getByLabel("Your name*", { exact: true })
+            .evaluate((node) => document.activeElement === node)
+        );
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(await page.evaluate(() => document.activeElement === document.body));
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(
+          await page
+            .getByRole("button", { name: "Confirm", exact: true })
+            .evaluate((node) => document.activeElement === node)
+        );
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(
+          await page
+            .getByRole("button", { name: "Back", exact: true })
+            .evaluate((node) => document.activeElement === node)
+        );
+        await page.keyboard.press("Escape");
+        await page.getByTestId("time").first().waitFor();
+        await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
+        await page.getByTestId("time").first().click();
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+      } else {
+        assert.equal(await dialog.count(), 0);
+        assert.equal((await page.getByTestId("booker-container").boundingBox()).width, containerWidth);
+        assert.equal((await page.locator("form").boundingBox()).width, 371);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await page.keyboard.press("Escape");
+        assert.ok(await page.getByLabel("Your name*", { exact: true }).isVisible());
+        await page.getByRole("button", { name: "Back", exact: true }).click();
+      }
+      await page.getByTestId("time").first().waitFor();
+      await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
+      await page.getByTestId("time").first().click();
+      assert.equal(await page.getByLabel("Your name*", { exact: true }).inputValue(), "Fixture Guest");
+      assert.equal(await note(page).inputValue(), notes);
+      assert.deepEqual(await values(page), [...recipients, ""]);
+    }
+  };
   try {
     const page = await open();
     await verifyDialogTypography(page);
@@ -211,101 +305,7 @@ export async function verifySubmission(browser, fixture, date) {
     await guest(page, 2).fill("first@example.test");
     await page.getByRole("button", { name: "Add another", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Confirm your details", exact: true });
-    for (const width of [390, 768, 769, 1024, 1025, 1280]) {
-      await page.getByRole("button", { name: "Back", exact: true }).click();
-      await page.getByTestId("time").first().waitFor();
-      await page.setViewportSize({ width, height: 844 });
-      await page.getByTestId("time").first().click();
-      if (width <= 768) {
-        await dialog.waitFor();
-        await page.waitForFunction(() => document.activeElement?.getAttribute("name") === "name");
-        await page.keyboard.press("Shift+Tab");
-        assert.ok(await page.evaluate(() => document.activeElement === document.body));
-        for (const name of [
-          "Your name*",
-          "Email address*",
-          "Additional notes",
-          "Guest email 1",
-          "Remove guest 1",
-          "Guest email 2",
-          "Remove guest 2",
-          "Guest email 3",
-          "Remove guest 3",
-          "Add another",
-          "Terms",
-          "Privacy Policy",
-          "Back",
-          "Confirm",
-        ]) {
-          await page.keyboard.press("Tab");
-          let control = page.getByLabel(name, { exact: true });
-          if (["Terms", "Privacy Policy"].includes(name))
-            control = page.getByRole("link", { name, exact: true });
-          if (
-            ["Confirm", "Back", "Add another", "Remove guest 1", "Remove guest 2", "Remove guest 3"].includes(
-              name
-            )
-          )
-            control = page.getByRole("button", { name, exact: true });
-          assert.ok(await control.evaluate((node) => document.activeElement === node), `Tab focuses ${name}`);
-          assert.ok(
-            await dialog.evaluate(
-              (node) => node.contains(document.activeElement) || document.activeElement === document.body
-            ),
-            "Native modal keyboard navigation never reaches background controls"
-          );
-        }
-        await page.keyboard.press("Tab");
-        assert.ok(
-          await dialog.evaluate(
-            (node) => node.contains(document.activeElement) || document.activeElement === document.body
-          ),
-          "Native modal keyboard navigation never reaches background controls"
-        );
-        await page.keyboard.press("Tab");
-        assert.ok(
-          await page
-            .getByLabel("Your name*", { exact: true })
-            .evaluate((node) => document.activeElement === node)
-        );
-        await page.keyboard.press("Shift+Tab");
-        assert.ok(await page.evaluate(() => document.activeElement === document.body));
-        await page.keyboard.press("Shift+Tab");
-        assert.ok(
-          await page
-            .getByRole("button", { name: "Confirm", exact: true })
-            .evaluate((node) => document.activeElement === node)
-        );
-        await page.keyboard.press("Shift+Tab");
-        assert.ok(
-          await page
-            .getByRole("button", { name: "Back", exact: true })
-            .evaluate((node) => document.activeElement === node)
-        );
-        await page.keyboard.press("Escape");
-        await page.getByTestId("time").first().waitFor();
-        await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
-        await page.getByTestId("time").first().click();
-        await page.getByRole("button", { name: "Back", exact: true }).click();
-      } else {
-        assert.equal(await dialog.count(), 0);
-        assert.equal(
-          (await page.getByTestId("booker-container").boundingBox()).width,
-          width < 1024 ? 660 : 760
-        );
-        assert.equal((await page.locator("form").boundingBox()).width, 371);
-        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-        await page.keyboard.press("Escape");
-        assert.ok(await page.getByLabel("Your name*", { exact: true }).isVisible());
-        await page.getByRole("button", { name: "Back", exact: true }).click();
-      }
-      await page.getByTestId("time").first().waitFor();
-      await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "time");
-      await page.getByTestId("time").first().click();
-      assert.equal(await page.getByLabel("Your name*", { exact: true }).inputValue(), "Fixture Guest");
-      assert.equal(await note(page).inputValue(), notes);
-      assert.deepEqual(await values(page), [...recipients, ""]);
-    }
+    await verifyResponsiveDraft(page, dialog);
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByTestId("time").nth(1).click();
     assert.equal(await note(page).inputValue(), notes);

@@ -51,6 +51,269 @@ const weekAliases = {
     "use-sync-external-store/shim/with-selector"
   ),
 };
+const ordinaryWeek = {
+  headers: ["Wed 09", "Thu 10", "Fri 11", "Sat 12", "Sun 13", "Mon 14", "Tue 15"],
+  midnight: "12:00am",
+  currentTime: "12:00pm",
+  spinnerCount: 0,
+  cellHeight: 29,
+  hoverHeight: 27,
+  pointerSlot: "2030-01-09T09:00:00.000Z",
+};
+const weekExpectations = {
+  initial: {
+    ...ordinaryWeek,
+    cellCounts: { 1280: 105, 900: 57 },
+    firstSlot: ["2030-01-09T12:30:00.000Z", 725],
+    pointerSlot: "2030-01-09T12:30:00.000Z",
+  },
+  seam: {
+    ...ordinaryWeek,
+    cellCounts: { 1280: 21, 900: 12 },
+    headers: ["Mon 31", "Tue 01", "Wed 02", "Thu 03", "Fri 04", "Sat 05", "Sun 06"],
+    pointerSlot: "2029-12-31T09:00:00.000Z",
+  },
+  closure: { ...ordinaryWeek, cellCounts: { 1280: 18, 900: 9 } },
+  empty: { ...ordinaryWeek, cellCounts: { 1280: 0, 900: 0 } },
+  loading: { ...ordinaryWeek, cellCounts: { 1280: 0, 900: 0 }, spinnerCount: 1 },
+  error: { ...ordinaryWeek, cellCounts: { 1280: 0, 900: 0 } },
+  "24h": {
+    ...ordinaryWeek,
+    cellCounts: { 1280: 105, 900: 57 },
+    midnight: "00:00",
+    currentTime: "12:00",
+    firstSlot: ["2030-01-09T12:30:00.000Z", 725],
+    pointerSlot: "2030-01-09T12:30:00.000Z",
+  },
+  fractional: {
+    ...ordinaryWeek,
+    cellCounts: { 1280: 21, 900: 12 },
+    currentTime: "5:45pm",
+    firstSlot: ["2030-01-09T09:00:00.000Z", 855.5],
+  },
+  spring: {
+    ...ordinaryWeek,
+    cellCounts: { 1280: 2, 900: 2 },
+    headers: ["Sun 10", "Mon 11", "Tue 12", "Wed 13", "Thu 14", "Fri 15", "Sat 16"],
+    currentTime: "7:00am",
+    placement: [
+      ["2030-03-10T06:30:00.000Z", "1:30am", 87],
+      ["2030-03-10T07:30:00.000Z", "3:30am", 203],
+    ],
+    pointerSlot: "2030-03-10T06:30:00.000Z",
+  },
+  fall: {
+    ...ordinaryWeek,
+    cellCounts: { 1280: 2, 900: 2 },
+    headers: ["Sun 03", "Mon 04", "Tue 05", "Wed 06", "Thu 07", "Fri 08", "Sat 09"],
+    currentTime: "7:00am",
+    placement: [
+      ["2030-11-03T05:30:00.000Z", "1:30am", 87],
+      ["2030-11-03T06:30:00.000Z", "1:30am", 87],
+    ],
+    pointerSlot: "2030-11-03T06:30:00.000Z",
+  },
+  duration: { ...ordinaryWeek, cellCounts: { 1280: 21 }, cellHeight: 58, hoverHeight: 56 },
+};
+const ordinaryScenarios = [
+  "initial",
+  "seam",
+  "closure",
+  "empty",
+  "loading",
+  "error",
+  "24h",
+  "fractional",
+  "spring",
+  "fall",
+];
+
+async function verifyWeekGrid(region, cells, width, expected) {
+  assert.equal(await cells.count(), expected.cellCounts[width]);
+  const headers = await region.locator(".auto-cols-fr > div:not(:first-child)").allTextContents();
+  assert.deepEqual(headers, expected.headers.slice(0, { 1280: 7, 900: 4 }[width]));
+  const labels = region.locator(".divide-y > div:not(:first-child) > div");
+  assert.equal(await labels.count(), 25);
+  assert.equal(await labels.first().textContent(), expected.midnight);
+  assert.equal(await labels.last().textContent(), expected.midnight);
+  assert.equal((await labels.nth(1).boundingBox()).y - (await labels.first().boundingBox()).y, 58);
+  assert.deepEqual(await region.boundingBox(), { x: 24, y: 0, width: width - 48, height: 1471 });
+  assert.match(
+    await region
+      .locator(".grid-rows-1")
+      .first()
+      .evaluate((node) => getComputedStyle(node).backgroundImage),
+    /repeating-linear-gradient\(-45deg/
+  );
+  assert.equal(await region.locator("svg").count(), expected.spinnerCount);
+  assert.equal(await region.locator('[aria-hidden="true"]').textContent(), expected.currentTime);
+  assert.equal(
+    await region.evaluate((node) =>
+      [...node.querySelectorAll("*")].some(
+        (child) =>
+          ["auto", "scroll"].includes(getComputedStyle(child).overflowY) &&
+          child.scrollHeight > child.clientHeight
+      )
+    ),
+    false
+  );
+}
+
+async function verifyWeekCells(region, cells, expected, candidate, unavailable) {
+  if (unavailable) return;
+  const bounds = await cells.first().boundingBox();
+  assert.equal(bounds.height, expected.cellHeight);
+  if (!candidate) {
+    assert.equal(await cells.first().getAttribute("tabindex"), null);
+    assert.equal(await cells.first().getAttribute("role"), null);
+  } else {
+    assert.equal(await region.getByRole("button").count(), await cells.count());
+  }
+  if (expected.placement) {
+    assert.deepEqual(
+      await cells.evaluateAll((nodes) =>
+        nodes.map((node) => [node.dataset.slot, node.textContent, parseFloat(getComputedStyle(node).top)])
+      ),
+      expected.placement
+    );
+  }
+  if (expected.firstSlot) {
+    assert.equal(await cells.first().getAttribute("data-slot"), expected.firstSlot[0]);
+    assert.equal(
+      await cells.first().evaluate((node) => parseFloat(getComputedStyle(node).top)),
+      expected.firstSlot[1]
+    );
+  }
+}
+
+async function verifyWeekHover(slot, expected) {
+  await slot.hover();
+  assert.deepEqual(
+    await slot.locator(":scope > div").evaluate((node) => {
+      const style = getComputedStyle(node);
+      return [style.backgroundColor, style.color, style.borderRadius, node.getBoundingClientRect().height];
+    }),
+    ["rgb(41, 41, 41)", "rgb(255, 255, 255)", "4px", expected.hoverHeight]
+  );
+}
+
+async function verifyWeekPixels({
+  page,
+  region,
+  cells,
+  width,
+  scenario,
+  repeat,
+  candidate,
+  unavailable,
+  expected,
+  captures,
+  artifacts,
+  differentPixels,
+}) {
+  for (const state of unavailable ? ["rest"] : ["rest", "hover"]) {
+    if (state === "hover")
+      await verifyWeekHover(scenario === "fall" ? cells.last() : cells.first(), expected);
+    captures[state].push([
+      ...(await region.screenshot({
+        path: fileURLToPath(
+          new URL(
+            `week-grid-${candidate ? "candidate" : "reference"}-${width}-${scenario}-${state}-${repeat}.png`,
+            artifacts
+          )
+        ),
+        animations: "disabled",
+      })),
+    ]);
+    if (repeat)
+      assert.equal(
+        await page.evaluate(differentPixels, [captures[state][0], captures[state].at(-1)]),
+        0,
+        `${candidate ? "candidate" : "reference repeat"} ${width}/${scenario}/${state} every RGBA channel`
+      );
+  }
+}
+
+async function verifyWeekKeyboard({
+  page,
+  region,
+  cells,
+  candidate,
+  unavailable,
+  scenario,
+  width,
+  artifacts,
+}) {
+  if (!candidate || unavailable) return;
+  for (let index = 0; index < (await cells.count()); index++) {
+    await page.keyboard.press("Tab");
+    const slot = cells.nth(index);
+    assert.ok(await slot.evaluate((node) => document.activeElement === node));
+    assert.ok(await slot.evaluate((node) => node.matches(":focus-visible")));
+    assert.ok(
+      await slot.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
+      })
+    );
+    assert.ok(await slot.locator(":scope > div").isVisible());
+    assert.match(await slot.getAttribute("aria-label"), /2030|2029/);
+    await page.keyboard.press(index % 2 ? "Space" : "Enter");
+    assert.equal(await page.getByTestId("selection").textContent(), await slot.getAttribute("data-slot"));
+    if (scenario === "fall") {
+      assert.equal(
+        await page.getByTestId("selection").textContent(),
+        ["2030-11-03T05:30:00.000Z", "2030-11-03T06:30:00.000Z"][index]
+      );
+      await region.screenshot({
+        path: fileURLToPath(new URL(`week-grid-candidate-${width}-fall-keyboard-${index}.png`, artifacts)),
+        animations: "disabled",
+      });
+    }
+  }
+  if (scenario === "fall") {
+    assert.deepEqual(
+      await cells.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
+      [
+        "Sunday, November 3, 2030, 1:30am, America/New_York UTC-04:00",
+        "Sunday, November 3, 2030, 1:30am, America/New_York UTC-05:00",
+      ]
+    );
+  }
+}
+
+async function verifyWeekPointer({ page, region, cells, candidate, unavailable, scenario, expected }) {
+  if (!unavailable) {
+    const slot = scenario === "fall" ? cells.last() : cells.first();
+    const identity = await slot.getAttribute("data-slot");
+    await slot.click();
+    assert.equal(await page.getByTestId("selection").textContent(), identity);
+    assert.equal(identity, expected.pointerSlot);
+  } else {
+    assert.equal(await page.getByTestId("selection").textContent(), "none");
+    if (candidate) assert.equal(await region.getByRole("button").count(), 0);
+  }
+}
+
+async function verifyWeekClock({ page, region, cells, scenario, width, repeat }) {
+  if (scenario !== "initial") return;
+  const currentTime = region.locator('[aria-hidden="true"]');
+  assert.equal(await currentTime.textContent(), "12:00pm");
+  assert.equal(await currentTime.evaluate((node) => parseFloat(getComputedStyle(node).top)), 724);
+  await page.clock.setFixedTime(new Date("2030-01-09T13:00:00Z"));
+  await cells.nth(1).click();
+  assert.equal(await page.getByTestId("selection").textContent(), "2030-01-09T13:00:00.000Z");
+  assert.equal(await currentTime.textContent(), "1:00pm", "current-time label after rerender");
+  assert.equal(
+    await currentTime.evaluate((node) => parseFloat(getComputedStyle(node).top)),
+    724,
+    "stored current-time position after rerender"
+  );
+  console.log(
+    `PASS week ${width}/initial/${repeat} clock advance/rerender 12:00pm -> 1:00pm, position 724px, UTC selection 13:00Z`
+  );
+}
+
 export const weekPlugin = {
   name: "pinned-week-reference",
   config: () => ({
@@ -64,20 +327,11 @@ export const weekPlugin = {
 };
 
 export async function verifyWeek(browser, origin, artifacts, differentPixels) {
-  for (const width of [1280, 900]) {
-    for (const scenario of [
-      "initial",
-      "seam",
-      "closure",
-      "empty",
-      "loading",
-      "error",
-      "24h",
-      "fractional",
-      "spring",
-      "fall",
-      ...(width === 1280 ? ["duration"] : []),
-    ]) {
+  for (const [width, scenarios] of [
+    [1280, [...ordinaryScenarios, "duration"]],
+    [900, ordinaryScenarios],
+  ]) {
+    for (const scenario of scenarios) {
       const captures = { rest: [], hover: [] };
       for (const repeat of [0, 1, "candidate"]) {
         const candidate = repeat === "candidate";
@@ -105,220 +359,26 @@ export async function verifyWeek(browser, origin, artifacts, differentPixels) {
             content: "*, *::before, *::after { animation: none !important; transition: none !important; }",
           });
           const cells = region.getByTestId("calendar-empty-cell");
-          const count = width === 1280 ? 7 : 4;
           const unavailable = ["empty", "loading", "error"].includes(scenario);
-          assert.equal(
-            await cells.count(),
-            unavailable
-              ? 0
-              : ["spring", "fall"].includes(scenario)
-                ? 2
-                : scenario === "closure"
-                  ? (count - 1) * 3
-                  : scenario === "initial" || scenario === "24h"
-                    ? (count - 1) * 16 + 9
-                    : count * 3
-          );
-          const headers = await region.locator(".auto-cols-fr > div:not(:first-child)").allTextContents();
-          const expected =
-            scenario === "seam"
-              ? ["Mon 31", "Tue 01", "Wed 02", "Thu 03", "Fri 04", "Sat 05", "Sun 06"]
-              : scenario === "spring"
-                ? ["Sun 10", "Mon 11", "Tue 12", "Wed 13", "Thu 14", "Fri 15", "Sat 16"]
-                : scenario === "fall"
-                  ? ["Sun 03", "Mon 04", "Tue 05", "Wed 06", "Thu 07", "Fri 08", "Sat 09"]
-                  : ["Wed 09", "Thu 10", "Fri 11", "Sat 12", "Sun 13", "Mon 14", "Tue 15"];
-          assert.deepEqual(headers, expected.slice(0, count));
-          const labels = region.locator(".divide-y > div:not(:first-child) > div");
-          assert.equal(await labels.count(), 25);
-          assert.equal(await labels.first().textContent(), scenario === "24h" ? "00:00" : "12:00am");
-          assert.equal(await labels.last().textContent(), scenario === "24h" ? "00:00" : "12:00am");
-          assert.equal((await labels.nth(1).boundingBox()).y - (await labels.first().boundingBox()).y, 58);
-          assert.deepEqual(await region.boundingBox(), { x: 24, y: 0, width: width - 48, height: 1471 });
-          assert.match(
-            await region
-              .locator(".grid-rows-1")
-              .first()
-              .evaluate((node) => getComputedStyle(node).backgroundImage),
-            /repeating-linear-gradient\(-45deg/
-          );
-          assert.equal(await region.locator("svg").count(), scenario === "loading" ? 1 : 0);
-          assert.equal(
-            await region.locator('[aria-hidden="true"]').textContent(),
-            scenario === "fractional"
-              ? "5:45pm"
-              : ["spring", "fall"].includes(scenario)
-                ? "7:00am"
-                : scenario === "24h"
-                  ? "12:00"
-                  : "12:00pm"
-          );
-          assert.equal(
-            await region.evaluate((node) =>
-              [...node.querySelectorAll("*")].some(
-                (child) =>
-                  ["auto", "scroll"].includes(getComputedStyle(child).overflowY) &&
-                  child.scrollHeight > child.clientHeight
-              )
-            ),
-            false
-          );
-          if (!unavailable) {
-            const bounds = await cells.first().boundingBox();
-            assert.equal(bounds.height, scenario === "duration" ? 58 : 29);
-            if (!candidate) {
-              assert.equal(await cells.first().getAttribute("tabindex"), null);
-              assert.equal(await cells.first().getAttribute("role"), null);
-            } else {
-              assert.equal(await region.getByRole("button").count(), await cells.count());
-            }
-            if (["spring", "fall"].includes(scenario)) {
-              assert.deepEqual(
-                await cells.evaluateAll((nodes) =>
-                  nodes.map((node) => [
-                    node.dataset.slot,
-                    node.textContent,
-                    parseFloat(getComputedStyle(node).top),
-                  ])
-                ),
-                scenario === "spring"
-                  ? [
-                      ["2030-03-10T06:30:00.000Z", "1:30am", 87],
-                      ["2030-03-10T07:30:00.000Z", "3:30am", 203],
-                    ]
-                  : [
-                      ["2030-11-03T05:30:00.000Z", "1:30am", 87],
-                      ["2030-11-03T06:30:00.000Z", "1:30am", 87],
-                    ]
-              );
-            }
-            if (["initial", "24h", "fractional"].includes(scenario)) {
-              assert.equal(
-                await cells.first().getAttribute("data-slot"),
-                scenario === "fractional" ? "2030-01-09T09:00:00.000Z" : "2030-01-09T12:30:00.000Z"
-              );
-              assert.equal(
-                await cells.first().evaluate((node) => parseFloat(getComputedStyle(node).top)),
-                scenario === "fractional" ? 855.5 : 725
-              );
-            }
-          }
-          for (const state of unavailable ? ["rest"] : ["rest", "hover"]) {
-            if (state === "hover") await (scenario === "fall" ? cells.last() : cells.first()).hover();
-            if (state === "hover") {
-              assert.deepEqual(
-                await (scenario === "fall" ? cells.last() : cells.first())
-                  .locator(":scope > div")
-                  .evaluate((node) => {
-                    const style = getComputedStyle(node);
-                    return [
-                      style.backgroundColor,
-                      style.color,
-                      style.borderRadius,
-                      node.getBoundingClientRect().height,
-                    ];
-                  }),
-                ["rgb(41, 41, 41)", "rgb(255, 255, 255)", "4px", scenario === "duration" ? 56 : 27]
-              );
-            }
-            captures[state].push([
-              ...(await region.screenshot({
-                path: fileURLToPath(
-                  new URL(
-                    `week-grid-${candidate ? "candidate" : "reference"}-${width}-${scenario}-${state}-${repeat}.png`,
-                    artifacts
-                  )
-                ),
-                animations: "disabled",
-              })),
-            ]);
-            if (repeat)
-              assert.equal(
-                await page.evaluate(differentPixels, [captures[state][0], captures[state].at(-1)]),
-                0,
-                `${candidate ? "candidate" : "reference repeat"} ${width}/${scenario}/${state} every RGBA channel`
-              );
-          }
-          if (candidate && !unavailable) {
-            for (let index = 0; index < (await cells.count()); index++) {
-              await page.keyboard.press("Tab");
-              const slot = cells.nth(index);
-              assert.ok(await slot.evaluate((node) => document.activeElement === node));
-              assert.ok(await slot.evaluate((node) => node.matches(":focus-visible")));
-              assert.ok(
-                await slot.evaluate((node) => {
-                  const style = getComputedStyle(node);
-                  return style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
-                })
-              );
-              assert.ok(await slot.locator(":scope > div").isVisible());
-              assert.match(await slot.getAttribute("aria-label"), /2030|2029/);
-              await page.keyboard.press(index % 2 ? "Space" : "Enter");
-              assert.equal(
-                await page.getByTestId("selection").textContent(),
-                await slot.getAttribute("data-slot")
-              );
-              if (scenario === "fall") {
-                assert.equal(
-                  await page.getByTestId("selection").textContent(),
-                  ["2030-11-03T05:30:00.000Z", "2030-11-03T06:30:00.000Z"][index]
-                );
-                await region.screenshot({
-                  path: fileURLToPath(
-                    new URL(`week-grid-candidate-${width}-fall-keyboard-${index}.png`, artifacts)
-                  ),
-                  animations: "disabled",
-                });
-              }
-            }
-            if (scenario === "fall") {
-              assert.deepEqual(
-                await cells.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
-                [
-                  "Sunday, November 3, 2030, 1:30am, America/New_York UTC-04:00",
-                  "Sunday, November 3, 2030, 1:30am, America/New_York UTC-05:00",
-                ]
-              );
-            }
-          }
-          if (!unavailable) {
-            const slot = scenario === "fall" ? cells.last() : cells.first();
-            const identity = await slot.getAttribute("data-slot");
-            await slot.click();
-            assert.equal(await page.getByTestId("selection").textContent(), identity);
-            assert.equal(
-              identity,
-              scenario === "fall"
-                ? "2030-11-03T06:30:00.000Z"
-                : scenario === "spring"
-                  ? "2030-03-10T06:30:00.000Z"
-                  : scenario === "initial" || scenario === "24h"
-                    ? "2030-01-09T12:30:00.000Z"
-                    : scenario === "seam"
-                      ? "2029-12-31T09:00:00.000Z"
-                      : "2030-01-09T09:00:00.000Z"
-            );
-          } else {
-            assert.equal(await page.getByTestId("selection").textContent(), "none");
-            if (candidate) assert.equal(await region.getByRole("button").count(), 0);
-          }
-          if (scenario === "initial") {
-            const currentTime = region.locator('[aria-hidden="true"]');
-            assert.equal(await currentTime.textContent(), "12:00pm");
-            assert.equal(await currentTime.evaluate((node) => parseFloat(getComputedStyle(node).top)), 724);
-            await page.clock.setFixedTime(new Date("2030-01-09T13:00:00Z"));
-            await cells.nth(1).click();
-            assert.equal(await page.getByTestId("selection").textContent(), "2030-01-09T13:00:00.000Z");
-            assert.equal(await currentTime.textContent(), "1:00pm", "current-time label after rerender");
-            assert.equal(
-              await currentTime.evaluate((node) => parseFloat(getComputedStyle(node).top)),
-              724,
-              "stored current-time position after rerender"
-            );
-            console.log(
-              `PASS week ${width}/initial/${repeat} clock advance/rerender 12:00pm -> 1:00pm, position 724px, UTC selection 13:00Z`
-            );
-          }
+          const expected = weekExpectations[scenario];
+          const view = {
+            page,
+            region,
+            cells,
+            width,
+            scenario,
+            repeat,
+            candidate,
+            unavailable,
+            expected,
+            artifacts,
+          };
+          await verifyWeekGrid(region, cells, width, expected);
+          await verifyWeekCells(region, cells, expected, candidate, unavailable);
+          await verifyWeekPixels({ ...view, captures, differentPixels });
+          await verifyWeekKeyboard(view);
+          await verifyWeekPointer(view);
+          await verifyWeekClock(view);
           assert.deepEqual(errors, []);
           console.log(
             `PASS week ${candidate ? "candidate pixels/keyboard" : "reference"} ${width}/${scenario}/${repeat}`
