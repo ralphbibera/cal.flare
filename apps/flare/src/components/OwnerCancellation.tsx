@@ -1,4 +1,4 @@
-import { type ComponentPropsWithRef, useEffect, useId, useRef, useState } from "react";
+import { type ComponentPropsWithRef, type ReactElement, useEffect, useId, useRef, useState } from "react";
 import common from "../../../../packages/i18n/locales/en/common.json";
 import { BookerClient, type ChangeRequest, ErrorWithCode } from "../client/bookings.ts";
 import { ChangeAttempts } from "../client/change-attempt.ts";
@@ -128,6 +128,45 @@ const status: Record<BookingView["status"], string> = {
   cancelled: common.cancelled,
   attention: common.flare_booking_status_attention,
 };
+
+function OwnerBookingDetails({
+  booking,
+  stage,
+  range,
+  labels,
+}: {
+  booking: BookingView;
+  stage: Stage["kind"];
+  range: string;
+  labels: typeof bookingLabels;
+}): ReactElement {
+  return (
+    <div className="break-words rounded-md border border-subtle p-4 text-sm">
+      <h3 className="font-semibold text-emphasis">{booking.title}</h3>
+      <p>{booking.name}</p>
+      <p>{booking.email}</p>
+      <time dateTime={new Date(booking.start).toISOString()}>{range}</time>
+      <p>{status[booking.status]}</p>
+      {stage === "actions" && booking.status === "confirmed" && booking.location && (
+        <dl className="min-w-0">
+          <dt className="font-medium">{labels.where}</dt>
+          <dd className="min-w-0 whitespace-pre-wrap break-words">{booking.location}</dd>
+        </dl>
+      )}
+      {booking.pendingAction && (
+        <OwnerBookingRecovery
+          id={booking.id}
+          labels={{
+            retry: common.flare_owner_retry_pending,
+            failed: labels.bookingError,
+            javascript: common.flare_owner_retry_javascript,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function OwnerCancellation({
   booking: initialBooking,
   initialRange,
@@ -266,29 +305,7 @@ export function OwnerCancellation({
         <p className="mb-4 text-sm text-subtle">
           {common.timezone}: {booking.timeZone}
         </p>
-        <div className="break-words rounded-md border border-subtle p-4 text-sm">
-          <h3 className="font-semibold text-emphasis">{booking.title}</h3>
-          <p>{booking.name}</p>
-          <p>{booking.email}</p>
-          <time dateTime={new Date(booking.start).toISOString()}>{range}</time>
-          <p>{status[booking.status]}</p>
-          {stage.kind === "actions" && booking.status === "confirmed" && booking.location && (
-            <dl className="min-w-0">
-              <dt className="font-medium">{labels.where}</dt>
-              <dd className="min-w-0 whitespace-pre-wrap break-words">{booking.location}</dd>
-            </dl>
-          )}
-          {booking.pendingAction && (
-            <OwnerBookingRecovery
-              id={booking.id}
-              labels={{
-                retry: common.flare_owner_retry_pending,
-                failed: labels.bookingError,
-                javascript: common.flare_owner_retry_javascript,
-              }}
-            />
-          )}
-        </div>
+        <OwnerBookingDetails booking={booking} stage={stage.kind} range={range} labels={labels} />
         {booking.cancellationReason && (
           <p className="whitespace-pre-wrap break-words">
             {common.cancellation_reason}: {booking.cancellationReason}
