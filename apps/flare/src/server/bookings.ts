@@ -44,6 +44,32 @@ async function identity(context: string, value: string): Promise<string> {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function changePolicyRefuses(
+  action: ReturnType<typeof parseChange>["action"],
+  actor: Actor,
+  original: BookingSnapshot,
+  policy: CurrentActionPolicy,
+  now: number
+): boolean {
+  const disabled =
+    action === "cancel"
+      ? policy.disableCancelling
+      : policy.disableRescheduling ||
+        (actor === "attendee" &&
+          isWithinMinimumRescheduleNotice(original.start, now, policy.minimumRescheduleNotice));
+  return Boolean(disabled || ((action === "cancel" || actor === "owner") && original.end < now));
+}
+
+function bookingStatus(booking: Booking, pending: Pending | null): BookingView["status"] {
+  let status: BookingView["status"] = "confirmed";
+  if (booking.state === "cancelled") status = "cancelled";
+  if (pending?.action === "create") status = "pending";
+  if (pending?.action === "reschedule") status = "rescheduling";
+  if (pending?.action === "cancel") status = "cancelling";
+  if (pending?.error) status = "attention";
+  return status;
+}
+
 export class BookingService {
   private readonly db: D1DatabaseSession;
   private readonly calendar: Calendar;
@@ -211,21 +237,11 @@ export class BookingService {
       ...(start === undefined ? {} : { start, end: start + original.end - original.start }),
       privateMetadata: { ...original.privateMetadata, operation: commandId },
     };
-    const disabled =
-      action === "cancel"
-        ? policy.disableCancelling
-        : policy.disableRescheduling ||
-          (actor === "attendee" &&
-            isWithinMinimumRescheduleNotice(original.start, now, policy.minimumRescheduleNotice));
-    const precondition =
-      disabled || ((action === "cancel" || actor === "owner") && original.end < now)
-        ? "invalid_slot"
-        : action === "cancel" ||
-            booking.pending_id ||
-            booking.version !== version ||
-            booking.state !== "active"
-          ? "accepted"
-          : await this.scheduler(settings).condition(desired, id);
+    const precondition = changePolicyRefuses(action, actor, original, policy, now)
+      ? "invalid_slot"
+      : action === "cancel" || booking.pending_id || booking.version !== version || booking.state !== "active"
+        ? "accepted"
+        : await this.scheduler(settings).condition(desired, id);
     return this.admit(
       {
         requestKey,
@@ -382,6 +398,35 @@ export class BookingService {
       ),
     };
   }
+  private async completedChangeReasons(
+    booking: Booking,
+    status: BookingView["status"],
+    loadedCompleted?: string | null
+  ): Promise<Pick<BookingView, "cancellationReason" | "rescheduleReason">> {
+    if (status !== "cancelled" && status !== "confirmed") return {};
+    const payload =
+      loadedCompleted !== undefined
+        ? loadedCompleted
+        : await this.db
+            .prepare(`SELECT payload FROM booking_command WHERE booking_id=?
+          AND accepted_version=? AND action=? AND outcome='accepted'
+          AND terminal=1 AND execution='done'`)
+            .bind(booking.id, booking.version, status === "cancelled" ? "cancel" : "reschedule")
+            .first<string>("payload");
+    if (!payload) return {};
+    try {
+      const { id, ...request } = record(JSON.parse(payload));
+      const data = parseChange(request);
+      if (id !== booking.id) return {};
+      if (status === "cancelled" && data.action === "cancel")
+        return { cancellationReason: data.cancellationReason };
+      if (status === "confirmed" && data.action === "reschedule")
+        return { rescheduleReason: data.rescheduleReason };
+    } catch {
+      return {};
+    }
+    return {};
+  }
   private async render(
     booking: Booking,
     actor: Actor,
@@ -405,40 +450,12 @@ export class BookingService {
               .bind(booking.pending_id)
               .first<Command>()
           : null;
-    let status: BookingView["status"] = "confirmed";
-    if (booking.state === "cancelled") status = "cancelled";
-    if (pending?.action === "create") status = "pending";
-    if (pending?.action === "reschedule") status = "rescheduling";
-    if (pending?.action === "cancel") status = "cancelling";
-    if (pending?.error) status = "attention";
-    let cancellationReason: string | undefined;
-    let rescheduleReason: string | undefined;
-    if (status === "cancelled" || status === "confirmed") {
-      const payload =
-        loadedCompleted !== undefined
-          ? loadedCompleted
-          : await this.db
-              .prepare(`SELECT payload FROM booking_command WHERE booking_id=?
-          AND accepted_version=? AND action=? AND outcome='accepted'
-          AND terminal=1 AND execution='done'`)
-              .bind(booking.id, booking.version, status === "cancelled" ? "cancel" : "reschedule")
-              .first<string>("payload");
-      if (payload) {
-        try {
-          const { id, ...request } = record(JSON.parse(payload));
-          const data = parseChange(request);
-          if (id === booking.id) {
-            if (status === "cancelled" && data.action === "cancel")
-              cancellationReason = data.cancellationReason;
-            if (status === "confirmed" && data.action === "reschedule")
-              rescheduleReason = data.rescheduleReason;
-          }
-        } catch {
-          cancellationReason = undefined;
-          rescheduleReason = undefined;
-        }
-      }
-    }
+    const status = bookingStatus(booking, pending);
+    const { cancellationReason, rescheduleReason } = await this.completedChangeReasons(
+      booking,
+      status,
+      loadedCompleted
+    );
     return {
       id: booking.id,
       status,
