@@ -28,46 +28,47 @@ function normalizedNotes(value: unknown): string | undefined {
   if (typeof value !== "string" || value.trim().length > 1000) throw new ErrorWithCode("invalid_input", 400);
   return value.trim() || undefined;
 }
+function decodePending(value: unknown, eventId: string): PendingCreate {
+  const request = object(value);
+  if (
+    typeof request.start !== "number" ||
+    !Number.isSafeInteger(request.start) ||
+    request.start < Date.UTC(2000, 0, 1) ||
+    request.start > Date.UTC(2100, 0, 1) ||
+    typeof request.name !== "string" ||
+    !request.name.trim() ||
+    request.name.length > 200 ||
+    typeof request.email !== "string" ||
+    request.email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email) ||
+    typeof request.timeZone !== "string" ||
+    !isValidTimeZone(request.timeZone)
+  )
+    throw new Error();
+  const notes = normalizedNotes(request.notes);
+  const guests = parseGuests(request.guests);
+  if (guests === null) throw new Error();
+  const pending: PendingCreate = {
+    kind: "pending",
+    eventId,
+    request: Object.freeze({
+      requestKey: key(request.requestKey),
+      start: request.start,
+      name: request.name,
+      email: request.email,
+      timeZone: request.timeZone,
+      ...(notes ? { notes } : {}),
+      ...(guests ? { guests } : {}),
+    }),
+  };
+  if (new TextEncoder().encode(JSON.stringify(pending.request)).byteLength > 32768)
+    throw new ErrorWithCode("request_too_large", 413);
+  return pending;
+}
 function decode(value: unknown): CreationState {
   const data = object(value);
   if (!isEventId(data.eventId)) throw new Error();
-  if (data.kind === "pending") {
-    const request = object(data.request);
-    if (
-      typeof request.start !== "number" ||
-      !Number.isSafeInteger(request.start) ||
-      request.start < Date.UTC(2000, 0, 1) ||
-      request.start > Date.UTC(2100, 0, 1) ||
-      typeof request.name !== "string" ||
-      !request.name.trim() ||
-      request.name.length > 200 ||
-      typeof request.email !== "string" ||
-      request.email.length > 254 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email) ||
-      typeof request.timeZone !== "string" ||
-      !isValidTimeZone(request.timeZone)
-    )
-      throw new Error();
-    const notes = normalizedNotes(request.notes);
-    const guests = parseGuests(request.guests);
-    if (guests === null) throw new Error();
-    const pending: PendingCreate = {
-      kind: "pending",
-      eventId: data.eventId,
-      request: Object.freeze({
-        requestKey: key(request.requestKey),
-        start: request.start,
-        name: request.name,
-        email: request.email,
-        timeZone: request.timeZone,
-        ...(notes ? { notes } : {}),
-        ...(guests ? { guests } : {}),
-      }),
-    };
-    if (new TextEncoder().encode(JSON.stringify(pending.request)).byteLength > 32768)
-      throw new ErrorWithCode("request_too_large", 413);
-    return pending;
-  }
+  if (data.kind === "pending") return decodePending(data.request, data.eventId);
   if (data.kind === "receipt") {
     const access = object(data.access);
     if (
