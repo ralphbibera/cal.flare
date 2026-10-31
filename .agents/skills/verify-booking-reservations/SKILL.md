@@ -43,6 +43,8 @@ This is a manually reviewed mapping, not an automatic proof of SQL or TypeScript
 | `apps/flare/src/server/booking-availability.ts`: `condition`, `slots`; `booking-model.ts`: `Command`, `Booking`, snapshots and parsers | Local reservation reads are global across events and exclude only the same booking. Read/check/insert is not modeled as atomic: only the command INSERT and its triggers are. Snapshot/interval validation and command identity must remain compatible with the projection. |
 | `apps/flare/src/server/settings.ts`: `getAdmissionContext`, policy getters; `apps/flare/src/domain/settings.ts`: policy parsing and notice; `apps/flare/src/domain/scheduling.ts`: `availableSlots` | Policy refusals (disabled actions, ended restrictions, attendee notice, availability, removed events, settings/schedule changes) project to `Wait`. The model explores the admitted branch whenever permitted by booking state, so it overapproximates these gates. It does not verify their correctness or authorize changing them. Cancellation still needs policy/provenance acceptance in real code. |
 
+`parseOptionalEventPolicy` and `parseDatedOverrides` retain the existing validation and canonical settings order. They remain within the policy-gate projection above and introduce no reservation transaction or overlap assumption.
+
 At the sync commit, `utcWorkingIntervals`, `subtractBusyIntervals`, and `freeWorkingIntervals` separate availability planning without changing this policy-gate projection. The admission and finalization transactions, occupied interval calculation, and both overlap guards remain unchanged.
 
 ## Understand the bound
