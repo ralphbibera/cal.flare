@@ -31,7 +31,9 @@ async function verifyEvents(browser, { schedulesOnly = false } = {}) {
       durationMinutes: 45,
       location: "Private B room 東京",
     };
-    const created = await createFromOwner(browser, f, owner, details);
+    let created;
+    if (schedulesOnly) created = await read(await send("/api/owner/events", details, owner), 201);
+    else created = await createFromOwner(browser, f, owner, details);
     assert.match(created.id, /^[0-9a-f-]{36}$/);
     const ownerPath = `/api/owner/events/${created.id}`;
     const publicPath = `/api/events/${created.id}`;
