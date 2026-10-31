@@ -14,6 +14,16 @@ type MonthSlot = {
   showNotePublicly?: boolean;
 };
 
+type MonthDay = {
+  date: Dayjs | null;
+  disabled: boolean;
+  away?: boolean;
+  emoji?: string | null;
+  active?: boolean;
+  tooltip?: string | null;
+  monthLabel?: string;
+};
+
 type MonthPickerProps = {
   locale: string;
   labels: { today: string; previousMonth: string; nextMonth: string };
@@ -41,6 +51,31 @@ type MonthPickerProps = {
   };
 };
 
+function availableDates(browsingDate: Dayjs, minDate?: Date, includedDates?: string[]) {
+  const available: string[] = [];
+  const minimum = minDate || new Date();
+  const nativeDate = browsingDate.toDate();
+  // Availability follows the native browser date; the visible grid retains the supplied offset.
+  const nativeMonthDays = new Date(nativeDate.getFullYear(), nativeDate.getMonth() + 1, 0).getDate();
+  const lastDate = new Date(nativeDate.getFullYear(), nativeDate.getMonth(), nativeMonthDays);
+  for (
+    let date = nativeDate > minimum ? nativeDate : minimum;
+    date < lastDate || dayjs(date).isSame(lastDate, "day");
+    date = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
+  ) {
+    const key = dayjs(date).format("YYYY-MM-DD");
+    if (!includedDates || includedDates.includes(key)) available.push(key);
+  }
+  return available;
+}
+
+function nextMonthLabels(date: Dayjs, visible: boolean, disabled: boolean) {
+  return {
+    tooltip: visible && !disabled ? date.format("MMMM") : null,
+    monthLabel: visible && date.date() === 1 ? date.format("MMM") : undefined,
+  };
+}
+
 function MonthPicker({
   locale,
   labels,
@@ -63,20 +98,7 @@ function MonthPicker({
 }: MonthPickerProps) {
   const browsingDate = minDate && rawDate.valueOf() < minDate.valueOf() ? dayjs(minDate) : rawDate;
   const totalDays = new Date(browsingDate.year(), browsingDate.month() + 1, 0).getDate();
-  const available: string[] = [];
-  const minimum = minDate || new Date();
-  const nativeDate = browsingDate.toDate();
-  // Availability follows the native browser date; the visible grid retains the supplied offset.
-  const nativeMonthDays = new Date(nativeDate.getFullYear(), nativeDate.getMonth() + 1, 0).getDate();
-  const lastDate = new Date(nativeDate.getFullYear(), nativeDate.getMonth(), nativeMonthDays);
-  for (
-    let date = nativeDate > minimum ? nativeDate : minimum;
-    date < lastDate || dayjs(date).isSame(lastDate, "day");
-    date = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
-  ) {
-    const key = dayjs(date).format("YYYY-MM-DD");
-    if (!includedDates || includedDates.includes(key)) available.push(key);
-  }
+  const available = availableDates(browsingDate, minDate, includedDates);
   const showNextMonthDays = dayjs().isAfter(browsingDate.startOf("month").add(2, "week")) && !isCompact;
   const startDay = showNextMonthDays ? 8 : 1;
   const padding = (browsingDate.set("date", startDay).day() - weekStart + 7) % 7;
@@ -86,7 +108,7 @@ function MonthPicker({
     const extraDays = (dates.length % 7 > 0 ? 7 - (dates.length % 7) : 0) + 7;
     for (let day = 1; day <= extraDays; day++) dates.push(browsingDate.add(1, "month").set("date", day));
   }
-  const days = dates.map((date) => {
+  const days = dates.map<MonthDay>((date) => {
     if (!date) return { date: null, disabled: true };
     const key = date.format("YYYY-MM-DD");
     const daySlots = slots[key] || [];
@@ -102,7 +124,14 @@ function MonthPicker({
       ? selected.some((value) => value.format("YYYY-MM-DD") === key)
       : selected?.format("YYYY-MM-DD") === key ||
         selectedDates.some((value) => dayjs(value).format("YYYY-MM-DD") === key);
-    return { date, disabled, away, emoji: awayInfo?.emoji, nextMonth, active };
+    return {
+      date,
+      disabled,
+      away,
+      emoji: awayInfo?.emoji,
+      active,
+      ...nextMonthLabels(date, showNextMonthDays && nextMonth, disabled),
+    };
   });
   useEffect(() => {
     if (skipAutomaticSelection || Array.isArray(selected)) return;
@@ -182,7 +211,7 @@ function MonthPicker({
         ))}
       </div>
       <div className="relative grid grid-cols-7 grid-rows-6 gap-1 text-center">
-        {days.map(({ date, disabled, away, emoji, nextMonth, active }, index) => (
+        {days.map(({ date, disabled, away, emoji, active, tooltip, monthLabel }, index) => (
           <div key={date ? `day-${date.format()}` : `e-${index}`} className="relative w-full pt-[100%]">
             {!date ? (
               <div />
@@ -193,7 +222,7 @@ function MonthPicker({
                 <span className="font-size-0 bg-emphasis inline-block animate-pulse rounded-md empty:before:inline-block empty:before:content-[''] h-8 w-9" />
               </button>
             ) : (
-              <Tooltip content={showNextMonthDays && !disabled && nextMonth ? date.format("MMMM") : null}>
+              <Tooltip content={tooltip}>
                 <CalendarDay
                   day={date.date()}
                   active={!!active}
@@ -202,9 +231,7 @@ function MonthPicker({
                   todayLabel={labels.today}
                   away={away}
                   emoji={emoji}
-                  monthLabel={
-                    showNextMonthDays && nextMonth && date.date() === 1 ? date.format("MMM") : undefined
-                  }
+                  monthLabel={monthLabel}
                   customClassName={{
                     dayContainer: customClassNames?.datePickersDates,
                     dayActive: customClassNames?.datePickerDatesActive,

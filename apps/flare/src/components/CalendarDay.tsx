@@ -12,6 +12,18 @@ type CalendarDayProps = Omit<ComponentPropsWithRef<"button">, "children"> & {
   customClassName?: { dayContainer?: string; dayActive?: string };
 };
 
+function dayAppearance({
+  active,
+  disabled,
+  customClassName,
+}: Pick<CalendarDayProps, "active" | "disabled" | "customClassName">) {
+  if (active) return "bg-brand-default text-brand";
+  if (disabled) return customClassName ? "" : "text-mute";
+  return customClassName?.dayActive
+    ? `hover:border-brand-default ${customClassName.dayActive}`
+    : "hover:border-brand-default text-emphasis bg-emphasis";
+}
+
 function CalendarDay({
   day,
   active,
@@ -41,15 +53,7 @@ function CalendarDay({
         type="button"
         className={twMerge(
           "disabled:text-bookinglighter absolute bottom-0 left-0 right-0 top-0 mx-auto w-full cursor-pointer rounded-md border-2 border-transparent text-center text-sm font-medium transition disabled:cursor-default disabled:border-transparent disabled:font-light",
-          active
-            ? "bg-brand-default text-brand"
-            : !disabled
-              ? !customClassName?.dayActive
-                ? "hover:border-brand-default text-emphasis bg-emphasis"
-                : `hover:border-brand-default ${customClassName.dayActive}`
-              : customClassName
-                ? ""
-                : "text-mute"
+          dayAppearance({ active, disabled, customClassName })
         )}
         data-testid="day"
         data-disabled={disabled}
