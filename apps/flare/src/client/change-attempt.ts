@@ -7,33 +7,28 @@ type ChangeInput =
   | Omit<Extract<ChangeRequest, { action: "cancel" }>, "requestKey">;
 type Session = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-function decode(value: unknown): Readonly<ChangeRequest> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error();
-  if (
-    !("requestKey" in value) ||
-    typeof value.requestKey !== "string" ||
-    !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value.requestKey) ||
-    !("version" in value) ||
-    typeof value.version !== "number" ||
-    !Number.isSafeInteger(value.version) ||
-    value.version < 1 ||
-    !("action" in value)
-  )
-    throw new Error();
-  const { requestKey, version } = value;
-  if (value.action === "cancel" && !("start" in value)) {
-    if ("rescheduleReason" in value) throw new Error();
-    const cancellationReason = parseCancellationReason(
-      "cancellationReason" in value ? value.cancellationReason : undefined
-    );
-    if (cancellationReason === null) throw new Error();
-    return Object.freeze({
-      action: "cancel",
-      requestKey,
-      version,
-      ...(cancellationReason ? { cancellationReason } : {}),
-    });
-  }
+function decodeCancellation(
+  value: object,
+  requestKey: string,
+  version: number
+): Readonly<Extract<ChangeRequest, { action: "cancel" }>> {
+  if ("rescheduleReason" in value) throw new Error();
+  const cancellationReason = parseCancellationReason(
+    "cancellationReason" in value ? value.cancellationReason : undefined
+  );
+  if (cancellationReason === null) throw new Error();
+  return Object.freeze({
+    action: "cancel",
+    requestKey,
+    version,
+    ...(cancellationReason ? { cancellationReason } : {}),
+  });
+}
+function decodeReschedule(
+  value: { action: unknown },
+  requestKey: string,
+  version: number
+): Readonly<Extract<ChangeRequest, { action: "reschedule" }>> {
   if (
     value.action !== "reschedule" ||
     "cancellationReason" in value ||
@@ -55,6 +50,23 @@ function decode(value: unknown): Readonly<ChangeRequest> {
     start: value.start,
     ...(rescheduleReason ? { rescheduleReason } : {}),
   });
+}
+function decode(value: unknown): Readonly<ChangeRequest> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error();
+  if (
+    !("requestKey" in value) ||
+    typeof value.requestKey !== "string" ||
+    !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value.requestKey) ||
+    !("version" in value) ||
+    typeof value.version !== "number" ||
+    !Number.isSafeInteger(value.version) ||
+    value.version < 1 ||
+    !("action" in value)
+  )
+    throw new Error();
+  const { requestKey, version } = value;
+  if (value.action === "cancel" && !("start" in value)) return decodeCancellation(value, requestKey, version);
+  return decodeReschedule(value, requestKey, version);
 }
 
 class ChangeAttempts {
