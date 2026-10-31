@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BookerClient, ErrorWithCode } from "../src/client/bookings.ts";
 import { CreateAttempts } from "../src/client/create-attempt.ts";
-import { apiFixture, hour } from "./fixtures/api.ts";
+
+const hour = 3_600_000;
 
 function session() {
   const values = new Map<string, string>();
@@ -246,6 +247,32 @@ test("HTTP-sized guest attempts fit the saved reader and oversize writes preserv
   }
 });
 
+test("creation request size uses canonical UTF-8 bytes at the exact limit", (t) => {
+  const requestKey = "11111111-1111-4111-8111-111111111111";
+  t.mock.method(crypto, "randomUUID", () => requestKey);
+  const guests = Array.from({ length: 124 }, (_, i) => `${String(i).padStart(242, "a")}@example.com`);
+  const prefix =
+    '{"requestKey":"11111111-1111-4111-8111-111111111111","start":1893492000000,"name":"Guest","email":"guest@example.test","timeZone":"UTC","notes":"';
+  const suffix = `","guests":[${guests.map((email) => `"${email}"`).join(",")}]}`;
+  const encoder = new TextEncoder();
+  const remaining = 32768 - encoder.encode(prefix + suffix).byteLength;
+  const notes = "é".repeat(Math.floor(remaining / 2)) + "x".repeat(remaining % 2);
+  const expected = prefix + notes + suffix;
+  assert.equal(encoder.encode(expected).byteLength, 32768);
+  assert.ok(notes.length <= 1000);
+  const tab = session();
+  const store = new CreateAttempts({ storage: tab.storage, eventId: "default", scope: "/intro" });
+  assert.throws(
+    () => store.begin({ ...body, notes: `${notes}x`, guests }),
+    (error: unknown) =>
+      error instanceof ErrorWithCode && error.code === "request_too_large" && error.status === 413
+  );
+  assert.equal(tab.values.size, 0);
+  const pending = store.begin({ ...body, notes, guests });
+  assert.equal(JSON.stringify(pending.request), expected);
+  assert.deepEqual(store.read(), pending);
+});
+
 test("creation attempts preserve identity, attendee data and late-result fencing", () => {
   const tab = session();
   const options = { storage: tab.storage, eventId: "default", scope: "/organizer/intro" };
@@ -413,6 +440,7 @@ test("storage failures and corrupt state never authorize a replacement attempt",
 });
 
 test("a reloaded creation attempt recovers a lost HTTP acknowledgment without another event", async (t) => {
+  const { apiFixture } = await import("./fixtures/api.ts");
   const fixture = await apiFixture();
   t.after(fixture.close);
   const client = new BookerClient((path, init) => {

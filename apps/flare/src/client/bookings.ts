@@ -171,6 +171,12 @@ function booking(value: unknown): BookingView {
       result[key] = data[key];
     }
   }
+  bookingCommandState(data, result);
+  bookingPrivateFacts(data, result);
+  return result;
+}
+function bookingCommandState(data: Record<string, unknown>, result: BookingView): void {
+  const { status } = result;
   if (data.pendingAction !== undefined) {
     if (
       data.pendingAction !== "create" &&
@@ -193,6 +199,9 @@ function booking(value: unknown): BookingView {
     (status === "cancelling" && result.pendingAction !== "cancel")
   )
     throw new Error();
+}
+function bookingPrivateFacts(data: Record<string, unknown>, result: BookingView): void {
+  const { status } = result;
   if (data.manageToken !== undefined) {
     const token = text(data.manageToken);
     if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new Error();
@@ -214,7 +223,6 @@ function booking(value: unknown): BookingView {
       throw new Error();
     result.location = location;
   }
-  return result;
 }
 function accessHeaders(access: BookingAccess): { Authorization: string } {
   if (!/^[0-9a-f]{64}$/.test(access.id) || !/^[A-Za-z0-9_-]{43}$/.test(access.token))
