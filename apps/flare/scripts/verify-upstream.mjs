@@ -524,6 +524,16 @@ export async function verifyUpstream(browser, origin, artifacts, differentPixels
         assert.equal(response.status(), 200);
         await page.mouse.move(0, 0);
         await ready(page, '[data-testid="time"]');
+        await page.waitForFunction(() => {
+          const description = document.querySelector(
+            '[data-testid="event-meta-description"] [role="region"]'
+          );
+          return (
+            description &&
+            description.scrollHeight <= description.clientHeight &&
+            !description.parentElement.querySelector('[aria-hidden="true"]')
+          );
+        });
         assert.equal(await page.getByTestId("time").count(), 9);
         assert.equal(await page.getByTestId("time").first().textContent(), "12:30pm");
         assert.equal(await page.getByTestId("time").last().textContent(), "4:30pm");
