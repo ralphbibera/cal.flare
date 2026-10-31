@@ -570,6 +570,88 @@ test("booker client distinguishes uncertain outcomes and sanitizes failures", as
   }
 });
 
+test("booking command states require their literal action and error combinations", async () => {
+  const access = { id: "a".repeat(64), token: "b".repeat(43) };
+  const valid = {
+    id: access.id,
+    version: 0,
+    start: Date.UTC(2030, 0, 1),
+    end: Date.UTC(2030, 0, 1, 0, 30),
+    name: "",
+    email: "<literal>\u0000\ud800",
+    title: "東京 😀",
+    timeZone: "UTC",
+  };
+  const accepted = new Set([
+    "pending/create/undefined",
+    "confirmed/undefined/undefined",
+    "rescheduling/reschedule/undefined",
+    "cancelling/cancel/undefined",
+    "cancelled/undefined/undefined",
+    "attention/create/",
+    "attention/create/provider_failure",
+    "attention/reschedule/",
+    "attention/reschedule/provider_failure",
+    "attention/cancel/",
+    "attention/cancel/provider_failure",
+  ]);
+  for (const status of ["pending", "confirmed", "rescheduling", "cancelling", "cancelled", "attention"])
+    for (const pendingAction of [undefined, "create", "reschedule", "cancel", "other", null])
+      for (const error of [undefined, "", "provider_failure", null]) {
+        const value = { ...valid, status, pendingAction, error };
+        const result = new BookerClient(async () => Response.json(value)).view(access);
+        if (accepted.has(`${status}/${pendingAction}/${error}`))
+          assert.deepEqual(await result, JSON.parse(JSON.stringify(value)));
+        else
+          await assert.rejects(result, (error: unknown) => {
+            assert.ok(error instanceof ErrorWithCode);
+            assert.equal(error.code, "invalid_response");
+            assert.equal(error.message, "invalid_response");
+            assert.equal(error.status, 200);
+            assert.equal(error.retryable, true);
+            return true;
+          });
+      }
+});
+
+test("booking projections preserve property order, zero, false and optional own-property distinctions", async () => {
+  const access = { id: "a".repeat(64), token: "b".repeat(43) };
+  const valid = {
+    location: "Private\u0000\ud800",
+    rescheduleReason: "Move\r\n é 😀",
+    manageToken: access.token,
+    disableRescheduling: false,
+    disableCancelling: false,
+    timeZone: "UTC",
+    title: "<Call>",
+    email: "",
+    name: "",
+    end: 1893457800000,
+    start: 1893456000000,
+    version: 0,
+    status: "confirmed",
+    id: access.id,
+    credential: "private",
+    notes: "private",
+    guests: ["private@example.test"],
+    pendingAction: undefined,
+    error: undefined,
+  };
+  const response = new Response();
+  response.json = async () => valid;
+  const result = await new BookerClient(async () => response).view(access);
+  assert.equal(
+    JSON.stringify(result),
+    '{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"confirmed","version":0,"start":1893456000000,"end":1893457800000,"name":"","email":"","title":"<Call>","timeZone":"UTC","disableCancelling":false,"disableRescheduling":false,"manageToken":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","rescheduleReason":"Move\\r\\n é 😀","location":"Private\\u0000\\ud800"}'
+  );
+  assert.equal(Object.hasOwn(result, "pendingAction"), false);
+  assert.equal(Object.hasOwn(result, "error"), false);
+  for (const key of ["cancellationReason", "rescheduleReason", "location"]) {
+    response.json = async () => ({ ...valid, [key]: undefined });
+    await assert.rejects(new BookerClient(async () => response).view(access), /invalid_response/);
+  }
+});
+
 test("booker client rejects inconsistent booking data and discards unknown fields", async () => {
   const access = { id: "a".repeat(64), token: "b".repeat(43) };
   const valid = {
