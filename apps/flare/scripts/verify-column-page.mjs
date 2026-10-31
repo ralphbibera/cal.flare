@@ -3,6 +3,19 @@ import { fileURLToPath } from "node:url";
 import { expect } from "@playwright/test";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
+async function verifyColumnPaginationSeam(page, region) {
+  await page.getByRole("button", { name: "30", exact: true }).click();
+  for (const [action, expected] of [
+    [null, ["Wed30", "Thu31"]],
+    ["Next Day", ["Thu31", "Fri01, Feb"]],
+    ["Next Day", ["Sat02", "Sun03"]],
+    ["Previous Day", ["Thu31", "Fri01, Feb"]],
+  ]) {
+    if (action) await page.getByRole("button", { name: action, exact: true }).click();
+    await expect(region.locator("header")).toHaveText(expected);
+  }
+}
+
 export async function verifyColumnPage(browser, referenceOrigin, artifacts, differentPixels, ready) {
   const fixedTime = Date.parse("2030-01-09T12:00:00Z");
   const fixture = await createWorkerFixture({ port: 8797, fixedTime });
@@ -27,7 +40,7 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
       },
     };
     assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
-    for (const width of [1280, 900]) {
+    async function verifyColumnViewport(width) {
       const context = await browser.newContext({
         viewport: { width, height: 900 },
         locale: "en-US",
@@ -93,16 +106,7 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
         await page.keyboard.press("Escape");
         await expect(dialog).toHaveCount(0);
         if (width === 900) {
-          await page.getByRole("button", { name: "30", exact: true }).click();
-          for (const [action, expected] of [
-            [null, ["Wed30", "Thu31"]],
-            ["Next Day", ["Thu31", "Fri01, Feb"]],
-            ["Next Day", ["Sat02", "Sun03"]],
-            ["Previous Day", ["Thu31", "Fri01, Feb"]],
-          ]) {
-            if (action) await page.getByRole("button", { name: action, exact: true }).click();
-            await expect(region.locator("header")).toHaveText(expected);
-          }
+          await verifyColumnPaginationSeam(page, region);
         }
         await page.getByRole("radio", { name: "Switch to monthly view" }).click();
         await expect(region).toHaveCount(0);
@@ -140,6 +144,9 @@ export async function verifyColumnPage(browser, referenceOrigin, artifacts, diff
       } finally {
         await context.close();
       }
+    }
+    for (const width of [1280, 900]) {
+      await verifyColumnViewport(width);
     }
     const context = await browser.newContext({ viewport: { width: 768, height: 900 }, timezoneId: "UTC" });
     try {
