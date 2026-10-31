@@ -101,12 +101,13 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               warning: common.flare_remove_warning, back: common.back,
               removeFailed: common.flare_remove_failed, javascript: common.flare_event_details_javascript,
             }} />}
-            {state.data.mode.kind === "edit" && <OwnerBookingRulesEditor client:load eventId={state.data.mode.id} rules={{
+            {state.data.mode.kind === "edit" && <OwnerBookingRulesEditor client:load eventId={state.data.mode.id} timeZone={state.data.settings.schedule.timeZone} rules={{
               intervalMinutes: state.data.settings.event.intervalMinutes, beforeMinutes: state.data.settings.event.beforeMinutes,
               afterMinutes: state.data.settings.event.afterMinutes, noticeMinutes: state.data.settings.event.noticeMinutes,
               disableCancelling: state.data.settings.event.disableCancelling ?? false,
               disableRescheduling: state.data.settings.event.disableRescheduling ?? false,
               bookingWindowDays: state.data.settings.event.bookingWindowDays,
+              bookingWindowRange: state.data.settings.event.bookingWindowRange,
               minimumRescheduleNotice: state.data.settings.event.minimumRescheduleNotice,
             }} labels={{
               heading: common.flare_booking_rules, intervalMinutes: common.slot_interval, beforeMinutes: common.before_event,
@@ -114,6 +115,10 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               disableCancelling: common.disable_cancelling, disableRescheduling: common.disable_rescheduling,
               limitFutureBookings: common.limit_future_bookings, bookingWindowDays: common.flare_booking_window_days,
               windowHelp: common.flare_booking_window_help,
+              bookingWindowRange: common.flare_booking_window_range,
+              unlimited: common.flare_booking_window_unlimited,
+              rangeStart: common.flare_booking_range_start, rangeEnd: common.flare_booking_range_end,
+              rangeHelp: common.flare_booking_range_help,
               limitRescheduling: common.flare_limit_rescheduling,
               minimumRescheduleNotice: common.flare_minimum_reschedule_notice,
               minutes: common.minutes, save: common.save, saved: common.saved, invalid: common.flare_booking_rules_invalid,
