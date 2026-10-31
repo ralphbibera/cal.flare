@@ -676,6 +676,10 @@ async function verifyScheduleDrafts(page, f, owner, source) {
   await expect(duplicate.getByRole("textbox")).toHaveValue(copy.name);
   await candidates.getByRole("link", { name: `${copy.name} (${copy.id})`, exact: true }).click();
   await expect(page.getByLabel("Select a schedule", { exact: true })).toHaveValue(copy.id);
+  await expect(duplicate.getByRole("textbox")).toBeEnabled();
+  await expect(
+    page.getByRole("form", { name: "Create schedule", exact: true }).getByRole("textbox")
+  ).toBeEnabled();
   await page.unroute(`**/api/owner/schedules/${source.id}/duplicate`);
   return copy;
 }
@@ -748,6 +752,7 @@ async function verifyLostScheduleCreate(page, f) {
   await candidates.getByRole("link", { name: `${created.name} (${created.id})`, exact: true }).click();
   assert.equal(posts, 1);
   await expect(page.getByLabel("Select a schedule", { exact: true })).toHaveValue(created.id);
+  await expect(form.getByRole("textbox")).toBeEnabled();
   await page.unroute("**/api/owner/schedules");
   return created;
 }
@@ -966,11 +971,33 @@ async function verifyExistingScheduleResponse(page, f, owner, source, existing) 
 
 async function verifyScheduleManager(browser, f, owner, eventId, original) {
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, timezoneId: "UTC" });
+  const errors = [],
+    assetFailures = [],
+    hydrationErrors = [],
+    pendingAssets = new Set();
   try {
     await context.addCookies([{ name: "flare_session", value: owner.Cookie.split("=")[1], url: f.origin }]);
     const page = await context.newPage();
-    const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("[astro-island]"))
+        hydrationErrors.push(message.text().slice(0, 500));
+    });
+    page.on("request", (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path.startsWith("/_astro/")) pendingAssets.add(path);
+    });
+    page.on("requestfinished", (request) => pendingAssets.delete(new URL(request.url()).pathname));
+    page.on("requestfailed", (request) => {
+      const path = new URL(request.url()).pathname;
+      pendingAssets.delete(path);
+      if (path.startsWith("/_astro/")) assetFailures.push({ path, failure: request.failure() });
+    });
+    page.on("response", (response) => {
+      const path = new URL(response.url()).pathname;
+      if (path.startsWith("/_astro/") && response.status() >= 400)
+        assetFailures.push({ path, status: response.status() });
+    });
     await page.goto(`${f.origin}/owner/schedules`);
     await expect(page.getByRole("button", { name: "Delete schedule", exact: true })).toBeDisabled();
     const date = new Date(Date.now() + 5 * 24 * hour).toISOString().slice(0, 10);
@@ -1021,6 +1048,37 @@ async function verifyScheduleManager(browser, f, owner, eventId, original) {
     }
     await verifyManagerUnavailable(f, owner, original);
     assert.deepEqual(errors, []);
+  } catch (error) {
+    try {
+      const page = context.pages().at(-1);
+      const state = await page?.evaluate(() => ({
+        readyState: document.readyState,
+        islands: [...document.querySelectorAll("astro-island")].map((island) => ({
+          component: island.getAttribute("component-url")?.split("?")[0],
+          ssr: island.hasAttribute("ssr"),
+        })),
+        textboxes: [...document.querySelectorAll('form input[type="text"]')].map((input) => ({
+          form: input.form?.getAttribute("aria-label"),
+          disabled: input.matches(":disabled"),
+        })),
+        statuses: [...document.querySelectorAll('[role="status"], [role="alert"]')].map((node) =>
+          node.textContent?.slice(0, 500)
+        ),
+      }));
+      console.error(
+        "Schedule manager failure",
+        JSON.stringify({
+          errors,
+          assetFailures: assetFailures.slice(-20),
+          hydrationErrors: hydrationErrors.slice(-10),
+          pendingAssets: [...pendingAssets].slice(-20),
+          state,
+        })
+      );
+    } catch (diagnosticError) {
+      console.error("Schedule manager diagnostics unavailable", diagnosticError.name);
+    }
+    throw error;
   } finally {
     await context.close();
   }
@@ -1367,6 +1425,7 @@ async function verifyDirectory(browser, f, owner, copy) {
     assert.equal(f.google.writes.length, writes);
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByLabel("Title", { exact: true })).toBeEnabled();
       await page.getByLabel("Title", { exact: true }).focus();
       await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
       await page.keyboard.press("Tab");
