@@ -57,28 +57,16 @@ function validateRange(range: WorkingRange): void {
   integer(range.endMinute, range.startMinute + 1, 1440, "endMinute");
 }
 
-function validate(input: AvailabilityInput): void {
-  const { schedule, policy, from, to, now, busy } = input;
-  if (!isValidTimeZone(schedule.timeZone)) throw new RangeError("Invalid IANA time zone");
-  if (!isValidTimeZone(input.visitorTimeZone)) throw new RangeError("Invalid visitor time zone");
-  if (input.windowTimeZone !== undefined && !isValidTimeZone(input.windowTimeZone))
-    throw new RangeError("Invalid window time zone");
-  for (const value of [from, to, now]) integer(value, EARLIEST, LATEST, "timestamp");
-  if (to <= from || to - from > MAX_QUERY_DAYS * DAY)
-    throw new RangeError(`Query must span (0, ${MAX_QUERY_DAYS}] days`);
+function validatePolicy(policy: SlotPolicy): void {
   integer(policy.durationMinutes, 1, 1440, "durationMinutes");
   integer(policy.intervalMinutes, 1, 1440, "intervalMinutes");
   if (policy.bookingWindowDays !== undefined) integer(policy.bookingWindowDays, 1, 365, "bookingWindowDays");
   for (const value of [policy.beforeMinutes, policy.afterMinutes, policy.noticeMinutes]) {
     integer(value, 0, 31 * 1440, "buffer or notice minutes");
   }
-  if (schedule.rules.length > 100 || (schedule.overrides?.length ?? 0) > 366 || busy.length > 10_000) {
-    throw new RangeError("Too many rules, overrides, or busy intervals");
-  }
-  for (const rule of schedule.rules) {
-    integer(rule.weekday, 0, 6, "weekday");
-    validateRange(rule);
-  }
+}
+
+function validateOverrides(schedule: Pick<Schedule, "overrides">): void {
   const dates = new Set<string>();
   for (const override of schedule.overrides ?? []) {
     const parsed = new Date(`${override.date}T00:00:00Z`);
@@ -94,11 +82,35 @@ function validate(input: AvailabilityInput): void {
     dates.add(override.date);
     override.ranges.forEach(validateRange);
   }
+}
+
+function validateBusy(busy: Interval[]): void {
   for (const interval of busy) {
     integer(interval.start, EARLIEST, LATEST, "busy start");
     integer(interval.end, EARLIEST, LATEST, "busy end");
     if (interval.end <= interval.start) throw new RangeError("Busy intervals must have positive duration");
   }
+}
+
+function validate(input: AvailabilityInput): void {
+  const { schedule, policy, from, to, now, busy } = input;
+  if (!isValidTimeZone(schedule.timeZone)) throw new RangeError("Invalid IANA time zone");
+  if (!isValidTimeZone(input.visitorTimeZone)) throw new RangeError("Invalid visitor time zone");
+  if (input.windowTimeZone !== undefined && !isValidTimeZone(input.windowTimeZone))
+    throw new RangeError("Invalid window time zone");
+  for (const value of [from, to, now]) integer(value, EARLIEST, LATEST, "timestamp");
+  if (to <= from || to - from > MAX_QUERY_DAYS * DAY)
+    throw new RangeError(`Query must span (0, ${MAX_QUERY_DAYS}] days`);
+  validatePolicy(policy);
+  if (schedule.rules.length > 100 || (schedule.overrides?.length ?? 0) > 366 || busy.length > 10_000) {
+    throw new RangeError("Too many rules, overrides, or busy intervals");
+  }
+  for (const rule of schedule.rules) {
+    integer(rule.weekday, 0, 6, "weekday");
+    validateRange(rule);
+  }
+  validateOverrides(schedule);
+  validateBusy(busy);
 }
 
 function availableSlots(input: AvailabilityInput): Interval[] {
