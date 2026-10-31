@@ -114,7 +114,24 @@ Events resolve an explicit reusable schedule or the owner's current default. Wor
 and dated overrides are shared only by events using that schedule. Conflict calendars remain owner-wide.
 The existing hours and override editors save the resolved schedule shown for the selected event,
 including duplicate-source mode. Creation and empty-event mode edit the owner's default schedule.
-The named schedule manager and event-assignment controls remain pending.
+Open **Availability schedules** at `/owner/schedules` to select and edit a saved schedule independently of events.
+`?scheduleId=<stable-id>` opens a specific schedule. Unknown selections never fall back to another schedule.
+Create starts with app weekday hours in the current default time zone and does not assign events or change the default.
+Duplicate copies the source's saved time zone, rules, and overrides into an independent schedule.
+Unsaved hours and override drafts are not copied. Names can repeat; IDs identify targets.
+Rename preserves hours and overrides. **Make owner default** affects only events following the default.
+On a saved event, **Event schedule** saves an explicit choice or **Follow owner default** and reloads canonical private context.
+Create and duplicate event forms have no assignment control. Event duplication copies the saved assignment, including fallback.
+Deleting a schedule requires confirmation of its saved name and ID. Its explicit assignments become fallback.
+Deleting the default chooses the earliest surviving schedule. The final schedule cannot be deleted.
+Booking history, global overlap holds, replay, and accepted-command recovery retain their existing contracts.
+Manager mutations refresh the canonical catalog before editing a new target. Failed names and editor drafts stay available.
+An uncertain create or duplicate locks further POSTs and offers GET refresh with explicit candidate selection.
+Refreshing does not acknowledge creation or identify a new record by its name.
+The manager works after every event is removed. Private booking history uses the owner default time zone.
+The existing `verify:ui` runner runs both the event journey and reusable-schedules journey with separate local fixtures.
+The focused `node --experimental-strip-types apps/flare/scripts/verify-events.mjs --schedules-only` journey uses the built Worker,
+local D1, and mocked Google transport. It does not prove live Google delivery, deployed behavior, or native editor parity.
 An uncertain creation keeps the draft and offers **Refresh events** to inspect explicit selection candidates.
 The app does not automatically repeat the creation request.
 The organizer page edits the event title, URL slug, description, duration, and optional static location with browser JavaScript.

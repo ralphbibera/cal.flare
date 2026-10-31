@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { BookerClient } from "../client/bookings.ts";
 import type { ScheduleOverrides } from "../domain/settings.ts";
 import { parseScheduleOverrides } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
@@ -40,7 +41,8 @@ export function OwnerOverridesEditor({
   overrides,
   scheduleId,
   labels,
-}: ScheduleOverrides & { scheduleId: string; labels: Labels }) {
+  onSaving,
+}: ScheduleOverrides & { scheduleId: string; labels: Labels; onSaving?: (saving: boolean) => void }) {
   const endpoint = `/api/owner/schedules/${scheduleId}/overrides`;
   const [rows, setRows] = useState<Row[]>(() =>
     overrides.map((override, index) => ({
@@ -54,10 +56,19 @@ export function OwnerOverridesEditor({
     }))
   );
   const nextId = useRef(0);
+  const pending = useRef<AbortController | null>(null);
+  const active = useRef(false);
   const [status, setStatus] = useState<"loading" | "idle" | "saving" | "saved" | "invalid" | "failed">(
     "loading"
   );
-  useEffect(() => setStatus("idle"), []);
+  useEffect(() => {
+    active.current = true;
+    setStatus("idle");
+    return () => {
+      active.current = false;
+      pending.current?.abort();
+    };
+  }, []);
   function update(id: string, change: Partial<Pick<Row, "date" | "ranges">>): void {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...change } : row)));
     setStatus("idle");
@@ -73,6 +84,7 @@ export function OwnerOverridesEditor({
         method="post"
         onSubmit={async (event) => {
           event.preventDefault();
+          if (pending.current || !active.current) return;
           let input: ScheduleOverrides;
           try {
             input = parseScheduleOverrides({
@@ -88,29 +100,18 @@ export function OwnerOverridesEditor({
             setStatus("invalid");
             return;
           }
+          const controller = new AbortController();
+          pending.current = controller;
+          onSaving?.(true);
           setStatus("saving");
           try {
-            const response = await fetch(endpoint, {
-              method: "PATCH",
-              credentials: "same-origin",
-              cache: "no-store",
-              redirect: "error",
-              signal: AbortSignal.timeout(30_000),
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(input),
-            });
-            const result: unknown = await response.json();
-            if (
-              !response.ok ||
-              typeof result !== "object" ||
-              result === null ||
-              !("saved" in result) ||
-              result.saved !== true
-            )
-              throw new Error();
-            setStatus("saved");
+            await new BookerClient().ownerScheduleOverrides(scheduleId, input, controller.signal);
+            if (!controller.signal.aborted) setStatus("saved");
           } catch {
-            setStatus("failed");
+            if (!controller.signal.aborted) setStatus("failed");
+          } finally {
+            pending.current = null;
+            if (active.current) onSaving?.(false);
           }
         }}>
         <fieldset disabled={status === "loading" || status === "saving"} className="min-w-0 space-y-4">

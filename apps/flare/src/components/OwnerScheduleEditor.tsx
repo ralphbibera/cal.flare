@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { BookerClient } from "../client/bookings.ts";
 import type { WeeklySchedule } from "../domain/settings.ts";
 import { parseWeeklySchedule } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
@@ -36,12 +37,15 @@ export function OwnerScheduleEditor({
   schedule,
   scheduleId,
   labels,
+  onSaving,
 }: {
   schedule: WeeklySchedule;
   scheduleId: string;
   labels: Labels;
+  onSaving?: (saving: boolean) => void;
 }) {
   const endpoint = `/api/owner/schedules/${scheduleId}/weekly`;
+  const initial = useRef(schedule).current;
   const [rows, setRows] = useState<Row[]>(() =>
     schedule.rules.map((rule, index) => ({
       id: `range-${index}`,
@@ -51,14 +55,21 @@ export function OwnerScheduleEditor({
     }))
   );
   const nextId = useRef(rows.length);
+  const pending = useRef<AbortController | null>(null);
+  const active = useRef(false);
   const [zones, setZones] = useState([schedule.timeZone]);
   const [status, setStatus] = useState<"loading" | "idle" | "saving" | "saved" | "invalid" | "failed">(
     "loading"
   );
   useEffect(() => {
-    setZones([...new Set(["UTC", schedule.timeZone, ...Intl.supportedValuesOf("timeZone")])]);
+    active.current = true;
+    setZones([...new Set(["UTC", initial.timeZone, ...Intl.supportedValuesOf("timeZone")])]);
     setStatus("idle");
-  }, [schedule.timeZone]);
+    return () => {
+      active.current = false;
+      pending.current?.abort();
+    };
+  }, [initial]);
   function update(id: string, field: "weekday" | "start" | "end", value: string): void {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   }
@@ -78,6 +89,7 @@ export function OwnerScheduleEditor({
         }}
         onSubmit={async (event) => {
           event.preventDefault();
+          if (pending.current || !active.current) return;
           const form = new FormData(event.currentTarget);
           let weekly: WeeklySchedule;
           try {
@@ -93,34 +105,23 @@ export function OwnerScheduleEditor({
             setStatus("invalid");
             return;
           }
+          const controller = new AbortController();
+          pending.current = controller;
+          onSaving?.(true);
           setStatus("saving");
           try {
-            const response = await fetch(endpoint, {
-              method: "PATCH",
-              credentials: "same-origin",
-              cache: "no-store",
-              redirect: "error",
-              signal: AbortSignal.timeout(30_000),
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(weekly),
-            });
-            const result: unknown = await response.json();
-            if (
-              !response.ok ||
-              typeof result !== "object" ||
-              result === null ||
-              !("saved" in result) ||
-              result.saved !== true
-            )
-              throw new Error();
-            setStatus("saved");
+            await new BookerClient().ownerWeeklySchedule(scheduleId, weekly, controller.signal);
+            if (!controller.signal.aborted) setStatus("saved");
           } catch {
-            setStatus("failed");
+            if (!controller.signal.aborted) setStatus("failed");
+          } finally {
+            pending.current = null;
+            if (active.current) onSaving?.(false);
           }
         }}>
         <fieldset disabled={status === "loading" || status === "saving"} className="min-w-0 space-y-4">
           <Label htmlFor="schedule-time-zone">{labels.zone}</Label>
-          <select id="schedule-time-zone" className={field} name="timeZone" defaultValue={schedule.timeZone}>
+          <select id="schedule-time-zone" className={field} name="timeZone" defaultValue={initial.timeZone}>
             {zones.map((zone) => (
               <option key={zone} value={zone}>
                 {zone}

@@ -1,0 +1,47 @@
+---
+import { env } from "cloudflare:workers";
+import common from "../../../../../packages/i18n/locales/en/common.json";
+import { OwnerScheduleManager } from "../../components/OwnerScheduleManager.tsx";
+import { scheduleLabels } from "../../components/schedule-labels.ts";
+import { getOwnerSchedules } from "../../server/app.ts";
+import { ErrorWithCode } from "../../server/http.ts";
+import "../../styles/globals.css";
+
+type State =
+  | { kind: "anonymous" | "invalid" | "unavailable" }
+  | { kind: "owner"; data: NonNullable<Awaited<ReturnType<typeof getOwnerSchedules>>> };
+let state: State = { kind: "unavailable" };
+try {
+  const data = await getOwnerSchedules(Astro.request, { env });
+  state = data ? { kind: "owner", data } : { kind: "anonymous" };
+} catch (error) {
+  state = {
+    kind:
+      error instanceof ErrorWithCode && ["not_found", "invalid_query"].includes(error.code)
+        ? "invalid"
+        : "unavailable",
+  };
+}
+Astro.response.status = state.kind === "unavailable" ? 503 : state.kind === "invalid" ? 404 : 200;
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "same-origin");
+Astro.response.headers.set("X-Content-Type-Options", "nosniff");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{common.flare_schedules} | Cal.flare</title>
+  </head>
+  <body class="bg-default text-default min-h-screen font-sans">
+    <main class="mx-auto w-full max-w-xl space-y-6 px-4 py-10">
+      <nav class="flex flex-wrap gap-4"><a href="/" class="underline">{common.organizer}</a><a href="/owner/bookings" class="underline">{common.bookings}</a></nav>
+      {state.kind === "owner" ? <OwnerScheduleManager client:load initial={state.data.catalog} selectedId={state.data.selectedId} labels={scheduleLabels(common)} /> : <>
+        <p role="alert">{state.kind === "anonymous" ? common.flare_owner_signin_help : state.kind === "invalid" ? common.flare_schedule_missing : common.flare_owner_unavailable}</p>
+        <a href={state.kind === "anonymous" ? "/" : "/owner/schedules"} class="underline">{common.retry}</a>
+      </>}
+    </main>
+  </body>
+</html>

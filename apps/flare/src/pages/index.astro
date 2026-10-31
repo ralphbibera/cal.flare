@@ -8,7 +8,9 @@ import { OwnerConflictCalendars } from "../components/OwnerConflictCalendars.tsx
 import { OwnerEventEditor } from "../components/OwnerEventEditor.tsx";
 import { OwnerEventLifecycle } from "../components/OwnerEventLifecycle.tsx";
 import { OwnerOverridesEditor } from "../components/OwnerOverridesEditor.tsx";
+import { OwnerScheduleAssignment } from "../components/OwnerScheduleAssignment.tsx";
 import { OwnerScheduleEditor } from "../components/OwnerScheduleEditor.tsx";
+import { scheduleLabels } from "../components/schedule-labels.ts";
 import { defaultSettings } from "../domain/settings.ts";
 import { getOwnerEventData } from "../server/app.ts";
 import { ErrorWithCode } from "../server/http.ts";
@@ -70,6 +72,10 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               {state.data.events.map((entry) => <a href={`/?eventId=${entry.id}`} aria-current={state.data.mode.kind === "edit" && entry.id === state.data.mode.id ? "page" : undefined} class="block break-words underline">{entry.event.title} /{entry.event.slug}</a>)}
               <a href="/?create=1" class="block underline" aria-current={state.data.mode.kind === "create" ? "page" : undefined}>{common.flare_create_event}</a>
             </nav>
+            <a href="/owner/schedules" class="block underline">{common.flare_schedules}</a>
+            {state.data.mode.kind === "edit" && <OwnerScheduleAssignment client:load eventId={state.data.mode.id}
+              assignment={state.data.eventScheduleId} resolvedId={state.data.scheduleId} catalog={state.data.catalog}
+              labels={scheduleLabels(common).assignment} />}
             {state.data.mode.kind === "duplicate" && <a class="block underline" href={`/?eventId=${state.data.mode.id}`}>{common.back}</a>}
             <OwnerEventEditor client:load mode={state.data.mode} details={{
               title: details.title, slug: details.slug,
@@ -121,24 +127,8 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               javascript: common.flare_conflict_javascript,
             }} />
             <OwnerScheduleEditor client:load scheduleId={state.data.scheduleId} schedule={{ timeZone: state.data.settings.schedule.timeZone,
-              rules: state.data.settings.schedule.rules }} labels={{
-              heading: common.flare_working_hours, zone: common.flare_time_zone, day: common.flare_working_day,
-              interval: common.interval, start: common.start_time, end: common.end_time,
-              add: common.add, remove: common.remove, save: common.save, saved: common.saved,
-              invalid: common.flare_working_hours_invalid, failed: common.flare_working_hours_failed,
-              midnight: common.flare_working_hours_midnight, empty: common.flare_working_hours_empty,
-              javascript: common.flare_working_hours_javascript,
-              weekdays: [common.sunday, common.monday, common.tuesday, common.wednesday,
-                common.thursday, common.friday, common.saturday],
-            }} />
-            <OwnerOverridesEditor client:load scheduleId={state.data.scheduleId} overrides={state.data.settings.schedule.overrides ?? []} labels={{
-              heading: common.date_overrides, date: common.date, interval: common.interval,
-              start: common.start_time, end: common.end_time, addDate: common.add_an_override,
-              add: common.add, remove: common.remove, delete: common.delete, save: common.save, saved: common.saved,
-              invalid: common.flare_overrides_invalid, failed: common.flare_overrides_failed,
-              help: common.flare_overrides_help, empty: common.flare_overrides_empty, closed: common.unavailable,
-              midnight: common.flare_working_hours_midnight, javascript: common.flare_overrides_javascript,
-            }} />
+              rules: state.data.settings.schedule.rules }} labels={scheduleLabels(common).weekly} />
+            <OwnerOverridesEditor client:load scheduleId={state.data.scheduleId} overrides={state.data.settings.schedule.overrides ?? []} labels={scheduleLabels(common).overrides} />
             <a href="/owner/bookings" class="text-default underline">{common.bookings}</a>
             <OwnerBookings bookings={state.data.bookings} timeZone={state.data.bookingsTimeZone} />
             <form action="/api/auth/logout" method="post" class="mt-6">

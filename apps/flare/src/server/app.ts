@@ -3,6 +3,7 @@ import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
 import type { OwnerEventMode, Settings } from "../domain/settings.ts";
 import {
   defaultSettings,
+  isScheduleId,
   parseBookingRules,
   parseConflictCalendars,
   parseEventDetails,
@@ -311,14 +312,13 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
   const preferences = await getOwnerPreferences(dependencies.env.DB);
   const context = selected ? await getAdmissionContext(dependencies.env.DB, selected.id) : null;
   const settings = context?.settings ?? { ...preferences, event: defaultSettings.event };
-  const defaultScheduleId = await dependencies.env.DB.prepare(
-    "SELECT default_schedule_id FROM organizer_settings WHERE id='owner'"
-  ).first<string>("default_schedule_id");
-  if (!defaultScheduleId) throw new ErrorWithCode("temporarily_unavailable", 503);
+  const catalog = await ownerScheduleCatalogData(dependencies.env.DB);
   return {
     owner: identity,
     settings,
-    scheduleId: context?.resolvedScheduleId ?? defaultScheduleId,
+    scheduleId: context?.resolvedScheduleId ?? catalog.defaultScheduleId,
+    eventScheduleId: context?.eventScheduleId ?? null,
+    catalog,
     bookingsTimeZone: preferences.schedule.timeZone,
     selectedId,
     creating,
@@ -326,6 +326,31 @@ export async function getOwnerEventData(request: Request, dependencies: Dependen
     events,
     bookings: await bookingService(dependencies).ownerList(),
   };
+}
+
+async function ownerScheduleCatalogData(db: D1Database) {
+  const catalog = await listSchedules(db);
+  if (
+    !catalog.schedules.some(({ id }) => id === catalog.defaultScheduleId) ||
+    catalog.schedules.some(
+      ({ id, name }) => !isScheduleId(id) || !name.trim() || name.trim() !== name || name.length > 100
+    )
+  )
+    throw new ErrorWithCode("temporarily_unavailable", 503);
+  return catalog;
+}
+
+export async function getOwnerSchedules(request: Request, dependencies: Dependencies) {
+  if (!(await requireOwner(dependencies.env, request))) return null;
+  const query = new URL(request.url).searchParams;
+  const ids = query.getAll("scheduleId");
+  if (ids.length > 1 || [...query.keys()].some((key) => key !== "scheduleId"))
+    throw new ErrorWithCode("invalid_query");
+  const selectedId = ids.length ? scheduleId(ids[0]) : null;
+  const catalog = await ownerScheduleCatalogData(dependencies.env.DB);
+  const selected = catalog.schedules.find(({ id }) => id === (selectedId ?? catalog.defaultScheduleId));
+  if (!selected) throw new ErrorWithCode("not_found", 404);
+  return { catalog, selectedId: selected.id };
 }
 
 export async function getOwnerBookings(request: Request, dependencies: Dependencies) {
