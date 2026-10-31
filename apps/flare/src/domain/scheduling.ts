@@ -101,9 +101,11 @@ function validate(input: AvailabilityInput): void {
   }
 }
 
-function availableSlots(input: AvailabilityInput): Interval[] {
-  validate(input);
-  const { schedule, policy, from, to, now, busy } = input;
+function utcWorkingIntervals({
+  schedule,
+  from,
+  to,
+}: Pick<AvailabilityInput, "schedule" | "from" | "to">): Interval[] {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: schedule.timeZone,
     calendar: "gregory",
@@ -158,30 +160,44 @@ function availableSlots(input: AvailabilityInput): Interval[] {
       ranges = overrides.get(date.toISOString().slice(0, 10)) ?? weekly[date.getUTCDay()] ?? [];
     }
     const minute = (localTime - day * DAY) / MINUTE;
-    if (ranges.some((range) => range.startMinute <= minute && minute < range.endMinute)) {
-      const previous = working.at(-1);
-      if (previous?.end === timestamp) previous.end += MINUTE;
-      else working.push({ start: timestamp, end: timestamp + MINUTE });
-    }
+    if (!ranges.some((range) => range.startMinute <= minute && minute < range.endMinute)) continue;
+    const previous = working.at(-1);
+    if (previous?.end === timestamp) previous.end += MINUTE;
+    else working.push({ start: timestamp, end: timestamp + MINUTE });
   }
+  return working;
+}
+
+function subtractBusyIntervals(range: Interval, blocked: Interval[]): Interval[] {
+  const free: Interval[] = [];
+  let cursor = range.start;
+  for (const block of blocked) {
+    if (block.end <= cursor) continue;
+    if (block.start >= range.end) break;
+    if (cursor < block.start) free.push({ start: cursor, end: block.start });
+    cursor = Math.max(cursor, block.end);
+    if (cursor >= range.end) break;
+  }
+  if (cursor < range.end) free.push({ start: cursor, end: range.end });
+  return free;
+}
+
+function freeWorkingIntervals(input: AvailabilityInput): Interval[] {
+  const working = utcWorkingIntervals(input);
+  const { busy, policy } = input;
   const blocked = busy
     .map((interval) => ({
       start: interval.start - policy.afterMinutes * MINUTE,
       end: interval.end + policy.beforeMinutes * MINUTE,
     }))
     .sort((a, b) => a.start - b.start);
-  const free: Interval[] = [];
-  for (const range of working) {
-    let cursor = range.start;
-    for (const block of blocked) {
-      if (block.end <= cursor) continue;
-      if (block.start >= range.end) break;
-      if (cursor < block.start) free.push({ start: cursor, end: block.start });
-      cursor = Math.max(cursor, block.end);
-      if (cursor >= range.end) break;
-    }
-    if (cursor < range.end) free.push({ start: cursor, end: range.end });
-  }
+  return working.flatMap((range) => subtractBusyIntervals(range, blocked));
+}
+
+function availableSlots(input: AvailabilityInput): Interval[] {
+  validate(input);
+  const { policy, now } = input;
+  const free = freeWorkingIntervals(input);
   const rounding = [60, 30, 20, 15, 10, 5].find((value) => policy.intervalMinutes % value === 0) ?? 1;
   const visitorMinute = new Intl.DateTimeFormat("en-US", {
     timeZone: input.visitorTimeZone,

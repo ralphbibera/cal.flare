@@ -45,6 +45,8 @@ This is a manually reviewed mapping, not an automatic proof of SQL or TypeScript
 
 `parseOptionalEventPolicy` and `parseDatedOverrides` retain the existing validation and canonical settings order. They remain within the policy-gate projection above and introduce no reservation transaction or overlap assumption.
 
+At the sync commit, `utcWorkingIntervals`, `subtractBusyIntervals`, and `freeWorkingIntervals` separate availability planning without changing this policy-gate projection. The admission and finalization transactions, occupied interval calculation, and both overlap guards remain unchanged.
+
 ## Understand the bound
 
 TLC is used because the question concerns the order of durable steps. It explores every reachable ordering in this finite model without fairness assumptions:
