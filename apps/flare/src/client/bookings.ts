@@ -2,8 +2,16 @@ import { parseCancellationReason } from "../domain/cancellation-reason.ts";
 import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import type { Interval } from "../domain/scheduling.ts";
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
-import type { BookingRules, EventDetails, OwnerEvent, Settings } from "../domain/settings.ts";
-import { defaultSettings, isEventId, parseSettings } from "../domain/settings.ts";
+import type {
+  AvailabilitySchedule,
+  BookingRules,
+  EventDetails,
+  OwnerEvent,
+  ScheduleOverrides,
+  Settings,
+  WeeklySchedule,
+} from "../domain/settings.ts";
+import { defaultSettings, isEventId, isScheduleId, parseSettings } from "../domain/settings.ts";
 import type { BookingView, parseChange, parseCreate } from "../server/booking-model.ts";
 
 type Transport = (path: string, init: RequestInit) => Promise<Response>;
@@ -13,6 +21,51 @@ type BookingAccess = { id: string; token: string };
 type PublicBooking = Settings & { organizer: { name: string } };
 type EventAccess = { kind: "event"; id: string };
 type CalendarAccess = BookingAccess | EventAccess | { kind: "owner"; id: string };
+export type ScheduleCatalog = { defaultScheduleId: string; schedules: AvailabilitySchedule[] };
+
+function schedulePath(id: string): string {
+  if (!isScheduleId(id)) throw new ErrorWithCode("invalid_schedule", 400);
+  return `/api/owner/schedules/${id}`;
+}
+function scheduleRecord(value: unknown): AvailabilitySchedule {
+  const data = object(value);
+  exact(data, ["id", "name", "schedule"]);
+  if (
+    !isScheduleId(data.id) ||
+    typeof data.name !== "string" ||
+    !data.name.trim() ||
+    data.name !== data.name.trim() ||
+    data.name.length > 100
+  )
+    throw new Error();
+  const raw = object(data.schedule);
+  exact(raw, ["timeZone", "rules", "overrides"]);
+  const schedule = parseSettings({ ...defaultSettings, schedule: raw }).schedule;
+  if (!Array.isArray(raw.rules)) throw new Error();
+  for (const rule of raw.rules) exact(object(rule), ["weekday", "startMinute", "endMinute"]);
+  if (raw.overrides !== undefined) {
+    if (!Array.isArray(raw.overrides)) throw new Error();
+    for (const override of raw.overrides) {
+      const row = object(override);
+      exact(row, ["date", "ranges"]);
+      if (!Array.isArray(row.ranges)) throw new Error();
+      for (const range of row.ranges) exact(object(range), ["startMinute", "endMinute"]);
+    }
+  }
+  return { id: data.id, name: data.name, schedule };
+}
+function scheduleCatalog(value: unknown): ScheduleCatalog {
+  const data = object(value);
+  exact(data, ["defaultScheduleId", "schedules"]);
+  if (!isScheduleId(data.defaultScheduleId) || !Array.isArray(data.schedules)) throw new Error();
+  const schedules = data.schedules.map(scheduleRecord);
+  if (
+    new Set(schedules.map(({ id }) => id)).size !== schedules.length ||
+    !schedules.some(({ id }) => id === data.defaultScheduleId)
+  )
+    throw new Error();
+  return { defaultScheduleId: data.defaultScheduleId, schedules };
+}
 
 function eventPath(id: string): string {
   if (!isEventId(id)) throw new ErrorWithCode("invalid_event", 400);
@@ -176,7 +229,12 @@ class BookerClient {
   constructor(transport: Transport = (path: string, init: RequestInit) => fetch(path, init)) {
     this.transport = transport;
   }
-  private async request<T>(path: string, decode: (value: unknown) => T, init: RequestInit = {}): Promise<T> {
+  private async request<T>(
+    path: string,
+    decode: (value: unknown) => T,
+    init: RequestInit = {},
+    expectedStatus?: number
+  ): Promise<T> {
     let response: Response;
     try {
       response = await this.transport(path, {
@@ -205,6 +263,7 @@ class BookerClient {
       );
     }
     try {
+      if (expectedStatus !== undefined && response.status !== expectedStatus) throw new Error();
       return decode(value);
     } catch {
       throw new ErrorWithCode("invalid_response", response.status);
@@ -248,6 +307,108 @@ class BookerClient {
         return events;
       },
       { signal }
+    );
+  }
+  ownerSchedules(signal?: AbortSignal): Promise<ScheduleCatalog> {
+    return this.request("/api/owner/schedules", scheduleCatalog, { signal }, 200);
+  }
+  ownerSchedule(id: string, signal?: AbortSignal): Promise<AvailabilitySchedule> {
+    return this.request(
+      schedulePath(id),
+      (value) => {
+        const result = scheduleRecord(value);
+        if (result.id !== id) throw new Error();
+        return result;
+      },
+      { signal },
+      200
+    );
+  }
+  ownerCreateSchedule(name: string, source?: string, signal?: AbortSignal): Promise<AvailabilitySchedule> {
+    return this.request(
+      source === undefined ? "/api/owner/schedules" : `${schedulePath(source)}/duplicate`,
+      (value) => {
+        const result = scheduleRecord(value);
+        if (result.id === "legacy" || result.id === source || result.name !== name.trim()) throw new Error();
+        return result;
+      },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+        signal,
+      },
+      201
+    );
+  }
+  ownerRenameSchedule(id: string, name: string, signal?: AbortSignal): Promise<void> {
+    return this.request(
+      schedulePath(id),
+      saved,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+        signal,
+      },
+      200
+    );
+  }
+  ownerDefaultSchedule(id: string, signal?: AbortSignal): Promise<void> {
+    return this.request(
+      `${schedulePath(id)}/default`,
+      saved,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        signal,
+      },
+      200
+    );
+  }
+  ownerDeleteSchedule(id: string, signal?: AbortSignal): Promise<void> {
+    return this.request(schedulePath(id), saved, { method: "DELETE", signal }, 200);
+  }
+  ownerAssignSchedule(id: string, scheduleId: string | null, signal?: AbortSignal): Promise<void> {
+    eventPath(id);
+    if (scheduleId !== null) schedulePath(scheduleId);
+    return this.request(
+      `/api/owner/events/${id}/schedule`,
+      saved,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId }),
+        signal,
+      },
+      200
+    );
+  }
+  ownerWeeklySchedule(id: string, input: WeeklySchedule, signal?: AbortSignal): Promise<void> {
+    return this.request(
+      `${schedulePath(id)}/weekly`,
+      saved,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal,
+      },
+      200
+    );
+  }
+  ownerScheduleOverrides(id: string, input: ScheduleOverrides, signal?: AbortSignal): Promise<void> {
+    return this.request(
+      `${schedulePath(id)}/overrides`,
+      saved,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal,
+      },
+      200
     );
   }
   ownerEvent(id: string, signal?: AbortSignal): Promise<OwnerEvent> {

@@ -1,6 +1,6 @@
 # Configure and run Cal.flare
 
-Install dependencies with the [root quickstart](../../README.md#install-and-build-locally) first.
+Install dependencies with the [development quickstart](../../README.md#development) first.
 Follow the local steps below, then the production steps when you are ready to deploy.
 The setup generator writes local configuration. It never provisions resources or deploys code.
 

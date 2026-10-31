@@ -403,6 +403,7 @@ try {
   await verifyCalendar(browser, origin);
   await verifyPublic(browser);
   await verifyEvents(browser);
+  await verifyEvents(browser, { schedulesOnly: true });
   await verifyMeta(browser, origin, artifacts, differentPixels);
   for (const [name, viewport] of [
     ["desktop", { width: 1440, height: 900 }],

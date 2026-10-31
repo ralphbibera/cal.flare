@@ -5,6 +5,179 @@ import { calendarExport } from "../src/client/calendar-export.ts";
 import { defaultSettings } from "../src/domain/settings.ts";
 import { apiFixture, hour } from "./fixtures/api.ts";
 
+test("schedule transport rejects malformed private catalogs and binds records to stable IDs", async () => {
+  const id = crypto.randomUUID(),
+    other = crypto.randomUUID();
+  const row = { id, name: "東京 <literal>", schedule: defaultSettings.schedule };
+  const catalog = { defaultScheduleId: id, schedules: [row, { ...row, id: other }] };
+  assert.deepEqual(await new BookerClient(async () => Response.json(row)).ownerSchedule(id), row);
+  assert.deepEqual(
+    await new BookerClient(async () => Response.json(row, { status: 201 })).ownerCreateSchedule(row.name),
+    row
+  );
+  await assert.rejects(
+    new BookerClient(async () => Response.json(row)).ownerCreateSchedule(row.name),
+    /invalid_response/
+  );
+  assert.deepEqual(await new BookerClient(async () => Response.json(catalog)).ownerSchedules(), catalog);
+  for (const value of [
+    null,
+    [],
+    { ...catalog, extra: true },
+    { schedules: catalog.schedules },
+    { ...catalog, defaultScheduleId: crypto.randomUUID() },
+    { ...catalog, schedules: [] },
+    { ...catalog, schedules: [row, row] },
+    ...[
+      { ...row, id: id.toUpperCase() },
+      { ...row, id: "../owner" },
+      { ...row, name: " padded " },
+      { ...row, name: "" },
+      { ...row, name: "x".repeat(101) },
+      { ...row, extra: true },
+      { ...row, schedule: { ...row.schedule, name: "private" } },
+      { ...row, schedule: { ...row.schedule, timeZone: "invalid" } },
+      { ...row, schedule: { ...row.schedule, rules: [{ weekday: 1, startMinute: 0, endMinute: 0 }] } },
+      {
+        ...row,
+        schedule: { ...row.schedule, rules: [{ weekday: 1, startMinute: 0, endMinute: 60, extra: true }] },
+      },
+      { ...row, schedule: { ...row.schedule, overrides: [{ date: "2030-02-30", ranges: [] }] } },
+      { ...row, schedule: { ...row.schedule, overrides: [{ date: "2030-01-01", ranges: [], extra: true }] } },
+    ].map((entry) => ({ defaultScheduleId: entry.id, schedules: [entry] })),
+  ])
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value)).ownerSchedules(),
+      (error: unknown) => error instanceof ErrorWithCode && error.code === "invalid_response"
+    );
+  await assert.rejects(
+    new BookerClient(async () => Response.json({ ...row, id: other })).ownerSchedule(id),
+    /invalid_response/
+  );
+  await assert.rejects(
+    new BookerClient(async () => Response.json(row, { status: 201 })).ownerCreateSchedule(row.name, id),
+    /invalid_response/
+  );
+  await assert.rejects(
+    new BookerClient(async () =>
+      Response.json({ ...row, name: "wrong" }, { status: 201 })
+    ).ownerCreateSchedule(row.name),
+    /invalid_response/
+  );
+});
+
+test("private schedule operations use exact acknowledgments and preserve request identity", async () => {
+  const calls: { path: string; init: RequestInit }[] = [];
+  const id = crypto.randomUUID();
+  const signal = new AbortController().signal;
+  const client = new BookerClient(async (path, init) => {
+    calls.push({ path, init });
+    return Response.json({ saved: true });
+  });
+  await client.ownerRenameSchedule(id, "Same name", signal);
+  await client.ownerDefaultSchedule(id, signal);
+  await client.ownerAssignSchedule("default", null, signal);
+  await client.ownerAssignSchedule("default", id, signal);
+  await client.ownerWeeklySchedule(id, defaultSettings.schedule, signal);
+  await client.ownerScheduleOverrides(id, { overrides: [] }, signal);
+  await client.ownerDeleteSchedule(id, signal);
+  assert.deepEqual(
+    calls.map(({ path }) => path),
+    [
+      `/api/owner/schedules/${id}`,
+      `/api/owner/schedules/${id}/default`,
+      "/api/owner/events/default/schedule",
+      "/api/owner/events/default/schedule",
+      `/api/owner/schedules/${id}/weekly`,
+      `/api/owner/schedules/${id}/overrides`,
+      `/api/owner/schedules/${id}`,
+    ]
+  );
+  assert.equal(calls[1]?.init.body, "{}");
+  assert.equal(calls[2]?.init.body, '{"scheduleId":null}');
+  assert.equal(calls[3]?.init.body, JSON.stringify({ scheduleId: id }));
+  assert.equal(calls[6]?.init.body, undefined);
+  assert.ok(
+    calls.every(
+      ({ init }) =>
+        init.credentials === "same-origin" &&
+        init.cache === "no-store" &&
+        init.redirect === "error" &&
+        init.signal
+    )
+  );
+  for (const value of [{ saved: true, extra: true }, { saved: false }, {}, null, []]) {
+    const malformed = new BookerClient(async () => Response.json(value));
+    for (const operation of [
+      () => malformed.ownerRenameSchedule(id, "Name"),
+      () => malformed.ownerDefaultSchedule(id),
+      () => malformed.ownerDeleteSchedule(id),
+      () => malformed.ownerAssignSchedule("default", id),
+      () => malformed.ownerWeeklySchedule(id, defaultSettings.schedule),
+      () => malformed.ownerScheduleOverrides(id, { overrides: [] }),
+    ])
+      await assert.rejects(operation(), /invalid_response/);
+  }
+  assert.throws(() => client.ownerAssignSchedule("default", "../other"), ErrorWithCode);
+  assert.throws(() => client.ownerSchedule("LEGACY"), ErrorWithCode);
+  assert.equal(calls.length, 7);
+});
+
+test("owner schedule endpoints require their exact successful HTTP status", async () => {
+  const id = crypto.randomUUID(),
+    source = crypto.randomUUID();
+  const row = { id, name: "Same name", schedule: defaultSettings.schedule };
+  const operations: {
+    name: string;
+    value: unknown;
+    status: number;
+    call: (client: BookerClient) => Promise<unknown>;
+  }[] = [
+    {
+      name: "catalog",
+      value: { defaultScheduleId: id, schedules: [row] },
+      status: 200,
+      call: (c) => c.ownerSchedules(),
+    },
+    { name: "record", value: row, status: 200, call: (c) => c.ownerSchedule(id) },
+    { name: "rename", value: { saved: true }, status: 200, call: (c) => c.ownerRenameSchedule(id, row.name) },
+    { name: "default", value: { saved: true }, status: 200, call: (c) => c.ownerDefaultSchedule(id) },
+    { name: "delete", value: { saved: true }, status: 200, call: (c) => c.ownerDeleteSchedule(id) },
+    {
+      name: "assignment",
+      value: { saved: true },
+      status: 200,
+      call: (c) => c.ownerAssignSchedule("default", id),
+    },
+    {
+      name: "weekly",
+      value: { saved: true },
+      status: 200,
+      call: (c) => c.ownerWeeklySchedule(id, row.schedule),
+    },
+    {
+      name: "overrides",
+      value: { saved: true },
+      status: 200,
+      call: (c) => c.ownerScheduleOverrides(id, { overrides: [] }),
+    },
+    { name: "create", value: row, status: 201, call: (c) => c.ownerCreateSchedule(row.name) },
+    { name: "duplicate", value: row, status: 201, call: (c) => c.ownerCreateSchedule(row.name, source) },
+  ];
+  for (const operation of operations)
+    for (const status of [200, 201, 202, 206]) {
+      const result = operation.call(new BookerClient(async () => Response.json(operation.value, { status })));
+      if (status === operation.status) await result;
+      else
+        await assert.rejects(
+          result,
+          (error: unknown) =>
+            error instanceof ErrorWithCode && error.code === "invalid_response" && error.status === status,
+          `${operation.name} rejects ${status}`
+        );
+    }
+});
+
 test("event transport binds metadata, slots and unchanged create bodies to the selected ID", async (t) => {
   const f = await apiFixture();
   t.after(f.close);

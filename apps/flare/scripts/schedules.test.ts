@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defaultSettings } from "../src/domain/settings.ts";
-import { getOwnerBookings, getOwnerEventData } from "../src/server/app.ts";
+import { getOwnerBookings, getOwnerEventData, getOwnerSchedules } from "../src/server/app.ts";
 import { BookingService } from "../src/server/bookings.ts";
 import { GoogleCalendarError } from "../src/server/google.ts";
 import { getSettings } from "../src/server/settings.ts";
@@ -22,6 +22,60 @@ const input = (start: number) => ({
 const details = { slug: "second", title: "Second", description: "", durationMinutes: 30 };
 const service = (f: Awaited<ReturnType<typeof apiFixture>>) =>
   new BookingService({ db: f.db, calendar: f.calendar, secret: f.env.TOKEN_ENCRYPTION_KEY, now: f.now });
+
+test("schedule manager SSR authenticates before strict selection and survives removal of every event", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const page = (query: string, authenticated = true) =>
+    getOwnerSchedules(
+      new Request(`${f.env.PUBLIC_ORIGIN}/owner/schedules${query}`, {
+        headers: authenticated ? f.ownerHeaders : {},
+      }),
+      { env: f.env }
+    );
+  const initial = await page("");
+  assert.equal(initial?.selectedId, "legacy");
+  for (const query of [
+    "?scheduleId=invalid",
+    `?scheduleId=${crypto.randomUUID()}`,
+    "?scheduleId=legacy&scheduleId=legacy",
+    "?eventId=default",
+    "?scheduleId=",
+  ]) {
+    assert.equal(await page(query, false), null);
+    await assert.rejects(page(query));
+  }
+  const created = await read(
+    await f.send("/api/owner/schedules", { name: "Private name 東京" }, f.ownerHeaders),
+    201
+  );
+  await read(
+    await f.send("/api/owner/events/default/schedule", { scheduleId: created.id }, f.ownerHeaders, "PATCH")
+  );
+  const eventPage = await getOwnerEventData(new Request(f.env.PUBLIC_ORIGIN, { headers: f.ownerHeaders }), {
+    env: f.env,
+    calendar: f.calendar,
+    now: f.now,
+  });
+  assert.equal(eventPage?.eventScheduleId, created.id);
+  assert.equal(eventPage?.scheduleId, created.id);
+  const wire = await read(await f.request("/api/owner/events/default", { headers: f.ownerHeaders }));
+  assert.deepEqual(Object.keys(wire).sort(), ["event", "id", "lifecycle"]);
+  assert.equal((await page(`?scheduleId=${created.id}`))?.selectedId, created.id);
+  await f.db.prepare("UPDATE event_type SET lifecycle='removed'").run();
+  assert.equal((await page(""))?.selectedId, "legacy");
+  await f.db.prepare("UPDATE availability_schedule SET json='{}' WHERE id='legacy'").run();
+  await assert.rejects(page(""));
+  await f.db
+    .prepare("UPDATE availability_schedule SET json=?,name=' padded ' WHERE id='legacy'")
+    .bind(JSON.stringify(settings.schedule))
+    .run();
+  await assert.rejects(page(""));
+  await f.db.prepare("UPDATE availability_schedule SET name='Working hours' WHERE id='legacy'").run();
+  await f.db.prepare("DELETE FROM organizer_settings").run();
+  await assert.rejects(page(""), /temporarily_unavailable/);
+  assert.equal(await page("?scheduleId=invalid", false), null);
+});
 
 test("schedule mutations authorize the owner before checking Origin or reading input", async (t) => {
   const f = await apiFixture();
