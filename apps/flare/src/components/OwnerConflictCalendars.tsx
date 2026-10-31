@@ -27,9 +27,7 @@ const discovery = z
           new Set(items.map(({ id }) => id)).size === items.length &&
           items.every(({ id, primary }) => primary === (id === "primary"))
       ),
-    conflictCalendarIds: z
-      .unknown()
-      .transform((ids) => (ids === null ? null : parseConflictCalendarIds(ids))),
+    conflictCalendarIds: z.unknown().transform(parseSelection),
   })
   .strict();
 const acknowledgement = z.object({ saved: z.literal(true) }).strict();
@@ -56,6 +54,35 @@ type Labels = Record<
   | "javascript",
   string
 >;
+
+function parseSelection(ids: unknown): Selection {
+  return ids === null ? null : parseConflictCalendarIds(ids);
+}
+
+function selectionPresentation({
+  saved,
+  draft,
+  calendars,
+  labels,
+}: {
+  saved: Selection;
+  draft: Selection;
+  calendars: Calendar[];
+  labels: Labels;
+}) {
+  const selected = draft ?? ["primary"];
+  const choices = new Map(calendars.map((item) => [item.id, item]));
+  for (const id of new Set([...(saved ?? ["primary"]), ...selected])) {
+    if (!choices.has(id))
+      choices.set(id, { id, name: id === "primary" ? labels.primary : id, primary: id === "primary" });
+  }
+  const eligible = new Set(calendars.map(({ id }) => id));
+  const unavailable = selected.some((id) => !eligible.has(id));
+  let description = labels.limit;
+  if (draft === null) description = labels.default;
+  else if (selected.length === 0) description = labels.empty;
+  return { selected, choices, eligible, unavailable, description };
+}
 
 export function OwnerConflictCalendars({ selection, labels }: { selection: Selection; labels: Labels }) {
   const [saved, setSaved] = useState(selection);
@@ -103,7 +130,7 @@ export function OwnerConflictCalendars({ selection, labels }: { selection: Selec
     pending.current = controller;
     setSave("saving");
     try {
-      const ids = next === null ? null : parseConflictCalendarIds(next);
+      const ids = parseSelection(next);
       const response = await fetch("/api/owner/conflict-calendars", {
         method: "PATCH",
         credentials: "same-origin",
@@ -126,14 +153,12 @@ export function OwnerConflictCalendars({ selection, labels }: { selection: Selec
     }
   }
 
-  const selected = draft ?? ["primary"];
-  const choices = new Map(calendars.map((item) => [item.id, item]));
-  for (const id of new Set([...(saved ?? ["primary"]), ...selected])) {
-    if (!choices.has(id))
-      choices.set(id, { id, name: id === "primary" ? labels.primary : id, primary: id === "primary" });
-  }
-  const eligible = new Set(calendars.map(({ id }) => id));
-  const unavailable = selected.some((id) => !eligible.has(id));
+  const { selected, choices, eligible, unavailable, description } = selectionPresentation({
+    saved,
+    draft,
+    calendars,
+    labels,
+  });
   const busy = load === "loading" || save === "saving";
   const blocked = selected.length > 0 && (load !== "ready" || unavailable);
 
@@ -153,9 +178,7 @@ export function OwnerConflictCalendars({ selection, labels }: { selection: Selec
           if (!blocked) void persist(draft);
         }}>
         <fieldset disabled={busy} className="min-w-0 space-y-4">
-          <p className="text-subtle text-sm">
-            {draft === null ? labels.default : selected.length === 0 ? labels.empty : labels.limit}
-          </p>
+          <p className="text-subtle text-sm">{description}</p>
           {Array.from(choices.values()).map(({ id, name }) => (
             <label key={id} className="flex min-w-0 items-start gap-2 text-sm">
               <input
