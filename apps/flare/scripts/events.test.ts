@@ -106,7 +106,9 @@ test("public directory projects listed events only, survives default removal and
     description: details.description,
     durationMinutes: details.durationMinutes,
   });
-  assert.deepEqual(Object.keys(initial.organizer), ["name"]);
+  assert.deepEqual(Object.keys(initial.organizer), ["name", "bio"]);
+  assert.equal(initial.organizer.bio, "");
+  assert.deepEqual(Object.keys((await read(await f.request("/api/public"))).organizer), ["name"]);
   assert.ok(!JSON.stringify(initial).includes("private room"));
   await read(await f.send(`/api/owner/events/${b.id}/visibility`, { hidden: true }, f.ownerHeaders, "PATCH"));
   await f.db.prepare("UPDATE event_type SET json='{}' WHERE id=?").bind(b.id).run();

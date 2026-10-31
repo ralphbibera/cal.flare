@@ -37,7 +37,8 @@ def sql_witness():
         path = Path(directory) / "booking.sqlite"
         db = sqlite3.connect(path)
         for name in ("0002_settings.sql", "0003_bookings.sql", "0005_events.sql",
-                     "0006_event_lifecycle.sql", "0007_availability_schedules.sql"):
+                     "0006_event_lifecycle.sql", "0007_availability_schedules.sql",
+                     "0008_public_profile.sql"):
             db.executescript((MIGRATIONS / name).read_text())
         for table in ("organizer_settings", "event_type", "availability_schedule"):
             db.execute(f"UPDATE {table} SET json='{{}}'")

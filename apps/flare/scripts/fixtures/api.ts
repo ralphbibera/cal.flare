@@ -131,11 +131,13 @@ export async function apiFixture({
   legacyEvents = false,
   legacyLifecycle = false,
   legacySchedules = false,
+  legacyProfile = false,
 }: {
   port?: number;
   legacyEvents?: boolean;
   legacyLifecycle?: boolean;
   legacySchedules?: boolean;
+  legacyProfile?: boolean;
 } = {}) {
   const configPath = fileURLToPath(new URL("../../wrangler.jsonc", import.meta.url));
   const require = createRequire(import.meta.url);
@@ -183,6 +185,7 @@ export async function apiFixture({
       ...(legacyEvents ? [] : ["0005_events.sql"]),
       ...(legacyEvents || legacyLifecycle ? [] : ["0006_event_lifecycle.sql"]),
       ...(legacyEvents || legacyLifecycle || legacySchedules ? [] : ["0007_availability_schedules.sql"]),
+      ...(legacyProfile ? [] : ["0008_public_profile.sql"]),
     ])
       await migrate(name);
     const connect = () =>
@@ -254,6 +257,16 @@ export async function apiFixture({
         env.DB = db;
       }
     };
+    const migrateProfile = async () => {
+      await platform?.dispose();
+      try {
+        await migrate("0008_public_profile.sql");
+      } finally {
+        platform = await connect();
+        db = platform.env.DB;
+        env.DB = db;
+      }
+    };
     server.on("request", async (incoming, outgoing) => {
       try {
         const chunks: Buffer[] = [];
@@ -299,6 +312,7 @@ export async function apiFixture({
       },
       migrateEvents,
       migrateSchedules,
+      migrateProfile,
       calendar,
       env,
       ciphertext,

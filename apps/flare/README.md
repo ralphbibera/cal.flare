@@ -88,6 +88,18 @@ in the porting guide. The default verification path needs no native reference ch
 
 ## Owner configuration
 
+Open **Profile** at `/owner/profile` from the authenticated home page to edit your public display name and biography.
+Save publishes the name on event metadata and booking pages. The event directory also shows a nonempty biography as literal text.
+Names are trimmed and limited to 100 UTF-16 units. A blank name restores the sanitized connected Google name.
+Biography retains whitespace and literal markup, with the same 2,000-unit bound as event descriptions.
+The pinned native profile uses a string biography without a finite schema bound. This port applies its existing text bound and does not interpret Markdown.
+`GET /api/owner/profile` returns exactly `{ displayName: string | null, bio: string }` for the authenticated owner.
+Same-origin `PUT` replaces exactly those fields and acknowledges only with HTTP 200 `{ saved: true }`.
+Failed or unacknowledged saves retain the draft for explicit idempotent retry. No save repeats automatically.
+The separate `organizer_profile` row preserves overrides across Google sign-in, event edits, schedule edits, and final event removal.
+It does not change Google identity, organizer settings, admission provenance, historical bookings, or provider delivery.
+An absent profile row uses legacy defaults. Malformed stored profiles and database failures fail closed with sanitized 503 responses.
+
 Open `/` to sign in with the Google account configured for this installation.
 The private organizer page links to the public event preview. Sign-out revokes the current
 session and returns to the sign-in page. These entry forms work without browser JavaScript.

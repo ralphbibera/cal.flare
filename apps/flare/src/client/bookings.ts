@@ -1,4 +1,6 @@
 import { parseCancellationReason } from "../domain/cancellation-reason.ts";
+import type { OwnerProfile } from "../domain/profile.ts";
+import { canonicalProfile } from "../domain/profile.ts";
 import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
 import type { Interval } from "../domain/scheduling.ts";
 import { isValidTimeZone, MAX_QUERY_DAYS } from "../domain/scheduling.ts";
@@ -229,6 +231,22 @@ class BookerClient {
   private readonly transport: Transport;
   constructor(transport: Transport = (path: string, init: RequestInit) => fetch(path, init)) {
     this.transport = transport;
+  }
+  ownerProfile(signal?: AbortSignal): Promise<OwnerProfile> {
+    return this.request("/api/owner/profile", canonicalProfile, { signal }, 200);
+  }
+  ownerSaveProfile(input: OwnerProfile, signal?: AbortSignal): Promise<void> {
+    return this.request(
+      "/api/owner/profile",
+      saved,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal,
+      },
+      200
+    );
   }
   private async request<T>(
     path: string,

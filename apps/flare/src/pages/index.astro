@@ -73,6 +73,7 @@ const details = state.kind === "owner" ? state.data.settings.event : defaultSett
               <a href="/?create=1" class="block underline" aria-current={state.data.mode.kind === "create" ? "page" : undefined}>{common.flare_create_event}</a>
             </nav>
             <a href="/owner/schedules" class="block underline">{common.flare_schedules}</a>
+            <a href="/owner/profile" class="block underline">{common.profile}</a>
             {state.data.mode.kind === "edit" && <OwnerScheduleAssignment client:load eventId={state.data.mode.id}
               assignment={state.data.eventScheduleId} resolvedId={state.data.scheduleId} catalog={state.data.catalog}
               labels={scheduleLabels(common).assignment} />}
