@@ -14,7 +14,7 @@ Harm: A broken hold lets the organizer accept two appointments for the same time
 1. Read this skill, `resources/Reservations.tla`, and every covered source diff **before trusting a pass**:
 
    ```sh
-   git diff 1d3d9d5947af8ab0f88501bd80a68969e6f3345e -- apps/flare/migrations apps/flare/src/server/bookings.ts apps/flare/src/server/booking-delivery.ts apps/flare/src/server/booking-availability.ts apps/flare/src/server/booking-model.ts apps/flare/src/server/settings.ts apps/flare/src/domain/settings.ts apps/flare/src/domain/scheduling.ts
+   git diff dc2b3f6f6ac50fa740636952af0df09db3333b0a -- apps/flare/migrations apps/flare/src/server/bookings.ts apps/flare/src/server/booking-delivery.ts apps/flare/src/server/booking-availability.ts apps/flare/src/server/booking-model.ts apps/flare/src/server/settings.ts apps/flare/src/domain/settings.ts apps/flare/src/domain/scheduling.ts
    ```
 
    Also inspect untracked migrations and covered source files. The wrapper refuses covered drift, including new migrations. A refusal means the mapping needs review, not that the property is broken. The SQL witness runs first so an unsafe SQL change can report its actual overlap.
@@ -30,7 +30,7 @@ Harm: A broken hold lets the organizer accept two appointments for the same time
 
 ## Keep the model in sync
 
-Sync commit: `1d3d9d5947af8ab0f88501bd80a68969e6f3345e`
+Sync commit: `dc2b3f6f6ac50fa740636952af0df09db3333b0a`
 
 This is a manually reviewed mapping, not an automatic proof of SQL or TypeScript. The drift gate compares all migrations and the seven source files below against the sync commit. The command shown above uses that commit too. Update both references only after semantic review of the covered diffs, an appropriate model update, and successful positive and negative controls. For uncommitted covered changes, report drift and provisional evidence, then advance the sync commit only after an authorized commit exists. Never bypass the gate by updating the commit first. Use `/maintain-formal-verification-skill` when later changes have skipped this review.
 
