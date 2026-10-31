@@ -1425,6 +1425,7 @@ async function verifyDirectory(browser, f, owner, copy) {
     assert.equal(f.google.writes.length, writes);
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByLabel("Title", { exact: true })).toBeEnabled();
       await page.getByLabel("Title", { exact: true }).focus();
       await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
       await page.keyboard.press("Tab");
