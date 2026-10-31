@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BookerClient, ErrorWithCode } from "../src/client/bookings.ts";
 import { ChangeAttempts, type ChangeInput } from "../src/client/change-attempt.ts";
-import { apiFixture, hour } from "./fixtures/api.ts";
+import { captureOwnerChange } from "../src/client/owner-change.ts";
+import type { BookingView } from "../src/server/booking-model.ts";
 
 function session() {
   const values = new Map<string, string>();
@@ -18,9 +19,149 @@ function session() {
   return { values, storage };
 }
 const bookingId = "a".repeat(64);
+const hour = 3_600_000;
 const input = { action: "reschedule", version: 1, start: Date.UTC(2030, 0, 1, 10) } as const;
 const code = (expected: string) => (error: unknown) =>
   error instanceof ErrorWithCode && error.code === expected;
+const ownerBooking: BookingView = {
+  id: bookingId,
+  status: "confirmed",
+  version: 1,
+  start: input.start,
+  end: input.start + hour / 2,
+  name: "Guest",
+  email: "guest@example.test",
+  timeZone: "UTC",
+  title: "Original event",
+};
+
+test("owner capture gates fresh actions before storage and freezes canonical request bytes", (t) => {
+  t.mock.method(Date, "now", () => ownerBooking.end);
+  const tab = session(),
+    store = new ChangeAttempts({ storage: tab.storage, bookingId });
+  const context = {
+    booking: ownerBooking,
+    draft: "  Need to cancel\r\n<literal>  ",
+    moveDraft: " \n\t ",
+    attempts: () => store,
+  };
+  const cancel = captureOwnerChange({ ...context, command: { action: "cancel" } });
+  assert.equal(cancel.kind, "ready");
+  assert.ok(cancel.kind === "ready");
+  assert.equal(
+    JSON.stringify(cancel.request),
+    `{"action":"cancel","requestKey":"${cancel.request.requestKey}","version":1,"cancellationReason":"Need to cancel\\r\\n<literal>"}`
+  );
+  assert.ok(Object.isFrozen(cancel.request));
+  store.acknowledge(cancel.request.requestKey);
+  const command = { action: "reschedule", start: input.start + hour } as const;
+  const move = captureOwnerChange({ ...context, command });
+  assert.ok(move.kind === "ready");
+  assert.equal(
+    JSON.stringify(move.request),
+    `{"action":"reschedule","requestKey":"${move.request.requestKey}","version":1,"start":${command.start}}`
+  );
+  store.acknowledge(move.request.requestKey);
+  for (const draft of ["", " \n\t ", "x".repeat(1001)])
+    assert.deepEqual(captureOwnerChange({ ...context, draft, command: { action: "cancel" } }), {
+      kind: "invalid-reason",
+    });
+  assert.deepEqual(captureOwnerChange({ ...context, command, moveDraft: "😀".repeat(501) }), {
+    kind: "invalid-reason",
+  });
+  for (const booking of [
+    { ...ownerBooking, disableCancelling: true, disableRescheduling: true },
+    { ...ownerBooking, end: ownerBooking.end - 1 },
+    { ...ownerBooking, status: "attention" } as const,
+  ]) {
+    for (const action of ["cancel", "reschedule"] as const)
+      assert.deepEqual(
+        captureOwnerChange({ ...context, booking, command: { ...command, action }, draft: "" }),
+        { kind: "unavailable", action }
+      );
+  }
+  assert.equal(tab.values.size, 0);
+});
+
+test("owner replay rereads durable canonical bytes independently of fresh policy and drafts", () => {
+  const tab = session(),
+    store = new ChangeAttempts({ storage: tab.storage, bookingId });
+  const context = {
+    booking: { ...ownerBooking, status: "cancelled", end: 0 } as const,
+    draft: "",
+    moveDraft: "x".repeat(1001),
+    attempts: () => store,
+  };
+  for (const input of [
+    { action: "cancel", version: 1, cancellationReason: "Required" } as const,
+    { action: "reschedule", version: 1, start: ownerBooking.start + hour } as const,
+  ]) {
+    const frozen = store.begin(input),
+      command = { request: frozen };
+    const key = [...tab.values.keys()][0];
+    assert.ok(key);
+    assert.deepEqual(captureOwnerChange({ ...context, command }), { kind: "ready", request: frozen });
+    for (const raw of [
+      null,
+      "{",
+      JSON.stringify({ ...frozen, version: 2 }),
+      JSON.stringify({ ...frozen, requestKey: crypto.randomUUID() }),
+      JSON.stringify({ action: "cancel", requestKey: frozen.requestKey, version: 1 }),
+      JSON.stringify({ ...frozen, start: ownerBooking.start + 2 * hour }),
+    ]) {
+      if (raw === null) tab.values.delete(key);
+      else tab.values.set(key, raw);
+      assert.deepEqual(captureOwnerChange({ ...context, command }), { kind: "storage-blocked" });
+      assert.equal(tab.values.get(key) ?? null, raw);
+    }
+    tab.values.clear();
+  }
+});
+
+test("owner capture fails closed on inaccessible storage without replacing pending requests", (t) => {
+  t.mock.method(Date, "now", () => ownerBooking.end);
+  const tab = session(),
+    fail = () => {
+      throw new Error("Storage denied");
+    };
+  const context = { booking: ownerBooking, draft: "Required", moveDraft: "" };
+  for (const operation of ["getItem", "setItem"] as const) {
+    const attempts = () => new ChangeAttempts({ bookingId, storage: { ...tab.storage, [operation]: fail } });
+    assert.deepEqual(captureOwnerChange({ ...context, attempts, command: { action: "cancel" } }), {
+      kind: "storage-blocked",
+    });
+    assert.equal(tab.values.size, 0);
+  }
+  const store = new ChangeAttempts({ bookingId, storage: tab.storage }),
+    request = store.begin({ action: "cancel", version: 1, cancellationReason: "Required" });
+  assert.deepEqual(captureOwnerChange({ ...context, attempts: fail, command: { request } }), {
+    kind: "storage-blocked",
+  });
+  assert.deepEqual(store.read(), request);
+});
+
+test("owner rejection retires replay identity while uncertain failures keep the frozen command", (t) => {
+  t.mock.method(Date, "now", () => ownerBooking.end);
+  const tab = session(),
+    store = new ChangeAttempts({ bookingId, storage: tab.storage });
+  const context = { booking: ownerBooking, draft: "Required", moveDraft: "", attempts: () => store };
+  const captured = captureOwnerChange({ ...context, command: { action: "cancel" } });
+  assert.ok(captured.kind === "ready");
+  const { request } = captured;
+  assert.equal(store.reject(request.requestKey, new ErrorWithCode("network_error", 0)), false);
+  assert.deepEqual(captureOwnerChange({ ...context, command: { request } }), captured);
+  assert.equal(store.reject(request.requestKey, new ErrorWithCode("stale", 409)), true);
+  assert.equal(store.read(), null);
+  assert.deepEqual(captureOwnerChange({ ...context, command: { request } }), { kind: "storage-blocked" });
+  const reconfirmed = captureOwnerChange({
+    ...context,
+    booking: { ...ownerBooking, version: 2 },
+    command: { action: "cancel" },
+  });
+  assert.ok(reconfirmed.kind === "ready");
+  assert.notEqual(reconfirmed.request.requestKey, request.requestKey);
+  assert.equal(reconfirmed.request.version, 2);
+});
 
 test("management changes survive reload and fence different or stale operations", () => {
   const tab = session(),
@@ -179,6 +320,7 @@ test("saved cancellations retain normalized immutable reasons and bounded escape
 });
 
 test("saved move and cancellation recover lost HTTP acknowledgments without duplicate Calendar writes", async (t) => {
+  const { apiFixture } = await import("./fixtures/api.ts");
   const fixture = await apiFixture();
   t.after(fixture.close);
   let loseResponse = false;

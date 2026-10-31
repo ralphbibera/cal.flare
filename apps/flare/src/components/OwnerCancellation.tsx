@@ -2,8 +2,7 @@ import { type ComponentPropsWithRef, useEffect, useId, useRef, useState } from "
 import common from "../../../../packages/i18n/locales/en/common.json";
 import { BookerClient, type ChangeRequest, ErrorWithCode } from "../client/bookings.ts";
 import { ChangeAttempts } from "../client/change-attempt.ts";
-import { parseCancellationReason } from "../domain/cancellation-reason.ts";
-import { parseRescheduleReason } from "../domain/reschedule-reason.ts";
+import { canCancel, canReschedule, captureOwnerChange } from "../client/owner-change.ts";
 import type { BookingView } from "../server/booking-model.ts";
 import { BookingCalendar, type CalendarCursor } from "./BookingCalendar.tsx";
 import { Button } from "./Button.tsx";
@@ -129,10 +128,6 @@ const status: Record<BookingView["status"], string> = {
   cancelled: common.cancelled,
   attention: common.flare_booking_status_attention,
 };
-const canCancel = (booking: BookingView): boolean =>
-  booking.status === "confirmed" && !booking.disableCancelling && booking.end >= Date.now();
-const canReschedule = (booking: BookingView): boolean =>
-  booking.status === "confirmed" && !booking.disableRescheduling && booking.end >= Date.now();
 export function OwnerCancellation({
   booking: initialBooking,
   initialRange,
@@ -209,52 +204,24 @@ export function OwnerCancellation({
   }
   async function change() {
     if (busy || (stage.kind !== "confirm" && stage.kind !== "pending")) return;
-    if (
-      stage.kind === "confirm" &&
-      !(stage.action === "cancel" ? canCancel(booking) : canReschedule(booking))
-    ) {
-      setStage({ kind: "unavailable", action: stage.action });
-      return;
+    const captured = captureOwnerChange({ booking, command: stage, draft, moveDraft, attempts: store });
+    switch (captured.kind) {
+      case "unavailable":
+        setStage({ kind: "unavailable", action: captured.action });
+        return;
+      case "invalid-reason":
+        setError(`${common.invalid_input} ${labels.reasonLimit}`);
+        reason.current?.focus();
+        return;
+      case "storage-blocked":
+        setStage({ kind: "blocked" });
+        setError(labels.storageError);
+        return;
     }
-    const action = stage.kind === "pending" ? stage.request.action : stage.action;
-    const normalized =
-      action === "cancel" ? parseCancellationReason(draft) : parseRescheduleReason(moveDraft);
-    if (stage.kind === "confirm" && (normalized === null || (action === "cancel" && !normalized))) {
-      setError(`${common.invalid_input} ${labels.reasonLimit}`);
-      reason.current?.focus();
-      return;
-    }
-    let request: Readonly<ChangeRequest>;
-    try {
-      const saved =
-        stage.kind === "pending"
-          ? store().read()
-          : store().begin(
-              stage.action === "reschedule"
-                ? {
-                    action: "reschedule",
-                    version: booking.version,
-                    start: stage.start,
-                    ...(normalized ? { rescheduleReason: normalized } : {}),
-                  }
-                : {
-                    action: "cancel",
-                    version: booking.version,
-                    cancellationReason: normalized ?? undefined,
-                  }
-            );
-      if (
-        !saved ||
-        (saved.action === "cancel" && !saved.cancellationReason) ||
-        (stage.kind === "pending" && JSON.stringify(saved) !== JSON.stringify(stage.request))
-      )
-        throw new Error();
-      request = saved;
-    } catch {
-      setStage({ kind: "blocked" });
-      setError(labels.storageError);
-      return;
-    }
+    const { request } = captured;
+    await submit(request);
+  }
+  async function submit(request: Readonly<ChangeRequest>) {
     setStage({ kind: "pending", request });
     setBusy(true);
     setError("");
@@ -266,11 +233,13 @@ export function OwnerCancellation({
       window.location.reload();
     } catch (failure) {
       try {
-        if (store().reject(request.requestKey, failure)) {
-          if (request.action === "reschedule") setMoveDraft(request.rescheduleReason ?? "");
-          else setDraft(request.cancellationReason ?? "");
-          await refresh(request.action);
-        } else setError(labels.bookingError);
+        if (!store().reject(request.requestKey, failure)) {
+          setError(labels.bookingError);
+          return;
+        }
+        if (request.action === "reschedule") setMoveDraft(request.rescheduleReason ?? "");
+        else setDraft(request.cancellationReason ?? "");
+        await refresh(request.action);
       } catch {
         setStage({ kind: "blocked" });
         setError(labels.storageError);
