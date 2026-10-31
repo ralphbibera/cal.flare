@@ -400,6 +400,110 @@ test("invalid and unbounded domain inputs fail before generating slots", () => {
   assert.equal(isValidTimeZone("+05:30"), false);
 });
 
+test("policy validation preserves the first error when multiple settings are invalid", () => {
+  const cases: [Partial<SlotPolicy>, string][] = [
+    [{ durationMinutes: 0, intervalMinutes: 0 }, "durationMinutes must be an integer between 1 and 1440"],
+    [{ intervalMinutes: 0, bookingWindowDays: 0 }, "intervalMinutes must be an integer between 1 and 1440"],
+    [{ bookingWindowDays: 0, beforeMinutes: -1 }, "bookingWindowDays must be an integer between 1 and 365"],
+    [
+      { beforeMinutes: -1, afterMinutes: -1 },
+      "buffer or notice minutes must be an integer between 0 and 44640",
+    ],
+    [
+      { afterMinutes: -1, noticeMinutes: -1 },
+      "buffer or notice minutes must be an integer between 0 and 44640",
+    ],
+    [{ noticeMinutes: 44641 }, "buffer or notice minutes must be an integer between 0 and 44640"],
+  ];
+  for (const [changes, message] of cases) {
+    assert.throws(() => availableSlots(input({ policy: { ...policy, ...changes } })), {
+      name: "RangeError",
+      message,
+    });
+  }
+});
+
+test("query errors precede policy and schedule errors", () => {
+  const value = input({ policy: { ...policy, durationMinutes: 0 }, busy: [{ start: 0, end: 0 }] });
+  const cases: [Partial<AvailabilityInput>, string][] = [
+    [{ schedule: { timeZone: "invalid", rules: [] }, visitorTimeZone: "invalid" }, "Invalid IANA time zone"],
+    [{ visitorTimeZone: "invalid", windowTimeZone: "invalid" }, "Invalid visitor time zone"],
+    [{ windowTimeZone: "invalid", from: Number.NaN }, "Invalid window time zone"],
+    [
+      { from: Number.NaN, to: value.from },
+      "timestamp must be an integer between 946684800000 and 4102444800000",
+    ],
+    [{ to: value.from }, "Query must span (0, 63] days"],
+    [{ to: value.from + 63 * 86_400_000 + 1 }, "Query must span (0, 63] days"],
+  ];
+  for (const [changes, message] of cases) {
+    assert.throws(() => availableSlots({ ...value, ...changes }), { name: "RangeError", message });
+  }
+});
+
+test("schedule validation precedes busy checks and preserves override date and range errors", () => {
+  const value = input({ busy: [{ start: 0, end: 0 }] });
+  const invalidOverride = { date: "2026-02-30", ranges: [] };
+  const cases: [Partial<AvailabilityInput>, string][] = [
+    [
+      { schedule: { ...value.schedule, rules: Array(101).fill(value.schedule.rules[0]) } },
+      "Too many rules, overrides, or busy intervals",
+    ],
+    [
+      {
+        schedule: {
+          ...value.schedule,
+          rules: [{ weekday: 7, startMinute: -1, endMinute: 0 }],
+          overrides: [invalidOverride],
+        },
+      },
+      "weekday must be an integer between 0 and 6",
+    ],
+    [
+      { schedule: { ...value.schedule, rules: [{ weekday: 1, startMinute: -1, endMinute: 0 }] } },
+      "startMinute must be an integer between 0 and 1439",
+    ],
+    [
+      { schedule: { ...value.schedule, overrides: [invalidOverride] } },
+      "Overrides require unique valid YYYY-MM-DD dates and at most 100 ranges",
+    ],
+    [
+      {
+        schedule: {
+          ...value.schedule,
+          overrides: [{ date: "2026-01-05", ranges: [{ startMinute: 60, endMinute: 60 }] }],
+        },
+      },
+      "endMinute must be an integer between 61 and 1440",
+    ],
+    [{}, "busy start must be an integer between 946684800000 and 4102444800000"],
+    [
+      { busy: [{ start: value.from, end: Number.NaN }] },
+      "busy end must be an integer between 946684800000 and 4102444800000",
+    ],
+    [{ busy: [{ start: value.from, end: value.from }] }, "Busy intervals must have positive duration"],
+  ];
+  for (const [changes, message] of cases) {
+    assert.throws(() => availableSlots({ ...value, ...changes }), { name: "RangeError", message });
+  }
+});
+
+test("invalid override collections preserve native iteration errors", () => {
+  const cases: [unknown, string][] = [
+    [{}, "object"],
+    [0, "number 0"],
+    [true, "boolean true"],
+  ];
+  for (const [overrides, prefix] of cases) {
+    const value = input();
+    Object.defineProperty(value.schedule, "overrides", { value: overrides });
+    assert.throws(() => availableSlots(value), {
+      name: "TypeError",
+      message: `${prefix} is not iterable (cannot read property Symbol(Symbol.iterator))`,
+    });
+  }
+});
+
 test("a 31-day query retains pinned seven-minute spacing from each free-range start", () => {
   assert.deepEqual(
     starts(
