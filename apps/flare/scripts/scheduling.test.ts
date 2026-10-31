@@ -248,6 +248,57 @@ test("candidate buffers block conflicts outside the query without shrinking work
   );
 });
 
+test("busy unions preserve millisecond boundaries and leave unordered inputs unchanged", () => {
+  const minute = 60_000;
+  const origin = at("2026-01-05T09:00Z");
+  const cases = [
+    {
+      busy: [
+        [60 * minute, 90 * minute],
+        [0, 30 * minute],
+      ],
+      starts: [30, 90],
+    },
+    {
+      busy: [
+        [40 * minute, 70 * minute],
+        [20 * minute, 50 * minute],
+      ],
+      starts: [90],
+    },
+    {
+      busy: [
+        [20 * minute, 100 * minute],
+        [40 * minute, 60 * minute],
+      ],
+      starts: [],
+    },
+    {
+      busy: [
+        [60 * minute, 90 * minute],
+        [30 * minute, 60 * minute],
+      ],
+      starts: [0, 90],
+    },
+    { busy: [[30 * minute + 1, 60 * minute - 1]], starts: [0, 60, 90] },
+    { busy: [[30 * minute - 1, 60 * minute + 1]], starts: [90] },
+  ];
+  for (const example of cases) {
+    const value = input({
+      busy: example.busy.map(([start, end]) => ({ start: origin + start, end: origin + end })),
+    });
+    const snapshot = structuredClone(value);
+    assert.deepEqual(
+      availableSlots(value),
+      example.starts.map((start) => ({
+        start: origin + start * minute,
+        end: origin + (start + policy.durationMinutes) * minute,
+      }))
+    );
+    assert.deepEqual(value, snapshot);
+  }
+});
+
 test("notice uses the explicit clock and allows its exact boundary", () => {
   const value = input({ now: at("2026-01-05T09:00Z"), policy: { ...policy, noticeMinutes: 30 } });
   assert.equal(starts(value)[0], "2026-01-05T09:30:00.000Z");
