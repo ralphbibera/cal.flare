@@ -6,6 +6,174 @@ import { differentPixels } from "./different-pixels.mjs";
 import { ready as settled } from "./verify-upstream.mjs";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
+async function verifyWeekLayoutAndPaging(page, width, fixture, region, cells, headers, ready, capture) {
+  let reference, bounds;
+  if (process.env.CALFLARE_REFERENCE_ORIGIN) {
+    assert.equal(process.env.CALFLARE_REFERENCE_ORIGIN, "http://127.0.0.1:18800");
+    await page.goto(`${process.env.CALFLARE_REFERENCE_ORIGIN}/reference/intro?layout=week_view`);
+    await ready();
+    bounds = await region.boundingBox();
+    reference = [...(await capture("reference"))];
+  }
+  await page.goto(`${fixture.origin}/intro?layout=week_view`);
+  await ready();
+  await expect(headers).toHaveText(
+    width === 1280
+      ? ["Wed 09", "Thu 10", "Fri 11", "Sat 12", "Sun 13", "Mon 14", "Tue 15"]
+      : ["Wed 09", "Thu 10", "Fri 11", "Sat 12"]
+  );
+  assert.equal(await cells.count(), width === 1280 ? 105 : 57);
+  const candidateBounds = await region.boundingBox();
+  const candidate = [...(await capture("candidate"))];
+  if (reference) {
+    assert.deepEqual(candidateBounds, bounds);
+    assert.equal(
+      await page.evaluate(differentPixels, [reference, candidate]),
+      0,
+      `${width} actual Next week main-region RGBA`
+    );
+    console.log(`PASS actual Next week ${width}: identical bounds and every RGBA channel`);
+  }
+  for (const [name, layout] of [
+    ["column", "column_view"],
+    ["monthly", "month_view"],
+    ["weekly", "week_view"],
+  ]) {
+    await page.getByRole("radio", { name: `Switch to ${name} view`, exact: true }).click();
+    assert.equal(new URL(page.url()).searchParams.get("layout"), layout);
+  }
+  await expect(cells).toHaveCount(width === 1280 ? 105 : 57);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollHeight), 1541);
+  assert.equal(
+    await region.evaluate(
+      (node) =>
+        [...node.querySelectorAll("*")].filter(
+          (child) =>
+            ["auto", "scroll"].includes(getComputedStyle(child).overflowY) &&
+            child.scrollHeight > child.clientHeight
+        ).length
+    ),
+    0
+  );
+  await page.evaluate(() => scrollTo(0, 641));
+  assert.equal(
+    await region
+      .locator(".sticky.flex-none")
+      .first()
+      .evaluate((node) => node.getBoundingClientRect().top),
+    66
+  );
+  await page.getByRole("button", { name: "Next Day", exact: true }).click();
+  await expect(headers.first()).toHaveText(width === 1280 ? "Wed 16" : "Sun 13");
+  await page.getByRole("button", { name: "Previous Day", exact: true }).click();
+  await expect(headers.first()).toHaveText("Wed 09");
+  await page.getByRole("button", { name: "Previous Day", exact: true }).click();
+  await expect(headers.first()).toHaveText("Wed 09");
+  await page.getByRole("button", { name: "30", exact: true }).click();
+  await expect(headers).toHaveText(
+    width === 1280
+      ? ["Wed 30", "Thu 31", "Fri 01", "Sat 02", "Sun 03", "Mon 04", "Tue 05"]
+      : ["Wed 30", "Thu 31", "Fri 01", "Sat 02"]
+  );
+  await page.getByRole("button", { name: "Next Day", exact: true }).click();
+  await expect(headers.first()).toHaveText(width === 1280 ? "Wed 06" : "Sun 03");
+  await page.getByRole("button", { name: "Previous Day", exact: true }).click();
+  await expect(headers.first()).toHaveText("Wed 30");
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+}
+
+async function verifyYearSeamAndAvailabilityRecovery(page, fixture, settings, owner, cells, headers, region) {
+  await page.goto(`${fixture.origin}/intro?layout=week_view`);
+  for (let month = 1; month <= 11; month++) {
+    await expect(page.getByRole("button", { name: "Next Day", exact: true })).toBeEnabled();
+    await page.getByTestId("incrementMonth").click();
+    await expect(page.getByTestId("selected-month-label")).toHaveAttribute(
+      "datetime",
+      `2030-${String(month + 1).padStart(2, "0")}`
+    );
+  }
+  await page.getByRole("button", { name: "30", exact: true }).click();
+  await expect(headers).toHaveText(["Mon 30", "Tue 31", "Wed 01", "Thu 02", "Fri 03", "Sat 04", "Sun 05"]);
+  await page.getByRole("button", { name: "Next Day", exact: true }).click();
+  await expect(headers.first()).toHaveText("Mon 06");
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  const sparse = {
+    timeZone: "UTC",
+    rules: [],
+    overrides: [{ date: "2030-01-10", ranges: [{ startMinute: 540, endMinute: 570 }] }],
+  };
+  assert.equal(
+    (await fixture.send("/api/owner", { ...settings, schedule: sparse }, owner, "PUT")).status,
+    200
+  );
+  await page.reload();
+  await expect(cells).toHaveCount(1);
+  await expect(headers).toHaveCount(7);
+  await page.getByRole("button", { name: "Next Day", exact: true }).click();
+  await expect(headers.first()).toHaveText("Wed 16");
+  await expect(cells).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "No available" })).toBeVisible();
+  await page.getByRole("button", { name: "Previous Day", exact: true }).click();
+  await expect(cells).toHaveCount(1);
+  const release = Promise.withResolvers();
+  await page.route("**/api/events/default/slots?**", async (route) => {
+    await release.promise;
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  try {
+    const requested = page.waitForRequest("**/api/events/default/slots?**");
+    await page.getByRole("combobox", { name: "Time zone", exact: true }).fill("Kolkata");
+    await page.keyboard.press("Enter");
+    await requested;
+    await expect(region).toHaveAttribute("aria-busy", "true");
+    await expect(cells).toHaveCount(0);
+    await expect(headers).toHaveCount(7);
+    await expect(page.getByRole("button", { name: "Next Day", exact: true })).toBeDisabled();
+  } finally {
+    release.resolve();
+  }
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(cells).toHaveCount(0);
+  await page.unroute("**/api/events/default/slots?**");
+  const retried = page.waitForResponse("**/api/events/default/slots?**");
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  const response = await retried;
+  assert.equal(response.status(), 200);
+  await expect(cells).toHaveCount(1);
+  await expect(cells.first()).toHaveAttribute("aria-label", /2:30pm, Asia\/Kolkata/);
+  await expect(cells.first()).toHaveCSS("top", "841px");
+  assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
+}
+
+async function verifyImmutablePendingReplay(page, slot, dialog, commands, artifacts) {
+  await slot.click();
+  await page.screenshot({
+    path: fileURLToPath(new URL("week-dialog.png", artifacts)),
+    fullPage: true,
+  });
+  await page.route("**/api/events/default/bookings", async (route) => {
+    assert.equal((await route.fetch()).status(), 201);
+    await route.fulfill({ status: 200, contentType: "application/json", body: "truncated" });
+  });
+  await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  assert.equal(commands[0].start, Date.parse("2030-01-10T09:00:00Z"));
+  assert.equal(commands[0].timeZone, "Asia/Kolkata");
+  await page.keyboard.press("Escape");
+  await page.mouse.click(1, 1);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
+  await page.unroute("**/api/events/default/bookings");
+  await page.reload();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Asia/Kolkata");
+  await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030, 2:30 pm");
+  await dialog.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "This meeting is scheduled" })).toBeVisible();
+  assert.deepEqual(commands[1], commands[0]);
+}
+
 export async function verifyWeekPage(browser) {
   const fixedTime = Date.parse("2030-01-09T12:00:00Z");
   const fixture = await createWorkerFixture({ port: 8797, fixedTime });
@@ -72,80 +240,7 @@ export async function verifyWeekPage(browser) {
             path: fileURLToPath(new URL(`${name}-week-page-${width}.png`, artifacts)),
             animations: "disabled",
           });
-        let reference, bounds;
-        if (process.env.CALFLARE_REFERENCE_ORIGIN) {
-          assert.equal(process.env.CALFLARE_REFERENCE_ORIGIN, "http://127.0.0.1:18800");
-          await page.goto(`${process.env.CALFLARE_REFERENCE_ORIGIN}/reference/intro?layout=week_view`);
-          await ready();
-          bounds = await region.boundingBox();
-          reference = [...(await capture("reference"))];
-        }
-        await page.goto(`${fixture.origin}/intro?layout=week_view`);
-        await ready();
-        await expect(headers).toHaveText(
-          width === 1280
-            ? ["Wed 09", "Thu 10", "Fri 11", "Sat 12", "Sun 13", "Mon 14", "Tue 15"]
-            : ["Wed 09", "Thu 10", "Fri 11", "Sat 12"]
-        );
-        assert.equal(await cells.count(), width === 1280 ? 105 : 57);
-        const candidateBounds = await region.boundingBox();
-        const candidate = [...(await capture("candidate"))];
-        if (reference) {
-          assert.deepEqual(candidateBounds, bounds);
-          assert.equal(
-            await page.evaluate(differentPixels, [reference, candidate]),
-            0,
-            `${width} actual Next week main-region RGBA`
-          );
-          console.log(`PASS actual Next week ${width}: identical bounds and every RGBA channel`);
-        }
-        for (const [name, layout] of [
-          ["column", "column_view"],
-          ["monthly", "month_view"],
-          ["weekly", "week_view"],
-        ]) {
-          await page.getByRole("radio", { name: `Switch to ${name} view`, exact: true }).click();
-          assert.equal(new URL(page.url()).searchParams.get("layout"), layout);
-        }
-        await expect(cells).toHaveCount(width === 1280 ? 105 : 57);
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
-        assert.equal(await page.evaluate(() => document.documentElement.scrollHeight), 1541);
-        assert.equal(
-          await region.evaluate(
-            (node) =>
-              [...node.querySelectorAll("*")].filter(
-                (child) =>
-                  ["auto", "scroll"].includes(getComputedStyle(child).overflowY) &&
-                  child.scrollHeight > child.clientHeight
-              ).length
-          ),
-          0
-        );
-        await page.evaluate(() => scrollTo(0, 641));
-        assert.equal(
-          await region
-            .locator(".sticky.flex-none")
-            .first()
-            .evaluate((node) => node.getBoundingClientRect().top),
-          66
-        );
-        await page.getByRole("button", { name: "Next Day", exact: true }).click();
-        await expect(headers.first()).toHaveText(width === 1280 ? "Wed 16" : "Sun 13");
-        await page.getByRole("button", { name: "Previous Day", exact: true }).click();
-        await expect(headers.first()).toHaveText("Wed 09");
-        await page.getByRole("button", { name: "Previous Day", exact: true }).click();
-        await expect(headers.first()).toHaveText("Wed 09");
-        await page.getByRole("button", { name: "30", exact: true }).click();
-        await expect(headers).toHaveText(
-          width === 1280
-            ? ["Wed 30", "Thu 31", "Fri 01", "Sat 02", "Sun 03", "Mon 04", "Tue 05"]
-            : ["Wed 30", "Thu 31", "Fri 01", "Sat 02"]
-        );
-        await page.getByRole("button", { name: "Next Day", exact: true }).click();
-        await expect(headers.first()).toHaveText(width === 1280 ? "Wed 06" : "Sun 03");
-        await page.getByRole("button", { name: "Previous Day", exact: true }).click();
-        await expect(headers.first()).toHaveText("Wed 30");
-        await page.getByRole("button", { name: "Today", exact: true }).click();
+        await verifyWeekLayoutAndPaging(page, width, fixture, region, cells, headers, ready, capture);
         const slot = region.locator('[data-slot="2030-01-10T09:00:00.000Z"]');
         await expect(slot).toHaveCSS("top", "522px");
         await page.getByRole("radio", { name: "24h", exact: true }).click();
@@ -198,101 +293,10 @@ export async function verifyWeekPage(browser) {
         }
         assert.equal(commands.length, 0);
         if (width === 1280) {
-          await page.goto(`${fixture.origin}/intro?layout=week_view`);
-          for (let month = 1; month <= 11; month++) {
-            await expect(page.getByRole("button", { name: "Next Day", exact: true })).toBeEnabled();
-            await page.getByTestId("incrementMonth").click();
-            await expect(page.getByTestId("selected-month-label")).toHaveAttribute(
-              "datetime",
-              `2030-${String(month + 1).padStart(2, "0")}`
-            );
-          }
-          await page.getByRole("button", { name: "30", exact: true }).click();
-          await expect(headers).toHaveText([
-            "Mon 30",
-            "Tue 31",
-            "Wed 01",
-            "Thu 02",
-            "Fri 03",
-            "Sat 04",
-            "Sun 05",
-          ]);
-          await page.getByRole("button", { name: "Next Day", exact: true }).click();
-          await expect(headers.first()).toHaveText("Mon 06");
-          await page.getByRole("button", { name: "Today", exact: true }).click();
-          const sparse = {
-            timeZone: "UTC",
-            rules: [],
-            overrides: [{ date: "2030-01-10", ranges: [{ startMinute: 540, endMinute: 570 }] }],
-          };
-          assert.equal(
-            (await fixture.send("/api/owner", { ...settings, schedule: sparse }, owner, "PUT")).status,
-            200
-          );
-          await page.reload();
-          await expect(cells).toHaveCount(1);
-          await expect(headers).toHaveCount(7);
-          await page.getByRole("button", { name: "Next Day", exact: true }).click();
-          await expect(headers.first()).toHaveText("Wed 16");
-          await expect(cells).toHaveCount(0);
-          await expect(page.getByRole("status").filter({ hasText: "No available" })).toBeVisible();
-          await page.getByRole("button", { name: "Previous Day", exact: true }).click();
-          await expect(cells).toHaveCount(1);
-          const release = Promise.withResolvers();
-          await page.route("**/api/events/default/slots?**", async (route) => {
-            await release.promise;
-            await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
-          });
-          try {
-            const requested = page.waitForRequest("**/api/events/default/slots?**");
-            await page.getByRole("combobox", { name: "Time zone", exact: true }).fill("Kolkata");
-            await page.keyboard.press("Enter");
-            await requested;
-            await expect(region).toHaveAttribute("aria-busy", "true");
-            await expect(cells).toHaveCount(0);
-            await expect(headers).toHaveCount(7);
-            await expect(page.getByRole("button", { name: "Next Day", exact: true })).toBeDisabled();
-          } finally {
-            release.resolve();
-          }
-          await expect(page.getByRole("alert")).toBeVisible();
-          await expect(cells).toHaveCount(0);
-          await page.unroute("**/api/events/default/slots?**");
-          const retried = page.waitForResponse("**/api/events/default/slots?**");
-          await page.getByRole("button", { name: "Retry", exact: true }).click();
-          const response = await retried;
-          assert.equal(response.status(), 200);
-          await expect(cells).toHaveCount(1);
-          await expect(cells.first()).toHaveAttribute("aria-label", /2:30pm, Asia\/Kolkata/);
-          await expect(cells.first()).toHaveCSS("top", "841px");
-          assert.equal((await fixture.send("/api/owner", settings, owner, "PUT")).status, 200);
+          await verifyYearSeamAndAvailabilityRecovery(page, fixture, settings, owner, cells, headers, region);
         }
         if (width === 900) {
-          await slot.click();
-          await page.screenshot({
-            path: fileURLToPath(new URL("week-dialog.png", artifacts)),
-            fullPage: true,
-          });
-          await page.route("**/api/events/default/bookings", async (route) => {
-            assert.equal((await route.fetch()).status(), 201);
-            await route.fulfill({ status: 200, contentType: "application/json", body: "truncated" });
-          });
-          await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
-          await expect(dialog.getByRole("alert")).toBeVisible();
-          assert.equal(commands[0].start, Date.parse("2030-01-10T09:00:00Z"));
-          assert.equal(commands[0].timeZone, "Asia/Kolkata");
-          await page.keyboard.press("Escape");
-          await page.mouse.click(1, 1);
-          await expect(dialog).toBeVisible();
-          await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
-          await page.unroute("**/api/events/default/bookings");
-          await page.reload();
-          await expect(dialog).toBeVisible();
-          await expect(dialog).toContainText("Asia/Kolkata");
-          await expect(dialog.locator("time")).toHaveText("Thursday, January 10, 2030, 2:30 pm");
-          await dialog.getByRole("button", { name: "Retry", exact: true }).click();
-          await expect(page.getByRole("heading", { name: "This meeting is scheduled" })).toBeVisible();
-          assert.deepEqual(commands[1], commands[0]);
+          await verifyImmutablePendingReplay(page, slot, dialog, commands, artifacts);
         }
         for (const url of queries) {
           const from = Date.parse(url.searchParams.get("from")),
