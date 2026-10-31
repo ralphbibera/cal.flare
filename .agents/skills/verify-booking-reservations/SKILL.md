@@ -14,7 +14,7 @@ Harm: A broken hold lets the organizer accept two appointments for the same time
 1. Read this skill, `resources/Reservations.tla`, and every covered source diff **before trusting a pass**:
 
    ```sh
-   git diff dc2b3f6f6ac50fa740636952af0df09db3333b0a -- apps/flare/migrations apps/flare/src/server/bookings.ts apps/flare/src/server/booking-delivery.ts apps/flare/src/server/booking-availability.ts apps/flare/src/server/booking-model.ts apps/flare/src/server/settings.ts apps/flare/src/domain/settings.ts apps/flare/src/domain/scheduling.ts
+   git diff e9875607d859d5af40e0bf6ae14b33a61dcea7c0 -- apps/flare/migrations apps/flare/src/server/bookings.ts apps/flare/src/server/booking-delivery.ts apps/flare/src/server/booking-availability.ts apps/flare/src/server/booking-model.ts apps/flare/src/server/settings.ts apps/flare/src/domain/settings.ts apps/flare/src/domain/scheduling.ts
    ```
 
    Also inspect untracked migrations and covered source files. The wrapper refuses covered drift, including new migrations. A refusal means the mapping needs review, not that the property is broken. The SQL witness runs first so an unsafe SQL change can report its actual overlap.
@@ -30,7 +30,7 @@ Harm: A broken hold lets the organizer accept two appointments for the same time
 
 ## Keep the model in sync
 
-Sync commit: `dc2b3f6f6ac50fa740636952af0df09db3333b0a`
+Sync commit: `e9875607d859d5af40e0bf6ae14b33a61dcea7c0`
 
 This is a manually reviewed mapping, not an automatic proof of SQL or TypeScript. The drift gate compares all migrations and the seven source files below against the sync commit. The command shown above uses that commit too. Update both references only after semantic review of the covered diffs, an appropriate model update, and successful positive and negative controls. For uncommitted covered changes, report drift and provisional evidence, then advance the sync commit only after an authorized commit exists. Never bypass the gate by updating the commit first. Use `/maintain-formal-verification-skill` when later changes have skipped this review.
 
@@ -44,6 +44,8 @@ This is a manually reviewed mapping, not an automatic proof of SQL or TypeScript
 | `apps/flare/src/server/settings.ts`: `getAdmissionContext`, policy getters; `apps/flare/src/domain/settings.ts`: policy parsing and notice; `apps/flare/src/domain/scheduling.ts`: `availableSlots` | Policy refusals (disabled actions, ended restrictions, attendee notice, availability, removed events, settings/schedule changes) project to `Wait`. The model explores the admitted branch whenever permitted by booking state, so it overapproximates these gates. It does not verify their correctness or authorize changing them. Cancellation still needs policy/provenance acceptance in real code. |
 
 `parseOptionalEventPolicy` and `parseDatedOverrides` retain the existing validation and canonical settings order. They remain within the policy-gate projection above and introduce no reservation transaction or overlap assumption.
+
+Migration `0008_public_profile.sql` creates only the owner-linked profile table. Profile writes do not change bookings, commands, reservations, or their triggers, so they stutter in this model. The SQLite witness applies this migration too.
 
 At the sync commit, `utcWorkingIntervals`, `subtractBusyIntervals`, and `freeWorkingIntervals` separate availability planning without changing this policy-gate projection. The admission and finalization transactions, occupied interval calculation, and both overlap guards remain unchanged.
 
