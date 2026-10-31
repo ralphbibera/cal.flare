@@ -11,6 +11,7 @@ node_modules
 
 # testing
 coverage
+/.verification/formal/
 /test-results/
 **/playwright/videos
 **/playwright/screenshots
