@@ -399,3 +399,170 @@ test("owner fresh policy gates do not interfere with accepted uncertain moves or
   );
   assert.equal((await client.ownerView(id)).status, "cancelled");
 });
+
+test("attendee notice uses the current original start while frozen moves and owner projections retain their rights", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  let clock = f.now();
+  const service = new BookingService({
+    db: f.db,
+    calendar: f.calendar,
+    secret: f.env.TOKEN_ENCRYPTION_KEY,
+    now: () => clock,
+  });
+  const start = clock + 9 * hour;
+  const create = {
+    requestKey: crypto.randomUUID(),
+    start,
+    name: "Guest",
+    email: "guest@example.test",
+    timeZone: "America/New_York",
+  };
+  const booking = await service.create(create);
+  const token = String(booking.manageToken),
+    id = booking.id;
+  const rules = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+  };
+  const policy = async (notice: number | null, always = false) => {
+    assert.equal(
+      (
+        await f.send(
+          "/api/owner/events/default/booking-rules",
+          { ...rules, disableRescheduling: always, minimumRescheduleNotice: notice },
+          f.ownerHeaders,
+          "PATCH"
+        )
+      ).status,
+      200
+    );
+  };
+  await policy(60);
+  for (const [delta, blocked] of [
+    [hour, false],
+    [hour - 1, true],
+    [hour + 1, false],
+    [0, false],
+    [-1, false],
+  ] as const) {
+    clock = start - delta;
+    assert.equal((await service.view(id, token)).disableRescheduling, blocked);
+    assert.equal((await service.ownerView(id)).disableRescheduling, false);
+    assert.equal((await service.ownerList())[0].disableRescheduling, false);
+    assert.equal(
+      (await service.ownerPage({ filter: "all", before: null })).bookings[0].disableRescheduling,
+      false
+    );
+  }
+  clock = start - hour;
+  assert.ok((await service.availability(start, start + hour, "UTC", { id, token })).length);
+  const remote = f.calendar.events.get(id);
+  assert.ok(remote);
+  f.calendar.events.set(id, { ...remote, summary: "Changed outside the app" });
+  const move = { action: "reschedule", requestKey: crypto.randomUUID(), version: 1, start: start + hour };
+  assert.equal((await service.change(id, token, move)).status, "attention");
+  const frozen = await f.db
+    .prepare("SELECT payload,settings_json,desired_json FROM booking_command WHERE request_key=?")
+    .bind(move.requestKey)
+    .first();
+  assert.ok(frozen);
+  await policy(1440);
+  clock = start - 1;
+  assert.equal(
+    (await service.change(id, token, move)).status,
+    "attention",
+    "Queued replay does not reauthorize notice"
+  );
+  f.calendar.events.set(id, remote);
+  f.calendar.cutAfter = "update";
+  assert.equal((await service.change(id, token, move)).status, "attention");
+  const applied = f.calendar.writes.length;
+  await f.db.prepare("UPDATE event_type SET json='{}' WHERE id='default'").run();
+  assert.equal(
+    (await service.retry(id, token)).status,
+    "confirmed",
+    "Sent replay uses frozen policy even when current policy is corrupt"
+  );
+  assert.equal((await service.create(create)).manageToken, token);
+  assert.equal((await service.change(id, token, move)).start, move.start);
+  assert.equal(f.calendar.writes.length, applied);
+  assert.deepEqual(
+    await f.db
+      .prepare("SELECT payload,settings_json,desired_json FROM booking_command WHERE request_key=?")
+      .bind(move.requestKey)
+      .first(),
+    frozen
+  );
+  assert.equal(
+    String(frozen.payload),
+    JSON.stringify({ action: "reschedule", id, requestKey: move.requestKey, version: 1, start: move.start })
+  );
+  await f.db
+    .prepare("UPDATE event_type SET json=? WHERE id='default'")
+    .bind(JSON.stringify(settings.event))
+    .run();
+  await policy(60);
+  clock = move.start - hour + 1;
+  const stalePage = { ...move, version: 2, requestKey: crypto.randomUUID(), start: move.start + hour };
+  const holds = (await f.db.prepare("SELECT * FROM booking_reservation").all()).results;
+  let reads = 0;
+  const busy = f.calendar.busy.bind(f.calendar);
+  f.calendar.busy = (...args) => {
+    reads++;
+    return busy(...args);
+  };
+  await assert.rejects(service.change(id, token, stalePage), /invalid_slot/);
+  await assert.rejects(
+    service.availability(move.start, move.start + 2 * hour, "UTC", { id, token }),
+    /invalid_slot/
+  );
+  assert.equal(reads, 0);
+  assert.equal(f.calendar.writes.length, applied);
+  assert.deepEqual((await f.db.prepare("SELECT * FROM booking_reservation").all()).results, holds);
+  await policy(null);
+  await assert.rejects(service.change(id, token, stalePage), /invalid_slot/);
+  await policy(1440);
+  assert.ok((await service.ownerAvailability(id, move.start, move.start + 2 * hour, "UTC")).length);
+  const ownerMove = { ...stalePage, requestKey: crypto.randomUUID() };
+  const moved = await service.ownerChange(id, ownerMove);
+  assert.equal(moved.disableRescheduling, false);
+  assert.equal(moved.end - moved.start, hour / 2);
+  assert.equal((await service.ownerChange(id, ownerMove)).disableRescheduling, false);
+  assert.equal((await service.change(id, token, ownerMove)).disableRescheduling, true);
+  assert.equal((await service.ownerRetry(id)).disableRescheduling, false);
+  assert.equal((await service.retry(id, token)).disableRescheduling, true);
+  const writes = f.calendar.writes.length;
+  await policy(0);
+  f.calendar.busy = async (...args) => {
+    await policy(1440);
+    return busy(...args);
+  };
+  await assert.rejects(
+    service.change(id, token, {
+      ...ownerMove,
+      version: 3,
+      requestKey: crypto.randomUUID(),
+      start: ownerMove.start + hour,
+    }),
+    /settings_changed/
+  );
+  assert.equal(f.calendar.writes.length, writes);
+  f.calendar.busy = busy;
+  await policy(60, true);
+  await assert.rejects(
+    service.ownerChange(id, { ...ownerMove, version: 3, requestKey: crypto.randomUUID() }),
+    /invalid_slot/
+  );
+  await policy(60);
+  await f.db.prepare("UPDATE event_type SET lifecycle='removed' WHERE id='default'").run();
+  await assert.rejects(service.ownerAvailability(id, start, start + 4 * hour, "UTC"), /invalid_slot/);
+  await assert.rejects(
+    service.ownerChange(id, { ...ownerMove, version: 3, requestKey: crypto.randomUUID() }),
+    /invalid_slot/
+  );
+});

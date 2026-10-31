@@ -83,6 +83,7 @@ function ownerEvent(value: unknown): OwnerEvent {
     ...Object.keys(defaultSettings.event),
     "disableCancelling",
     "disableRescheduling",
+    "minimumRescheduleNotice",
     "bookingWindowDays",
     "location",
   ]);
@@ -486,11 +487,16 @@ class BookerClient {
   }
   ownerSaveRules(id: string, input: BookingRules): Promise<void> {
     eventPath(id);
-    return this.request(`/api/owner/events/${id}/booking-rules`, saved, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
+    return this.request(
+      `/api/owner/events/${id}/booking-rules`,
+      saved,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+      200
+    );
   }
   slots({
     from,

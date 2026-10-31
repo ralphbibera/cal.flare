@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BookerClient } from "../client/bookings.ts";
 import type { BookingRules } from "../domain/settings.ts";
-import { parseBookingRules } from "../domain/settings.ts";
+import { MAX_RESCHEDULE_NOTICE_MINUTES, parseBookingRules } from "../domain/settings.ts";
 import { Button } from "./Button.tsx";
 import { Input } from "./Input.tsx";
 import { Label } from "./Label.tsx";
@@ -10,6 +10,7 @@ type Labels = Record<
   | keyof BookingRules
   | "limitFutureBookings"
   | "windowHelp"
+  | "limitRescheduling"
   | "heading"
   | "minutes"
   | "save"
@@ -21,6 +22,22 @@ type Labels = Record<
 >;
 
 const client = new BookerClient();
+function readRulesForm(element: HTMLFormElement): BookingRules {
+  const form = new FormData(element);
+  return parseBookingRules({
+    intervalMinutes: Number(form.get("intervalMinutes")),
+    beforeMinutes: Number(form.get("beforeMinutes")),
+    afterMinutes: Number(form.get("afterMinutes")),
+    noticeMinutes: Number(form.get("noticeMinutes")),
+    disableCancelling: form.get("disableCancelling") === "on",
+    disableRescheduling: form.get("disableRescheduling") === "on",
+    minimumRescheduleNotice: form.has("minimumRescheduleNotice")
+      ? Number(form.get("minimumRescheduleNotice"))
+      : null,
+    bookingWindowDays: form.has("bookingWindowDays") ? Number(form.get("bookingWindowDays")) : null,
+  });
+}
+
 export function OwnerBookingRulesEditor({
   eventId,
   rules,
@@ -33,6 +50,12 @@ export function OwnerBookingRulesEditor({
   const active = useRef(0);
   const locked = useRef(true);
   const [limited, setLimited] = useState(typeof rules.bookingWindowDays === "number");
+  const [rescheduling, setRescheduling] = useState<"enabled" | "always" | "notice">(() => {
+    if (rules.disableRescheduling) return "always";
+    if (rules.minimumRescheduleNotice) return "notice";
+    return "enabled";
+  });
+  const [notice, setNotice] = useState(String(rules.minimumRescheduleNotice || 60));
   const [status, setStatus] = useState<"loading" | "idle" | "saving" | "saved" | "invalid" | "failed">(
     "loading"
   );
@@ -58,18 +81,9 @@ export function OwnerBookingRulesEditor({
         onSubmit={async (event) => {
           event.preventDefault();
           if (locked.current) return;
-          const form = new FormData(event.currentTarget);
           let input: BookingRules;
           try {
-            input = parseBookingRules({
-              intervalMinutes: Number(form.get("intervalMinutes")),
-              beforeMinutes: Number(form.get("beforeMinutes")),
-              afterMinutes: Number(form.get("afterMinutes")),
-              noticeMinutes: Number(form.get("noticeMinutes")),
-              disableCancelling: form.get("disableCancelling") === "on",
-              disableRescheduling: form.get("disableRescheduling") === "on",
-              bookingWindowDays: limited ? Number(form.get("bookingWindowDays")) : null,
-            });
+            input = readRulesForm(event.currentTarget);
           } catch {
             setStatus("invalid");
             return;
@@ -114,12 +128,54 @@ export function OwnerBookingRulesEditor({
               />
             </div>
           ))}
-          {(["disableCancelling", "disableRescheduling"] as const).map((key) => (
-            <label key={key} className="flex items-start gap-2 text-sm">
-              <input className="mt-1" name={key} type="checkbox" defaultChecked={rules[key]} />
-              {labels[key]}
-            </label>
-          ))}
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              className="mt-1"
+              name="disableCancelling"
+              type="checkbox"
+              defaultChecked={rules.disableCancelling}
+            />
+            {labels.disableCancelling}
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              className="mt-1"
+              name="disableRescheduling"
+              type="checkbox"
+              checked={rescheduling === "always"}
+              onChange={(event) => setRescheduling(event.currentTarget.checked ? "always" : "enabled")}
+            />
+            {labels.disableRescheduling}
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              className="mt-1"
+              name="limitRescheduling"
+              type="checkbox"
+              checked={rescheduling === "notice"}
+              onChange={(event) => setRescheduling(event.currentTarget.checked ? "notice" : "enabled")}
+              aria-controls="booking-reschedule-notice"
+            />
+            {labels.limitRescheduling}
+          </label>
+          {rescheduling === "notice" && (
+            <div>
+              <Label htmlFor="booking-reschedule-notice">
+                {labels.minimumRescheduleNotice} ({labels.minutes})
+              </Label>
+              <Input
+                id="booking-reschedule-notice"
+                name="minimumRescheduleNotice"
+                type="number"
+                required
+                min={1}
+                max={MAX_RESCHEDULE_NOTICE_MINUTES}
+                step={1}
+                value={notice}
+                onChange={(event) => setNotice(event.currentTarget.value)}
+              />
+            </div>
+          )}
           <label className="flex items-start gap-2 text-sm">
             <input
               className="mt-1"

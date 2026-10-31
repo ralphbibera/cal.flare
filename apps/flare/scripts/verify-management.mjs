@@ -12,6 +12,120 @@ const rescheduleReason = 'Schedule changed\n\n<img src="/unexpected-move" onerro
 );
 const rescheduleDraft = ` \n${rescheduleReason}\t `;
 
+async function verifyMinimumRescheduleNotice(browser, fixture) {
+  const owner = await fixture.login();
+  const rules = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+    minimumRescheduleNotice: 10080,
+  };
+  for (const width of [390, 1280]) {
+    await fixture.read(await fixture.send("/api/owner", fixture.settings, owner, "PUT"));
+    const context = await browser.newContext({ viewport: { width, height: 900 }, timezoneId: "UTC" });
+    try {
+      await context.addCookies([
+        { name: "flare_session", value: owner.Cookie.split("=")[1], url: fixture.origin },
+      ]);
+      const page = await context.newPage();
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      const day = new Date();
+      day.setUTCDate(day.getUTCDate() + 2);
+      day.setUTCHours(0, 0, 0, 0);
+      await page.clock.install({ time: day });
+      await page.goto(fixture.origin);
+      const form = page.getByRole("form", { name: "Booking rules", exact: true });
+      const notice = form.getByRole("checkbox", {
+        name: "Limit attendee rescheduling before the event",
+        exact: true,
+      });
+      const save = form.getByRole("button", { name: "Save", exact: true });
+      await notice.check();
+      await form
+        .getByRole("spinbutton", { name: "Minimum reschedule notice (Minutes)", exact: true })
+        .fill(String(rules.minimumRescheduleNotice));
+      await save.click();
+      await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+      await page.reload();
+      assert.equal(await notice.isChecked(), true);
+      await page.goto(`${fixture.origin}/${fixture.settings.event.slug}`);
+      await page.getByTestId("time").first().click();
+      await page.getByLabel("Your name*", { exact: true }).fill("Notice guest");
+      await page.getByLabel("Email address*", { exact: true }).fill(`notice-${width}@example.test`);
+      const creation = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/events/default/bookings") && response.request().method() === "POST"
+      );
+      await page.getByRole("button", { name: "Confirm", exact: true }).click();
+      const created = await (await creation).json();
+      await page.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
+      const move = page.getByRole("button", { name: "Reschedule", exact: true });
+      assert.equal(await move.count(), 0);
+      const link = `${fixture.origin}/booking/${created.id}#token=${created.manageToken}`;
+      await page.goto(link);
+      await page.getByRole("button", { name: "Check booking status", exact: true }).waitFor();
+      assert.equal(await move.count(), 0);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.goto(`${fixture.origin}/owner/bookings/${created.id}`);
+      await move.click();
+      const selection = page.getByTestId("time").nth(2);
+      const next = Date.parse(await selection.getAttribute("data-time"));
+      await selection.click();
+      await page.getByRole("button", { name: "Confirm", exact: true }).click();
+      await move.waitFor();
+      const auth = { Authorization: `Bearer ${created.manageToken}` };
+      const moved = await fixture.read(
+        await fixture.request(`/api/bookings/${created.id}`, { headers: auth })
+      );
+      assert.equal(moved.start, next);
+      assert.equal(moved.end - moved.start, created.end - created.start);
+      for (const key of ["id", "title", "name", "email", "timeZone"]) assert.equal(moved[key], created[key]);
+      assert.equal(moved.disableRescheduling, true);
+      await page.goto(fixture.origin);
+      await notice.uncheck();
+      await save.click();
+      await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+      await page.reload();
+      assert.equal(await notice.isChecked(), false);
+      const current = await fixture.read(await fixture.request("/api/owner", { headers: owner }));
+      assert.equal(Object.hasOwn(current.settings.event, "minimumRescheduleNotice"), false);
+      await page.goto(link);
+      await move.click();
+      await page.getByTestId("time").nth(3).click();
+      await page.getByRole("textbox", { name: "Reason for reschedule", exact: true }).fill("Notice removed");
+      const changed = page.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/bookings/${created.id}`) && response.request().method() === "POST"
+      );
+      await move.click();
+      const response = await changed;
+      assert.equal(response.status(), 200);
+      const request = response.request().postDataJSON();
+      const writes = fixture.google.writes.length;
+      await fixture.read(await fixture.send(`/api/bookings/${created.id}`, request, auth));
+      assert.equal(fixture.google.writes.length, writes);
+      await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+      await page
+        .getByRole("textbox", { name: "Reason for cancellation (optional)", exact: true })
+        .fill("Finished local notice check");
+      await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+      await page.getByRole("heading", { name: "Canceled", exact: true }).waitFor();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+      await fixture.read(await fixture.send("/api/owner", fixture.settings, owner, "PUT"));
+    }
+  }
+  console.log(
+    "PASS minimum reschedule notice configure/reload/reset, new booking, blocked attendee, exempt owner move, historical facts, restored attendee move, exact replay and cancellation at 390/1280. Built Worker/local D1; Google is mocked."
+  );
+}
+
 async function verifyPresentation(page, width) {
   await page.evaluate(() => document.fonts.ready);
   const metrics = await page.locator("section:has(> dl)").evaluate((card) => {
@@ -826,3 +940,5 @@ export async function verifyManagement(browser, fixture, date) {
     await context.close();
   }
 }
+
+export { verifyMinimumRescheduleNotice };
