@@ -20,10 +20,10 @@ env:
   WRANGLER_SEND_METRICS: false
 
 jobs:
-  checks:
-    name: Astro and Workers checks
+  integration:
+    name: Node and D1 tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +41,20 @@ jobs:
         run: node .yarn/releases/yarn-4.12.0.cjs test
       - name: Verify SQLite reservations
         run: node .yarn/releases/yarn-4.12.0.cjs test:sqlite
+
+  browser:
+    name: Worker and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: Install with Yarn 4.12.0
+        run: node .yarn/releases/yarn-4.12.0.cjs install --immutable
       - name: Build
         run: node .yarn/releases/yarn-4.12.0.cjs build
       - name: Verify built Worker
@@ -51,3 +65,16 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin 0f19cc46ef6b6426ee398c670575b3c96be7af9e
           node .yarn/releases/yarn-4.12.0.cjs verify:ui
+
+  checks:
+    name: Astro and Workers checks
+    if: ${{ always() }}
+    needs: [integration, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    env:
+      INTEGRATION_RESULT: ${{ needs.integration.result }}
+      BROWSER_RESULT: ${{ needs.browser.result }}
+    steps:
+      - name: Require both verification lanes
+        run: test "$INTEGRATION_RESULT" = success && test "$BROWSER_RESULT" = success
