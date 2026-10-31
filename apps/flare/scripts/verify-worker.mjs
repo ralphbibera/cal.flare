@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -75,9 +75,9 @@ async function createWorkerFixture({ port = 8794, fixedTime } = {}) {
       "0007_availability_schedules.sql",
       "0008_public_profile.sql",
     ];
-    const sql = await Promise.all(migrations.map((name) => readFile(join(app, "migrations", name), "utf8")));
+    const sql = await Promise.all(migrations.map((name) => Bun.file(join(app, "migrations", name)).text()));
     const migrationFile = join(temporary, "migrations.sql");
-    await writeFile(migrationFile, sql.join("\n"));
+    await Bun.write(migrationFile, sql.join("\n"));
     await promisify(execFile)(
       process.execPath,
       [

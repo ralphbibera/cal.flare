@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 1665e022c0aa62a80f23557013ab2362f0e6bf69..b91656a86b638b194cde539e3fc1f8d9476a460d 100644
+--- a/package.json
++++ b/package.json
+@@ -4,7 +4,7 @@
+   "description": "👷 workerd, Cloudflare's JavaScript/Wasm Runtime",
+   "repository": "https://github.com/cloudflare/workerd",
+   "scripts": {
+-    "postinstall": "node install.js"
++    "postinstall": "bun install.js"
+   },
+   "main": "lib/main.js",
+   "engines": {

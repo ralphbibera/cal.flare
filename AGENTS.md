@@ -29,20 +29,28 @@ Explain necessary complexity increases and verify the relevant behavior.
 
 ## Verify with existing local tools
 
-Use the Node version pinned in `mise.toml` and the bundled Yarn release.
-Prefix commands with `mise exec --` when the pinned Node version is not active.
+Use Bun 1.4.4, pinned in `package.json` and `mise.toml`, for installation and
+JavaScript/TypeScript tooling. Install with `bun install --frozen-lockfile`.
+Prefix commands with `mise exec --` when the pinned Bun version is not active.
+The root and app `bunfig.toml` files force Bun for tools with Node shebangs. Preserve Bun in child
+processes. Workerd, Chromium, and Python retain their respective execution roles.
+Prefer TypeScript and Bun APIs for new active-app tooling. Validate untrusted inputs at their
+boundary, keep them `unknown` until parsed, and derive types from existing schemas.
 Run these commands from the repository root:
 
 ```sh
-node .yarn/releases/yarn-4.12.0.cjs lint
-node .yarn/releases/yarn-4.12.0.cjs type-check:ci --force
-node .yarn/releases/yarn-4.12.0.cjs test
+bun run lint
+bun run type-check:ci --force
+bun run test
 ```
 
 During iteration, run Biome on the files you changed.
 Run type checks for source changes and tests for affected behavior before publishing.
 For documentation or lint configuration, check the changed artifact and exercise any changed rule.
 Use the development guide's existing build, Worker, and browser checks when the change needs them.
+For reservation invariants or migrations, use the existing
+[reservation verification skill](.agents/skills/verify-booking-reservations/SKILL.md)
+and `/maintain-formal-verification-skill` when its covered implementation changes.
 Distinguish local fixtures from native parity, live provider delivery, and deployed behavior.
 Report failed or unavailable checks and their limits. Do not weaken checks to obtain a pass.
 Prefer free local verification. Add tools only when existing checks leave a concrete gap.

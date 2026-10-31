@@ -490,16 +490,16 @@ test("schedule validation precedes busy checks and preserves override date and r
 
 test("invalid override collections preserve native iteration errors", () => {
   const cases: [unknown, string][] = [
-    [{}, "object"],
-    [0, "number 0"],
-    [true, "boolean true"],
+    [{}, "{}"],
+    [0, "number"],
+    [true, "true"],
   ];
   for (const [overrides, prefix] of cases) {
     const value = input();
     Object.defineProperty(value.schedule, "overrides", { value: overrides });
     assert.throws(() => availableSlots(value), {
       name: "TypeError",
-      message: `${prefix} is not iterable (cannot read property Symbol(Symbol.iterator))`,
+      message: `${prefix} is not iterable`,
     });
   }
 });

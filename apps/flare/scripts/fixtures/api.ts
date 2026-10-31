@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -162,12 +162,14 @@ export async function apiFixture({
     }
   };
   try {
-    const migrate = async (...names: string[]) => {
-      const sql = await Promise.all(
-        names.map((name) => readFile(new URL(`../../migrations/${name}`, import.meta.url), "utf8"))
-      );
+    const migrate = async (name: string, ...remaining: string[]) => {
       const migrationFile = join(temporary, "migrations.sql");
-      await writeFile(migrationFile, sql.join("\n"));
+      const sql = await Promise.all(
+        [name, ...remaining].map((file) =>
+          Bun.file(new URL(`../../migrations/${file}`, import.meta.url)).text()
+        )
+      );
+      await Bun.write(migrationFile, sql.join("\n"));
       await promisify(execFile)(process.execPath, [
         wrangler,
         "d1",
