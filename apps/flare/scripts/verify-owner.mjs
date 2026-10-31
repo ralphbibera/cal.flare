@@ -1074,7 +1074,12 @@ export async function verifyBookingRulesEditor(browser, fixture) {
     };
     assert.deepEqual(
       requests,
-      Array.from({ length: 4 }, () => ({ ...rules, bookingWindowDays: null, minimumRescheduleNotice: 600 }))
+      Array.from({ length: 4 }, () => ({
+        ...rules,
+        bookingWindowDays: null,
+        bookingWindowRange: null,
+        minimumRescheduleNotice: 600,
+      }))
     );
     await page.reload();
     assert.equal(await field("Time-slot intervals").inputValue(), "60");

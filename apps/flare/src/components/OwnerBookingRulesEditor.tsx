@@ -10,6 +10,10 @@ type Labels = Record<
   | keyof BookingRules
   | "limitFutureBookings"
   | "windowHelp"
+  | "unlimited"
+  | "rangeStart"
+  | "rangeEnd"
+  | "rangeHelp"
   | "limitRescheduling"
   | "heading"
   | "minutes"
@@ -35,21 +39,30 @@ function readRulesForm(element: HTMLFormElement): BookingRules {
       ? Number(form.get("minimumRescheduleNotice"))
       : null,
     bookingWindowDays: form.has("bookingWindowDays") ? Number(form.get("bookingWindowDays")) : null,
+    bookingWindowRange: form.has("rangeStart")
+      ? { start: form.get("rangeStart"), end: form.get("rangeEnd") }
+      : null,
   });
 }
 
 export function OwnerBookingRulesEditor({
   eventId,
   rules,
+  timeZone,
   labels,
 }: {
   eventId: string;
   rules: BookingRules;
+  timeZone: string;
   labels: Labels;
 }) {
   const active = useRef(0);
   const locked = useRef(true);
-  const [limited, setLimited] = useState(typeof rules.bookingWindowDays === "number");
+  const [windowMode, setWindowMode] = useState(() => {
+    if (rules.bookingWindowRange) return "range";
+    if (typeof rules.bookingWindowDays === "number") return "rolling";
+    return "unlimited";
+  });
   const [rescheduling, setRescheduling] = useState<"enabled" | "always" | "notice">(() => {
     if (rules.disableRescheduling) return "always";
     if (rules.minimumRescheduleNotice) return "notice";
@@ -68,7 +81,7 @@ export function OwnerBookingRulesEditor({
   }, []);
   return (
     <section className="border-subtle border-t pt-6">
-      <h2 id="owner-booking-rules-title" className="text-emphasis mb-4 font-semibold">
+      <h2 id="owner-booking-rules-title" className="mb-4 font-semibold text-emphasis">
         {labels.heading}
       </h2>
       <form
@@ -176,18 +189,20 @@ export function OwnerBookingRulesEditor({
               />
             </div>
           )}
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              className="mt-1"
-              name="limitFutureBookings"
-              type="checkbox"
-              checked={limited}
-              onChange={(event) => setLimited(event.currentTarget.checked)}
-              aria-controls="booking-window-days"
-            />
-            {labels.limitFutureBookings}
-          </label>
-          {limited && (
+          <div>
+            <Label htmlFor="booking-window-mode">{labels.limitFutureBookings}</Label>
+            <select
+              id="booking-window-mode"
+              name="windowMode"
+              className="w-full rounded-md border border-subtle bg-default p-2 text-default"
+              value={windowMode}
+              onChange={(event) => setWindowMode(event.currentTarget.value)}>
+              <option value="unlimited">{labels.unlimited}</option>
+              <option value="rolling">{labels.bookingWindowDays}</option>
+              <option value="range">{labels.bookingWindowRange}</option>
+            </select>
+          </div>
+          {windowMode === "rolling" && (
             <div>
               <Label htmlFor="booking-window-days">{labels.bookingWindowDays}</Label>
               <Input
@@ -201,8 +216,37 @@ export function OwnerBookingRulesEditor({
                 step={1}
                 aria-describedby="booking-window-help"
               />
-              <p id="booking-window-help" className="text-subtle mt-2 text-sm">
+              <p id="booking-window-help" className="mt-2 text-sm text-subtle">
                 {labels.windowHelp}
+              </p>
+            </div>
+          )}
+          {windowMode === "range" && (
+            <div className="space-y-2">
+              <Label htmlFor="booking-range-start">{labels.rangeStart}</Label>
+              <Input
+                id="booking-range-start"
+                name="rangeStart"
+                type="date"
+                required
+                min="2000-01-01"
+                max="2099-12-31"
+                defaultValue={rules.bookingWindowRange?.start ?? ""}
+                aria-describedby="booking-range-help"
+              />
+              <Label htmlFor="booking-range-end">{labels.rangeEnd}</Label>
+              <Input
+                id="booking-range-end"
+                name="rangeEnd"
+                type="date"
+                required
+                min="2000-01-01"
+                max="2099-12-31"
+                defaultValue={rules.bookingWindowRange?.end ?? ""}
+                aria-describedby="booking-range-help"
+              />
+              <p id="booking-range-help" className="text-sm text-subtle">
+                {labels.rangeHelp.replace("{{timeZone}}", timeZone)}
               </p>
             </div>
           )}

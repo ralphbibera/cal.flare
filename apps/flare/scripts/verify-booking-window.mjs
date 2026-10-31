@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { createWorkerFixture } from "./verify-worker.mjs";
 
-export async function verifyBookingWindow(browser) {
+async function verifyBookingWindow(browser) {
   const fixedTime = Date.parse("2030-01-09T12:00:00Z");
   const fixture = await createWorkerFixture({ port: 8797, fixedTime });
   let context;
@@ -43,12 +43,12 @@ export async function verifyBookingWindow(browser) {
     });
     await page.goto(fixture.origin);
     const form = page.getByRole("form", { name: "Booking rules", exact: true });
-    const limit = form.getByRole("checkbox", { name: "Limit future bookings", exact: true });
+    const limit = form.getByRole("combobox", { name: "Limit future bookings", exact: true });
     const days = form.getByRole("spinbutton", { name: "Calendar days into the future", exact: true });
     const save = form.getByRole("button", { name: "Save", exact: true });
     await expect(limit).toBeEnabled();
-    await expect(limit).not.toBeChecked();
-    await limit.check();
+    await expect(limit).toHaveValue("unlimited");
+    await limit.selectOption("rolling");
     await expect(days).toHaveValue("30");
     for (const value of ["0", "366", "1.5", ""]) {
       await days.fill(value);
@@ -65,7 +65,7 @@ export async function verifyBookingWindow(browser) {
     await save.click();
     await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
     await expect(days).toHaveValue("7");
-    await expect(limit).toBeChecked();
+    await expect(limit).toHaveValue("rolling");
     await save.click();
     await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
     assert.deepEqual(
@@ -80,7 +80,7 @@ export async function verifyBookingWindow(browser) {
     await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
     await page.reload();
     await expect(days).toHaveValue("30");
-    await expect(limit).toBeChecked();
+    await expect(limit).toHaveValue("rolling");
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -140,18 +140,19 @@ export async function verifyBookingWindow(browser) {
     assert.equal(booking.start, finalDay.getTime() + 9.5 * 3_600_000);
     assert.equal(booking.status, "confirmed");
     await publicPage.getByRole("heading", { name: "This meeting is scheduled", exact: true }).waitFor();
-    await limit.uncheck();
+    await limit.selectOption("unlimited");
     await save.click();
     await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
     assert.equal(saves.at(-1).bookingWindowDays, null);
     await page.reload();
-    await expect(limit).not.toBeChecked();
+    await expect(limit).toHaveValue("unlimited");
     await expect(days).toHaveCount(0);
     const persisted = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
     assert.equal(Object.hasOwn(persisted.event, "bookingWindowDays"), false);
     assert.deepEqual(persisted.schedule, configured.schedule);
     assert.equal((await fixture.read(await fixture.request(`/api/slots?${nextQuery}`))).slots.length, 2);
     assert.equal(fixture.google.writes.length, 1);
+    await verifyFixedRange(page, fixture, owner, finalDay.toISOString().slice(0, 10));
     assert.deepEqual(errors, []);
     assert.deepEqual(fixture.upstreamFailures, []);
     assert.deepEqual(fixture.google.denied, []);
@@ -166,3 +167,62 @@ export async function verifyBookingWindow(browser) {
     }
   }
 }
+
+async function verifyFixedRange(page, fixture, owner, date) {
+  const form = page.getByRole("form", { name: "Booking rules", exact: true });
+  const mode = form.getByRole("combobox", { name: "Limit future bookings", exact: true });
+  const start = form.getByLabel("First bookable date", { exact: true });
+  const end = form.getByLabel("Last bookable date", { exact: true });
+  const save = form.getByRole("button", { name: "Save", exact: true });
+  await mode.selectOption("range");
+  await start.fill(date);
+  await end.fill(date);
+  await expect(form.getByText(/Include both dates in UTC,/)).toBeVisible();
+  for (const [status, body] of [
+    [503, "{}"],
+    [201, '{"saved":true}'],
+    [200, '{"saved":false}'],
+  ]) {
+    await page.route(
+      "**/api/owner/events/default/booking-rules",
+      (route) => route.fulfill({ status, contentType: "application/json", body }),
+      { times: 1 }
+    );
+    await save.click();
+    await form.getByRole("alert").filter({ hasText: "Your draft is still here" }).waitFor();
+    await expect(start).toHaveValue(date);
+    await expect(end).toHaveValue(date);
+    await expect(mode).toHaveValue("range");
+  }
+  await save.click();
+  await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+  await page.reload();
+  await expect(mode).toHaveValue("range");
+  await expect(start).toHaveValue(date);
+  const settings = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+  assert.deepEqual(settings.event.bookingWindowRange, { start: date, end: date });
+  assert.equal(Object.hasOwn(settings.event, "bookingWindowDays"), false);
+  const publicPage = await page.context().newPage();
+  try {
+    await publicPage.clock.install({ time: Date.parse("2030-01-09T12:00:00Z") });
+    await publicPage.goto(`${fixture.origin}/${settings.event.slug}`);
+    const month = publicPage.getByTestId("selected-month-label");
+    await expect(month).toHaveAttribute("datetime", "2030-02");
+    await expect(publicPage.getByRole("button", { name: "7", exact: true })).toBeDisabled();
+    await publicPage.getByRole("button", { name: "8", exact: true }).click();
+    await expect(publicPage.getByTestId("time")).toHaveCount(1);
+    await expect(publicPage.getByRole("button", { name: "9", exact: true })).toBeDisabled();
+  } finally {
+    await publicPage.close();
+  }
+  await mode.selectOption("rolling");
+  await save.click();
+  await form.getByRole("status").filter({ hasText: "Saved" }).waitFor();
+  await page.reload();
+  await expect(mode).toHaveValue("rolling");
+  await expect(start).toHaveCount(0);
+  const current = (await fixture.read(await fixture.request("/api/owner", { headers: owner }))).settings;
+  assert.equal(Object.hasOwn(current.event, "bookingWindowRange"), false);
+}
+
+export { verifyBookingWindow };

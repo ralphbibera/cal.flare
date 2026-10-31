@@ -284,9 +284,9 @@ Listing still rounds display minutes in the query timezone. A valid availability
 beyond the window returns an empty list. Stale selected times fail fresh admission.
 Moves validate the exact selected interval without rounding it again in the stored timezone.
 Fresh creates retain their existing grid-alignment requirement.
-Disabling the checkbox removes the optional canonical `event.bookingWindowDays` key. Omission
+Selecting **Unlimited** removes the optional canonical `event.bookingWindowDays` key. Omission
 keeps legacy settings bytes and the existing 365-day transport/admission ceiling. That ceiling
-continues to apply even with a configured window. No business-day, available-day, fixed-range
+continues to apply even with a configured window. No business-day, available-day,
 or custom-calendar modes are implemented.
 
 Booking-rules PATCH accepts optional `bookingWindowDays`. Omission preserves the stored limit,
@@ -299,6 +299,13 @@ Node/D1 coverage checks literal date boundaries, DST, serialization and admissio
 The existing built Worker browser runner checks the owner control at 390px and 1280px and a
 public selection through confirmation. Google is mocked. Live invitations, imports, deployed
 behavior, native editor pixels and full-port completion are not established by these checks.
+
+**Fixed date range** accepts first and last bookable dates in the resolved availability schedule timezone shown beside the controls.
+Both dates are inclusive. Only the appointment start date is restricted, including across DST and visitor timezone changes.
+`event.bookingWindowRange` contains exactly `{ start: "YYYY-MM-DD", end: "YYYY-MM-DD" }` with real dates within 2000..2099 and start no later than end.
+Rolling and fixed windows are mutually exclusive. Booking-rules PATCH omission preserves each field and `null` removes it.
+The editor explicitly clears the inactive field on mode changes. Full settings PUT replaces the policy. Event duplication copies it.
+Accepted recovery uses the frozen range and schedule. The existing `verify:ui` journey checks fixed-range mode changes, failed-save drafts, reloads, and public date/slot limits through `verify-booking-window.mjs` with local Worker/D1 and mocked Google.
 
 ## Public booking
 

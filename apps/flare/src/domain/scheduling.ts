@@ -1,3 +1,7 @@
+import { bookingWindow } from "./booking-window.ts";
+import type { BookingWindowRange } from "./settings.ts";
+import { parseBookingWindowRange } from "./settings.ts";
+
 type Interval = { start: number; end: number };
 type WorkingRule = { weekday: number; startMinute: number; endMinute: number };
 type WorkingRange = Pick<WorkingRule, "startMinute" | "endMinute">;
@@ -13,6 +17,7 @@ type SlotPolicy = {
   afterMinutes: number;
   noticeMinutes: number;
   bookingWindowDays?: number;
+  bookingWindowRange?: BookingWindowRange;
 };
 type AvailabilityInput = {
   schedule: Schedule;
@@ -61,6 +66,11 @@ function validatePolicy(policy: SlotPolicy): void {
   integer(policy.durationMinutes, 1, 1440, "durationMinutes");
   integer(policy.intervalMinutes, 1, 1440, "intervalMinutes");
   if (policy.bookingWindowDays !== undefined) integer(policy.bookingWindowDays, 1, 365, "bookingWindowDays");
+  if (policy.bookingWindowRange !== undefined) {
+    parseBookingWindowRange(policy.bookingWindowRange);
+    if (policy.bookingWindowDays !== undefined)
+      throw new RangeError("Booking windows are mutually exclusive");
+  }
   for (const value of [policy.beforeMinutes, policy.afterMinutes, policy.noticeMinutes]) {
     integer(value, 0, 31 * 1440, "buffer or notice minutes");
   }
@@ -218,22 +228,7 @@ function availableSlots(input: AvailabilityInput): Interval[] {
   });
   const slots: Interval[] = [];
   const duration = policy.durationMinutes * MINUTE;
-  const windowDate = new Intl.DateTimeFormat("en-US", {
-    timeZone: input.windowTimeZone ?? input.visitorTimeZone,
-    calendar: "gregory",
-    numberingSystem: "latn",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  });
-  const calendarDay = (timestamp: number) => {
-    const fields = Object.fromEntries(
-      windowDate.formatToParts(timestamp).map((part) => [part.type, part.value])
-    );
-    return Date.UTC(Number(fields.year), Number(fields.month) - 1, Number(fields.day));
-  };
-  const lastDay =
-    policy.bookingWindowDays === undefined ? undefined : calendarDay(now) + policy.bookingWindowDays * DAY;
+  const windowPosition = bookingWindow(input);
   for (const range of free) {
     let start = Math.ceil(Math.max(range.start, now + policy.noticeMinutes * MINUTE) / MINUTE) * MINUTE;
     if (start + duration > range.end) continue;
@@ -244,7 +239,9 @@ function availableSlots(input: AvailabilityInput): Interval[] {
     const previous = slots.at(-1);
     if (previous) start = Math.max(start, previous.start + policy.intervalMinutes * MINUTE);
     for (; start + duration <= range.end; start += policy.intervalMinutes * MINUTE) {
-      if (lastDay !== undefined && calendarDay(start) > lastDay) break;
+      const position = windowPosition(start);
+      if (position === "after") break;
+      if (position === "before") continue;
       slots.push({ start, end: start + duration });
     }
   }

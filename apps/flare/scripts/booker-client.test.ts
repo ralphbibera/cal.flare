@@ -5,6 +5,62 @@ import { calendarExport } from "../src/client/calendar-export.ts";
 import { defaultSettings } from "../src/domain/settings.ts";
 import { apiFixture, hour } from "./fixtures/api.ts";
 
+test("client decodes optional fixed ranges strictly and only acknowledges rules with a valid HTTP 200", async () => {
+  const valid = { start: "2030-01-20", end: "2030-01-21" };
+  const entry = {
+    id: "default",
+    lifecycle: "listed",
+    event: { ...defaultSettings.event, bookingWindowRange: valid },
+  };
+  assert.deepEqual(await new BookerClient(async () => Response.json({ events: [entry] })).ownerEvents(), [
+    entry,
+  ]);
+  for (const bookingWindowRange of [
+    null,
+    "2030-01-20",
+    {},
+    { start: "2030-01-20" },
+    { ...valid, extra: true },
+    { ...valid, end: "2030-02-30" },
+  ]) {
+    const value = { ...entry, event: { ...entry.event, bookingWindowRange } };
+    await assert.rejects(
+      new BookerClient(async () => Response.json({ events: [value] })).ownerEvents(),
+      /invalid_response/
+    );
+    await assert.rejects(
+      new BookerClient(async () =>
+        Response.json({ ...defaultSettings, event: value.event, organizer: { name: "Owner" } })
+      ).publicData(),
+      /invalid_response/
+    );
+  }
+  const input = {
+    intervalMinutes: 30,
+    beforeMinutes: 0,
+    afterMinutes: 0,
+    noticeMinutes: 0,
+    disableCancelling: false,
+    disableRescheduling: false,
+    bookingWindowDays: null,
+    bookingWindowRange: valid,
+  };
+  for (const [status, value] of [
+    [503, {}],
+    [201, { saved: true }],
+    [200, {}],
+    [200, { saved: true, extra: true }],
+  ] as const)
+    await assert.rejects(
+      new BookerClient(async () => Response.json(value, { status })).ownerSaveRules("default", input),
+      ErrorWithCode
+    );
+  await new BookerClient(async (_path, init) => {
+    assert.deepEqual(JSON.parse(String(init.body)), input);
+    return Response.json({ saved: true });
+  }).ownerSaveRules("default", input);
+});
+
 test("schedule transport rejects malformed private catalogs and binds records to stable IDs", async () => {
   const id = crypto.randomUUID(),
     other = crypto.randomUUID();

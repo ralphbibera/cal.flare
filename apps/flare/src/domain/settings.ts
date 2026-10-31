@@ -1,3 +1,4 @@
+type BookingWindowRange = { start: string; end: string };
 type EventSettings = {
   slug: string;
   title: string;
@@ -11,6 +12,7 @@ type EventSettings = {
   disableRescheduling?: boolean;
   minimumRescheduleNotice?: number;
   bookingWindowDays?: number;
+  bookingWindowRange?: BookingWindowRange;
   location?: string;
 };
 
@@ -40,7 +42,11 @@ type MinuteRange = { startMinute: number; endMinute: number };
 type EventDetails = Pick<EventSettings, "slug" | "title" | "description" | "durationMinutes" | "location">;
 type OptionalEventPolicy = Pick<
   EventSettings,
-  "disableCancelling" | "disableRescheduling" | "bookingWindowDays" | "minimumRescheduleNotice"
+  | "disableCancelling"
+  | "disableRescheduling"
+  | "bookingWindowDays"
+  | "bookingWindowRange"
+  | "minimumRescheduleNotice"
 >;
 type BookingRules = Required<
   Pick<
@@ -52,7 +58,11 @@ type BookingRules = Required<
     | "disableCancelling"
     | "disableRescheduling"
   >
-> & { bookingWindowDays?: number | null; minimumRescheduleNotice?: number | null };
+> & {
+  bookingWindowDays?: number | null;
+  bookingWindowRange?: BookingWindowRange | null;
+  minimumRescheduleNotice?: number | null;
+};
 type Settings = {
   event: EventSettings;
   schedule: {
@@ -165,7 +175,31 @@ function parseOptionalEventPolicy(event: Record<string, unknown>): OptionalEvent
   if (Object.hasOwn(event, "minimumRescheduleNotice")) {
     policy.minimumRescheduleNotice = rescheduleNotice(event.minimumRescheduleNotice);
   }
+  if (Object.hasOwn(event, "bookingWindowRange")) {
+    policy.bookingWindowRange = parseBookingWindowRange(event.bookingWindowRange);
+    if (policy.bookingWindowDays !== undefined)
+      throw new SettingsError("Booking windows are mutually exclusive");
+  }
   return policy;
+}
+
+function bookingDate(input: unknown): string {
+  if (typeof input !== "string" || !/^20\d{2}-\d{2}-\d{2}$/.test(input))
+    throw new SettingsError("Booking dates require YYYY-MM-DD within 2000..2099");
+  const parsed = new Date(`${input}T00:00:00Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== input)
+    throw new SettingsError("Booking dates must be real calendar dates");
+  return input;
+}
+
+function parseBookingWindowRange(input: unknown): BookingWindowRange {
+  const value = object(input, "bookingWindowRange");
+  if (Object.keys(value).some((key) => !["start", "end"].includes(key)))
+    throw new SettingsError("Booking date range requires only start and end");
+  const start = bookingDate(value.start),
+    end = bookingDate(value.end);
+  if (start > end) throw new SettingsError("Booking date range start must not follow end");
+  return { start, end };
 }
 
 function parseDatedOverrides(input: unknown): ScheduleOverrides["overrides"] {
@@ -323,6 +357,7 @@ function parseBookingRules(input: unknown): BookingRules {
           "disableCancelling",
           "disableRescheduling",
           "bookingWindowDays",
+          "bookingWindowRange",
           "minimumRescheduleNotice",
         ].includes(key)
     ) ||
@@ -343,6 +378,8 @@ function parseBookingRules(input: unknown): BookingRules {
       disableRescheduling,
     },
   }).event;
+  if (value.bookingWindowDays != null && value.bookingWindowRange != null)
+    throw new SettingsError("Booking windows are mutually exclusive");
   return {
     intervalMinutes: event.intervalMinutes,
     beforeMinutes: event.beforeMinutes,
@@ -364,11 +401,18 @@ function parseBookingRules(input: unknown): BookingRules {
               : integer(value.bookingWindowDays, "bookingWindowDays", 1, 365),
         }
       : {}),
+    ...(Object.hasOwn(value, "bookingWindowRange")
+      ? {
+          bookingWindowRange:
+            value.bookingWindowRange === null ? null : parseBookingWindowRange(value.bookingWindowRange),
+        }
+      : {}),
   };
 }
 
 export type {
   BookingRules,
+  BookingWindowRange,
   EventDetails,
   EventSettings,
   OwnerEvent,
@@ -384,6 +428,7 @@ export {
   isEventId,
   defaultSettings,
   parseBookingRules,
+  parseBookingWindowRange,
   parseConflictCalendarIds,
   parseConflictCalendars,
   parseEventDetails,

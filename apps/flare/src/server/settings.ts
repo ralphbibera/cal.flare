@@ -346,7 +346,25 @@ async function saveBookingRules(
   id: string = DEFAULT_EVENT_ID
 ): Promise<void> {
   const rules = parseBookingRules(input);
-  const { bookingWindowDays, minimumRescheduleNotice } = rules;
+  const { bookingWindowDays, bookingWindowRange, minimumRescheduleNotice } = rules;
+  const current = await readSettings(db, id);
+  if (!current || current.lifecycle === "removed") throw new ErrorWithCode("not_found", 404);
+  const merged = { ...storedSettings(current).event, ...rules };
+  const {
+    bookingWindowDays: days,
+    bookingWindowRange: fixed,
+    minimumRescheduleNotice: notice,
+    ...event
+  } = merged;
+  parseSettings({
+    ...defaultSettings,
+    event: {
+      ...event,
+      ...(days == null ? {} : { bookingWindowDays: days }),
+      ...(fixed == null ? {} : { bookingWindowRange: fixed }),
+      ...(notice == null ? {} : { minimumRescheduleNotice: notice }),
+    },
+  });
   const timing = [
     rules.intervalMinutes,
     rules.beforeMinutes,
@@ -355,30 +373,35 @@ async function saveBookingRules(
     rules.disableCancelling,
     rules.disableRescheduling,
   ].map((value) => JSON.stringify(value));
-  await eventWrite(
-    db
-      .prepare(`WITH updated AS MATERIALIZED (
-      SELECT json_set(json_remove(json,'$.disableCancelling','$.disableRescheduling','$.bookingWindowDays','$.location','$.minimumRescheduleNotice'),
+  const result = await db
+    .prepare(`WITH updated AS MATERIALIZED (
+      SELECT json_set(json_remove(json,'$.disableCancelling','$.disableRescheduling','$.bookingWindowDays','$.bookingWindowRange','$.location','$.minimumRescheduleNotice'),
         '$.intervalMinutes',json(?),'$.beforeMinutes',json(?),'$.afterMinutes',json(?),'$.noticeMinutes',json(?),
         '$.disableCancelling',json(?),'$.disableRescheduling',json(?)) AS timing,
         CASE WHEN ? THEN ? ELSE json -> '$.bookingWindowDays' END AS window_json,
+        CASE WHEN ? THEN ? ELSE json -> '$.bookingWindowRange' END AS range_json,
         CASE WHEN ? THEN ? ELSE json -> '$.minimumRescheduleNotice' END AS notice_json,
         json -> '$.location' AS location_json FROM event_type WHERE id=?)
       UPDATE event_type SET json=(SELECT substr(timing,1,length(timing)-1)
         || CASE WHEN window_json IS NULL THEN '' ELSE ',"bookingWindowDays":'||window_json END
         || CASE WHEN notice_json IS NULL THEN '' ELSE ',"minimumRescheduleNotice":'||notice_json END
+        || CASE WHEN range_json IS NULL THEN '' ELSE ',"bookingWindowRange":'||range_json END
         || CASE WHEN location_json IS NULL THEN '' ELSE ',"location":'||location_json END || '}' FROM updated),
-        version=version+1 WHERE id=? AND lifecycle <> 'removed'`)
-      .bind(
-        ...timing,
-        Object.hasOwn(rules, "bookingWindowDays") ? 1 : 0,
-        bookingWindowDays == null ? null : JSON.stringify(bookingWindowDays),
-        Object.hasOwn(rules, "minimumRescheduleNotice") ? 1 : 0,
-        minimumRescheduleNotice == null ? null : JSON.stringify(minimumRescheduleNotice),
-        eventId(id),
-        eventId(id)
-      )
-  );
+        version=version+1 WHERE id=? AND lifecycle <> 'removed'
+        AND (SELECT window_json IS NULL OR range_json IS NULL FROM updated)`)
+    .bind(
+      ...timing,
+      Object.hasOwn(rules, "bookingWindowDays") ? 1 : 0,
+      bookingWindowDays == null ? null : JSON.stringify(bookingWindowDays),
+      Object.hasOwn(rules, "bookingWindowRange") ? 1 : 0,
+      bookingWindowRange == null ? null : JSON.stringify(bookingWindowRange),
+      Object.hasOwn(rules, "minimumRescheduleNotice") ? 1 : 0,
+      minimumRescheduleNotice == null ? null : JSON.stringify(minimumRescheduleNotice),
+      eventId(id),
+      eventId(id)
+    )
+    .run();
+  if (result.meta.changes !== 1) throw new ErrorWithCode("settings_changed", 409);
 }
 
 export type { AdmissionContext, CurrentActionPolicy, OwnerEvent };

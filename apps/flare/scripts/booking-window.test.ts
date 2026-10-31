@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { TestContext } from "node:test";
 import { test } from "node:test";
 import { availableSlots } from "../src/domain/scheduling.ts";
 import { defaultSettings, parseBookingRules, parseSettings, SettingsError } from "../src/domain/settings.ts";
@@ -16,6 +17,268 @@ const rules = {
   disableRescheduling: false,
 };
 const day = 24 * hour;
+
+test("fixed booking ranges accept only complete real civil dates and remain optional", () => {
+  const bookingWindowRange = { start: "2032-02-29", end: "2032-02-29" };
+  assert.deepEqual(
+    parseBookingRules({ ...rules, bookingWindowRange }).bookingWindowRange,
+    bookingWindowRange
+  );
+  assert.deepEqual(parseBookingRules({ ...rules, bookingWindowRange: null }), {
+    ...rules,
+    bookingWindowRange: null,
+  });
+  assert.equal(JSON.stringify(parseSettings(defaultSettings)), JSON.stringify(defaultSettings));
+  for (const value of [
+    undefined,
+    null,
+    "2030-01-01",
+    [],
+    {},
+    { start: "2030-01-01" },
+    { start: "2030-01-01", end: "2030-01-02", extra: true },
+    { start: "2030-02-29", end: "2030-03-01" },
+    { start: 20300101, end: "2030-01-02" },
+    { start: "2030-1-01", end: "2030-01-02" },
+    { start: "1999-12-31", end: "2030-01-02" },
+    { start: "2030-01-01", end: "2100-01-01" },
+    { start: "2030-01-02", end: "2030-01-01" },
+  ]) {
+    assert.throws(
+      () => parseSettings({ ...settings, event: { ...settings.event, bookingWindowRange: value } }),
+      SettingsError
+    );
+    if (value !== null)
+      assert.throws(() => parseBookingRules({ ...rules, bookingWindowRange: value }), SettingsError);
+  }
+  assert.throws(
+    () => parseBookingRules({ ...rules, bookingWindowDays: 30, bookingWindowRange }),
+    SettingsError
+  );
+  assert.throws(
+    () =>
+      parseSettings({ ...settings, event: { ...settings.event, bookingWindowDays: 30, bookingWindowRange } }),
+    SettingsError
+  );
+});
+
+test("fixed ranges include schedule-local start dates across DST, fractional offsets and visitor zones", () => {
+  for (const [zone, date, first, last, next] of [
+    ["UTC", "2030-01-20", "2030-01-20T00:00Z", "2030-01-20T23:30Z", "2030-01-21T00:00Z"],
+    ["America/New_York", "2030-03-10", "2030-03-10T05:00Z", "2030-03-11T03:30Z", "2030-03-11T04:00Z"],
+    ["America/New_York", "2030-11-03", "2030-11-03T04:00Z", "2030-11-04T04:30Z", "2030-11-04T05:00Z"],
+    ["Asia/Kathmandu", "2030-01-20", "2030-01-19T18:15Z", "2030-01-20T17:45Z", "2030-01-20T18:15Z"],
+  ]) {
+    for (const visitorTimeZone of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
+      const input = {
+        schedule: { ...settings.schedule, timeZone: zone },
+        policy: {
+          ...rules,
+          durationMinutes: 60,
+          intervalMinutes: 15,
+          bookingWindowRange: { start: date, end: date },
+        },
+        visitorTimeZone,
+        windowTimeZone: "Pacific/Honolulu",
+        now: Date.parse("2030-01-01T00:00Z"),
+        from: Date.parse(first) - hour,
+        to: Date.parse(next) + hour,
+        busy: [],
+      };
+      const slots = availableSlots(input);
+      assert.equal(slots[0].start, Date.parse(first), `${zone}/${visitorTimeZone} first midnight`);
+      assert.ok(
+        slots.some((slot) => slot.start === Date.parse(last)),
+        "Last-day start can end after midnight"
+      );
+      assert.ok(slots.every((slot) => slot.start >= Date.parse(first) && slot.start < Date.parse(next)));
+    }
+  }
+});
+
+test("fixed range PATCH preserves omissions and isolation, resets null, copies policy and PUT replaces", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const bookingWindowRange = { start: "2030-01-20", end: "2030-01-21" };
+  const patch = (input: unknown, id = "default") =>
+    f.send(`/api/owner/events/${id}/booking-rules`, input, f.ownerHeaders, "PATCH");
+  assert.equal((await patch({ ...rules, bookingWindowRange })).status, 200);
+  const raw = await storedSettings(f.db);
+  assert.equal((await patch(rules)).status, 200);
+  assert.equal((await storedSettings(f.db))?.json, raw?.json);
+  assert.equal((await patch({ ...rules, bookingWindowDays: 7 })).status, 400);
+  const duplicate = await (
+    await f.send(
+      "/api/owner/events/default/duplicate",
+      { title: "Copy", slug: "copy", description: "", durationMinutes: 30 },
+      f.ownerHeaders
+    )
+  ).json();
+  assert.deepEqual(duplicate.event.bookingWindowRange, bookingWindowRange);
+  assert.equal(
+    (await patch({ ...rules, bookingWindowRange: null, bookingWindowDays: 7 }, duplicate.id)).status,
+    200
+  );
+  assert.deepEqual((await getSettings(f.db)).event.bookingWindowRange, bookingWindowRange);
+  assert.equal((await patch({ ...rules, bookingWindowRange: null })).status, 200);
+  assert.equal(Object.hasOwn((await getSettings(f.db)).event, "bookingWindowRange"), false);
+  assert.equal((await patch({ ...rules, bookingWindowRange })).status, 200);
+  assert.equal(
+    (
+      await f.send(
+        "/api/owner",
+        {
+          ...settings,
+          event: { ...settings.event, ...rules, minimumRescheduleNotice: 60, bookingWindowRange },
+        },
+        f.ownerHeaders,
+        "PUT"
+      )
+    ).status,
+    200
+  );
+  const canonical = JSON.stringify(await getSettings(f.db));
+  assert.equal((await storedSettings(f.db))?.json, canonical);
+  assert.equal((await patch(rules)).status, 200);
+  assert.equal((await storedSettings(f.db))?.json, canonical);
+  assert.equal((await patch({ ...rules, minimumRescheduleNotice: 90, bookingWindowRange })).status, 200);
+  assert.equal((await storedSettings(f.db))?.json, JSON.stringify(await getSettings(f.db)));
+  assert.equal((await f.send("/api/owner", settings, f.ownerHeaders, "PUT")).status, 200);
+  assert.equal(Object.hasOwn((await getSettings(f.db)).event, "bookingWindowRange"), false);
+});
+
+test("fixed range listing and admission use the assigned schedule zone, reject stale slots and retain refusals", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const configured = {
+    ...settings,
+    event: {
+      ...settings.event,
+      ...rules,
+      intervalMinutes: 15,
+      bookingWindowRange: { start: "2030-01-20", end: "2030-01-20" },
+    },
+    schedule: { ...settings.schedule, timeZone: "Asia/Kathmandu" },
+  };
+  assert.equal((await f.send("/api/owner", configured, f.ownerHeaders, "PUT")).status, 200);
+  const first = Date.parse("2030-01-19T18:15Z"),
+    next = Date.parse("2030-01-20T18:15Z");
+  const input = {
+    requestKey: "fixed-first-midnight",
+    start: first,
+    name: "Guest",
+    email: "guest@example.test",
+    timeZone: "America/Los_Angeles",
+  };
+  const creation = await f.send("/api/bookings", input);
+  assert.equal(creation.status, 201, await creation.clone().text());
+  const created = await creation.json();
+  assert.equal(created.status, "confirmed");
+  const before = f.calendar.writes.length;
+  const stale = { ...input, requestKey: "fixed-refused-outside", start: next };
+  assert.equal((await f.send("/api/bookings", stale)).status, 409);
+  assert.equal(f.calendar.writes.length, before);
+  assert.equal(
+    await f.db
+      .prepare("SELECT count(*) AS n FROM booking_reservation WHERE booking_id<>?")
+      .bind(created.id)
+      .first("n"),
+    0
+  );
+  for (const zone of ["UTC", "Pacific/Honolulu"]) {
+    const query = new URLSearchParams({
+      from: new Date(next).toISOString(),
+      to: new Date(next + hour).toISOString(),
+      timeZone: zone,
+    });
+    assert.deepEqual(await (await f.request(`/api/slots?${query}`)).json(), { slots: [] });
+    assert.deepEqual(
+      await (
+        await f.request(`/api/slots?bookingId=${created.id}&${query}`, {
+          headers: { Authorization: `Bearer ${created.manageToken}` },
+        })
+      ).json(),
+      { slots: [] }
+    );
+    assert.deepEqual(
+      await (
+        await f.request(`/api/owner/bookings/${created.id}/slots?${query}`, { headers: f.ownerHeaders })
+      ).json(),
+      { slots: [] }
+    );
+  }
+  for (const [path, headers] of [
+    [`/api/bookings/${created.id}`, { Authorization: `Bearer ${created.manageToken}` }],
+    [`/api/owner/bookings/${created.id}`, f.ownerHeaders],
+  ] as const) {
+    const response = await f.send(
+      path,
+      { action: "reschedule", requestKey: crypto.randomUUID(), version: 1, start: next },
+      headers
+    );
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, "invalid_slot");
+  }
+  const last = await f.send("/api/bookings", {
+    ...input,
+    requestKey: "fixed-last-day-slot",
+    start: next - hour / 4,
+  });
+  assert.equal(last.status, 201, await last.clone().text());
+  assert.equal((await last.json()).end, next + hour / 4);
+  assert.equal((await f.send("/api/owner", settings, f.ownerHeaders, "PUT")).status, 200);
+  assert.equal((await f.send("/api/bookings", stale)).status, 409);
+  assert.equal(
+    (await f.send("/api/bookings", { ...stale, requestKey: "fixed-fresh-outside", start: next + hour }))
+      .status,
+    201
+  );
+  assert.equal((await f.send("/api/bookings", input)).status, 201);
+  assert.equal(f.calendar.writes.length, before + 2);
+});
+
+test("concurrent partial window edits cannot combine modes and an admission race leaves durable refusal without holds", async (t) => {
+  const f = await apiFixture();
+  t.after(f.close);
+  const fixed = { start: "2030-01-20", end: "2030-01-20" };
+  const patch = (value: Partial<ReturnType<typeof parseBookingRules>>) =>
+    f.send("/api/owner/booking-rules", { ...rules, ...value }, f.ownerHeaders, "PATCH");
+  const responses = await Promise.all([
+    patch({ bookingWindowDays: 30 }),
+    patch({ bookingWindowRange: fixed }),
+  ]);
+  assert.equal(responses.filter((response) => response.status === 200).length, 1);
+  assert.ok(responses.every((response) => [200, 400, 409].includes(response.status)));
+  const configured = { ...settings, event: { ...settings.event, ...rules, bookingWindowRange: fixed } };
+  assert.equal((await f.send("/api/owner", configured, f.ownerHeaders, "PUT")).status, 200);
+  const busy = f.calendar.busy.bind(f.calendar);
+  let raced = false;
+  f.calendar.busy = async (...args) => {
+    if (!raced) {
+      raced = true;
+      assert.equal(
+        (await patch({ bookingWindowRange: { start: "2030-01-21", end: "2030-01-21" } })).status,
+        200
+      );
+    }
+    return busy(...args);
+  };
+  const input = {
+    requestKey: "fixed-admission-race",
+    start: Date.parse("2030-01-20T09:00Z"),
+    name: "Guest",
+    email: "guest@example.test",
+    timeZone: "UTC",
+  };
+  const refused = await f.send("/api/bookings", input);
+  assert.equal(refused.status, 409);
+  assert.equal((await refused.json()).error, "settings_changed");
+  assert.equal(f.calendar.writes.length, 0);
+  assert.equal(await f.db.prepare("SELECT count(*) AS n FROM booking_reservation").first("n"), 0);
+  assert.equal((await f.send("/api/owner", configured, f.ownerHeaders, "PUT")).status, 200);
+  assert.equal((await f.send("/api/bookings", input)).status, 409);
+  assert.equal((await f.send("/api/bookings", { ...input, requestKey: "fixed-after-race" })).status, 201);
+});
 
 test("existing-booking listings and both move actors use the stored window zone independently of query zone", async (t) => {
   const f = await apiFixture();
@@ -492,13 +755,24 @@ test("listing and fresh creation or moves share the booker-local window and reje
   }
 });
 
-test("queued and sent accepted commands recover with frozen settings after window tightening", async (t) => {
+async function verifyFrozenWindow(
+  t: TestContext,
+  window: Pick<typeof settings.event, "bookingWindowDays" | "bookingWindowRange">
+) {
   const f = await apiFixture();
   t.after(f.close);
-  const configured = { ...settings, event: { ...settings.event, ...rules, bookingWindowDays: 30 } };
+  const configured = { ...settings, event: { ...settings.event, ...rules, ...window } };
   const tightened = {
     ...configured,
-    event: { ...configured.event, bookingWindowDays: 1, noticeMinutes: 43200, disableRescheduling: true },
+    event: {
+      ...settings.event,
+      ...rules,
+      ...(window.bookingWindowRange
+        ? { bookingWindowRange: { start: "2030-01-01", end: "2030-01-01" } }
+        : { bookingWindowDays: 1 }),
+      noticeMinutes: 43200,
+      disableRescheduling: true,
+    },
     schedule: { ...settings.schedule, rules: [] },
   };
   const service = async () =>
@@ -527,20 +801,31 @@ test("queued and sent accepted commands recover with frozen settings after windo
     };
     const accepted = await (await f.send("/api/bookings", input)).json();
     assert.equal(accepted.status, "attention");
+    const createFacts = await frozenCommand(f, input.requestKey);
     f.calendar.busy = busy;
     const command = await f.db
       .prepare("SELECT execution,settings_json FROM booking_command WHERE request_key=?")
       .bind(input.requestKey)
       .first<{ execution: string; settings_json: string }>();
     assert.equal(command?.execution, mode);
-    assert.equal(JSON.parse(command?.settings_json ?? "{}").event.bookingWindowDays, 30);
+    const frozen = JSON.parse(command?.settings_json ?? "{}").event;
+    assert.deepEqual(
+      Object.keys(window).map((key) => frozen[key]),
+      Object.values(window)
+    );
     await f.send("/api/owner", tightened, f.ownerHeaders, "PUT");
     const writes = f.calendar.writes.length;
     const recovered = await (await service()).create(input);
     assert.equal(recovered.status, "confirmed");
     assert.equal(recovered.id, accepted.id);
+    assert.deepEqual(await frozenCommand(f, input.requestKey), createFacts);
     assert.equal(f.calendar.writes.length, writes + (mode === "queued" ? 1 : 0));
-    await f.send("/api/owner", configured, f.ownerHeaders, "PUT");
+    await f.send(
+      "/api/owner",
+      { ...configured, event: { ...configured.event, durationMinutes: 90 } },
+      f.ownerHeaders,
+      "PUT"
+    );
     const move = {
       action: "reschedule",
       requestKey: `window-move-${mode}`,
@@ -555,6 +840,7 @@ test("queued and sent accepted commands recover with frozen settings after windo
     if (mode === "sent") f.calendar.cutAfter = "update";
     const moving = await (await service()).ownerChange(accepted.id, move);
     assert.equal(moving.status, "attention");
+    const moveFacts = await frozenCommand(f, move.requestKey);
     assert.equal(
       await f.db
         .prepare("SELECT execution FROM booking_command WHERE request_key=?")
@@ -564,10 +850,20 @@ test("queued and sent accepted commands recover with frozen settings after windo
     );
     f.calendar.busy = busy;
     await f.send("/api/owner", tightened, f.ownerHeaders, "PUT");
+    if (window.bookingWindowRange) await replaceFrozenSchedule(f);
+    assert.equal(
+      await f.db
+        .prepare("SELECT count(*) AS n FROM booking_reservation WHERE booking_id=?")
+        .bind(accepted.id)
+        .first("n"),
+      2
+    );
     const moveWrites = f.calendar.writes.length;
     const moved = await (await service()).ownerRetry(accepted.id);
     assert.equal(moved.status, "confirmed");
     assert.equal(moved.start, move.start);
+    assert.equal(moved.end - moved.start, hour / 2);
+    assert.deepEqual(await frozenCommand(f, move.requestKey), moveFacts);
     assert.equal(f.calendar.writes.length, moveWrites + (mode === "queued" ? 1 : 0));
     assert.deepEqual(await (await service()).change(accepted.id, String(accepted.manageToken), move), moved);
     assert.equal(
@@ -580,7 +876,60 @@ test("queued and sent accepted commands recover with frozen settings after windo
   }
   assert.equal(f.calendar.events.size, 2);
   assert.equal(f.calendar.writes.length, 4);
-});
+}
+
+for (const window of [
+  { bookingWindowDays: 30 },
+  { bookingWindowRange: { start: "2030-01-01", end: "2030-01-31" } },
+])
+  test(`queued and sent accepted commands recover with frozen ${Object.keys(window)[0]} after tightening`, (t) =>
+    verifyFrozenWindow(t, window));
+
+async function replaceFrozenSchedule(f: Awaited<ReturnType<typeof apiFixture>>) {
+  const replacement = await (
+    await f.send("/api/owner/schedules", { name: "Replacement" }, f.ownerHeaders)
+  ).json();
+  assert.equal(
+    (
+      await f.send(
+        `/api/owner/schedules/${replacement.id}/weekly`,
+        { timeZone: "Pacific/Honolulu", rules: [] },
+        f.ownerHeaders,
+        "PATCH"
+      )
+    ).status,
+    200
+  );
+  assert.equal(
+    (
+      await f.send(
+        "/api/owner/events/default/schedule",
+        { scheduleId: replacement.id },
+        f.ownerHeaders,
+        "PATCH"
+      )
+    ).status,
+    200
+  );
+  assert.equal(
+    (
+      await f.request(`/api/owner/schedules/${replacement.id}`, {
+        method: "DELETE",
+        headers: { ...f.ownerHeaders, Origin: f.env.PUBLIC_ORIGIN },
+      })
+    ).status,
+    200
+  );
+}
+
+function frozenCommand(f: Awaited<ReturnType<typeof apiFixture>>, key: string) {
+  return f.db
+    .prepare(
+      "SELECT payload,settings_json,desired_json,event_id,event_schedule_id,resolved_schedule_id,expected_version,occupied_start,occupied_end,token_hash FROM booking_command WHERE request_key=?"
+    )
+    .bind(key)
+    .first();
+}
 
 test("rolling calendar dates include the final booker-local day by start across DST and rollover", () => {
   for (const [now, zone, days, last, next] of [

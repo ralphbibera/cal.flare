@@ -87,6 +87,7 @@ function ownerEvent(value: unknown): OwnerEvent {
     "disableRescheduling",
     "minimumRescheduleNotice",
     "bookingWindowDays",
+    "bookingWindowRange",
     "location",
   ]);
   return {
