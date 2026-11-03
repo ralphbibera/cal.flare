@@ -31,6 +31,7 @@ App API methods come from actual exports. Pages API method dispatch remains insi
 v2 controller paths mount under `/api/v2`; their version constants, guards, DTOs and aliases remain part of the contract.
 The v2 Worker adapter belongs to `apps/api/v2/src/worker.ts`. This is not permission to run a Nest Node host.
 
+US and EU workflow requests have separate rows and separate guards. Each enabled region sends its own request; configuring one region does not require the other.
 Scheduled URLs without a declared handler are marked `absent-at-pin` with destination `no-product-handler`.
 Check middleware and rewrites, preserve the absent-handler result, and invent no new job or Cron Trigger for them.
 Repository-maintenance schedules remain GitHub automation. Product schedules move to Worker dispatch with their method, auth and calendar conditions.

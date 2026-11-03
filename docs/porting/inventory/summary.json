@@ -20,6 +20,7 @@
   "integration_metadata": 106,
   "pin": "e8afecd163cd3a0a3ff279bd4721aa7f073c4685",
   "routes_and_v2_decorators": 362,
-  "schedule_sources": 18,
+  "schedule_entries": 21,
+  "schedule_source_files": 12,
   "source_files": 7712
 }
