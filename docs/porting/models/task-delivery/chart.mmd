@@ -1,0 +1,19 @@
+---
+title: "Internal sendWebhook task completion follows promise resolution"
+---
+stateDiagram-v2
+  s0: Due task
+  s1: HTTP request running
+  s2: Rejected promise, retry write pending
+  s3: Resolved promise, success write pending
+  s4: Task succeeded, HTTP 500 response
+  s5: Task succeeded, receiver accepted
+  s6: Attempt limit reached
+  [*] --> s0
+  s0 --> s1: processor selects due task
+  s1 --> s2: transport or handler rejects
+  s1 --> s3: receiver returns HTTP 500 or receiver returns success
+  s2 --> s0: increment attempt and reschedule if configured
+  s3 --> s4: increment attempt and save succeededAt
+  s3 --> s5: increment attempt and save succeededAt
+  s2 --> s6: increment attempt and reschedule if configured

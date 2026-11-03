@@ -1,4 +1,7 @@
-# Cal.diy Agent Documentation Index
+# Inherited Cal.diy engineering rules
+
+The [Cal.flare guide](../AGENTS.md) and [port architecture](../docs/porting/architecture.md) own the target stack and commands.
+This index supplies inherited domain and code conventions. Upstream host and build instructions are not alternative Cal.flare deployment choices.
 
 - **[../AGENTS.md](../AGENTS.md)** - Main guide (structure, tech stack, commands, examples)
 - **[commands.md](commands.md)** - Command reference

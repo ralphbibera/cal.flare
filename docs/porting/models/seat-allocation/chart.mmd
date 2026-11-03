@@ -1,0 +1,14 @@
+---
+title: "Two attendees contend for one remaining seat"
+---
+stateDiagram-v2
+  s0: Both requests wait
+  s1: One request owns booking row lock
+  s2: One seat committed
+  s3: Remaining request checks full booking
+  s4: One seat committed, other request rejected
+  [*] --> s0
+  s0 --> s1: one request locks booking row
+  s1 --> s2: fresh capacity check commits attendee and seat
+  s2 --> s3: one request locks booking row
+  s3 --> s4: fresh capacity check returns BookingSeatsFull

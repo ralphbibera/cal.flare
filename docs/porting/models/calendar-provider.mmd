@@ -1,0 +1,49 @@
+---
+title: Pinned calendar selection, cache, provider writes, and jobs
+---
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Installing: enabled app and keys, authorized OAuth initiation
+    Installing --> Connected: valid callback creates scoped credential
+    Installing --> Disconnected: denial or callback failure
+    Connected --> Refreshing: provider needs refreshed token
+    Refreshing --> Connected: save token object and update cached credential
+    Refreshing --> Invalid: invalid grant invalidates credential
+    Invalid --> Installing: reconnect
+    Connected --> Disconnected: credential deletion and dependent cleanup
+
+    state "Calendar read" as CalendarRead {
+        [*] --> SelectMode
+        SelectMode --> Live: booking, overlay or none mode
+        SelectMode --> Live: slots mode without both grants or unsupported cache type
+        SelectMode --> Partition: slots mode with global and user grants, supported provider
+        Partition --> Cached: syncToken and syncSubscribedAt
+        Partition --> Live: either sync field absent
+        Cached --> Ranges: merge cached and live events
+        Live --> Ranges: provider busy result
+        Live --> EmptyAvailability: busy-service error caught by availability service
+    }
+
+    state "Provider operation outcome" as ProviderWrite {
+        [*] --> NoExternalEvent
+        NoExternalEvent --> CreateInFlight: caller invokes EventManager.create
+        CreateInFlight --> ProviderCreated: provider result succeeds
+        CreateInFlight --> CreateFailed: failed result or thrown error reaches caller
+        ProviderCreated --> UpdateInFlight: caller reschedules or changes attendees
+        UpdateInFlight --> ProviderCreated: update succeeds
+        UpdateInFlight --> UpdateFailed: update fails, caller selects failure policy
+        ProviderCreated --> DeleteInFlight: cancellation or changed-host cleanup
+        DeleteInFlight --> ProviderDeleted: provider cleanup succeeds
+        DeleteInFlight --> DeleteFailed: cleanup failure is logged softly by EventManager
+    }
+
+    state "Subscription rollout and incoming sync" as Subscription {
+        [*] --> Disabled
+        Disabled --> Eligible: cache or sync feature enabled with supported selected calendar
+        Eligible --> Subscribed: subscribe provider and save subscription state
+        Subscribed --> Syncing: incoming notification or scheduled work
+        Syncing --> Subscribed: update cache and sync token
+        Syncing --> BookingMutation: Cal-managed event cancellation or changed time
+        BookingMutation --> Subscribed: shared booking cancel or reschedule completes or logs failure
+        Subscribed --> Eligible: expired subscription requires rollout or renewal
+    }

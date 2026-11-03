@@ -1,0 +1,19 @@
+source	request	schedule	destination	domain	method	conditions	pinned_handler
+.github/workflows/cron-bookingReminder.yml	/api/cron/bookingReminder	*/15 * * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY }}	apps/web/app/api/cron/bookingReminder/route.ts
+.github/workflows/cron-changeTimeZone.yml	/api/cron/changeTimeZone	0 * * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY }}	apps/web/app/api/cron/changeTimeZone/route.ts
+.github/workflows/cron-checkSmsPrices.yml	/api/cron/checkSmsPrices	* * * * *	no-product-handler	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY }}	absent-at-pin
+.github/workflows/cron-downgradeUsers.yml	/api/cron/downgradeUsers	0 0 1 * *	no-product-handler	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY }}	absent-at-pin
+.github/workflows/cron-monthlyDigestEmail.yml	/api/cron/monthlyDigestEmail	59 23 28-31 * *	no-product-handler	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY && steps.check-last-day.outputs.is_last_day == 'true' }}	absent-at-pin
+.github/workflows/cron-scheduleEmailReminders.yml	/api/cron/workflows/scheduleEmailReminders	*/15 * * * *	no-product-handler	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY }}	absent-at-pin
+.github/workflows/cron-scheduleSMSReminders.yml	/api/cron/workflows/scheduleSMSReminders	*/15 * * * *	no-product-handler	D_JOBS	POST	${{ env.APP_URL_EU && env.CRON_API_KEY_EU }} && ${{ env.APP_URL_US && env.CRON_API_KEY_US }}	absent-at-pin
+.github/workflows/cron-scheduleWhatsappReminders.yml	/api/cron/workflows/scheduleWhatsappReminders	*/15 * * * *	no-product-handler	D_JOBS	POST	${{ env.APP_URL_EU && env.CRON_API_KEY_EU }} && ${{ env.APP_URL_US && env.CRON_API_KEY_US }}	absent-at-pin
+.github/workflows/cron-stale-issue.yml	repository-automation	0 0 * * *	retain-github-workflow	D_SHELL	not-http	scheduled-workflow	not-product-job
+.github/workflows/cron-syncAppMeta.yml	/api/cron/syncAppMeta	0 0 1 * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	POST	${{ env.APP_URL && env.CRON_API_KEY }}	apps/web/app/api/cron/syncAppMeta/route.ts
+.github/workflows/cron-webhooks-triggers.yml	/api/cron/webhookTriggers	* * * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	POST	${{ env.APP_URL_US && env.CRON_API_KEY_US }} && ${{ env.APP_URL_EU && env.CRON_API_KEY_EU }}	apps/web/app/api/cron/webhookTriggers/route.ts
+apps/web/vercel.json	/api/cron/calendar-subscriptions	*/5 * * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	GET	route-auth-and-config	apps/web/app/api/cron/calendar-subscriptions/route.ts
+apps/web/vercel.json	/api/cron/calendar-subscriptions-cleanup	0 3 * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	GET	route-auth-and-config	apps/web/app/api/cron/calendar-subscriptions-cleanup/route.ts
+apps/web/vercel.json	/api/cron/queuedFormResponseCleanup	0 */12 * * *	no-product-handler	D_JOBS	GET	route-auth-and-config	absent-at-pin
+apps/web/vercel.json	/api/tasks/cron	* * * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	GET	route-auth-and-config	apps/web/app/api/tasks/cron/route.ts
+apps/web/vercel.json	/api/tasks/cleanup	0 0 * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	GET	route-auth-and-config	apps/web/app/api/tasks/cleanup/route.ts
+apps/web/vercel.json	/api/cron/credentials	*/5 * * * *	no-product-handler	D_JOBS	GET	route-auth-and-config	absent-at-pin
+apps/web/vercel.json	/api/cron/selected-calendars	*/5 * * * *	apps/api/v2/src/worker.ts#scheduled	D_JOBS	GET	route-auth-and-config	apps/web/app/api/cron/selected-calendars/route.ts

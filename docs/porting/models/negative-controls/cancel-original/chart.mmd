@@ -1,0 +1,42 @@
+---
+title: "Booking DB status and paid state"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: Breaks NoOldProviderDeletion
+    lg1: Path to the NoOldProviderDeletion bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  s0: No booking
+  s1: accepted, unpaid
+  s2: accepted, unpaid, original cancelled
+  s3: Cancelled original deletes provider event
+  s4: cancelled, unpaid
+  s5: cancelled, unpaid, original cancelled
+  s6: rejected, unpaid
+  s7: rejected, unpaid, original cancelled
+  [*] --> s0
+  s0 --> s1: booker submits valid request
+  s1 --> s2: reschedule transaction cancels original and creates replacement
+  s2 --> s3: attempt to cancel original
+  s1 --> s4: save cancelled status
+  s2 --> s5: save cancelled status
+  s5 --> s3: attempt to cancel original
+  s4 --> s6: authorized host rejects
+  s4 --> s2: reschedule transaction cancels original and creates replacement
+  s6 --> s2: reschedule transaction cancels original and creates replacement
+  s5 --> s7: authorized host rejects
+  s4 --> s1: save accepted status and references
+  s7 --> s3: attempt to cancel original
+  s6 --> s4: save cancelled status
+  s6 --> s1: save accepted status and references
+  s5 --> s2: save accepted status and references
+  s7 --> s5: save cancelled status
+  s7 --> s2: save accepted status and references
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s3 breaks
+  class s3 bugPath

@@ -1,0 +1,25 @@
+{
+  "dependency_edges": 846,
+  "domains": {
+    "D_API": 627,
+    "D_APPS": 1623,
+    "D_AUTH": 324,
+    "D_AVAILABILITY": 222,
+    "D_BOOKING": 206,
+    "D_BOOKINGS": 368,
+    "D_DOCS": 43,
+    "D_EMBEDS": 176,
+    "D_EVENTS": 394,
+    "D_JOBS": 485,
+    "D_ONBOARDING": 59,
+    "D_PAYMENTS": 249,
+    "D_SETTINGS": 213,
+    "D_SHELL": 2723
+  },
+  "environment_references": 552,
+  "integration_metadata": 106,
+  "pin": "e8afecd163cd3a0a3ff279bd4721aa7f073c4685",
+  "routes_and_v2_decorators": 362,
+  "schedule_sources": 18,
+  "source_files": 7712
+}
