@@ -1,5 +1,6 @@
 import { DailyLocationType } from "@calcom/app-store/constants";
 import { eventTypeMetaDataSchemaWithTypedApps } from "@calcom/app-store/zod-utils";
+import type { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import slugify from "@calcom/lib/slugify";
 import type { Prisma, SelectedCalendar } from "@calcom/prisma/client";
 import { PeriodType, SchedulingType } from "@calcom/prisma/enums";
@@ -8,7 +9,10 @@ import type { CustomInputSchema } from "@calcom/prisma/zod-utils";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import type { CredentialPayload } from "@calcom/types/Credential";
 
-type User = Omit<Prisma.UserGetPayload<{ select: typeof userSelect }>, "selectedCalendars"> & {
+type User = Omit<
+  ReturnType<typeof parseUserAvailability<Prisma.UserGetPayload<{ select: typeof userSelect }>>>,
+  "selectedCalendars"
+> & {
   allSelectedCalendars: SelectedCalendar[];
   userLevelSelectedCalendars: SelectedCalendar[];
 };

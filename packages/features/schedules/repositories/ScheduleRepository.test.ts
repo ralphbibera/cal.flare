@@ -1,5 +1,9 @@
 import prismaMock from "@calcom/testing/lib/__mocks__/prismaMock";
-import { parseAvailability, parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
+import {
+  parseAvailability,
+  parseScheduleAvailability,
+  parseUserAvailability,
+} from "@calcom/lib/availability/parseAvailability";
 import type { Schedule, User } from "@calcom/prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ScheduleRepository } from "./ScheduleRepository";
@@ -29,7 +33,21 @@ describe("ScheduleRepository", () => {
       expect(parseAvailability({ days: [] })).toEqual({ days: [] });
     });
 
+    it("normalizes legacy user and nested schedule availability without changing other selections", () => {
+      const user = {
+        id: 7,
+        availability: [{ days: null }],
+        schedules: [{ id: 2, timeZone: "Asia/Manila", availability: [{ days: [5, 1, 5] }, { days: null }] }],
+      };
+      expect(parseUserAvailability(user)).toEqual({
+        id: 7,
+        availability: [{ days: [] }],
+        schedules: [{ id: 2, timeZone: "Asia/Manila", availability: [{ days: [5, 1, 5] }, { days: [] }] }],
+      });
+    });
+
     it.each([
+      undefined,
       {},
       { set: [1] },
       { push: 1 },
