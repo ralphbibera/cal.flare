@@ -1,0 +1,9 @@
+diff --git a/index.cjs b/index.cjs
+index c83f700..da6fc7e 100644
+--- a/index.cjs
++++ b/index.cjs
+@@ -16,2 +16,2 @@
+-exports = module.exports = min.parsePhoneNumberFromString
+-exports['default'] = min.parsePhoneNumberFromString
++// exports = module.exports = min.parsePhoneNumberFromString
++// exports['default'] = min.parsePhoneNumberFromString

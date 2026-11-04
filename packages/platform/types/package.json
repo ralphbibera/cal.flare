@@ -5,10 +5,10 @@
   "types": "./dist/index.js",
   "private": true,
   "scripts": {
-    "build": "yarn clean && tsc --build --force tsconfig.json",
+    "build": "bun run clean && tsc --build --force tsconfig.json",
     "clean": "npx rimraf dist",
     "build:watch": "tsc --build --force ./tsconfig.json --watch",
-    "post-install": "yarn build"
+    "post-install": "bun run build"
   },
   "dependencies": {
     "@calcom/platform-constants": "workspace:*",

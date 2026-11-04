@@ -7,18 +7,18 @@
   },
   "scripts": {
     "clean": "rm -rf .turbo && rm -rf node_modules",
-    "build": "ts-node --transpile-only ./auto-migrations.ts",
-    "db-deploy": "yarn prisma migrate deploy",
-    "db-migrate": "yarn prisma migrate dev",
+    "build": "prisma generate",
+    "db-deploy": "bun run prisma migrate deploy",
+    "db-migrate": "bun run prisma migrate dev",
     "db-nuke": "docker compose down --volumes --remove-orphans || docker-compose down --volumes --remove-orphans",
     "db-reset": "run-s db-nuke db-setup",
-    "db-seed": "yarn prisma db seed",
+    "db-seed": "bun run prisma db seed",
     "db-setup": "run-s db-up db-deploy db-seed",
-    "db-studio": "yarn prisma studio",
+    "db-studio": "bun run prisma studio",
     "db-up": "docker compose up -d || docker-compose up -d",
-    "dx": "yarn db-setup",
-    "generate-schemas": "prisma generate && prisma format",
-    "post-install": "yarn generate-schemas",
+    "dx": "bun run db-setup",
+    "generate-schemas": "prisma generate",
+    "post-install": "bun run generate-schemas",
     "seed-app-store": "ts-node --transpile-only ../../scripts/seed-app-store.ts",
     "delete-app": "ts-node --transpile-only ./delete-app.ts",
     "seed-basic": "ts-node --transpile-only ../../scripts/seed.ts",
@@ -48,6 +48,6 @@
     "zod-utils.ts"
   ],
   "prisma": {
-    "seed": "yarn seed-basic"
+    "seed": "bun run seed-basic"
   }
 }

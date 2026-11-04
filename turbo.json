@@ -1,6 +1,6 @@
 {
   "$schema": "https://turborepo.org/schema.json",
-  "globalDependencies": ["yarn.lock"],
+  "globalDependencies": ["bun.lock", "bunfig.toml", "patches/**"],
   "globalEnv": [
     "ALLOWED_HOSTNAMES",
     "ANALYZE",

@@ -10,9 +10,9 @@
     "url": "https://github.com/calcom/cal.diy"
   },
   "scripts": {
-    "dev": "yarn vite build --watch & npx postcss ./globals.css -o ./globals.min.css --watch",
-    "build-npm": "NODE_OPTIONS='--max_old_space_size=12288' rm -rf dist && yarn vite build && npx postcss ./globals.css -o ./globals.min.css",
-    "publish-npm": "yarn build-npm && npm publish --access public",
+    "dev": "bun run vite build --watch & npx postcss ./globals.css -o ./globals.min.css --watch",
+    "build-npm": "NODE_OPTIONS='--max_old_space_size=12288' rm -rf dist && bun run vite build && npx postcss ./globals.css -o ./globals.min.css",
+    "publish-npm": "bun run build-npm && npm publish --access public",
     "test": "jest",
     "dev-on": "node scripts/dev-on.js",
     "dev-off": "git checkout -- package.json vite.config.ts"
@@ -24,8 +24,8 @@
     "@tailwindcss/postcss": "4.1.15",
     "@types/jest": "29.5.12",
     "@types/node": "20.17.23",
-    "@types/react": "18.0.26",
-    "@types/react-dom": "18.2.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.1.2",
     "@vitejs/plugin-react-swc": "4.2.2",
     "autoprefixer": "10.4.19",

@@ -17,8 +17,8 @@ const formatFileWithBiome = (filePath: string) => {
   // Normalize to forward slashes for cross-platform Biome compatibility
   const normalizedPath = filePath.replace(/\\/g, "/");
   const { status } = spawnSync(
-    "yarn",
-    ["biome", "format", "--write", "--no-errors-on-unmatched", normalizedPath],
+    "bun",
+    ["run", "biome", "format", "--write", "--no-errors-on-unmatched", normalizedPath],
     {
       stdio: "inherit",
       cwd: repoRoot,
