@@ -1,5 +1,6 @@
 import { LookupTarget, ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
+import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { eventTypeSelect } from "@calcom/lib/server/eventTypeSelect";
@@ -435,7 +436,7 @@ export class MembershipRepository {
     const membershipsWithSelectedCalendars = memberships.map((m) => {
       return {
         ...m,
-        user: withSelectedCalendars(m.user),
+        user: withSelectedCalendars(parseUserAvailability(m.user)),
       };
     });
 

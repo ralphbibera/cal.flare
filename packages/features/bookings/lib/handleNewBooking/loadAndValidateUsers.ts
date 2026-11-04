@@ -4,6 +4,7 @@ import { ProfileRepository } from "@calcom/features/profile/repositories/Profile
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
 import { sentrySpan } from "@calcom/features/watchlist/lib/telemetry";
 import { filterBlockedUsers } from "@calcom/features/watchlist/operations/filter-blocked-users.controller";
+import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import getOrgIdFromMemberOrTeamId from "@calcom/lib/getOrgIdFromMemberOrTeamId";
 import { HttpError } from "@calcom/lib/http-error";
 import { getPiiFreeUser } from "@calcom/lib/piiFreeData";
@@ -124,7 +125,7 @@ const _loadAndValidateUsers = async ({
       logger.warn({ message: "NewBooking: eventTypeUser.notFound" });
       throw new HttpError({ statusCode: 404, message: "eventTypeUser.notFound" });
     }
-    users.push(withSelectedCalendars(eventTypeUser));
+    users.push(withSelectedCalendars(parseUserAvailability(eventTypeUser)));
   }
 
   if (!users) throw new HttpError({ statusCode: 404, message: "eventTypeUser.notFound" });

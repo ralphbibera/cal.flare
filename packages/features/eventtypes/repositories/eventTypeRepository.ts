@@ -3,6 +3,11 @@ import { MembershipRepository } from "@calcom/features/membership/repositories/M
 import { LookupTarget, ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import type { UserWithLegacySelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
+import {
+  parseAvailability,
+  parseScheduleAvailability,
+  parseUserAvailability,
+} from "@calcom/lib/availability/parseAvailability";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import logger from "@calcom/lib/logger";
@@ -1377,8 +1382,16 @@ export class EventTypeRepository implements IEventTypesRepository {
 
     return {
       ...eventType,
-      hosts: hostsWithSelectedCalendars(eventType.hosts),
-      users: usersWithSelectedCalendars(eventType.users),
+      availability: eventType.availability.map(parseAvailability),
+      schedule: eventType.schedule ? parseScheduleAvailability(eventType.schedule) : null,
+      hosts: hostsWithSelectedCalendars(
+        eventType.hosts.map((host) => ({
+          ...host,
+          user: parseUserAvailability(host.user),
+          schedule: host.schedule ? parseScheduleAvailability(host.schedule) : null,
+        }))
+      ),
+      users: usersWithSelectedCalendars(eventType.users.map(parseUserAvailability)),
       metadata: EventTypeMetaDataSchema.parse(eventType.metadata),
       rrSegmentQueryValue: rrSegmentQueryValueSchema.parse(eventType.rrSegmentQueryValue),
     };
@@ -1469,6 +1482,12 @@ export class EventTypeRepository implements IEventTypesRepository {
     }
     return {
       ...eventType,
+      availability: eventType.availability.map(parseAvailability),
+      schedule: eventType.schedule ? parseScheduleAvailability(eventType.schedule) : null,
+      hosts: eventType.hosts.map((host) => ({
+        ...host,
+        schedule: host.schedule ? parseScheduleAvailability(host.schedule) : null,
+      })),
       metadata: EventTypeMetaDataSchema.parse(eventType.metadata),
     };
   }
