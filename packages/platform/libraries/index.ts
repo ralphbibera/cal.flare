@@ -215,4 +215,5 @@ export async function verifyPhoneNumber(
   throw new Error("Phone verification is not available in community edition");
 }
 
+export { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 export { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
