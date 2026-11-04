@@ -27,6 +27,7 @@ import type { CheckBookingAndDurationLimitsService } from "@calcom/features/book
 import { handlePayment } from "@calcom/features/bookings/lib/handlePayment";
 import { handleWebhookTrigger } from "@calcom/features/bookings/lib/handleWebhookTrigger";
 import { isEventTypeLoggingEnabled } from "@calcom/features/bookings/lib/isEventTypeLoggingEnabled";
+import { parseBookingScheduledJobs } from "@calcom/features/bookings/lib/scheduledJobs";
 import type { BookingEmailAndSmsTasker } from "@calcom/features/bookings/lib/tasker/BookingEmailAndSmsTasker";
 import type { BuiltCalendarEvent } from "@calcom/features/CalendarEventBuilder";
 import { CalendarEventBuilder } from "@calcom/features/CalendarEventBuilder";
@@ -698,7 +699,7 @@ async function handler(
       const firstPayment = shouldShowPaymentForm ? existingBooking.payment[0] : undefined;
 
       const bookingResponse = {
-        ...existingBooking,
+        ...parseBookingScheduledJobs(existingBooking),
         user: {
           ...existingBooking.user,
           email: null,
