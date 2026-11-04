@@ -1,3 +1,4 @@
+import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { hasReadPermissionsForUserId } from "@calcom/lib/hasEditPermissionForUser";
 import {
   transformAvailabilityForAtom,
@@ -51,7 +52,7 @@ export class ScheduleRepository {
       },
     });
 
-    return schedule;
+    return schedule ? parseScheduleAvailability(schedule) : null;
   }
 
   async findScheduleByIdForOwnershipCheck({ scheduleId }: { scheduleId: number }) {
@@ -80,7 +81,7 @@ export class ScheduleRepository {
       },
     });
 
-    return schedule;
+    return schedule ? parseScheduleAvailability(schedule) : null;
   }
 
   async findDetailedScheduleById({
@@ -96,7 +97,7 @@ export class ScheduleRepository {
     scheduleId?: number;
     isManagedEventType?: boolean;
   }) {
-    const schedule = await this.prismaClient.schedule.findUnique({
+    const storedSchedule = await this.prismaClient.schedule.findUnique({
       where: {
         id: scheduleId || (await this.getDefaultScheduleId(userId)),
       },
@@ -109,9 +110,10 @@ export class ScheduleRepository {
       },
     });
 
-    if (!schedule) {
+    if (!storedSchedule) {
       throw new Error("Schedule not found");
     }
+    const schedule = parseScheduleAvailability(storedSchedule);
     const isCurrentUserPartOfTeam = await hasReadPermissionsForUserId({ memberId: schedule?.userId, userId });
 
     const isCurrentUserOwner = schedule?.userId === userId;
@@ -179,7 +181,8 @@ export class ScheduleRepository {
       userId,
     });
 
-    const schedulesFormatted = schedules.map((schedule) => {
+    const schedulesFormatted = schedules.map((storedSchedule) => {
+      const schedule = parseScheduleAvailability(storedSchedule);
       const isCurrentUserOwner = schedule?.userId === userId;
 
       if (!isCurrentUserPartOfTeam && !isCurrentUserOwner) {

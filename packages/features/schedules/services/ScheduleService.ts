@@ -1,11 +1,12 @@
+import type { UserFromSession } from "@calcom/features/auth/lib/userFromSessionUtils";
 import { getAvailabilityFromSchedule } from "@calcom/lib/availability";
+import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { timeZoneSchema } from "@calcom/lib/dayjs/timeZone.schema";
 import { hasEditPermissionForUserID } from "@calcom/lib/hasEditPermissionForUser";
 import { HttpError } from "@calcom/lib/http-error";
 import { transformScheduleToAvailabilityForAtom } from "@calcom/lib/schedules/transformers/for-atom";
 import type { PrismaClient } from "@calcom/prisma";
 import { z } from "zod";
-import type { UserFromSession } from "@calcom/features/auth/lib/userFromSessionUtils";
 import { ScheduleRepository } from "../repositories/ScheduleRepository";
 
 export const ZUpdateInputSchema = z.object({
@@ -111,7 +112,7 @@ export class ScheduleService {
       };
     }
 
-    const schedule = await this.prisma.schedule.update({
+    const storedSchedule = await this.prisma.schedule.update({
       where: {
         id: input.scheduleId,
       },
@@ -128,6 +129,7 @@ export class ScheduleService {
             data: [
               ...availability,
               ...(input.dateOverrides || []).map((override) => ({
+                days: [],
                 date: override.start,
                 startTime: override.start,
                 endTime: override.end,
@@ -151,6 +153,7 @@ export class ScheduleService {
       },
     });
 
+    const schedule = parseScheduleAvailability(storedSchedule);
     const userAvailability = transformScheduleToAvailabilityForAtom(schedule);
 
     return {
