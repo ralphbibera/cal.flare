@@ -1,180 +1,167 @@
-# Cal.flare development guide for AI agents
+# Cal.flare Development Guide for AI Agents
 
-Work within the existing Cal.diy monorepo. Prioritize type safety, security, small reviewable changes and equivalent product behavior.
-Use the [port plan](docs/porting/plan.md), [architecture](docs/porting/architecture.md), [behavior contracts](docs/porting/behavior.md) and [execution rules](docs/porting/execution.md).
-The baseline is Cal.diy `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`. The [source inventory](docs/porting/inventory/source-map.tsv) records ownership and destinations.
+You are a senior Cal.flare engineer working in a Bun/Turbo monorepo. You prioritize type safety, security, and small, reviewable diffs.
+
+The port targets vinext, React 19, Cloudflare Workers and D1. Follow the [port plan](docs/porting/plan.md) and [architecture](docs/porting/architecture.md) for those substitutions, preserving the existing application structure and behavior.
 
 ## Do
 
-- Use `select` instead of `include` in Prisma queries to control data exposure and query size.
-- Use `import type { X }` for TypeScript type imports.
-- Use early returns to reduce nesting, such as `if (!booking) return null;`.
-- Use `ErrorWithCode` in services, repositories and utilities. Use `TRPCError` in tRPC routers.
-- Use Conventional Commits, such as `feat:`, `fix:` and `refactor:`.
-- Import directly from source files, such as `@calcom/ui/components/button`. Preserve an established public boundary where required, such as the v2 platform-library exports.
-- Keep permission checks at each page, action and procedure boundary. A layout does not authorize its descendants.
-- Preserve original markup, class names, copy, translation keys, routes and public response contracts.
-- Preserve existing date libraries and timezone behavior during the port. For new code without timezone requirements, prefer native `Date` or the existing date-fns utilities.
-- Put approved new UI strings in `packages/i18n/locales/en/common.json`; do not introduce untranslated copy.
-- Use Biome for supported source formatting and linting.
-- Add comments only for non-obvious reasons. Follow [code comment guidelines](agents/rules/quality-code-comments.md).
-- Read the actual source and callers before changing a boundary. Use scoped Context.dev `sgrep` discovery and inspect source lines; report unavailable search setup.
-- Keep one writer per path and preserve concurrent work, local data, logs and caches.
-- Reproduce a defect where feasible, then verify the changed production path and affected callers.
+- Use `select` instead of `include` in Prisma queries for performance and security
+- Use `import type { X }` for TypeScript type imports
+- Use early returns to reduce nesting: `if (!booking) return null;`
+- Use `ErrorWithCode` for errors in non-tRPC files (services, repositories, utilities); use `TRPCError` only in tRPC routers
+- Use conventional commits: `feat:`, `fix:`, `refactor:`
+- Create PRs in draft mode by default
+- Run `bun run type-check:ci --force` before concluding CI failures are unrelated to your changes
+- Import directly from source files, not barrel files (e.g., `@calcom/ui/components/button` not `@calcom/ui`)
+- Add translations to `packages/i18n/locales/en/common.json` for all UI strings
+- Use `date-fns` or native `Date` instead of Day.js when timezone awareness isn't needed
+- Put permission checks in `page.tsx`, never in `layout.tsx`
+- Use `ast-grep` for searching if available; otherwise use `rg` (ripgrep), then fall back to `grep`
+- Use Biome for formatting and linting
+- Only add code comments that explain **why**, not **what** — see [code comment guidelines](agents/rules/quality-code-comments.md)
+
 
 ## Don't
 
-- Do not use `as any`; define the actual contract and validate untrusted input at its boundary.
-- Never expose `credential.key`, provider tokens or private configuration in responses, queries or browser bundles.
-- Never commit secrets, API keys, `.env`, `.dev.vars` or private database state.
-- Never edit `*.generated.ts`, generated clients or binding declarations by hand. Change the source generator or schema.
-- Keep business policy in the existing service layer. Repositories own persistence, query semantics and atomic write guards.
-- Do not introduce new barrel dependencies or move web-only tRPC hooks into shared feature packages.
-- Do not skip applicable type checks, lint or verification before pushing.
-- Do not rewrite existing code for stylistic preference or add unrelated cleanup while migrating a flow.
-- Do not replace original components with approximations or add features and guarantees absent from the baseline.
-- Do not add tests solely to prove documentation edits, file moves or deletions.
-- Do not hide newly reached failures with stubs, fake sessions, source exclusions or weakened checks.
+- Never use `as any` - use proper type-safe solutions instead
+- Never expose `credential.key` field in API responses or queries
+- Never commit secrets or API keys
+- Never modify `*.generated.ts` files directly - they're created by app-store-cli
+- Never put business logic in repositories - that belongs in Services
+- Never use barrel imports from index.ts files
+- Never skip running type checks before pushing
+- Never create large PRs (>500 lines or >10 files) - split them instead
+- Never add comments that simply restate what the code does (e.g., `// Get the user` above a `getUser()` call)
 
-## PR size guidelines
+## PR Size Guidelines
 
-Keep one responsibility per PR. Prefer fewer than 500 changed code lines and ten code files where the result remains coherent.
-Documentation, generated inventories and lockfiles are excluded from those code-size guidelines.
-A guideline is not a reason to split one runnable flow into incomplete layers or create a PR for each small file edit.
+Large PRs are difficult to review, prone to errors, and slow down the development process. Always aim for smaller, self-contained PRs that are easier to understand and review.
 
-### Split changes by verifiable outcome
+### Size Limits
 
-1. Deliver the smallest complete user or provider flow with its implementation, integration and verification.
-2. Separate a prerequisite only for an actual dependency, compilation or runtime reason. State which product acceptance it enables.
-3. Keep behavior-preserving refactoring separate from a product behavior change when both can be independently verified.
-4. Order dependent PRs by their real prerequisites. Preserve existing owners and reconcile bases after a prerequisite lands.
+- **Lines changed**: Keep PRs under 500 lines of code (additions + deletions)
+- **Files changed**: Keep PRs under 10 code files
+- **Single responsibility**: Each PR should do one thing well
 
-For example, a calendar transport adapter may be a prerequisite if the original SDK cannot import in workerd.
-The consuming slice then completes calendar creation, updates, cancellation and failure handling through the original booking path.
-Do not substitute repeated review rounds or worker-count targets for completing that flow.
+**Note**: These limits apply to code files only. Non-code files like documentation (README.md, CHANGELOG.md), lock files (bun.lock), and auto-generated files are excluded from the count.
+
+### How to Split Large Changes
+
+When a task requires extensive changes, break it into multiple PRs:
+
+1. **By layer**: Separate database/schema changes, backend logic, and frontend UI into different PRs
+2. **By feature component**: Split a feature into its constituent parts (e.g., API endpoint PR, then UI PR, then integration PR)
+3. **By refactor vs feature**: Do preparatory refactoring in a separate PR before adding new functionality
+4. **By dependency order**: Create PRs in the order they can be merged (base infrastructure first, then features that depend on it)
+
+### Examples of Good PR Splits
+
+**Instead of one large "Add booking notifications" PR:**
+- PR 1: Add notification preferences schema and migration
+- PR 2: Add notification service and API endpoints
+- PR 3: Add notification UI components
+- PR 4: Integrate notifications into booking flow
+
+**Instead of one large "Refactor calendar sync" PR:**
+- PR 1: Extract calendar sync logic into dedicated service
+- PR 2: Add new calendar provider abstraction
+- PR 3: Migrate existing providers to new abstraction
+- PR 4: Add new calendar provider support
+
+### Benefits of Smaller PRs
+
+- Faster review cycles and quicker feedback
+- Easier to identify and fix issues
+- Lower risk of merge conflicts
+- Simpler to revert if problems arise
+- Better git history and easier debugging
 
 ## Commands
 
-Use Bun `1.4.4` for package management and workspace commands. See the [Bun migration contract](docs/porting/architecture.md#bun-workspaces-and-lockfile).
-The source manifests still contain upstream commands until the [toolchain milestone](docs/porting/plan.md#phase-1-establish-the-original-application-on-vinext) converts them.
-The target command interface is:
+See [agents/commands.md](agents/commands.md) for full reference. Use Bun equivalents as the workspace scripts are converted. Key commands:
 
-```sh
-bun install --frozen-lockfile
-bun run lint
-bun run type-check:ci --force
-TZ=UTC bun run test
-bun run --cwd packages/prisma generate
-bun run --cwd apps/web dev
-bun run --cwd apps/web build
+```bash
+bun run type-check:ci --force  # Type check (always run before pushing)
+bunx biome check --write .  # Lint and format
+TZ=UTC bun run test            # Run unit tests
+bun run prisma generate        # Regenerate types after schema changes
 ```
 
-Bun runs the existing package scripts. Vitest remains the unit runner and Playwright remains the browser runner.
-Preserve dependency resolutions, workspace names, overrides, patches and required lifecycle behavior when producing `bun.lock`.
-Use frozen installs in CI. Remove Yarn commands and files after their consumed replacements work.
-Node is available for build tools whose engine contracts require it; it is not an application server.
-
-[agents/commands.md](agents/commands.md) retains upstream command details. The selected architecture and converted manifests take precedence over obsolete Yarn or PostgreSQL instructions.
-Do not report a command as passing until it exists, targets the accepted source graph and actually executes.
 
 ## Boundaries
 
 ### Always do
-
-- Run type checks for changed typed code and its affected callers before committing.
-- Run relevant retained tests and scoped runtime verification before pushing implementation changes.
-- For documentation changes, check source claims, relative links, anchors and whitespace. Do not claim runtime acceptance from those checks.
-- Use Prisma `select`, direct imports, existing domain types and source-compatible errors.
-- Keep public API methods, status codes, body shapes, cookies, redirects and validation behavior stable.
-- Preserve IDs, relationships, defaults, JSON/list semantics, date representations and source-specific side-effect ordering on D1.
-- Keep transactional guards and dependent writes in one atomic D1 batch, and prove rollback and relevant concurrency behavior.
-- Follow the active task's delivery grant. Full-stop leaves the PR open and unmerged, with auto-merge and queue enrollment off.
-
-### Resolve within the authorized task
-
-Dependency, schema, multi-package and file changes named by the port plan may proceed within the active execution grant.
-Make routine choices directly and record consequential decisions with their evidence.
-Do not ask the operator to approve an already-authorized reversible step again.
+- Run type check on changed files before committing
+- Run relevant tests before pushing
+- Use `select` in Prisma queries
+- Follow conventional commits for PR titles
+- Run Biome before pushing
 
 ### Ask first
-
-- Product or scope changes that alter the baseline's observable behavior.
-- Unclear licensing or a proposed exclusion without evidence.
-- Production deployment, real provider credentials or paid-resource creation.
-- Migrating or deleting live data, changing branch protection, or another action outside the active grant.
+- Adding new dependencies
+- Schema changes to `packages/prisma/schema.prisma`
+- Changes affecting multiple packages
+- Deleting files
+- Running full build or E2E suites
 
 ### Never do
+- Commit secrets, API keys, or `.env` files
+- Expose `credential.key` in any query
+- Use `as any` type casting
+- Force push or rebase shared branches
+- Modify generated files directly
 
-- Commit secrets or expose credential fields.
-- Run production requests against private data to create verification evidence.
-- Force-push or rebase another owner's shared branch.
-- Bypass branch protection or merge without the relevant authorization.
-- Treat package support documentation, a successful build or a bounded model as proof of full-product parity.
+## Project Structure
 
-## Project structure
-
-```text
-apps/web/app/                App Router routes, layouts, RSC and actions
-apps/web/pages/              Pages Router views and API handlers
-apps/web/modules/            Web-specific feature compositions and tRPC hooks
-apps/web/components/         Web components shared across those views
-apps/api/v2/src/             Versioned controllers, DTOs, guards and services
-apps/docs/                   Documentation application
-packages/prisma/             Domain schema, client and planned D1 migrations
-packages/trpc/               API procedures, contexts and React bindings
-packages/ui/                 Shared UI components
-packages/features/           Shared services, repositories and domain code
-packages/app-store/          Provider integrations, metadata and credentials
-packages/lib/                Shared utilities and transport boundaries
-packages/i18n/               Original translations and resource loading
-packages/embeds/             Embed SDKs and browser integration
+```
+apps/web/                    # Main vinext application on Workers
+packages/prisma/             # Domain schema and D1 migrations
+packages/trpc/               # tRPC API layer (routers in server/routers/)
+packages/ui/                 # Shared UI components
+packages/features/           # Feature-specific code
+packages/app-store/          # Third-party integrations
+packages/lib/                # Shared utilities
 ```
 
-### Key files and references
+### Key files
+- Routes: `apps/web/app/` (App Router)
+- Database schema: `packages/prisma/schema.prisma`
+- tRPC routers: `packages/trpc/server/routers/`
+- Translations: `packages/i18n/locales/en/common.json`
+- Background tasks and webhook triggers: `packages/features/tasker/` and `packages/features/webhooks/`
 
-- Domain schema is `packages/prisma/schema.prisma`; target SQLite migrations belong in `packages/prisma/migrations-d1/`.
-- tRPC procedures live under `packages/trpc/server/routers/`.
-- Translation keys live in `packages/i18n/locales/en/common.json`.
-- Existing task execution lives under `packages/features/tasker/`; webhook triggers live under `packages/features/webhooks/`.
-- Each application's target `vite.config.ts` and `cloudflare.config.ts` own its build and Cloudflare bindings.
-- Use the [Cloudflare guide](docs/cloudflare.md) and [integration guide](docs/integrations.md) for setup responsibilities and provider callbacks.
-- Preserve the [feature/module boundary](agents/rules/architecture-features-modules.md) and [page-level authorization](agents/rules/architecture-page-level-auth.md).
+## Tech Stack
 
-## Target stack
+- **Framework**: vinext with the original Next-compatible App Router and Pages Router
+- **Language**: TypeScript (strict)
+- **Package manager**: Bun 1.4.4
+- **Database**: Cloudflare D1 with Prisma ORM
+- **Hosting**: Cloudflare Workers Paid plan for deployment
+- **API**: tRPC for type-safe APIs
+- **Auth**: Self-hosted Better Auth on Workers/D1, preserving Cal authentication policy
+- **Styling**: Tailwind CSS
+- **Testing**: Vitest (unit), Playwright (E2E)
+- **i18n**: i18next/react-i18next with Cloudflare-compatible resource loading
 
-- Framework is vinext with the original Next-compatible App Router and Pages Router interfaces.
-- UI uses React 19, original components, Tailwind CSS and original provider composition.
-- Language is strict TypeScript.
-- Application hosting uses Cloudflare Workers; complete relational persistence uses D1 with Prisma.
-- tRPC retains its public procedure and serialization contracts. API v2 uses the selected Fetch/Hono boundary.
-- Better Auth is self-hosted on Workers and D1 behind Cal's original auth policy and projections.
-- i18next and react-i18next retain original resources while Next-specific loading is replaced.
-- Queues, Cron Triggers and Durable Objects replace the selected incompatible job/state hosting boundaries.
+## Code Examples
 
-Exact pins and ownership are in [architecture](docs/porting/architecture.md).
-External PostgreSQL and Node application hosting are out of scope. Use vinext's supported `next/*` interfaces rather than custom framework shims or Astro adapters.
-
-## Code examples
-
-### Error handling
-
-Keep useful context and the caller's error contract:
+### Good error handling
 
 ```typescript
-import { ErrorCode } from "@calcom/lib/errorCodes";
-import { ErrorWithCode } from "@calcom/lib/errors";
+// Good - Descriptive error with context
+throw new Error(`Unable to create booking: User ${userId} has no available time slots for ${date}`);
 
-throw new ErrorWithCode(ErrorCode.BookingNotFound, "Booking not found");
+// Bad - Generic error
+throw new Error("Booking failed");
 ```
 
-Use `TRPCError` inside a tRPC router. Follow [error handling patterns](agents/rules/quality-error-handling.md) for the existing conversion middleware and HTTP factories.
-Do not change a pinned error message or status simply to improve its wording.
+For which error class to use (`ErrorWithCode` vs `TRPCError`) and concrete examples, see [quality-error-handling](agents/rules/quality-error-handling.md).
 
-### Prisma queries
-
-Select the fields the caller needs:
+### Good Prisma query
 
 ```typescript
+// Good - Use select for performance and security
 const booking = await prisma.booking.findFirst({
   select: {
     id: true,
@@ -184,75 +171,78 @@ const booking = await prisma.booking.findFirst({
         id: true,
         name: true,
         email: true,
-      },
-    },
-  },
+      }
+    }
+  }
+});
+
+// Bad - Include fetches all fields including sensitive ones
+const booking = await prisma.booking.findFirst({
+  include: { user: true }
 });
 ```
 
-An unrestricted `include: { user: true }` can return sensitive or unnecessary fields.
-A nested write that changes multiple rows also needs the D1 atomicity contract; selecting carefully does not establish rollback.
-
-### Imports
+### Good imports
 
 ```typescript
+// Good - Type imports and direct paths
 import type { User } from "@prisma/client";
 import { Button } from "@calcom/ui/components/button";
+
+// Bad - Regular import for types, barrel imports
+import { User } from "@prisma/client";
+import { Button } from "@calcom/ui";
 ```
 
-Keep type-only imports explicit and import the component's source entry rather than the `@calcom/ui` barrel.
+### API v2 Imports (apps/api/v2)
 
-### API v2 imports
+When importing from `@calcom/features` or `@calcom/trpc` into `apps/api/v2`, **do not import directly** because the API v2 app's `tsconfig.json` doesn't have path mappings for these modules, which causes "module not found" errors.
 
-The inherited v2 tsconfig does not map every feature/tRPC source alias.
-Preserve the existing `@calcom/platform-libraries` boundary until a deliberate alias migration updates both its compiler and Worker build.
-For an existing shared export, use:
+Instead, re-export from `packages/platform/libraries/index.ts` and import from `@calcom/platform-libraries`:
 
 ```typescript
-import { ProfileRepository } from "@calcom/platform-libraries";
-```
-
-If that export is missing, add it to its existing owner before using it:
-
-```typescript
+// Step 1: In packages/platform/libraries/index.ts, add the export
 export { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
+
+// Step 2: In apps/api/v2, import from platform-libraries
+import { ProfileRepository } from "@calcom/platform-libraries";
+
+// Bad - Direct import causes module not found error in apps/api/v2
+import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 ```
 
-Do not assume a new direct `@calcom/features` import resolves in v2 merely because it works in the web app.
+## PR Checklist
 
-## PR checklist
+- [ ] Title follows conventional commits: `feat(scope): description`
+- [ ] Type check passes: `bun run type-check:ci --force`
+- [ ] Lint passes: `bun run lint:fix`
+- [ ] Relevant tests pass
+- [ ] Diff is small and focused (<500 lines, <10 files)
+- [ ] No secrets or API keys committed
+- [ ] UI strings added to translation files
+- [ ] Created as draft PR
 
-- [ ] Title uses a Conventional Commit type and appropriate scope.
-- [ ] The PR delivers one coherent result with clear source and destination ownership.
-- [ ] Applicable type checks, Biome checks and retained tests pass on the actual accepted graph.
-- [ ] Relevant runtime failure, permission, persistence and provider paths have evidence.
-- [ ] Documentation links and claims are valid when documentation changes.
-- [ ] No secrets, private data or hand-edited generated output are committed.
-- [ ] Markup, copy, translation keys and public contracts remain source-compatible.
-- [ ] Review findings are resolved or answered with evidence.
-- [ ] Head, base, required checks and mergeability match the delivery report.
-- [ ] Automatic landing and merge behavior respect the active task's grant.
+## When Stuck
 
-## When stuck
+- Ask a clarifying question before making large speculative changes
+- Propose a short plan for complex tasks
+- Open a draft PR with notes if unsure about approach
+- Fix type errors before test failures - they're often the root cause
+- Run `bun run prisma generate` if you see missing enum/type errors
 
-- Trace a failure to its source before adding another workaround.
-- Reproduce a claimed inherited failure against the same base before calling it unrelated.
-- Resolve type errors before interpreting downstream test failures.
-- Regenerate Prisma output if generated enums or client types are missing; never patch generated files.
-- Use a bounded experiment for a factual runtime uncertainty and record its outcome.
-- Ask about genuine product decisions or external gates after completing independent authorized work.
-- Keep the current contract's unproven branches explicit instead of claiming blanket acceptance.
+## Spec-Driven Development (Opt-In)
 
-## Specification-driven work
+For complex features, you can use spec-driven development when explicitly requested.
 
-The port follows its committed plan and behavior contracts. Update those shared decisions when an implementation discovery affects multiple slices.
-For separately authorized work that needs the extended specification workflow, see [SPEC-WORKFLOW.md](SPEC-WORKFLOW.md).
-Do not create another planning system merely because a task spans multiple files.
+**To enable:** Tell the AI "use spec-driven development" or "follow the spec workflow"
 
-## Extended documentation
+See [SPEC-WORKFLOW.md](SPEC-WORKFLOW.md) for the full workflow documentation.
 
-- [agents/README.md](agents/README.md) indexes the inherited engineering rules.
-- [agents/rules/](agents/rules/) contains domain, repository, API, testing and review conventions.
-- [agents/commands.md](agents/commands.md) describes inherited command details.
-- [agents/knowledge-base.md](agents/knowledge-base.md) records business rules.
-- [Port plan](docs/porting/plan.md), [architecture](docs/porting/architecture.md) and [behavior](docs/porting/behavior.md) bind the target migration.
+## Extended Documentation
+
+For detailed information, see the `agents/` directory:
+
+- **[agents/README.md](agents/README.md)** - Rules index and architecture overview
+- **[agents/rules/](agents/rules/)** - Modular engineering rules
+- **[agents/commands.md](agents/commands.md)** - Complete command reference
+- **[agents/knowledge-base.md](agents/knowledge-base.md)** - Domain knowledge and business rules

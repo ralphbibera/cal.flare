@@ -9,29 +9,24 @@ tags: prisma, feature-flags, migrations
 
 ## Creating Feature Flag Migrations
 
-To seed new feature flags in Cal.diy, create a Prisma migration:
-
-```bash
-yarn prisma migrate dev --create-only --name seed_[feature_name]_feature
-```
+To seed new feature flags in Cal.flare, add an ordered SQLite SQL migration through the [D1 migration process](data-prisma-migrations.md).
 
 ## Migration File Location
 
-The migration file should be placed in `packages/prisma/migrations/` with a timestamp prefix format:
+The migration file should be placed in `packages/prisma/migrations-d1/` with a timestamp prefix format:
 
 ```
-20250724210733_seed_calendar_cache_sql_features/migration.sql
+20250724210733_seed_calendar_cache_sql_features.sql
 ```
 
 ## SQL Structure
 
-Follow the pattern from existing feature seeding migrations like:
-`packages/prisma/migrations/20241216000000_add_calendar_cache_serve/migration.sql`
+Preserve the existing feature fields and conflict behavior, using the D1 date representation:
 
 ```sql
 INSERT INTO "Feature" ("slug", "enabled", "type", "description", "createdAt", "updatedAt")
 VALUES
-  ('your-feature-slug', false, 'OPERATIONAL', 'Description of feature', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  ('your-feature-slug', false, 'OPERATIONAL', 'Description of feature', strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))
 ON CONFLICT ("slug") DO NOTHING;
 ```
 

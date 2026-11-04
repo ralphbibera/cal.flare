@@ -1,324 +1,355 @@
-# Cal.flare
+> [!WARNING]
+> Use at your own risk. Cal.flare is the open source community edition of Cal.com and it is intended for users who want to self-host their own Cal.flare instance. It is strictly recommended for personal, non-production use. Please review all installation and configuration steps carefully. Self-hosting requires advanced knowledge of Cloudflare administration, D1 database management, and securing sensitive data. Proceed only if you are comfortable with these responsibilities.
 
+> [!TIP]
+> For any commercial and enterprise-ready scheduling infrastructure, use Cal.com, not Cal.flare; hosted by us or get invited to on-prem enterprise access here: <a href="https://cal.com/sales">https://cal.com/sales</a>
+
+<!-- PROJECT LOGO -->
 <p align="center">
   <a href="https://github.com/ralphbibera/cal.flare">
-    <img src="https://user-images.githubusercontent.com/8019099/210054112-5955e812-a76e-4160-9ddd-58f2c72f1cce.png" alt="Cal.diy project logo">
+   <img src="https://user-images.githubusercontent.com/8019099/210054112-5955e812-a76e-4160-9ddd-58f2c72f1cce.png" alt="Logo">
   </a>
+
+  <h1 align="center">Cal.flare</h1>
+
+  <p align="center">
+    The community-driven, open-source scheduling platform.
+    <br />
+    <a href="https://github.com/ralphbibera/cal.flare"><strong>GitHub</strong></a>
+    <br />
+    <a href="https://github.com/ralphbibera/cal.flare/issues">Issues</a>
+    &middot;
+    <a href="./CONTRIBUTING.md">Contributing</a>
+  </p>
 </p>
 
 <p align="center">
-  The community-driven, open-source scheduling platform on Cloudflare.
-  <br>
-  <a href="https://github.com/ralphbibera/cal.flare"><strong>GitHub</strong></a>
-  &middot; <a href="https://github.com/ralphbibera/cal.flare/issues">Issues</a>
-  &middot; <a href="CONTRIBUTING.md">Contributing</a>
+   <a href="https://github.com/ralphbibera/cal.flare/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/stargazers"><img src="https://img.shields.io/github/stars/calcom/cal.diy" alt="Github Stars"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/pulse"><img src="https://img.shields.io/github/commit-activity/m/calcom/cal.diy" alt="Commits-per-month"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22"><img src="https://img.shields.io/badge/Help%20Wanted-Contribute-blue"></a>
+   <a href="https://contributor-covenant.org/version/1/4/code-of-conduct/"><img src="https://img.shields.io/badge/Contributor%20Covenant-1.4-purple" /></a>
 </p>
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="MIT license"></a>
-  <a href="https://github.com/ralphbibera/cal.flare/stargazers"><img src="https://img.shields.io/github/stars/ralphbibera/cal.flare" alt="GitHub stars"></a>
-  <a href="https://github.com/ralphbibera/cal.flare/pulse"><img src="https://img.shields.io/github/commit-activity/m/ralphbibera/cal.flare" alt="Commit activity"></a>
-  <a href="CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-1.4-purple" alt="Code of conduct"></a>
-</p>
-
-> [!WARNING]
-> Cal.flare is a community-maintained Cal.diy port intended for personal, non-production use while the Cloudflare migration remains unverified.
-> Self-hosting requires knowledge of Cloudflare account administration, database migrations, credential security and backups. Review the setup and configuration carefully.
-> The setup below describes the target workflow as its [implementation milestones](docs/porting/plan.md) become available.
+<!-- ABOUT THE PROJECT -->
 
 ## About Cal.flare
 
-<img width="100%" alt="Cal.diy booking interface" src="https://github.com/calcom/cal.diy/assets/8019099/407e727e-ff19-4ca4-bcae-049dca05cf02">
+<img width="100%" alt="booking-screen" src="https://github.com/ralphbibera/cal.flare/assets/8019099/407e727e-ff19-4ca4-bcae-049dca05cf02">
 
-Cal.flare brings [Cal.diy](https://github.com/calcom/cal.diy)'s community scheduling application to Cloudflare Workers and D1.
-The port preserves its routes, components, markup, copy, translations, permissions and integration behavior.
-The [source baseline](https://github.com/calcom/cal.diy/commit/e8afecd163cd3a0a3ff279bd4721aa7f073c4685) defines the feature scope, including community-edition limitations and stubs.
+**Cal.flare** ports the community-driven, fully open-source [Cal.diy](https://github.com/calcom/cal.diy) scheduling platform to Cloudflare Workers and D1. Cal.diy is based on [Cal.com](https://cal.com), with its enterprise/commercial code removed.
+
+Cal.flare is **100% MIT-licensed** with no proprietary "Enterprise Edition" features. It's designed for individuals and self-hosters who want full control over their scheduling infrastructure without any commercial dependencies.
 
 ### What's different from Cal.com?
 
-- Cal.diy's community edition is the product baseline; the port does not add enterprise-only behavior.
-- No Cal.com account or commercial license key is required for that community application.
-- The project retains the upstream MIT license and source attribution.
-- The deployment target is Cloudflare, with D1 for application records and Bun for package management.
-- You operate your own installation. Cloudflare hosting does not remove calendar, conferencing, mail or payment providers' account requirements.
+- **No enterprise features** — Teams, Organizations, Insights, Workflows, SSO/SAML, and other EE-only features have been removed
+- **No license key required** — Everything works out of the box, no Cal.com account or license needed
+- **100% open source** — The entire codebase is licensed under MIT, no "Open Core" split
+- **Community-maintained** — Contributions are welcome and go directly into this project (see [CONTRIBUTING.md](./CONTRIBUTING.md))
 
-### Built with
+> **Note:** Cal.flare is a self-hosted project. There is no hosted/managed version. You run it on your own infrastructure.
 
-- [vinext](https://vinext.dev/) for Next-compatible App Router, Pages Router, layouts and Server Actions.
-- [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/).
-- [Bun](https://bun.com/) 1.4.4 for package management and workspace commands.
-- [React](https://react.dev/) 19, [tRPC](https://trpc.io/), [Tailwind CSS](https://tailwindcss.com/) and [Prisma](https://prisma.io/).
-- Self-hosted [Better Auth](https://better-auth.com/) on Workers and D1, preserving Cal's identity policy.
-- [i18next](https://www.i18next.com/) and react-i18next with original resources and keys.
-- [Daily](https://daily.co/) and the original provider adapters for supported conferencing features.
+### Built With
 
-Exact versions and runtime responsibilities are in [architecture](docs/porting/architecture.md).
-Original application and package folders remain in place; use the [source inventory](docs/porting/inventory/README.md) when migrating a flow.
+- [vinext](https://vinext.dev/)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/)
+- [Bun](https://bun.com/) 1.4.4
+- [tRPC](https://trpc.io/)
+- [React.js](https://reactjs.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Prisma.io](https://prisma.io/)
+- [Daily.co](https://daily.co/)
 
-## Getting started
+The [port plan](docs/porting/plan.md), [architecture](docs/porting/architecture.md) and [inventory](docs/porting/inventory/README.md) describe the Cloudflare/Bun substitutions.
 
-Use the [Cloudflare setup guide](docs/cloudflare.md) alongside the steps below.
-The target uses Workers for application hosting and D1 for all relational application data.
-The inherited Yarn/Next/PostgreSQL scripts require the planned toolchain and database conversion before these target commands are usable.
+<!-- GETTING STARTED -->
+
+## Getting Started
+
+To get a local copy up and running, please follow these simple steps.
 
 ### Prerequisites
 
-- Bun 1.4.4 and Git.
-- Node 24.22.0 for build tools whose engine requirements need it. It is not the application host.
-- A Cloudflare account with the Workers, D1 and other selected resource capabilities required by the deployment.
-- Provider registrations and credentials for the [integrations](#integrations) you enable.
-- OpenSSL or an equivalent secure generator for installation secrets.
+Here’s what you need to run Cal.flare.
+
+- Bun 1.4.4
+- Node.js 24.22.0 for build tools that require it
+- A [Cloudflare Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) to deploy Cal.flare
+- Local workerd/D1 for development
+
+> If you want to enable any of the available integrations, you may want to obtain additional credentials for each one. More details on this can be found below under the [integrations section](#integrations).
 
 ## Development
 
 ### Setup
 
-1. Clone the repository and enter its directory:
+1. Clone the repo (or fork https://github.com/ralphbibera/cal.flare/fork)
 
    ```sh
    git clone git@github.com:ralphbibera/cal.flare.git
+   ```
+
+   > If you are on Windows, run the following command in Git Bash with admin privileges:
+   > `git clone -c core.symlinks=true git@github.com:ralphbibera/cal.flare.git`
+
+2. Go to the project folder
+
+   ```sh
    cd cal.flare
    ```
 
-   On Windows, use Git Bash or WSL with symlink support. If needed, clone with `git clone -c core.symlinks=true git@github.com:ralphbibera/cal.flare.git`.
+3. Select Bun 1.4.4 and Node 24.22.0 for build tooling. If you use [nvm](https://github.com/nvm-sh/nvm):
 
-2. Select Bun 1.4.4 and the required Node build-tool version. Verify Bun with `bun --version`.
-3. Install the accepted workspace graph from its committed Bun lockfile:
+   ```sh
+   nvm install 24.22.0 && nvm use 24.22.0
+   bun --version
+   ```
+
+4. Install packages with Bun:
 
    ```sh
    bun install --frozen-lockfile
    ```
 
-4. Configure the public URLs and local secrets in ignored `.dev.vars` files for each consuming Worker. Retain the original variable names from the [environment inventory](docs/porting/inventory/environment.tsv).
-5. Generate distinct installation secrets:
+5. Set up local Worker configuration:
+
+   - Set consumed variables in ignored `.dev.vars` files for web and API v2. Use [.env.example](.env.example) and [.env.appStore.example](.env.appStore.example) for existing names, with the [Cloudflare binding and secret configuration](docs/cloudflare.md).
+   - Generate `NEXTAUTH_SECRET` with `openssl rand -base64 32`.
+   - Generate `CALENDSO_ENCRYPTION_KEY` with `openssl rand -base64 24`.
+   - Store each value in the consuming Worker's `.dev.vars` file for local development, and in Worker secrets for deployment.
+
+6. Bind the web and API v2 Workers to the same local D1 database and apply the converted migrations. See the [D1 configuration reference](docs/cloudflare.md#prepare-d1).
+7. Create your [first user](#setting-up-your-first-user), or load the development fixtures below.
+8. Start the application:
 
    ```sh
-   openssl rand -base64 32
-   openssl rand -base64 24
+   bun run dev
    ```
 
-   Use the first value for `NEXTAUTH_SECRET` and the second 32-character value for `CALENDSO_ENCRYPTION_KEY`.
-   Generate a fresh `CRON_API_KEY` as well. Keep encryption keys stable for an existing installation.
-6. Bind the same local D1 database as `DB` for web and API v2. Configure `API_V2`, `JOBS`, `RUNTIME_STATE`, assets and cache bindings according to the [Cloudflare guide](docs/cloudflare.md#bind-resources).
-7. Apply the converted D1 migrations and run the ported synthetic seed or setup flow before using data-dependent routes.
-8. Start the web workspace through Bun:
+#### Development test users
 
-   ```sh
-   bun run --cwd apps/web dev
-   ```
-
-Use the local origin printed by the development server and keep `NEXTAUTH_URL`, application URLs and callback registrations consistent with it.
-The [Bun migration contract](docs/porting/architecture.md#bun-workspaces-and-lockfile) replaces Yarn installs, workspace wrappers, script calls and CI commands while retaining original package names and tests.
-
-#### Quick start with local D1
-
-Local development uses workerd and isolated D1 state. It does not need the upstream Postgres Docker stack.
-After the Bun and D1 milestones provide the runners, install dependencies, apply `packages/prisma/migrations-d1/`, seed synthetic data and start the web/API Workers.
-See [local D1 setup](docs/cloudflare.md#prepare-d1) for shared database identity and migration ordering.
-
-The upstream development seed defines these test accounts:
+**Development seed credentials:**
 
 | Email | Password | Role |
-| --- | --- | --- |
+|-------|----------|------|
 | `free@example.com` | `free` | Free user |
 | `pro@example.com` | `pro` | Pro user |
 | `trial@example.com` | `trial` | Trial user |
 | `admin@example.com` | `ADMINadmin2022!` | Admin user |
 | `onboarding@example.com` | `onboarding` | Onboarding incomplete |
 
-They exist only when the corresponding synthetic seed has run. The D1 seed must preserve the inherited fixtures used by tests.
-Keep fixture accounts in isolated development/test databases, rather than adding them to a real installation.
-Inspect local records with the D1 development tools; the PostgreSQL Prisma Studio setup is not the D1 procedure.
+After running the synthetic development seed, you can use these credentials at your local application origin. Keep these fixture accounts out of production data.
 
-#### Development tips
+> **Tip**: Inspect the seeded records using the local D1 tools. PostgreSQL Prisma Studio is not the D1 inspection path.
 
-`NEXT_PUBLIC_LOGGER_LEVEL` controls the original tRPC/application logging threshold:
+#### Development tip
 
-| Level | Name |
-| --- | --- |
-| `0` | silly |
-| `1` | trace |
-| `2` | debug |
-| `3` | info |
-| `4` | warn |
-| `5` | error |
-| `6` | fatal |
+1. Add `export NODE_OPTIONS="--max-old-space-size=16384"` to your shell script to increase the memory limit for a Node build-tool process. This does not change Worker runtime limits. Alternatively, you can run this in your terminal before running the app. Replace 16384 with the amount of RAM you want to allocate to the node process.
 
-A value includes that level and higher. For example, `3` includes info, warn, error and fatal. The source defaults to `4` when unset.
-Expose this public setting through the explicit browser build allowlist where consumed; keep private log payloads and credentials redacted.
+2. Add `NEXT_PUBLIC_LOGGER_LEVEL={level}` to local Worker configuration to control the logging verbosity for all tRPC queries and mutations.\
+   Where {level} can be one of the following:
 
-If a Node-based build tool runs out of heap, adjust `NODE_OPTIONS=--max-old-space-size=<MiB>` to fit the build machine.
-That setting does not increase Cloudflare Worker limits.
+   `0` for silly \
+   `1` for trace \
+   `2` for debug \
+   `3` for info \
+   `4` for warn \
+   `5` for error \
+   `6` for fatal
 
-#### Gitpod and cloud workspaces
+   When you set `NEXT_PUBLIC_LOGGER_LEVEL={level}` in local Worker configuration, it enables logging at that level and higher. Here's how it works:
 
-A cloud development workspace needs the same Bun and Node build-tool versions, Worker tooling and isolated D1 configuration as a local checkout.
-Forward the development port and set application/auth URLs to that reachable origin when testing callbacks.
-The inherited Gitpod Docker/PostgreSQL tasks need conversion before they represent this setup; they are not a ready-made Cloudflare environment.
+   The logger will include all logs that are at the specified level or higher. For example: \
 
-#### Manual setup
-
-1. Configure Worker bindings and consumed variables. Use the [runtime/build configuration](#configuration) tables below.
-2. Generate the domain client from the converted schema through the Bun workspace command supplied by the toolchain milestone.
-3. Apply the ordered SQLite migrations in `packages/prisma/migrations-d1/` through the D1 migration runner, using fresh local state for development.
-4. Populate the required app-store metadata and synthetic fixtures. The seed's Prisma calls must target D1, including relation and default behavior.
-5. Configure a development mail receiver when the retained email tests require one.
-6. Start the web and API v2 Workers with the same local D1 identity and the required service bindings.
-
-Do not substitute `DATABASE_URL=postgresql://...` or `prisma migrate deploy` for the D1 binding/migration workflow.
-
-For inherited tests that use MailHog, retain the receiver fixture:
+   - If you set `NEXT_PUBLIC_LOGGER_LEVEL=2`, it will log from level 2 (debug) upwards, meaning levels 2 (debug), 3 (info), 4 (warn), 5 (error), and 6 (fatal) will be logged. \
+   - If you set `NEXT_PUBLIC_LOGGER_LEVEL=3`, it will log from level 3 (info) upwards, meaning levels 3 (info), 4 (warn), 5 (error), and 6 (fatal) will be logged, but level 2 (debug) and level 1 (trace) will be ignored. \
 
 ```sh
-docker pull mailhog/mailhog
-docker run -d -p 8025:8025 -p 1025:1025 mailhog/mailhog
+echo 'NEXT_PUBLIC_LOGGER_LEVEL=3' >> apps/web/.dev.vars
 ```
 
-This is a local test receiver, not the production mail transport. Connect it through the accepted workerd test setup when `E2E_TEST_MAILHOG_ENABLED=1`.
-A deployed Worker uses the supported public TLS/STARTTLS relay described under [email configuration](docs/cloudflare.md#configure-mail-and-integrations).
+for Logger level to be set at info, for example.
+
+#### Gitpod Setup
+
+Use the same Bun, Node build-tool and local workerd/D1 setup in a Gitpod workspace.
+Forward the development port and configure application/auth URLs for that origin. The inherited Docker/PostgreSQL workspace tasks need the Cloudflare substitutions before they can be used for this target.
 
 #### Setting up your first user
 
-##### Approach 1. Application setup
+##### Approach 1
 
-Open the local or deployed application after its schema and identity configuration are ready.
-Use the setup/signup flow to create the initial user, so the original password hashing, profile defaults, verification and admin policy execute.
-Do not bypass those services by inserting a user/password row manually.
+Open the application after its D1 schema and authentication configuration are ready. Use the setup/signup flow to create your first user.
+This runs the existing password hashing, profile defaults, verification and admin policy instead of bypassing them with manual row edits.
 
-##### Approach 2. Development seed
+##### Approach 2
 
-Run the ported synthetic seed against fresh local D1, then sign in with the fixture account that matches the scenario you need.
-The inherited [seed](scripts/seed.ts) and [tests](docs/porting/behavior.md) define expected fixture behavior.
-Do not run the development seed as a production upgrade step.
+Run the ported synthetic seed against isolated local D1. The [upstream seed](scripts/seed.ts) defines the dummy users above.
+Do not use development seed accounts for a production installation.
 
-### E2E testing
+### E2E-Testing
 
-Set `NEXTAUTH_URL` and the test base URL to the actual Worker origin. The test runner must target vinext/workerd and D1 before a pass counts as port evidence.
-Retain the existing Playwright test ownership and assertions; Bun runs the package scripts.
+Point the retained Playwright runner at the vinext/workerd application and D1. Keep its existing assertions and scenarios.
 
-The target commands are:
+Be sure to set the environment variable `NEXTAUTH_URL` to the correct value. If you are running locally, as the documentation within `.env.example` mentions, the value should be `http://localhost:3000`.
 
 ```sh
+# In a terminal just run:
 bun run test-e2e
+
+# To open the last HTML report run:
 bunx playwright show-report test-results/reports/playwright-html-report
 ```
+
+#### Development mail receiver
+
+Run [mailhog](https://github.com/mailhog/MailHog) to view emails sent during development
+
+   > **_NOTE:_** Required when `E2E_TEST_MAILHOG_ENABLED` is "1"
+
+   ```sh
+   docker pull mailhog/mailhog
+   docker run -d -p 8025:8025 -p 1025:1025 mailhog/mailhog
+   ```
+
 
 #### Resolving issues
 
 ##### E2E test browsers not installed
 
-Install the browsers using the workspace's pinned Playwright version:
+Run `bunx playwright install` to download test browsers and resolve the error below when running `bun run test-e2e`:
 
-```sh
-bunx playwright install
 ```
-
-An error such as `Executable doesn't exist ... chromium ...` usually indicates a missing browser installation or a cache/version mismatch.
-Keep the browser executable aligned with the Playwright version in the accepted lockfile.
+Executable doesn't exist at /Users/alice/Library/Caches/ms-playwright/chromium-1048/chrome-mac/Chromium.app/Contents/MacOS/Chromium
+```
 
 ### Upgrading from earlier versions
 
-1. Review the release's schema, binding, public-variable and provider changes, then update the checkout:
+1. Pull the current version:
 
    ```sh
-   git pull --ff-only
+   git pull
+   ```
+
+1. Check if dependencies got added/updated/removed
+
+   ```sh
    bun install --frozen-lockfile
    ```
 
-2. Back up the target database and establish its recovery procedure before a production schema change.
-3. Apply the reviewed D1 migrations in order before releasing code that consumes the new schema. Do not run a development reset or seed on live data.
-4. Update required Worker bindings/secrets and rebuild client assets when public build-time values change.
-5. Build the affected workspaces and deploy the dependent services in the order described below.
-6. Verify sessions, booking, reschedule/cancel, provider events, email and retries against the new release.
+1. Apply the reviewed D1 migrations in order. Back up production data and retain a recovery procedure before changing its schema.
+   Use the local D1 database for development; do not run a development reset or seed against production.
 
-Keep `NEXTAUTH_SECRET` and `CALENDSO_ENCRYPTION_KEY` stable unless a deliberate key-rotation procedure is part of the release.
+1. Check for Worker variable, secret and binding changes
+
+   ```sh
+   bun run predev
+   ```
+
+1. Start the server. In a development environment, just do:
+
+   ```sh
+   bun run dev
+   ```
+
+   For a production build, run for example:
+
+   ```sh
+   bun run build
+   bun run --cwd apps/web deploy
+   ```
+
+1. Enjoy the new version.
+
+<!-- DEPLOYMENT -->
 
 ## Deployment
 
 ### Cloudflare Workers
 
-The web and API v2 Workers share one authoritative D1 database. Docs has its own assets and no product DB binding.
-Cloudflare Queues, Cron Triggers and Durable Objects replace the selected incompatible job/state hosting boundaries.
+Use the native vinext Cloudflare integration and each application's `vite.config.ts` and `cloudflare.config.ts`.
+The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secrets, D1 and deployment configuration.
 
-1. Configure each app's source `vite.config.ts` and `cloudflare.config.ts` using the [bound architecture](docs/porting/architecture.md).
-2. Bind `DB`, assets, the `API_V2` service and the selected queue/state/cache resources. Use separate data and resources for development and production.
-3. Set deployment secrets using [Worker secret bindings](https://developers.cloudflare.com/workers/configuration/secrets/), not committed environment files.
-4. Build through the accepted Bun workspace scripts and apply the reviewed D1 migrations.
-5. Deploy v2 and its job/state handlers before the web Worker that consumes `API_V2`. Publish docs assets separately.
-6. Configure domains and exact OAuth callback URLs, then verify the complete booking and delivery flows.
+#### Requirements
 
-The [Cloudflare setup guide](docs/cloudflare.md) expands these steps. Native vinext Cloudflare build output is generated; configuration files remain source-controlled.
-Railway, Northflank, Vercel, Render and Docker-hosted Node/PostgreSQL deployments are not Cal.flare targets.
+- **Cloudflare Workers Paid is required to deploy Cal.flare.**
+- The web and API v2 Workers share one authoritative D1 database.
+- `ASSETS` serves public files, fonts, embeds and built output.
+- `API_V2` binds web to API v2 at the original `/api/v2` URL.
+- `JOBS`, `RUNTIME_STATE` and the selected cache bindings supply Cloudflare job/state/cache resources.
+- The docs application has its own static assets and no application database binding.
 
-### Configuration
+#### Deploying Cal.flare
 
-#### Important runtime variables and bindings
+Follow the [Cloudflare deployment procedure](docs/cloudflare.md#deploy-and-verify) for D1 migration ordering, resource bindings, application builds and provider verification.
+Keep source configuration and ordered migrations in Git; generated build output and secrets stay outside it.
 
-| Name | Purpose |
-| --- | --- |
-| `DB` | D1 application/auth records, tasks and migration history; shared by web and v2. |
-| `ASSETS` | The app's public files, fonts, embed output and built assets. |
-| `API_V2` | Web-to-v2 service binding that preserves public `/api/v2`. |
-| `JOBS`, `RUNTIME_STATE` | Selected queue transport and Durable Object job/cache/limiter state. |
-| Response Store bindings | Native helper-owned cache metadata and disposable response bodies. |
-| `NEXTAUTH_URL` | Public auth origin, consistent with the web deployment and its callback URLs. |
-| `NEXTAUTH_SECRET` | Installation signing/session secret. Generate your own secure value. |
-| `CALENDSO_ENCRYPTION_KEY` | Stable 32-character encryption key for stored Cal credentials/data. |
-| `CRON_API_KEY` | Authentication for retained cron HTTP endpoints. |
-| `EMAIL_FROM` | Original sender identity; configure the selected relay's credentials as well. |
+#### Configuration
 
-Mail selection retains `RESEND_API_KEY`, `EMAIL_SERVER`, or explicit `EMAIL_SERVER_HOST`, `EMAIL_SERVER_PORT`, `EMAIL_SERVER_USER` and `EMAIL_SERVER_PASSWORD` configuration.
-Use a supported public TLS/STARTTLS relay. Workers has no local sendmail executable.
-See [environment references](docs/porting/inventory/environment.tsv), [.env.example](.env.example) and [.env.appStore.example](.env.appStore.example) for retained names.
-The example files describe upstream inputs; their PostgreSQL URLs and container assumptions do not configure D1.
+##### Important Run-time variables
 
-#### Build-time variables
+Provide these values through Worker bindings, variables and secrets:
 
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_WEBAPP_URL` | Public application origin used in client output. |
-| `NEXT_PUBLIC_WEBSITE_URL` | Website origin where consumed by the application. |
-| `NEXT_PUBLIC_EMBED_LIB_URL` | Public embed script URL. |
-| `NEXT_PUBLIC_WEBSITE_TERMS_URL` | Optional terms URL. |
-| `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` | Optional privacy-policy URL. |
-| `CALCOM_TELEMETRY_DISABLED` | Retained telemetry opt-out configuration; `1` disables it where consumed. |
+| Variable or binding | Description | Required |
+| --- | --- | --- |
+| `DB` | D1 application/auth database, shared by web and API v2. | required |
+| `NEXT_PUBLIC_WEBAPP_URL` | Public web origin, consistent with client build configuration. | required |
+| `NEXTAUTH_URL` | Public authentication origin and callback configuration. | required |
+| `NEXTAUTH_SECRET` | Installation session/signing secret; generate during [Setup](#setup). | required |
+| `CALENDSO_ENCRYPTION_KEY` | Stable 32-character Cal encryption key; generate during [Setup](#setup). | required |
+| `CRON_API_KEY` | Authentication for retained cron HTTP endpoints. | where consumed |
+| `EMAIL_FROM` | Sender identity for application mail. | for mail delivery |
 
-Only explicitly allowlisted public values enter browser bundles. Auth, encryption, provider and signing secrets remain server-side.
-Generate binding types before standalone type checks. Rebuild public assets when a build-time URL or flag changes.
+Mail uses `RESEND_API_KEY`, `EMAIL_SERVER`, or the existing SMTP host/port/user/password fields.
+Use a supported public TLS/STARTTLS relay on Workers; local sendmail is not available there.
+Store private values as Worker secrets. Use ignored `.dev.vars` files for local development, and configure each consuming Worker.
 
-### Troubleshooting
+##### Build-time variables
 
-#### TLS and public URLs
+Provide consumed public values through the explicit client-build allowlist:
 
-Use valid HTTPS for production domains and provider callbacks, with the same public origin in application/auth configuration.
-Keep TLS verification enabled. Fix certificates, trust or the configured URL instead of setting `NODE_TLS_REJECT_UNAUTHORIZED=0`.
-Cloudflare handles edge TLS; the Docker container loopback workaround is not the Worker routing model.
+| Variable | Description | Default |
+| --- | --- | --- |
+| `NEXT_PUBLIC_WEBAPP_URL` | Base URL injected into client output. | local development origin |
+| `NEXT_PUBLIC_WEBSITE_URL` | Website origin where consumed. | application configuration |
+| `NEXT_PUBLIC_EMBED_LIB_URL` | Public embed script URL. | application configuration |
+| `NEXT_PUBLIC_WEBSITE_TERMS_URL` | Optional terms and conditions URL. | |
+| `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` | Optional privacy-policy URL. | |
+| `CALCOM_TELEMETRY_DISABLED` | Set to `1` to disable telemetry where consumed. | |
 
-#### Failed user creation or relation writes
+Rebuild client assets when a public build-time value changes. Auth, encryption and provider secrets remain server-side.
+See the [environment inventory](docs/porting/inventory/environment.tsv) for retained names and the [architecture](docs/porting/architecture.md) for exact resource bindings.
 
-Use the actual D1/Prisma error and original input contract to identify the failed field, constraint or relation.
-Keep generated integer IDs, JSON/null representation and nested-write atomicity source-compatible.
-Run signup/setup through its production service rather than editing rows to bypass missing defaults or password hashing.
-See the [D1 representation and atomicity contract](docs/porting/architecture.md#full-d1-schema-and-atomicity).
+#### Troubleshooting
 
-#### Session fetch errors
+##### SSL edge termination
 
-Check `NEXTAUTH_URL`, application origins, cookie domain/secure settings, installation secrets and callback paths first.
-Inspect the actual Worker auth response and its repeated `Set-Cookie` headers, then compare server and browser session projections.
-Keep response cookies when crossing server boundaries and preserve the original public error mapping.
-Do not replace the public origin with a Docker service name or disable TLS checks to hide a failed session request.
+Cloudflare handles public TLS. Keep the application/auth origins and provider callbacks consistent with the actual HTTPS domain.
+Fix certificate, trust or URL configuration instead of disabling TLS verification.
+
+##### Failed to commit changes: Invalid 'prisma.user.create()'
+
+Inspect the actual input and D1/Prisma error for the failing field or relation. Preserve the original metadata, null and generated-ID contract.
+Use the setup/signup service so password hashing and user defaults run; do not bypass those services with manual rows.
+
+##### CLIENT_FETCH_ERROR
+
+Check `NEXTAUTH_URL`, the public web origin, cookie domain/secure settings and installation secrets.
+Inspect the Worker auth response and its `Set-Cookie` headers, then compare the original server/browser session projections.
+Docker service-name and loopback-DNS workarounds are not the Worker routing model.
+
+<!-- LICENSE -->
 
 ## License
 
-Cal.flare retains the upstream [MIT license](LICENSE), copyright notices and source attribution.
-The community application does not require a Cal.com commercial license key. Third-party integrations retain their own account and permission requirements.
+Cal.flare is fully open source, licensed under the [MIT License](https://opensource.org/license/mit).
+
+Unlike Cal.com's "Open Core" model, Cal.flare has **no commercial/enterprise code**. The entire codebase is available under the same open-source license.
 
 ## Enabling Content Security Policy
 
-Set `CSP_POLICY="non-strict"` where the original policy is consumed.
-The baseline enables strict policy on login, report-only behavior on other supported SSR pages, and does not claim the same SSG coverage.
-Preserve nonce generation, embed/CSP headers and the source exception for inline styles.
-Check custom components for compatibility and inspect violation reports before changing policy.
+- Set CSP_POLICY="non-strict" env variable, which enables [Strict CSP](https://web.dev/strict-csp/) except for `unsafe-inline` in `style-src`. If you have custom changes in your instance, you may need to modify your code to make it CSP-compatible. Currently, strict CSP is enabled only on the login page. On other SSR pages, it is enabled in report-only mode to detect potential issues. It is not yet supported on SSG pages.
 
 ## Integrations
 
@@ -459,41 +490,43 @@ Check the [payment behavior contract](docs/porting/behavior.md#d_payments) for t
 
 ## Contributing
 
-Contributions are welcome, including documentation, translations, source-compatible fixes and complete migration slices.
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for domain/code conventions, using this README's Bun and Cloudflare workflow for target tooling.
-Use the [port plan](docs/porting/plan.md), [architecture](docs/porting/architecture.md) and [behavior contracts](docs/porting/behavior.md) to preserve scope and identify real prerequisites.
-Keep changes focused, follow Conventional Commits and verify affected source/callers. Product behavior changes need a separate decision from the port.
-Contributions here do not automatically change upstream Cal.diy or Cal.com's hosted platform.
+We welcome contributions! Whether it's fixing a typo, improving documentation, or building new features, your help makes Cal.flare better.
 
-### Good first issues
+> **Important:** Cal.flare is a community fork. Contributions to this repo do **not** flow to Cal.com's production platform. See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
-Look for [help-wanted issues](https://github.com/ralphbibera/cal.flare/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) with a bounded source-compatible result.
-Documentation corrections, retained-test runner wiring and isolated migration prerequisites can be useful starting points.
-Do not create work or fragment one flow merely to fill parallel slots.
+- Check out our [Contributing Guide](./CONTRIBUTING.md) for detailed steps.
+- Please follow our coding standards and commit message conventions to keep the project consistent.
+
+Even small improvements matter — thank you for helping us grow!
+
+### Good First Issues
+
+We have a list of [help wanted](https://github.com/ralphbibera/cal.flare/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22) that contain small features and bugs which have a relatively limited scope. This is a great place to get started, gain experience, and get familiar with our contribution process.
+
+<!-- CONTRIBUTORS -->
 
 ### Contributors
 
-[Cal.flare contributors](https://github.com/ralphbibera/cal.flare/graphs/contributors) build on the work of the [Cal.diy community](https://github.com/calcom/cal.diy/graphs/contributors) and Cal.com.
-
-<a href="https://github.com/calcom/cal.diy/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=calcom/cal.diy" alt="Upstream Cal.diy contributors">
+<a href="https://github.com/ralphbibera/cal.flare/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=calcom/cal.diy" />
 </a>
+
+<!-- TRANSLATIONS -->
 
 ### Translations
 
-You can contribute translations without changing application logic.
-Keep original keys and namespaces in `packages/i18n/locales`; English base strings are in `packages/i18n/locales/en/common.json`.
-Preserve interpolation, fallback and pluralization behavior, and verify the affected locale in SSR, hydration and RTL layouts where applicable.
-Do not restore keys deliberately removed from the selected upstream baseline.
+Don't code but still want to contribute? help translate Cal.flare into your language.
+
+<!-- ACKNOWLEDGEMENTS -->
 
 ## Acknowledgements
 
-Cal.flare builds on [Cal.diy](https://github.com/calcom/cal.diy), [Cal.com](https://cal.com) and their contributors.
-The original project and port depend on work from:
+Cal.flare is built on the foundation created by [Cal.com](https://cal.com) and the many contributors to the original project. Special thanks to:
 
-- [Cloudflare](https://www.cloudflare.com/) and [vinext](https://vinext.dev/).
-- [Bun](https://bun.com/).
-- [Vercel](https://vercel.com/) and [Next.js](https://nextjs.org/).
-- [Day.js](https://day.js.org/).
-- [Tailwind CSS](https://tailwindcss.com/).
-- [Prisma](https://prisma.io/).
+- [Vercel](https://vercel.com/)
+- [vinext](https://vinext.dev/)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/)
+- [Bun](https://bun.com/) 1.4.4
+- [Day.js](https://day.js.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Prisma](https://prisma.io/)

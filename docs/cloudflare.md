@@ -1,11 +1,11 @@
-# Configure Cal.flare on Cloudflare
+# Cloudflare configuration reference
 
-The target uses vinext on Workers, with D1 for all application records. The [port plan](porting/plan.md) tracks implementation readiness.
-These setup steps apply as the corresponding Bun, Worker and D1 milestones become available.
+Follow [README Setup](../README.md#setup) for installation and first launch.
+This reference describes the Cloudflare-specific bindings, secrets, D1 configuration and deployment procedure.
 
 ## Prepare your account and domains
 
-1. Select the Cloudflare account that owns the application Workers and D1 database.
+1. Select the Cloudflare account that owns the application Workers and D1 database. **Cal.flare deployment requires the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/).**
 2. Choose the web, API and docs URLs. Web exposes the original `/api/v2` path through the `API_V2` service binding.
 3. Set the application URLs consistently, including `NEXT_PUBLIC_WEBAPP_URL`, `NEXT_PUBLIC_WEBSITE_URL`, `NEXT_PUBLIC_EMBED_LIB_URL` and `NEXTAUTH_URL`.
 4. Register exact OAuth callback URLs with each enabled provider. Use separate registrations or callback entries for local development and production.
@@ -32,16 +32,9 @@ Use ignored `.dev.vars` files in each app that consumes secrets. Add only requir
 Do not use the upstream `.env.example` PostgreSQL URLs as a D1 connection configuration.
 D1 is accessed through the `DB` binding, with fresh local state for development.
 
-Generate your own auth and encryption values:
-
-```sh
-openssl rand -base64 32
-openssl rand -base64 24
-```
-
-Use the first value for `NEXTAUTH_SECRET` and the second 32-character value for `CALENDSO_ENCRYPTION_KEY`.
-Keep these stable for an installation. Changing encryption keys without a data/key-rotation procedure can make stored credentials unreadable.
-`CRON_API_KEY` protects retained cron endpoints. Generate a fresh value rather than reusing an example key.
+Generate installation secrets using the commands in [README Setup](../README.md#setup).
+`NEXTAUTH_SECRET` signs sessions; `CALENDSO_ENCRYPTION_KEY` must remain a stable 32-character value for the existing encrypted records.
+`CRON_API_KEY` protects retained cron endpoints. Use an installation value rather than an example key.
 
 For deployment, use [Worker secret bindings](https://developers.cloudflare.com/workers/configuration/secrets/).
 Nonsecret public URLs and flags belong in configuration; passwords, client secrets, API tokens and signing keys belong in secrets.

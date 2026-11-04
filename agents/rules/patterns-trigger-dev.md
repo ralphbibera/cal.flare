@@ -7,7 +7,7 @@ tags: trigger.dev, async, tasker, concurrency, cron, scheduled-tasks
 
 # Trigger.dev Task Implementation
 
-Trigger.dev is the async task runner used in both `apps/web` and `apps/api/v2`. Tasks can be disabled via the `ENABLE_ASYNC_TASKER` env var (set to `"false"` to fall back to synchronous execution).
+The original Tasker definitions are shared by `apps/web` and `apps/api/v2`. Their hosted Trigger.dev execution is replaced by the selected D1/Queues/Durable Object adapters on Cloudflare, preserving payloads, dispatch and retry behavior. Tasks can be disabled via the `ENABLE_ASYNC_TASKER` env var (set to `"false"` to fall back to synchronous execution).
 
 ## Tasker Architecture
 
@@ -139,28 +139,17 @@ Reference: [Trigger.dev Concurrency & Queues](https://trigger.dev/docs/queue-con
 
 ## Local Development
 
-1. Set env vars:
-   ```
-   TRIGGER_SECRET_KEY=<your-trigger-secret>
-   TRIGGER_API_URL=https://api.trigger.dev
-   ENABLE_ASYNC_TASKER="true"
-   ```
-
-2. Run the Trigger.dev CLI from the features package:
-   ```bash
-   cd packages/features && npx trigger.dev@latest dev --analyze
-   ```
-
-3. Keep the CLI running while developing. Tasks appear in the Trigger.dev dashboard under **Tasks**.
+Follow [README Setup](../../README.md#setup) for the Worker environment.
+Keep the existing Tasker, SyncTasker, service and schema boundaries. Configure the [Cloudflare job bindings](../../docs/porting/architecture.md#jobs-ephemeral-state-and-integrations) instead of a hosted Trigger.dev CLI/dashboard.
+The original `ENABLE_ASYNC_TASKER` opt-in and synchronous fallback remain part of the contract.
 
 ## Before Merging
 
-1. **Deploy to staging**: `cd packages/features && yarn deploy:trigger:staging`
-2. **Test on Trigger.dev dashboard**: Switch to staging environment and use the **Test** tab
-3. **Right-size machines**: Start with the smallest machine; increase only if you see `OutOfMemory` errors
-4. **Set retry with OOM handling**: Always include `outOfMemory` in retry config with a larger machine than the default
-5. **Set concurrency**: Analyze production request volume and task completion time to determine the appropriate `concurrencyLimit`
-6. **Cherry-pick caveat**: Cherry-picking does not redeploy Trigger.dev tasks. Only the `draft-release` CI action does. If cherry-picking a change that impacts Trigger.dev tasks, manually promote the new version in the Trigger.dev deployment dashboard after the fix is deployed
+1. Run the relevant retained task/service tests through Bun.
+2. Verify the consumed task through the built Worker with local D1 and controlled queue/provider outcomes.
+3. Preserve its configured concurrency, payload validation, retry factor/timing, cancellation and terminal behavior.
+4. Check the source machine/OOM requirements against Worker limits; a Trigger machine tier has no literal Cloudflare equivalent.
+5. Deploy the reviewed Worker/task bindings through the Cloudflare release procedure when authorized. Cherry-picking a source change alone does not deploy it.
 
 ## Common Mistakes
 
@@ -237,4 +226,3 @@ export const myTask = schemaTask({
 - Example taskers in the codebase:
   - `packages/features/calendars/lib/tasker/` (standard pattern)
   - `packages/features/webhooks/lib/tasker/` (webhook delivery)
-  - `packages/features/ee/billing/service/proration/tasker/` (scheduled cron task)

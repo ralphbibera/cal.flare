@@ -12,7 +12,7 @@ tags: testing, timezone, consistency
 When running tests in the Cal.diy repository, use the `TZ=UTC` environment variable:
 
 ```bash
-TZ=UTC yarn test
+TZ=UTC bun run test
 ```
 
 This ensures consistent timezone handling and prevents timezone-related test failures that might occur when tests are run in different environments or by different developers with varying local timezone settings.
@@ -27,11 +27,11 @@ This ensures consistent timezone handling and prevents timezone-related test fai
 
 ```bash
 # Unit tests
-TZ=UTC yarn test
+TZ=UTC bun run test
 
 # Specific test file
-TZ=UTC yarn vitest run path/to/file.test.ts
+TZ=UTC bunx vitest run path/to/file.test.ts
 
-# E2E tests (already configured in yarn e2e)
-PLAYWRIGHT_HEADLESS=1 yarn e2e
+# E2E tests (already configured in bun run e2e)
+PLAYWRIGHT_HEADLESS=1 bun run e2e
 ```

@@ -4,7 +4,7 @@
 
 Port Cal.diy main at `e8afecd163cd3a0a3ff279bd4721aa7f073c4685` to vinext, React 19, Cloudflare Workers and D1.
 Preserve every in-scope product behavior, original route, component, copy, translation key, provider effect, and inherited test.
-Application hosting and persistent application storage stay on Cloudflare. External PostgreSQL and Node application hosting are excluded.
+Deployment requires the Cloudflare Workers Paid plan. Application hosting and persistent application storage stay on Cloudflare. External PostgreSQL and Node application hosting are excluded.
 
 Original routing and package ownership are retained.
 
@@ -14,9 +14,8 @@ One box is one unit of work. Every box names the evidence that checks it. Check 
 A PR is verified only when its required checks and scoped acceptance pass.
 [Architecture](architecture.md) binds the target stack and runtime boundaries. [Behavior](behavior.md) binds observable contracts.
 [Inventories](inventory/README.md) account for original source, routes, dependencies, integrations, schedules and configuration.
-[Execution](execution.md) binds source inspection, ownership, proof and delivery.
+Use the existing [contribution guidelines](../../CONTRIBUTING.md) and [agent guide](../../AGENTS.md).
 
-Use Kitchen Refactoring for behavior-preserving migration and Bug fix for demonstrated regressions.
 Deployment, real credentials, paid-resource creation and live-data changes require their own prepared procedure and authorization.
 
 ## Phase 1. Establish the original application on vinext
@@ -105,7 +104,7 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 **Build.**
 
-- [ ] Complete resumable setup, D1 migrations, resource bindings, secret provisioning and deployment documentation.
+- [ ] Confirm the deployment account has Cloudflare Workers Paid, then complete resumable setup, D1 migrations, resource bindings, secret provisioning and deployment documentation.
 - [ ] Prepare the exact release procedure and request separate operator authorization before deployment or real-provider access.
 
 **You see.**

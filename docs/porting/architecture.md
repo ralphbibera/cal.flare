@@ -1,7 +1,7 @@
 # Vinext architecture contract
 
 This reference binds the non-enterprise Cal.diy port at `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`.
-[Plan](plan.md), [behavior](behavior.md), [execution](execution.md), and [source map](inventory/source-map.tsv) define scope, acceptance, and ownership.
+[Plan](plan.md), [behavior](behavior.md), [contribution guidelines](../../CONTRIBUTING.md), and [source map](inventory/source-map.tsv) define scope, acceptance, and ownership.
 
 ## Evidence and stack
 
@@ -18,6 +18,7 @@ Exact direct pins below replace floating initializer defaults. Retained dependen
 | Framework | `vinext` `1.4.2`, `@vinext/cloudflare` `1.3.2`, Vite `8.3.5`. Keep `next` `16.4.3` for original types, peers, and reference tooling. Production uses vinext aliases and workerd. |
 | React | `react`, `react-dom`, and explicit `react-server-dom-webpack` all `19.3.1`. `@types/react` and `@types/react-dom` both `19.3.0`. Upgrade original web React `18.2.0` throughout its consumed graph. |
 | Vite peers | `@vitejs/plugin-rsc` `0.5.38`, `@vitejs/plugin-react` `6.2.1`. The latter's compiler peers are optional. Do not use `5.1.4`, whose declared Vite peer excludes 8. |
+| Deployment plan | Cloudflare Workers Paid is required to deploy Cal.flare. Local development uses workerd and local D1. |
 | Cloudflare tools | `@cloudflare/vite-plugin` `2.0.0-beta.v.11`, `cf` `1.0.0-beta.27`. Plugin v2 is under npm `beta`; npm `latest` resolves v1 `1.67.0`. |
 | Cloudflare runtime | Compatibility date `2026-11-04`, `nodejs_compat`. Plugin v2 resolves Miniflare `5.20261103.0-beta`; cf resolves `5.20261101.0-beta`. Generated runtime types plus `@cloudflare/workers-types` `4.20260702.1` satisfy existing D1/Sentry type peers. Lock both tool graphs. |
 | Database | `prisma`, `@prisma/client`, and `@prisma/adapter-d1` all `6.16.1`. Preserve `@calcom/prisma` as domain access boundary. |

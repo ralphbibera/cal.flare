@@ -11,9 +11,9 @@ tags: ci, typescript, type-check, workflow
 
 When working on the Cal.diy repository, prioritize fixing type issues before addressing failing tests.
 
-1. Run `yarn type-check:ci --force` first
+1. Run `bun run type-check:ci --force` first
 2. Fix all TypeScript errors
-3. Then run tests with `TZ=UTC yarn test`
+3. Then run tests with `TZ=UTC bun run test`
 
 ## Why Type Check First
 
@@ -28,11 +28,11 @@ Compare type check results between the main branch and your feature branch to co
 
 ```bash
 # On your branch
-yarn type-check:ci --force 2>&1 | tee /tmp/feature-types.log
+bun run type-check:ci --force 2>&1 | tee /tmp/feature-types.log
 
 # On main
 git checkout main
-yarn type-check:ci --force 2>&1 | tee /tmp/main-types.log
+bun run type-check:ci --force 2>&1 | tee /tmp/main-types.log
 
 # Compare
 diff /tmp/main-types.log /tmp/feature-types.log
@@ -40,4 +40,4 @@ diff /tmp/main-types.log /tmp/feature-types.log
 
 ## Missing Enum Errors
 
-If you encounter errors related to missing enum values (like `CreationSource.WEBAPP`), running `yarn prisma generate` will typically resolve these issues by regenerating the TypeScript types from the schema.
+If you encounter errors related to missing enum values (like `CreationSource.WEBAPP`), running `bun run prisma generate` will typically resolve these issues by regenerating the TypeScript types from the schema.

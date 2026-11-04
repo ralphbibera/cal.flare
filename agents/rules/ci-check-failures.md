@@ -15,11 +15,10 @@ When reviewing CI check failures in Cal.diy:
 2. **Focus only on CI failures that are directly related to your code changes**
 3. Infrastructure-related failures (like dependency installation issues) can be disregarded if all code-specific checks pass
 
-## Known CI Issues to Ignore
+## Database Configuration Issues
 
-These errors are related to SAML database misconfiguration on CI and should be ignored:
-- "password authentication failed for user postgres"
-- "Invalid URL"
+The Cloudflare target uses D1. A retained upstream job requesting a PostgreSQL/SAML database identifies a job that needs the planned infrastructure substitution.
+Record the affected job and baseline rather than treating a D1 failure with a similar error message as an expected PostgreSQL issue.
 
 ## E2E Tests Skipping
 
@@ -30,4 +29,4 @@ These errors are related to SAML database misconfiguration on CI and should be i
 
 ## Before Blaming CI
 
-Always run type checks locally using `yarn type-check:ci --force` before concluding that CI failures are unrelated to your changes. Even if errors appear in files you haven't directly modified, your changes might still be causing type issues through dependencies or type inference.
+Always run type checks locally using `bun run type-check:ci --force` before concluding that CI failures are unrelated to your changes. Even if errors appear in files you haven't directly modified, your changes might still be causing type issues through dependencies or type inference.
