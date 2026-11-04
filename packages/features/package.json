@@ -32,6 +32,7 @@
     "deasync": "^0.1.31",
     "framer-motion": "10.12.8",
     "googleapis-common": "7.0.1",
+    "kysely": "0.28.14",
     "p-limit": "6.2.0",
     "react-select": "5.8.0",
     "react-sticky-box": "2.0.4",

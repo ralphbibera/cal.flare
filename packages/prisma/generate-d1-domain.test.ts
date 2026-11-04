@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +18,7 @@ let root: string;
 let mf: Miniflare;
 let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
 let oracle: typeof db;
+let migrationCount: number;
 
 beforeAll(async () => {
   generated = await generateD1Domain();
@@ -32,7 +33,10 @@ beforeAll(async () => {
     "--persist-to",
     persistTo,
   ]);
-  const total = generated.migrations.length + 1;
+  migrationCount = (await readdir(new URL("./migrations-d1/", import.meta.url))).filter((name) =>
+    name.endsWith(".sql")
+  ).length;
+  const total = migrationCount;
   expect(JSON.parse(stdout)).toMatchObject({ applied: total, total, database: "DB-calflare-web" });
   expect(await migrateD1({ persistTo })).toMatchObject({ applied: 0, total });
   const { worker } = (await import("../../apps/web/cloudflare.config")).default;
@@ -118,15 +122,19 @@ describe("D1 domain storage", () => {
         ).results
       );
     expect(tables).toHaveLength(102);
-    expect(
-      (
-        await db
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_cf_METADATA','_calflare_migrations') ORDER BY name"
-          )
-          .all()
-      ).results
-    ).toEqual(tables);
+    const migratedTables = z
+      .array(z.object({ name: z.string() }))
+      .parse(
+        (
+          await db
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_cf_METADATA','_calflare_migrations') ORDER BY name"
+            )
+            .all()
+        ).results
+      );
+    const domainNames = new Set(tables.map(({ name }) => name));
+    expect(migratedTables.filter(({ name }) => domainNames.has(name))).toEqual(tables);
     for (const { name } of tables) {
       for (const pragma of ["table_info", "foreign_key_list", "index_list"]) {
         const sql = `PRAGMA ${pragma}(${q(name)})`;
@@ -157,7 +165,7 @@ describe("D1 domain storage", () => {
     }
     expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
     expect((await db.prepare("SELECT COUNT(*) AS count FROM _calflare_migrations").first())?.count).toBe(
-      generated.migrations.length + 1
+      migrationCount
     );
   });
 

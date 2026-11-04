@@ -256,5 +256,8 @@
     "prisma",
     "sharp",
     "workerd"
-  ]
+  ],
+  "dependencies": {
+    "kysely": "0.29.8"
+  }
 }
