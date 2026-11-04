@@ -7,6 +7,7 @@ import vinext from "vinext";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import { patchCssModules } from "vite-css-modules";
+import { bundleAnalysis } from "./scripts/bundle-analysis";
 
 const publicBuildEnvironment = new Set([
   "NEXT_PUBLIC_API_HITPAY_PRODUCTION",
@@ -127,6 +128,7 @@ function sentryRuntime(): Plugin {
 export default defineConfig({
   envPrefix: [],
   plugins: [
+    bundleAnalysis(),
     sentryRuntime(),
     apiV2Transport(),
     patchCssModules({ exportMode: "default" }),

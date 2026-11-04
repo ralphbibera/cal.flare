@@ -129,12 +129,6 @@ if (process.env.GOOGLE_API_CREDENTIALS && !validJson(process.env.GOOGLE_API_CRED
 
 const plugins: NextConfigPlugin[] = [];
 
-if (process.env.ANALYZE === "true") {
-  throw new Error(
-    "ANALYZE uses the Next webpack analyzer. Use Vite build output to inspect the Workers bundle."
-  );
-}
-
 if (process.env.BUILD_STANDALONE === "true") {
   throw new Error("BUILD_STANDALONE requires a Node application host. Cal.flare runs on Cloudflare Workers.");
 }
