@@ -410,7 +410,7 @@ jobs:
   analyze:
     name: Analyze Build
     needs: [build]
-    uses: ./.github/workflows/nextjs-bundle-analysis.yml
+    uses: ./.github/workflows/vinext-bundle-analysis.yml
     secrets: inherit
 
   required:

@@ -62,8 +62,8 @@ source	domain	action	destination
 .github/workflows/labeler.yml	D_JOBS	retain-repository-file	.github/workflows/labeler.yml
 .github/workflows/lint.yml	D_JOBS	retain-repository-file	.github/workflows/lint.yml
 .github/workflows/merge-reports.yml	D_JOBS	retain-repository-file	.github/workflows/merge-reports.yml
-.github/workflows/nextjs-bundle-analysis-annotation.yml	D_JOBS	retain-repository-file	.github/workflows/nextjs-bundle-analysis-annotation.yml
-.github/workflows/nextjs-bundle-analysis.yml	D_JOBS	retain-repository-file	.github/workflows/nextjs-bundle-analysis.yml
+.github/workflows/nextjs-bundle-analysis-annotation.yml	D_JOBS	adapt-build-tool	.github/workflows/vinext-bundle-analysis-annotation.yml
+.github/workflows/nextjs-bundle-analysis.yml	D_JOBS	adapt-build-tool	.github/workflows/vinext-bundle-analysis.yml
 .github/workflows/on-changes-requested.yml	D_JOBS	retain-repository-file	.github/workflows/on-changes-requested.yml
 .github/workflows/performance-tests.yml	D_JOBS	retain-repository-file	.github/workflows/performance-tests.yml
 .github/workflows/post-release.yml	D_JOBS	retain-repository-file	.github/workflows/post-release.yml

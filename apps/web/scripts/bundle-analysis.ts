@@ -150,7 +150,7 @@ export function compareBundles(baseDirectory: string, currentDirectory: string):
   const base = baseline.reports;
   const current = candidate.reports;
   const lines = [
-    "<!-- __NEXTJS_BUNDLE_@calcom/web -->",
+    "<!-- __VINEXT_BUNDLE_@calcom/web -->",
     "## Vite bundle analysis",
     "",
     "Emitted chunks/assets, excluding source maps. Gzip sizes compress each emitted file separately. These are build diagnostics, not per-route download sizes.",
