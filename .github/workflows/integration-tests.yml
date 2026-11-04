@@ -83,10 +83,10 @@ jobs:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/yarn-install
-      - run: yarn prisma generate
+      - run: bun run prisma generate
       - uses: ./.github/actions/cache-db
       - name: Run Tests
-        run: VITEST_MODE=integration yarn test
+        run: VITEST_MODE=integration bun run test
       # TODO: Generate test results so we can upload them
       # - name: Upload Test Results
       #   if: ${{ always() }}

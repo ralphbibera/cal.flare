@@ -58,7 +58,7 @@ jobs:
       # 1. Generate Prisma Client
       # This is required so Trigger.dev can find the database types during bundling
       - name: Generate Prisma Client
-        run: yarn prisma generate
+        run: bun run prisma generate
 
       # 2. Deploy Trigger.dev tasks
       # We use --skip-promotion to get a version without making it live yet
@@ -70,14 +70,14 @@ jobs:
         run: |
           # The CLI outputs the version; id allows us to access outputs.deploymentVersion
           cd packages/features
-          yarn deploy:trigger:ci
+          bun run deploy:trigger:ci
 
       - name: Bump version
         env:
           VERSION: ${{ inputs.next_version }}
         run: |
           cd apps/web
-          yarn version "$VERSION"
+          bun pm version "$VERSION" --no-git-tag-version
 
       # 3. Update .env.production files
       # We inject the Trigger version into the apps so they stay in sync

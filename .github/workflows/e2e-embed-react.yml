@@ -78,13 +78,13 @@ jobs:
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/yarn-install
       - uses: ./.github/actions/yarn-playwright-install
-      - run: yarn prisma generate
+      - run: bun run prisma generate
       - uses: ./.github/actions/cache-db
       - uses: ./.github/actions/cache-build
       - name: Run Tests
         run: |
-          yarn e2e:embed-react --workers=4
-          yarn workspace @calcom/embed-react packaged:tests
+          bun run e2e:embed-react --workers=4
+          bun run --filter @calcom/embed-react packaged:tests
       - name: Upload Test Results
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

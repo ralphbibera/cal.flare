@@ -16,9 +16,9 @@ jobs:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/yarn-install
-      - run: yarn prisma generate
+      - run: bun run prisma generate
       - name: Run API v2 unit tests
         working-directory: apps/api/v2
         run: |
           export NODE_OPTIONS="--max_old_space_size=8192"
-          yarn workspace @calcom/platform-libraries build && yarn test
+          bun run --filter @calcom/platform-libraries build && bun run test
