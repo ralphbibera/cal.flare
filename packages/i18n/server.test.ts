@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-
+import localeConfig from "../../i18n.json";
 import { getTranslation, loadTranslations, mergeWithEnglishFallback } from "./server";
 
 describe("mergeWithEnglishFallback", () => {
@@ -121,11 +121,14 @@ describe("loadTranslations", () => {
     expect(Object.keys(result).length).toBeGreaterThan(100);
   });
 
-  it("returns cached result on subsequent calls for the same locale", async () => {
+  it("returns independent dictionaries on subsequent calls for the same locale", async () => {
     const first = await loadTranslations("de", "common");
     const second = await loadTranslations("de", "common");
 
-    expect(first).toBe(second);
+    expect(first).toEqual(second);
+    expect(first).not.toBe(second);
+    first.welcome = "request mutation";
+    expect((await loadTranslations("de", "common")).welcome).toBe(second.welcome);
   });
 
   it("includes English fallback keys missing from the locale file", async () => {
@@ -160,7 +163,7 @@ describe("getTranslation", () => {
     expect(t("this_key_does_not_exist")).toBe("this_key_does_not_exist");
   });
 
-  it("returns consistent results from cached i18n instance on subsequent calls", async () => {
+  it("returns consistent translations from independent requests", async () => {
     const first = await getTranslation("es", "common");
     const second = await getTranslation("es", "common");
 
@@ -173,5 +176,40 @@ describe("getTranslation", () => {
     const frT = await getTranslation("fr", "common");
 
     expect(enT("welcome")).not.toBe(frT("welcome"));
+  });
+});
+
+describe("request translation policy", () => {
+  it("keeps concurrent locales, Chinese alias and unsupported namespace fallback independent", async () => {
+    const [en, de, ar, zh, zhCN, unknown] = await Promise.all(
+      ["en", "de", "ar", "zh", "zh-CN", "unknown"].map((locale) => getTranslation(locale, "vital"))
+    );
+    expect(en("welcome")).toBe("Welcome");
+    expect(de("welcome")).toBe("Willkommen");
+    expect(ar("welcome")).toBe("مرحبًا");
+    expect(zh("welcome")).toBe(zhCN("welcome"));
+    expect(unknown("welcome")).toBe("Welcome");
+    expect(en("continue_with", { appName: "<Cal>" })).toBe("Continue with &lt;Cal&gt;");
+  });
+
+  it.each(
+    localeConfig.locale.targets
+  )("loads the original %s dictionary with English fallback", async (locale) => {
+    const dictionary = await loadTranslations(locale, "common");
+    const original = await import(`./locales/${locale}/common.json`);
+    expect(dictionary).toEqual({ ...mergeWithEnglishFallback({}), ...original.default });
+  });
+
+  it("does not let English resource mutations escape a request", async () => {
+    const english = await loadTranslations("en", "common");
+    english.welcome = "changed";
+    const audit = english.booking_audit_action;
+    if (typeof audit === "string") throw new Error("Expected original nested audit dictionary");
+    audit.created = "changed";
+    expect((await getTranslation("en", "common"))("booking_audit_action.created", { host: "Cal" })).toBe(
+      "Booked with Cal"
+    );
+    expect((await getTranslation("en", "common"))("welcome")).toBe("Welcome");
+    expect(mergeWithEnglishFallback({}).welcome).toBe("Welcome");
   });
 });
