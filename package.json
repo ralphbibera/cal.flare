@@ -245,7 +245,8 @@
     "@emotion/react@11.9.0": "patches/@emotion%2Freact@11.9.0.patch",
     "framer-motion@10.12.8": "patches/framer-motion@10.12.8.patch",
     "react-select@5.8.0": "patches/react-select@5.8.0.patch",
-    "vinext@1.4.2": "patches/vinext@1.4.2.patch"
+    "vinext@1.4.2": "patches/vinext@1.4.2.patch",
+    "prisma@6.16.1": "patches/prisma@6.16.1.patch"
   },
   "trustedDependencies": [
     "@prisma/engines",

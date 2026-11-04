@@ -164,7 +164,7 @@ function prismaClient(): Plugin {
     enforce: "pre",
     resolveId(source) {
       if (source !== "@prisma/client" && source !== "@calcom/prisma/client") return;
-      const browser = this.environment.name === "client" || this.environment.name === "ssr";
+      const browser = this.environment.config.consumer === "client";
       return fileURLToPath(
         new URL(
           browser

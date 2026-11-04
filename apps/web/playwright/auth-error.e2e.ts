@@ -24,3 +24,42 @@ for (const { locale, lang, dir, title } of [
     });
   });
 }
+
+test("serves an unauthenticated session through the original API", async ({ request }) => {
+  const response = await request.get("/api/auth/session");
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({});
+});
+
+test("serves bundled viewer translations through the original tRPC API", async ({ request }) => {
+  for (const { locale, resolved, common } of [
+    { locale: "de-DE", resolved: "de", common: { welcome: "Willkommen" } },
+    { locale: "zh", resolved: "zh", common: {} },
+    { locale: "zz-ZZ", resolved: "zz-ZZ", common: {} },
+  ]) {
+    const response = await request.get("/api/trpc/i18n/get", {
+      params: { input: JSON.stringify({ json: { locale, CalComVersion: "api-regression" } }) },
+      headers: { "accept-language": "ar-SA" },
+    });
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      result: {
+        data: {
+          json: {
+            locale: resolved,
+            i18n: {
+              _nextI18Next: {
+                initialLocale: resolved,
+                ns: ["common", "vital"],
+                initialI18nStore: {
+                  [resolved]: { common, vital: {} },
+                  en: { common: { welcome: "Welcome" }, vital: {} },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+});
