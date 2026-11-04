@@ -2,7 +2,7 @@
 name: PR Update
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
     branches:
       - main
@@ -461,6 +461,7 @@ jobs:
             needs.api-v2-unit-test.result != 'success' ||
             needs.security-audit.result != 'success' ||
             (needs.prepare.outputs.has-prisma-changes == 'true' && needs.check-prisma-migrations.result != 'success') ||
+            (needs.prepare.outputs.run-e2e == 'true' && (
               needs.build.result != 'success' ||
               needs.build-api-v2.result != 'success' ||
               needs.build-atoms.result != 'success' ||
@@ -471,5 +472,6 @@ jobs:
               needs.e2e-embed.result != 'success' ||
               needs.e2e-embed-react.result != 'success' ||
               needs.e2e-app-store.result != 'success'
+            ))
             )
           )
