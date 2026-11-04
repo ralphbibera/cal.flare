@@ -1,3 +1,21 @@
+diff --git a/dist/entries/pages-server-entry.js b/dist/entries/pages-server-entry.js
+--- a/dist/entries/pages-server-entry.js
++++ b/dist/entries/pages-server-entry.js
+@@ -237,2 +236,0 @@
+-	const apiImports = apiRoutes.map((r, i) => instrumentationPath ? `let api_${i};` : `import * as api_${i} from ${JSON.stringify(r.filePath)};`);
+-	const apiImportInitializers = apiRoutes.map((r, i) => `api_${i} = await import(${JSON.stringify(r.filePath)});`);
+@@ -244 +242 @@
+-	const apiRouteEntries = apiRoutes.map((r, i) => `  { pattern: ${JSON.stringify(r.pattern)}, patternParts: ${JSON.stringify(r.patternParts)}, isDynamic: ${r.isDynamic}, params: ${JSON.stringify(r.params)}, module: ${instrumentationPath ? "null" : `api_${i}`} }`);
++	const apiRouteEntries = apiRoutes.map((r) => `  { pattern: ${JSON.stringify(r.pattern)}, patternParts: ${JSON.stringify(r.patternParts)}, isDynamic: ${r.isDynamic}, params: ${JSON.stringify(r.params)}, module: null, loadModule: () => import(${JSON.stringify(r.filePath)}) }`);
+@@ -305 +302,0 @@
+-  ${apiImportInitializers.join("\n  ")}
+@@ -308 +304,0 @@
+-  ${apiRoutes.map((_, index) => `apiRoutes[${index}].module = api_${index};`).join("\n  ")}
+@@ -432 +427,0 @@
+-${apiImports.join("\n")}
+@@ -614,0 +610,2 @@
++  // API requests must not initialize unrelated route modules.
++  if (match) match.route.module ??= await match.route.loadModule();
 diff --git a/dist/shims/internal/api-utils.d.ts b/dist/shims/internal/api-utils.d.ts
 --- a/dist/shims/internal/api-utils.d.ts
 +++ b/dist/shims/internal/api-utils.d.ts

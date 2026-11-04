@@ -1,10 +1,8 @@
+import { prisma } from "@calcom/prisma";
 import { v4 as uuidv4 } from "uuid";
 
-import { prisma } from "@calcom/prisma";
-
-import { convertSvgToPng } from "./imageUtils";
-
 export const uploadAvatar = async ({ userId, avatar: data }: { userId: number; avatar: string }) => {
+  const { convertSvgToPng } = await import("./imageUtils");
   const processedData = await convertSvgToPng(data);
 
   // Check if avatar already exists to preserve the objectKey
@@ -53,6 +51,7 @@ export const uploadLogo = async ({
   logo: string;
   isBanner?: boolean;
 }): Promise<string> => {
+  const { convertSvgToPng } = await import("./imageUtils");
   const objectKey = uuidv4();
   const processedData = await convertSvgToPng(data);
 
