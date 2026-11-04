@@ -1,18 +1,47 @@
 import { prisma } from "@calcom/prisma";
-import type { Prisma } from "@calcom/prisma/client";
+import type { HolidayCache, Prisma } from "@calcom/prisma/client";
+import { getD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
+import { z } from "zod";
 
-const holidayCacheSelect = {
-  id: true,
-  countryCode: true,
-  calendarId: true,
-  eventId: true,
-  name: true,
-  date: true,
-  year: true,
-  createdAt: true,
-  updatedAt: true,
-} satisfies Prisma.HolidayCacheSelect;
+const cacheColumns =
+  '"id", "countryCode", "calendarId", "eventId", "name", "date", "year", "createdAt", "updatedAt"';
+const cacheDate = z
+  .string()
+  .datetime({ offset: true })
+  .transform((value) => new Date(value));
+const cacheRow = z.object({
+  id: z.string(),
+  countryCode: z.string(),
+  calendarId: z.string(),
+  eventId: z.string(),
+  name: z.string(),
+  date: cacheDate,
+  year: z.number().int(),
+  createdAt: cacheDate,
+  updatedAt: cacheDate,
+}) satisfies z.ZodType<HolidayCache, z.ZodTypeDef, unknown>;
+const serializeDate = (value: Date | string) => new Date(value).toISOString().replace("Z", "+00:00");
+
+function cacheInsert(db: ReturnType<typeof getD1Database>, data: Prisma.HolidayCacheCreateManyInput[]) {
+  const now = new Date();
+  return data.map((row) =>
+    db
+      .prepare(`INSERT INTO "HolidayCache" (${cacheColumns})
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+      .bind(
+        row.id ?? crypto.randomUUID(),
+        row.countryCode,
+        row.calendarId,
+        row.eventId,
+        row.name,
+        serializeDate(row.date),
+        row.year,
+        serializeDate(row.createdAt ?? now),
+        serializeDate(row.updatedAt ?? now)
+      )
+  );
+}
 
 const userHolidaySettingsSelect = {
   id: true,
@@ -25,29 +54,21 @@ const userHolidaySettingsSelect = {
 
 export class HolidayRepository {
   static async findFirstCacheEntry({ countryCode, year }: { countryCode: string; year: number }) {
-    return prisma.holidayCache.findFirst({
-      where: {
-        countryCode,
-        year,
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-      select: holidayCacheSelect,
-    });
+    const row = await getD1Database()
+      .prepare(`SELECT ${cacheColumns} FROM "HolidayCache"
+      WHERE "countryCode" = ? AND "year" = ? ORDER BY "updatedAt" DESC LIMIT 1`)
+      .bind(countryCode, year)
+      .first();
+    return row === null ? null : cacheRow.parse(row);
   }
 
   static async findManyCachedHolidays({ countryCode, year }: { countryCode: string; year: number }) {
-    return prisma.holidayCache.findMany({
-      where: {
-        countryCode,
-        year,
-      },
-      orderBy: {
-        date: "asc",
-      },
-      select: holidayCacheSelect,
-    });
+    const { results } = await getD1Database()
+      .prepare(`SELECT ${cacheColumns} FROM "HolidayCache"
+      WHERE "countryCode" = ? AND "year" = ? ORDER BY "date" ASC`)
+      .bind(countryCode, year)
+      .all();
+    return cacheRow.array().parse(results);
   }
 
   static async findCachedHolidaysInRange({
@@ -59,35 +80,27 @@ export class HolidayRepository {
     startDate: Date;
     endDate: Date;
   }) {
-    return prisma.holidayCache.findMany({
-      where: {
-        countryCode,
-        date: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      orderBy: {
-        date: "asc",
-      },
-      select: holidayCacheSelect,
-    });
+    const { results } = await getD1Database()
+      .prepare(`SELECT ${cacheColumns} FROM "HolidayCache"
+      WHERE "countryCode" = ? AND "date" >= ? AND "date" <= ? ORDER BY "date" ASC`)
+      .bind(countryCode, serializeDate(startDate), serializeDate(endDate))
+      .all();
+    return cacheRow.array().parse(results);
   }
 
   static async deleteManyCacheEntries({ countryCode, year }: { countryCode: string; year: number }) {
-    return prisma.holidayCache.deleteMany({
-      where: {
-        countryCode,
-        year,
-      },
-    });
+    const result = await getD1Database()
+      .prepare('DELETE FROM "HolidayCache" WHERE "countryCode" = ? AND "year" = ?')
+      .bind(countryCode, year)
+      .run();
+    return { count: result.meta.changes };
   }
 
   static async createManyCacheEntries(data: Prisma.HolidayCacheCreateManyInput[]) {
-    return prisma.holidayCache.createMany({
-      data,
-      skipDuplicates: true,
-    });
+    if (data.length === 0) return { count: 0 };
+    const db = getD1Database();
+    const results = await db.batch(cacheInsert(db, data));
+    return { count: results.reduce((count, result) => count + result.meta.changes, 0) };
   }
 
   static async refreshCache({
@@ -99,21 +112,12 @@ export class HolidayRepository {
     year: number;
     holidays: Prisma.HolidayCacheCreateManyInput[];
   }) {
-    return prisma.$transaction(async (tx) => {
-      await tx.holidayCache.deleteMany({
-        where: {
-          countryCode,
-          year,
-        },
-      });
-
-      if (holidays.length > 0) {
-        await tx.holidayCache.createMany({
-          data: holidays,
-          skipDuplicates: true,
-        });
-      }
-    });
+    const db = getD1Database();
+    const inserts = cacheInsert(db, holidays);
+    await db.batch([
+      db.prepare('DELETE FROM "HolidayCache" WHERE "countryCode" = ? AND "year" = ?').bind(countryCode, year),
+      ...inserts,
+    ]);
   }
 
   static async findUserSettings({ userId }: { userId: number }) {
