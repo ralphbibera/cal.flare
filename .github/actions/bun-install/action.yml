@@ -1,0 +1,77 @@
+name: "Bun install"
+description: "Install the frozen Bun workspace graph with dependency caching"
+inputs:
+  node_version:
+    required: false
+    default: "24.22.0"
+  skip-install-if-cache-hit:
+    description: "Skip installation when dependency caches already exist."
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Restore complete workspace inputs
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        clean: false
+        fetch-depth: 2
+    - name: Use Node ${{ inputs.node_version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+    - name: Use Bun 1.4.4
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: "1.4.4"
+    - name: Check Bun download cache
+      if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
+      uses: actions/cache/restore@v4
+      id: bun-download-cache-check
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-download-${{ hashFiles('bun.lock') }}
+        lookup-only: true
+    - name: Check node_modules cache
+      if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
+      uses: actions/cache/restore@v4
+      id: bun-nm-cache-check
+      with:
+        path: |
+          **/node_modules/
+          !**/.next/node_modules/
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-nm-${{ inputs.node_version }}-${{ hashFiles('bun.lock', 'bunfig.toml', 'package.json', 'patches/**') }}
+        lookup-only: true
+    - name: Check if all caches hit
+      if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
+      id: all-caches-check
+      shell: bash
+      run: |
+        if [[ "${{ steps.bun-download-cache-check.outputs.cache-hit }}" == "true" && \
+              "${{ steps.bun-nm-cache-check.outputs.cache-hit }}" == "true" ]]; then
+          echo "all-hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "all-hit=false" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Restore Bun download cache
+      if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-download-${{ hashFiles('bun.lock') }}
+    - name: Restore node_modules
+      if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/node_modules/
+          !**/.next/node_modules/
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-nm-${{ inputs.node_version }}-${{ hashFiles('bun.lock', 'bunfig.toml', 'package.json', 'patches/**') }}
+    - name: Install dependencies
+      if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
+      shell: bash
+      run: bun install --frozen-lockfile
+      env:
+        HUSKY: "0"

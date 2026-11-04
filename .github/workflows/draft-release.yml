@@ -53,7 +53,7 @@ jobs:
           git config --local user.email "$USER_EMAIL"
           git config --local user.name "${{ github.actor }}"
 
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
 
       # 1. Generate Prisma Client
       # This is required so Trigger.dev can find the database types during bundling

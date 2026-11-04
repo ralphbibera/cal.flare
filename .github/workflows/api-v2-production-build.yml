@@ -38,7 +38,7 @@ jobs:
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
       - name: Generate Prisma schemas
         working-directory: apps/api/v2
         run: bun run --filter @calcom/api-v2 generate-schemas

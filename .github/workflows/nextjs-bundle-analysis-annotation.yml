@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
       - uses: ./.github/actions/cache-build
       - name: Analyze current bundle
         run: bun run --cwd apps/web analyze

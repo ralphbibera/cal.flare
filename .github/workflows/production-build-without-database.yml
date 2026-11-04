@@ -46,7 +46,7 @@ jobs:
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
       - run: bun run prisma generate
       - name: Generate cache key
         id: cache-key
