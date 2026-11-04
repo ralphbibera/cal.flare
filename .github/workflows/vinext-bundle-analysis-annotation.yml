@@ -10,23 +10,21 @@ permissions:
   pull-requests: write
 
 jobs:
+  build:
+    uses: ./.github/workflows/production-build-without-database.yml
+    secrets: inherit
+
   annotate:
-    if: always()
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bun-install
-      - run: bun run prisma generate
-      - uses: ./.github/actions/ci-build-env
-        env:
-          NEXTAUTH_SECRET: ${{ secrets.CI_NEXTAUTH_SECRET }}
-          CALENDSO_ENCRYPTION_KEY: ${{ secrets.CI_CALENDSO_ENCRYPTION_KEY }}
-      - name: Build Worker and current bundle reports
-        run: bun run build --force
-        env:
-          ANALYZE: "true"
-          NEXTAUTH_URL: ${{ secrets.CI_NEXTAUTH_URL || 'http://localhost:3000/api/auth' }}
-          NODE_OPTIONS: --max_old_space_size=8192
+      - name: Download current bundle stats
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle
+          path: apps/web/dist/analyze
 
       - name: Download base branch bundle stats
         uses: dawidd6/action-download-artifact@v6

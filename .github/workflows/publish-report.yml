@@ -2,15 +2,15 @@ on:
   workflow_call:
     inputs:
       source_run_id:
-        description: 'The source run ID for report path'
+        description: 'The source test run ID'
         required: true
         type: string
       source_run_number:
-        description: 'The source run number for artifact naming and comment'
+        description: 'The source run number for artifact naming'
         required: true
         type: string
       source_run_attempt:
-        description: 'The source run attempt for artifact naming and comment'
+        description: 'The source run attempt for artifact naming'
         required: true
         type: string
 permissions:
