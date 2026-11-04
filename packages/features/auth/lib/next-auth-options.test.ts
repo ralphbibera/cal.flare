@@ -1,3 +1,4 @@
+import process from "node:process";
 import { IdentityProvider, UserPermissionRole } from "@calcom/prisma/enums";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorCode } from "./ErrorCode";
@@ -195,6 +196,23 @@ vi.mock("next-auth/providers/azure-ad", () => ({ default: vi.fn() }));
 vi.mock("next-auth/providers/credentials", () => ({ default: vi.fn(() => ({ id: "credentials" })) }));
 vi.mock("next-auth/providers/email", () => ({ default: vi.fn() }));
 vi.mock("next-auth/providers/google", () => ({ default: vi.fn() }));
+
+it("authorizes credentials without initializing OAuth or NextAuth providers", async () => {
+  vi.resetModules();
+  vi.stubEnv("GOOGLE_API_CREDENTIALS", "invalid OAuth JSON");
+
+  try {
+    const { default: credentialsProvider } = await import("next-auth/providers/credentials");
+    vi.mocked(credentialsProvider).mockClear();
+    const { authorizeCredentials } = await import("./authorizeCredentials");
+
+    await expect(authorizeCredentials(undefined)).rejects.toThrow(ErrorCode.InternalServerError);
+    expect(credentialsProvider).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  }
+});
 
 describe("CredentialsProvider authorize", () => {
   let authorizeCredentials: typeof import("./next-auth-options").authorizeCredentials;
