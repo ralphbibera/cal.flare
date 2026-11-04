@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "moduleResolution": "bundler",
+    "types": ["node", "@cloudflare/workers-types"]
+  },
+  "include": [
+    "vite.config.mts",
+    "cloudflare.config.ts",
+    "worker/**/*.ts",
+    "scripts/bundle-analysis.ts",
+    "scripts/static-assets.ts",
+    ".cloudflare/types/**/*.d.ts"
+  ],
+  "exclude": ["**/node_modules/**"]
+}

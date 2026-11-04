@@ -12,8 +12,8 @@
     "dev:cron": "npx tsx cron-tester.ts",
     "dx": "bun run dev",
     "test-codegen": "bun run playwright codegen http://localhost:3000",
-    "type-check": "tsc --pretty --noEmit && tsc --project tsconfig.config.json --pretty --noEmit",
-    "type-check:ci": "tsc-absolute --pretty --noEmit && tsc-absolute --project tsconfig.config.json --pretty --noEmit",
+    "type-check": "bun run cf:types && tsc --pretty --noEmit && tsc --project tsconfig.config.json --pretty --noEmit",
+    "type-check:ci": "bun run cf:types && tsc-absolute --pretty --noEmit && tsc-absolute --project tsconfig.config.json --pretty --noEmit",
     "sentry:release": "NODE_OPTIONS='--max-old-space-size=6144' node scripts/create-sentry-release.js",
     "copy-static": "turbo run copy-app-store-static",
     "copy-app-store-static": "node scripts/copy-app-store-static.js",
@@ -157,7 +157,9 @@
     "turndown": "7.2.0",
     "uuid": "8.3.2",
     "vinext": "1.4.2",
-    "zod": "3.25.76"
+    "zod": "3.25.76",
+    "fresh": "0.5.2",
+    "range-parser": "1.2.1"
   },
   "devDependencies": {
     "@babel/core": "7.26.10",
@@ -214,7 +216,9 @@
     "turbo": "2.10.10",
     "typescript": "5.9.3",
     "vite": "8.3.5",
-    "vite-css-modules": "1.16.1"
+    "vite-css-modules": "1.16.1",
+    "@types/fresh": "0.5.3",
+    "@types/range-parser": "1.2.4"
   },
   "nextBundleAnalysis": {
     "budget": 358400,

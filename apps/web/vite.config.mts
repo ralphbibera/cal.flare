@@ -8,6 +8,7 @@ import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import { patchCssModules } from "vite-css-modules";
 import { bundleAnalysis } from "./scripts/bundle-analysis";
+import { staticAssets } from "./scripts/static-assets";
 
 const publicBuildEnvironment = new Set([
   "NEXT_PUBLIC_API_HITPAY_PRODUCTION",
@@ -179,9 +180,31 @@ function sentryRuntime(): Plugin {
   };
 }
 
+function prismaClient(): Plugin {
+  return {
+    name: "calflare:prisma-client",
+    enforce: "pre",
+    resolveId(source) {
+      if (source !== "@prisma/client" && source !== "@calcom/prisma/client") return;
+      const browser = this.environment.name === "client" || this.environment.name === "ssr";
+      return fileURLToPath(
+        new URL(
+          browser ? "../../packages/prisma/generated/prisma/browser.ts" : "../../packages/prisma/client/index.ts",
+          import.meta.url
+        )
+      );
+    },
+  };
+}
+
 export default defineConfig({
   envPrefix: [],
+  environments: {
+    ssr: { build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } } },
+  },
   plugins: [
+    staticAssets(),
+    prismaClient(),
     bundleAnalysis(),
     i18nConfigInterop(),
     i18nextBackendRequire(),

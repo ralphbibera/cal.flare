@@ -10,7 +10,7 @@ export const onRequestError: Instrumentation.onRequestError = (err, _request, co
   if (process.env.NODE_ENV !== "production") return;
 
   Sentry.withScope((scope) => {
-    scope.setTag("errorSource", context.routeType === "middleware" ? "edge" : "server");
+    scope.setTag("errorSource", context.routeType === "proxy" ? "edge" : "server");
     scope.setContext("nextjs", {
       routerKind: context.routerKind,
       routePath: context.routePath,
