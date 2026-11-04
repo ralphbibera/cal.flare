@@ -1,0 +1,19 @@
+diff --git a/dist/shims/internal/api-utils.d.ts b/dist/shims/internal/api-utils.d.ts
+--- a/dist/shims/internal/api-utils.d.ts
++++ b/dist/shims/internal/api-utils.d.ts
+@@ -12,0 +13,4 @@
++export declare class ApiError extends Error {
++  readonly statusCode: number;
++  constructor(statusCode: number, message: string);
++}
+diff --git a/dist/shims/internal/api-utils.js b/dist/shims/internal/api-utils.js
+--- a/dist/shims/internal/api-utils.js
++++ b/dist/shims/internal/api-utils.js
+@@ -1 +1,6 @@
+-export {};
++export class ApiError extends Error {
++  constructor(statusCode, message) {
++    super(message);
++    this.statusCode = statusCode;
++  }
++}
