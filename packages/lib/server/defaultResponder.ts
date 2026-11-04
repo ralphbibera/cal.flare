@@ -43,8 +43,8 @@ export function defaultResponder<T>(
       if (process.env.NODE_ENV === "development" || !endpointRoute) {
         result = await f(tracedReq, res);
       } else {
-        const { wrapApiHandlerWithSentry } = await import("@sentry/nextjs");
-        result = await wrapApiHandlerWithSentry(f, endpointRoute)(tracedReq, res);
+        const { startSpan } = await import("@sentry/nextjs");
+        result = await startSpan({ name: endpointRoute, op: "http.server" }, () => f(tracedReq, res));
       }
 
       ok = true;

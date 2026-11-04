@@ -27,8 +27,8 @@ export const defaultResponderForAppDir = <T extends NextResponse | Response = Ne
       if (process.env.NODE_ENV === "development" || !endpointRoute) {
         result = await handler(req, { params });
       } else {
-        const { wrapApiHandlerWithSentry } = await import("@sentry/nextjs");
-        result = await wrapApiHandlerWithSentry(async () => await handler(req, { params }), endpointRoute)();
+        const { startSpan } = await import("@sentry/nextjs");
+        result = await startSpan({ name: endpointRoute, op: "http.server" }, () => handler(req, { params }));
       }
 
       ok = true;

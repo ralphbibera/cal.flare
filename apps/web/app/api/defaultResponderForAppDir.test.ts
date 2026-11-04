@@ -22,6 +22,26 @@ vi.mock("next/server", () => {
 });
 
 describe("defaultResponderForAppDir", () => {
+  it("preserves the handler response when production endpoint tracing is enabled", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const response = new Response("created", { status: 201, headers: { "x-handler": "retained" } });
+      const f = vi.fn().mockResolvedValue(response);
+      const req = { method: "POST", url: "/api/test" } as NextRequest;
+      const params = Promise.resolve<Params>({});
+
+      const result = await defaultResponderForAppDir<Response>(f, "/api/test")(req, { params });
+
+      expect(f).toHaveBeenCalledExactlyOnceWith(req, { params });
+      expect(result).toBe(response);
+      expect(result.status).toBe(201);
+      expect(result.headers.get("x-handler")).toBe("retained");
+      expect(await result.text()).toBe("created");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("should return a JSON response when handler resolves with a result", async () => {
     const f = vi.fn().mockResolvedValue(NextResponse.json({ success: true }));
     const req = { method: "GET", url: "/api/test" } as unknown as NextRequest;
