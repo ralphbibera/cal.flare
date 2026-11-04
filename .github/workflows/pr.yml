@@ -284,11 +284,11 @@ jobs:
             const labelFound = labels.map(l => l.name).includes('ready-for-e2e');
             console.log('Found the label?', labelFound);
             core.setOutput('run-e2e', labelFound);
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
         if: ${{ steps.filter-exclusions.outputs.has-files-requiring-all-checks == 'true' }}
         with:
           skip-install-if-cache-hit: "true"
-      - uses: ./.github/actions/yarn-playwright-install
+      - uses: ./.github/actions/bun-playwright-install
         if: ${{ steps.filter-exclusions.outputs.has-files-requiring-all-checks == 'true' }}
         with:
           skip-install-if-cache-hit: "true"

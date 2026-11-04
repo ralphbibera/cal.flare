@@ -15,7 +15,7 @@ jobs:
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
       - run: bun run prisma generate
       - name: Run API v2 unit tests
         working-directory: apps/api/v2

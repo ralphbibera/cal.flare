@@ -56,7 +56,7 @@ jobs:
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
       - run: bun run prisma generate
       - uses: ./.github/actions/cache-build
       - name: Analyze bundle

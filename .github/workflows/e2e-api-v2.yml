@@ -77,7 +77,7 @@ jobs:
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
       - uses: ./.github/actions/cache-db
       - name: Build platform packages with Turbo
         run: |

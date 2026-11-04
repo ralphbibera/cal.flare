@@ -7,7 +7,7 @@ on:
         required: false
         type: string
         default: "false"
-        description: "Whether the DB cache was hit (skip yarn-install and cache-db if true)"
+        description: "Whether the DB cache was hit (skip bun-install and cache-db if true)"
 
 permissions:
   contents: read
@@ -50,7 +50,7 @@ jobs:
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - uses: ./.github/actions/yarn-install
+      - uses: ./.github/actions/bun-install
         if: inputs.DB_CACHE_HIT != 'true'
       - run: bun run prisma generate
         if: inputs.DB_CACHE_HIT != 'true'
