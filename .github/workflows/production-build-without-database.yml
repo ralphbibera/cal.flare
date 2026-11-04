@@ -4,7 +4,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 env:
   ALLOWED_HOSTNAMES: ${{ vars.CI_ALLOWED_HOSTNAMES }}
