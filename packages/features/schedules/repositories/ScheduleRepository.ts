@@ -113,15 +113,18 @@ export class ScheduleRepository {
     if (!storedSchedule) {
       throw new Error("Schedule not found");
     }
-    const schedule = parseScheduleAvailability(storedSchedule);
-    const isCurrentUserPartOfTeam = await hasReadPermissionsForUserId({ memberId: schedule?.userId, userId });
+    const isCurrentUserPartOfTeam = await hasReadPermissionsForUserId({
+      memberId: storedSchedule.userId,
+      userId,
+    });
 
-    const isCurrentUserOwner = schedule?.userId === userId;
+    const isCurrentUserOwner = storedSchedule.userId === userId;
 
     if (!isCurrentUserPartOfTeam && !isCurrentUserOwner) {
       throw new Error("UNAUTHORIZED");
     }
 
+    const schedule = parseScheduleAvailability(storedSchedule);
     const timeZone = schedule.timeZone || userTimeZone;
 
     const schedulesCount = await this.prismaClient.schedule.count({
@@ -182,13 +185,13 @@ export class ScheduleRepository {
     });
 
     const schedulesFormatted = schedules.map((storedSchedule) => {
-      const schedule = parseScheduleAvailability(storedSchedule);
-      const isCurrentUserOwner = schedule?.userId === userId;
+      const isCurrentUserOwner = storedSchedule.userId === userId;
 
       if (!isCurrentUserPartOfTeam && !isCurrentUserOwner) {
         throw new Error("UNAUTHORIZED");
       }
 
+      const schedule = parseScheduleAvailability(storedSchedule);
       const timeZone = schedule.timeZone || userTimeZone;
       // disabling utc casting while fetching WorkingHours
       return {
