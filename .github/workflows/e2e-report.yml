@@ -12,6 +12,11 @@ on:
         required: true
         type: string
 
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
 jobs:
   get-pr-info:
     name: Get PR Info
@@ -204,9 +209,6 @@ jobs:
     if: ${{ needs.get-pr-info.outputs.pr-number != '' }}
     uses: ./.github/workflows/publish-report.yml
     with:
-      head_branch: ${{ needs.get-pr-info.outputs.head-branch }}
       source_run_id: ${{ needs.get-pr-info.outputs.source-run-id }}
       source_run_number: ${{ needs.get-pr-info.outputs.source-run-number }}
       source_run_attempt: ${{ needs.get-pr-info.outputs.source-run-attempt }}
-      pr_number: ${{ needs.get-pr-info.outputs.pr-number }}
-    secrets: inherit
