@@ -4,7 +4,7 @@ import type { PrismaClient } from "@calcom/prisma";
 import * as selects from "@calcom/prisma/selects";
 import type { DMMF } from "@prisma/client/runtime/client";
 import { getDMMF } from "@prisma/internals";
-import { createPrismock } from "prismock/build/main/lib/client";
+import { createPrismock } from "prismock/build/module/lib/client.js";
 import { beforeEach, vi } from "vitest";
 
 vi.stubEnv("DATABASE_URL", "postgresql://user:password@localhost:5432/testdb");

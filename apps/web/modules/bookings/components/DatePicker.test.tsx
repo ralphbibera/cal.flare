@@ -1,10 +1,8 @@
-import React from "react";
-import { vi, afterEach } from "vitest";
-
 import dayjs from "@calcom/dayjs";
-import { DatePicker as DatePickerComponent } from "@calcom/features/calendars/components/DatePicker";
-
 import { render } from "@calcom/features/bookings/Booker/__tests__/test-utils";
+import { DatePicker as DatePickerComponent } from "@calcom/features/calendars/components/DatePicker";
+import React from "react";
+import { afterEach, vi } from "vitest";
 import { DatePicker } from "./DatePicker";
 
 vi.mock("@calcom/features/calendars/components/DatePicker", () => {
@@ -25,11 +23,10 @@ describe("Tests for DatePicker Component", () => {
   test("It passes the loading prop to the DatePicker component", async () => {
     render(<DatePicker event={{}} isLoading={true} />);
 
-    expect(DatePickerComponent).toHaveBeenCalledWith(
+    expect(vi.mocked(DatePickerComponent).mock.calls.map(([props]) => props)).toContainEqual(
       expect.objectContaining({
         isLoading: true,
-      }),
-      expect.anything()
+      })
     );
   });
 
@@ -51,11 +48,10 @@ describe("Tests for DatePicker Component", () => {
     );
     // slot date is next month, so it'll have skipped the current month
     // by setting the browsingDate to the next month.
-    expect(DatePickerComponent).toHaveBeenCalledWith(
+    expect(vi.mocked(DatePickerComponent).mock.calls.map(([props]) => props)).toContainEqual(
       expect.objectContaining({
         browsingDate: dayjs().startOf("month"),
-      }),
-      expect.anything()
+      })
     );
   });
 
@@ -82,11 +78,10 @@ describe("Tests for DatePicker Component", () => {
     );
     // slot date is next month, so it'll have skipped the current month
     // by setting the browsingDate to the next month.
-    expect(DatePickerComponent).toHaveBeenCalledWith(
+    expect(vi.mocked(DatePickerComponent).mock.calls.map(([props]) => props)).toContainEqual(
       expect.objectContaining({
         browsingDate: slotDate.startOf("month"),
-      }),
-      expect.anything()
+      })
     );
   });
 
@@ -109,11 +104,10 @@ describe("Tests for DatePicker Component", () => {
     );
     // slot date is next month, so it'll have skipped the current month
     // by setting the browsingDate to the next month.
-    expect(DatePickerComponent).toHaveBeenCalledWith(
+    expect(vi.mocked(DatePickerComponent).mock.calls.map(([props]) => props)).toContainEqual(
       expect.objectContaining({
         browsingDate: dayjs().add(1, "month").startOf("month"),
-      }),
-      expect.anything()
+      })
     );
   });
 });

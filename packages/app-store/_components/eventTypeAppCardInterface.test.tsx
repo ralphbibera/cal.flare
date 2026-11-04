@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import type { AppCardApp } from "types";
 import { vi } from "vitest";
-
 import { DynamicComponent } from "./DynamicComponent";
 import { EventTypeAppCard } from "./EventTypeAppCardInterface";
 
@@ -38,11 +37,10 @@ describe("Tests for EventTypeAppCard component", () => {
   test("Should render DynamicComponent with correct slug", () => {
     render(<EventTypeAppCard {...mockProps} />);
 
-    expect(DynamicComponent).toHaveBeenCalledWith(
+    expect(vi.mocked(DynamicComponent).mock.calls.map(([props]) => props)).toContainEqual(
       expect.objectContaining({
         slug: mockProps.app.slug,
-      }),
-      {}
+      })
     );
 
     expect(screen.getByText("MockedDynamicComponent")).toBeInTheDocument();
@@ -74,11 +72,10 @@ describe("Tests for EventTypeAppCard component", () => {
 
     render(<EventTypeAppCard {...stripeProps} />);
 
-    expect(DynamicComponent).toHaveBeenCalledWith(
+    expect(vi.mocked(DynamicComponent).mock.calls.map(([props]) => props)).toContainEqual(
       expect.objectContaining({
         slug: "stripepayment",
-      }),
-      {}
+      })
     );
 
     expect(screen.getByText("MockedDynamicComponent")).toBeInTheDocument();

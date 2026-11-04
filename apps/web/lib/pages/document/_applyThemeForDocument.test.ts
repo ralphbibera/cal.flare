@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTheme } from "./_applyThemeForDocument";
 
 describe("applyTheme", () => {
@@ -23,21 +22,15 @@ describe("applyTheme", () => {
       key: vi.fn(() => null),
       length: 0,
     };
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    global.localStorage = mockLocalStorage;
+    vi.stubGlobal("localStorage", mockLocalStorage);
 
     // Mock requestAnimationFrame
     mockRequestAnimationFrame = vi.fn((cb) => {
       cb(0);
       return 0;
     });
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    global.window = { location: { pathname: "/" } };
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    global.requestAnimationFrame = mockRequestAnimationFrame;
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("requestAnimationFrame", mockRequestAnimationFrame);
 
     // Mock document
     addedClasses = [];
@@ -50,16 +43,15 @@ describe("applyTheme", () => {
         },
       },
     } as unknown as Document;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    global.document = mockDocument;
+    vi.stubGlobal("document", mockDocument);
 
     // Mock console.error
-    global.console.error = vi.fn();
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("should be reconstructable from toString() and executable", () => {
@@ -93,8 +85,6 @@ describe("applyTheme", () => {
 
   it("should apply booking theme when app-theme exists and on booking page", () => {
     const username = "testuser";
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
     global.window.location.pathname = `/${username}/meeting`;
 
     mockLocalStorage.key = vi.fn((index: number) => {
@@ -117,8 +107,6 @@ describe("applyTheme", () => {
   });
 
   it("should apply app theme when not on booking page", () => {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
     global.window.location.pathname = "/some-other-page";
 
     mockLocalStorage.key = vi.fn((index: number) => {
