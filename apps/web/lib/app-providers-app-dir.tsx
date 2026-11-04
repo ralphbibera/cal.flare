@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
 import type { PageWrapperProps } from "@components/PageWrapperAppDir";

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useIsPlatform } from "@calcom/atoms/hooks/useIsPlatform";
 import { useOverlayCalendar } from "@calcom/web/modules/bookings/hooks/useOverlayCalendar";
 import type { WrappedBookerPropsMain } from "../../types";

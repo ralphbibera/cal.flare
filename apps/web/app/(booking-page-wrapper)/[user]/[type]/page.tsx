@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { loadTranslations } from "@calcom/i18n/server";
 import { buildLegacyCtx, decodeParams } from "@lib/buildLegacyCtx";

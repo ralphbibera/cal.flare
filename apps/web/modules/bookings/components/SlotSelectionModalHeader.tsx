@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Timezone as PlatformTimezoneSelect } from "@calcom/atoms/timezone";
 import dayjs from "@calcom/dayjs";
 import { useBookerStoreContext } from "@calcom/features/bookings/Booker/BookerStoreProvider";

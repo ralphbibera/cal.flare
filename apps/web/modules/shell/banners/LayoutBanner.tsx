@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import AdminPasswordBanner, {
   type AdminPasswordBannerProps,
 } from "@calcom/web/modules/users/components/AdminPasswordBanner";

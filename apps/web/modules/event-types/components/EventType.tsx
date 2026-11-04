@@ -59,7 +59,7 @@ export type EventTypeComponentProps = EventTypeSetupProps & {
   tabName: (typeof tabs)[number];
   tabsNavigation: VerticalTabItemProps[];
   allowDelete?: boolean;
-  saveButtonRef?: React.RefObject<HTMLButtonElement>;
+  saveButtonRef?: React.RefObject<HTMLButtonElement | null>;
 };
 
 export const EventType = ({

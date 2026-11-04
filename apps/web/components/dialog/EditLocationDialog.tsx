@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { ErrorMessage } from "@hookform/error-message";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isValidPhoneNumber } from "libphonenumber-js/max";

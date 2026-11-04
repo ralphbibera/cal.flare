@@ -35,8 +35,8 @@ export type ButtonBaseProps = {
 
 export type ButtonProps = ButtonBaseProps &
   (
-    | (Omit<JSX.IntrinsicElements["a"], "href" | "onClick" | "ref"> & LinkProps)
-    | (Omit<JSX.IntrinsicElements["button"], "onClick" | "ref"> & { href?: never })
+    | (Omit<React.JSX.IntrinsicElements["a"], "href" | "onClick" | "ref"> & LinkProps)
+    | (Omit<React.JSX.IntrinsicElements["button"], "onClick" | "ref"> & { href?: never })
   );
 
 export const buttonClasses = cva(
@@ -331,7 +331,7 @@ export const Button = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonPr
   if (isLink) {
     return (
       <Link
-        {...(passThroughProps as Omit<JSX.IntrinsicElements["a"], "href" | "onClick" | "ref"> & LinkProps)}
+        {...(passThroughProps as Omit<React.JSX.IntrinsicElements["a"], "href" | "onClick" | "ref"> & LinkProps)}
         shallow={shallow && shallow}
         className={buttonClassName}
         onClick={handleClick}>
@@ -348,7 +348,7 @@ export const Button = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonPr
       tooltipOffset={tooltipOffset}
       tooltipClassName={tooltipClassName}>
       <button
-        {...(passThroughProps as Omit<JSX.IntrinsicElements["button"], "onClick" | "ref">)}
+        {...(passThroughProps as Omit<React.JSX.IntrinsicElements["button"], "onClick" | "ref">)}
         ref={forwardedRef as React.Ref<HTMLButtonElement>}
         disabled={disabled}
         type={type as "button" | "submit" | "reset"}

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { UserCalendarSwitch } from "@calcom/web/modules/calendars/components/CalendarSwitch";
 
 interface IConnectedCalendarItem {

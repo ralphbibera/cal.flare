@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { Dialog } from "@calcom/features/components/controlled-dialog";
 import { APP_NAME } from "@calcom/lib/constants";
 import { extractHostTimezone, filterActiveLinks } from "@calcom/lib/hashedLinksUtils";

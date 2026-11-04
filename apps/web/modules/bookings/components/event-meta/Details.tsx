@@ -35,7 +35,7 @@ type EventDetailDefaultBlock = {
 // Rendering a custom block requires passing a name prop,
 // which is used as a key for the block.
 type EventDetailCustomBlock = {
-  blocks?: React.FC[];
+  blocks?: ((event: EventDetailsPropsBase["event"]) => React.ReactNode)[];
   name: string;
 };
 

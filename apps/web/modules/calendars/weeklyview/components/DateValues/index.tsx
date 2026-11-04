@@ -11,7 +11,7 @@ type Props = {
   showBorder: boolean;
   borderColor: BorderColor;
   days: dayjs.Dayjs[];
-  containerNavRef: React.RefObject<HTMLDivElement>;
+  containerNavRef: React.RefObject<HTMLDivElement | null>;
 };
 
 export function DateValues({ showBorder, borderColor, days, containerNavRef }: Props) {

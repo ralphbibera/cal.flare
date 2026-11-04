@@ -13,7 +13,7 @@ export const HorizontalLines = ({
 }: {
   hours: dayjs.Dayjs[];
   numberOfGridStopsPerCell: number;
-  containerOffsetRef: React.RefObject<HTMLDivElement>;
+  containerOffsetRef: React.RefObject<HTMLDivElement | null>;
   borderColor: BorderColor;
 }) => {
   const { timeFormat } = useTimePreferences();

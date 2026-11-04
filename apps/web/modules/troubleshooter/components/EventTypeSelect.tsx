@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { EventTypeSelectComponent } from "@calcom/features/troubleshooter/components/EventTypeSelectComponent";
 import { trpc } from "@calcom/trpc/react";
 

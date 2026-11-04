@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
@@ -72,7 +73,7 @@ export type LayoutProps = {
   CTA?: ReactNode;
   large?: boolean;
   MobileNavigationContainer?: ReactNode;
-  SidebarContainer?: ReactElement;
+  SidebarContainer?: ReactElement<{ bannersHeight?: number }>;
   TopNavContainer?: ReactNode;
   drawerState?: DrawerState;
   HeadingLeftIcon?: ReactNode;

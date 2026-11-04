@@ -7,6 +7,7 @@
  * For App Router, use app-providers-app-dir.tsx instead.
  */
 
+import type { JSX } from "react";
 import process from "node:process";
 import type { ParsedUrlQuery } from "node:querystring";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";

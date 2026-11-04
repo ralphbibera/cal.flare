@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import classNames from "@calcom/ui/classNames";
 import { EyeIcon, EyeOffIcon, SearchIcon } from "@coss/ui/icons";

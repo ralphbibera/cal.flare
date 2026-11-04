@@ -24,7 +24,7 @@ export type ActiveFiltersValidatorState = ActiveFiltersValidator | "loading" | u
 
 export type DataTableStateContextType = {
   tableIdentifier: string;
-  ctaContainerRef: React.RefObject<HTMLDivElement>;
+  ctaContainerRef: React.RefObject<HTMLDivElement | null>;
   filterToOpen: React.MutableRefObject<string | undefined>;
 
   pageIndex: number;

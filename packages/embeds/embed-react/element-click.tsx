@@ -3,7 +3,7 @@
  */
 import { useEffect } from "react";
 import * as React from "react";
-import ReactDom from "react-dom";
+import { createRoot } from "react-dom/client";
 
 import { getCalApi } from "./src/index";
 
@@ -32,4 +32,6 @@ function App() {
   );
 }
 
-ReactDom.render(<App />, document.getElementById("root"));
+const root = document.getElementById("root");
+if (!root) throw new Error("Root element not found");
+createRoot(root).render(<App />);

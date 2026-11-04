@@ -26,7 +26,7 @@ export type { ActiveFiltersValidator } from "./contexts";
 
 export type DataTableContextType = {
   tableIdentifier: string;
-  ctaContainerRef: React.RefObject<HTMLDivElement>;
+  ctaContainerRef: React.RefObject<HTMLDivElement | null>;
   filterToOpen: React.MutableRefObject<string | undefined>;
 
   activeFilters: ActiveFilters;

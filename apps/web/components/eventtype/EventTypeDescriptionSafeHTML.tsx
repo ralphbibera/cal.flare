@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 export type EventTypeDescriptionSafeProps = {
   eventType: { description: string | null; descriptionAsSafeHTML: string | null };
 };

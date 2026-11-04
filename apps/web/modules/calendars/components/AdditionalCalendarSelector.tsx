@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { FunctionComponent, SVGProps } from "react";
 
 import { InstallAppButton } from "@calcom/app-store/InstallAppButton";

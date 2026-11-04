@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { PencilIcon } from "@coss/ui/icons";
 import classNames from "classnames";
 import { useState } from "react";

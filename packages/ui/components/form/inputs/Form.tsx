@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { ReactElement, Ref } from "react";
 import React, { forwardRef } from "react";
 import type { FieldValues, SubmitHandler, UseFormReturn } from "react-hook-form";

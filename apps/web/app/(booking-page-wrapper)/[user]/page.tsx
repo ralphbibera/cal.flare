@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { buildLegacyCtx, decodeParams } from "@lib/buildLegacyCtx";
 import { getServerSideProps } from "@server/lib/[user]/getServerSideProps";

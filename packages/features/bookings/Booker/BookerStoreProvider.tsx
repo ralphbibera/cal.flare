@@ -12,7 +12,7 @@ export interface BookerStoreProviderProps {
 }
 
 export const BookerStoreProvider = ({ children }: BookerStoreProviderProps) => {
-  const storeRef = useRef<StoreApi<BookerStore>>();
+  const storeRef = useRef<StoreApi<BookerStore>>(undefined);
   if (!storeRef.current) {
     storeRef.current = createBookerStore();
   }

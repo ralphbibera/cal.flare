@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useCallback, useMemo } from "react";
 import { shallow } from "zustand/shallow";
 

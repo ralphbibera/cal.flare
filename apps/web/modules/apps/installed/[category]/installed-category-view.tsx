@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import getAppCategoryTitle from "@calcom/app-store/_utils/getAppCategoryTitle";
 import { AppList, type HandleDisconnect } from "@calcom/features/apps/components/AppList";
 import type { UpdateUsersDefaultConferencingAppParams } from "@calcom/features/apps/components/AppSetDefaultLinkDialog";

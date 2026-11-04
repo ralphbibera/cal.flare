@@ -22,7 +22,7 @@ type BaseDataTableWrapperProps<TData> = Omit<
   LoaderView?: React.ReactNode;
   ErrorView?: React.ReactNode;
   hasError?: boolean;
-  tableContainerRef?: React.RefObject<HTMLDivElement>;
+  tableContainerRef?: React.RefObject<HTMLDivElement | null>;
   onRowMouseclick?: (row: Row<TData>) => void;
   rowTestId?: string | ((row: Row<TData>) => string | undefined);
   rowDataAttributes?: (row: Row<TData>) => Record<string, string> | undefined;

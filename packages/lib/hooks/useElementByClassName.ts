@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 export function useElementByClassName<T extends HTMLElement = HTMLDivElement>(
   className?: string
-): React.RefObject<T> {
+): React.RefObject<T | null> {
   const elementRef = useRef<T | null>(null);
 
   useEffect(() => {

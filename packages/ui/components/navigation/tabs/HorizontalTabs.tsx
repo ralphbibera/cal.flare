@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useIsomorphicLayoutEffect } from "@calcom/lib/hooks/useIsomorphicLayoutEffect";
 import { useRef } from "react";
 import type { HorizontalTabItemProps } from "./HorizontalTabItem";

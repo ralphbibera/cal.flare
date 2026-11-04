@@ -1,4 +1,5 @@
 import type { VariantProps } from "class-variance-authority";
+import type { JSX } from "react";
 
 import type { inputStyles } from "./TextField";
 

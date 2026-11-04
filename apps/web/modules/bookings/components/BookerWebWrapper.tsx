@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { sdkActionManager, useIsEmbed } from "@calcom/embed-core/embed-iframe";
 import { useBookerEmbedEvents } from "@calcom/embed-core/src/embed-iframe/react-hooks";
 import type { BookerProps } from "@calcom/features/bookings/Booker";

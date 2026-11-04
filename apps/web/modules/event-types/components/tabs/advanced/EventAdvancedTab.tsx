@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { getPaymentAppData } from "@calcom/app-store/_utils/payments/getPaymentAppData";
 import { useAtomsContext } from "@calcom/atoms/hooks/useAtomsContext";
 import { useIsPlatform } from "@calcom/atoms/hooks/useIsPlatform";

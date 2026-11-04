@@ -9,7 +9,7 @@ import { useDataTable, useDebouncedWidth } from ".";
 type UseColumnResizingProps<TData> = {
   enabled: boolean;
   table: Table<TData>;
-  tableContainerRef: React.RefObject<HTMLDivElement>;
+  tableContainerRef: React.RefObject<HTMLDivElement | null>;
 };
 
 function getAdjustedColumnSizing<TData>({

@@ -8,7 +8,7 @@ import { BlockedTimeCell } from "./BlockedTimeCell";
 
 type Props = {
   day: dayjs.Dayjs;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 };
 
 function roundX(x: number, roundBy: number) {

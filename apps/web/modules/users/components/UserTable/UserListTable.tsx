@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 import { ColumnFilterType, convertFacetedValuesToMap, type FacetedValue } from "@calcom/features/data-table";
 import { WEBAPP_URL } from "@calcom/lib/constants";

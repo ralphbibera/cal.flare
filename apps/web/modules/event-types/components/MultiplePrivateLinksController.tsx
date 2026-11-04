@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useState } from "react";
 import { Controller, useFormContext } from "react-hook-form";

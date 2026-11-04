@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useSession } from "next-auth/react";
 
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
