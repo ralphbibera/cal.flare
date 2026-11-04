@@ -349,7 +349,7 @@
     },
     "@calcom/web#build": {
       "dependsOn": ["^build", "copy-app-store-static"],
-      "outputs": [".next/**"],
+      "outputs": [".cloudflare/output/**", "dist/**"],
       "env": [
         "NEXT_PUBLIC_AVAILABILITY_SCHEDULE_INTERVAL",
         "NEXT_PUBLIC_BOOKER_NUMBER_OF_DAYS_TO_LOAD",
