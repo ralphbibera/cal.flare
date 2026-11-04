@@ -1,6 +1,7 @@
 import { getPaymentAppData } from "@calcom/app-store/_utils/payments/getPaymentAppData";
 import dayjs from "@calcom/dayjs";
 import { handlePaymentRefund } from "@calcom/features/bookings/lib/payment/handlePaymentRefund";
+import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 import { RefundPolicy } from "@calcom/lib/payment/types";
 import prisma from "@calcom/prisma";
 import type { Payment, Prisma } from "@calcom/prisma/client";
@@ -64,11 +65,16 @@ export const processPaymentRefund = async ({
     },
   });
 
-  const paymentAppCredential = paymentAppCredentials.find((credential) => {
+  const storedPaymentAppCredential = paymentAppCredentials.find((credential) => {
     return credential.appId === successPayment.appId;
   });
 
-  if (!paymentAppCredential) return;
+  if (!storedPaymentAppCredential) return;
+
+  const paymentAppCredential = {
+    ...storedPaymentAppCredential,
+    app: storedPaymentAppCredential.app ? parseAppCategories(storedPaymentAppCredential.app) : null,
+  };
 
   const { refundPolicy, refundCountCalendarDays, refundDaysCount } = appData;
 
@@ -77,10 +83,7 @@ export const processPaymentRefund = async ({
     const refundDeadline =
       refundCountCalendarDays === true
         ? dayjs(startTime).subtract(refundDaysCount, "days")
-        : // businessDaysSubtract exists on extended dayjs instance, but ts is messing up
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          //@ts-ignore
-          dayjs(startTime).businessDaysSubtract(refundDaysCount);
+        : dayjs(startTime).businessDaysSubtract(refundDaysCount);
     if (dayjs().isAfter(refundDeadline)) return;
   }
   // Attempt every refund independently so one provider failure doesn't leave the remaining seats

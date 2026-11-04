@@ -1,11 +1,10 @@
 import { getLocalAppMetadata } from "@calcom/app-store/utils";
 import { sendDisabledAppEmail } from "@calcom/emails/integration-email-service";
 import { getTranslation } from "@calcom/i18n/server";
+import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 import type { PrismaClient } from "@calcom/prisma";
 import { AppCategories } from "@calcom/prisma/enums";
-
 import { TRPCError } from "@trpc/server";
-
 import type { TrpcSessionUser } from "../../../types";
 import type { TToggleInputSchema } from "./toggle.schema";
 
@@ -29,7 +28,7 @@ export const toggleHandler = async ({ input, ctx }: ToggleOptions) => {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "App metadata could not be found" });
   }
 
-  const app = await prisma.app.upsert({
+  const storedApp = await prisma.app.upsert({
     where: {
       slug,
     },
@@ -48,6 +47,8 @@ export const toggleHandler = async ({ input, ctx }: ToggleOptions) => {
       enabled,
     },
   });
+
+  const app = parseAppCategories(storedApp);
 
   // If disabling an app then we need to alert users basesd on the app type
   if (!enabled) {
