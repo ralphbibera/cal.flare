@@ -12,6 +12,7 @@ import { getOrgOrTeamAvatar, getPlaceholderAvatar } from "@calcom/lib/defaultAva
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import { isRecurringEvent, parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
+import { parseInstantMeetingParameters } from "@calcom/lib/server/eventTypeSelect";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma, Team, User as UserType } from "@calcom/prisma/client";
 import { MembershipRole } from "@calcom/prisma/enums";
@@ -604,7 +605,7 @@ export const getPublicEvent = async (
     isDynamic: false,
     isInstantEvent: eventWithUserProfiles.isInstantEvent,
     showInstantEventConnectNowModal,
-    instantMeetingParameters: eventWithUserProfiles.instantMeetingParameters,
+    instantMeetingParameters: parseInstantMeetingParameters(eventWithUserProfiles).instantMeetingParameters,
     assignAllTeamMembers: event.assignAllTeamMembers,
     disableCancelling: event.disableCancelling,
     disableRescheduling: event.disableRescheduling,
