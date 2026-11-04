@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type z from "zod";
 
 import type { GetAppData, SetAppData } from "@calcom/app-store/EventTypeAppContext";

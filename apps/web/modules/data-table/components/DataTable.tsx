@@ -25,7 +25,7 @@ import { useColumnSizingVars } from "~/data-table/hooks/useColumnSizingVars";
 
 export type DataTablePropsFromWrapper<TData> = {
   table: ReactTableType<TData>;
-  tableContainerRef: React.RefObject<HTMLDivElement>;
+  tableContainerRef: React.RefObject<HTMLDivElement | null>;
   isPending?: boolean;
   variant?: "default" | "compact";
   testId?: string;
@@ -273,7 +273,7 @@ type DataTableBodyProps<TData> = {
   hideSeparatorsOnSort?: boolean;
   hideSeparatorsOnFilter?: boolean;
   separatorClassName?: string;
-  tableContainerRef: React.RefObject<HTMLDivElement>;
+  tableContainerRef: React.RefObject<HTMLDivElement | null>;
 };
 
 type RowToRender<TData> = {

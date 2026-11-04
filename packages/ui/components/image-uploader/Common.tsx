@@ -1,6 +1,6 @@
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { InputEvent } from "react";
 
 type ReadAsMethod = "readAsText" | "readAsDataURL" | "readAsArrayBuffer" | "readAsBinaryString";
 
@@ -76,7 +76,7 @@ export const Slider = ({
   </SliderPrimitive.Root>
 );
 
-export interface FileEvent<T = Element> extends FormEvent<T> {
+export interface FileEvent<T = Element> extends InputEvent<T> {
   target: EventTarget & T;
 }
 

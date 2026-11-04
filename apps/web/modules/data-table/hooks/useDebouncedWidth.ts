@@ -3,7 +3,7 @@
 import debounce from "lodash/debounce";
 import { useState, useEffect } from "react";
 
-export function useDebouncedWidth(ref: React.RefObject<HTMLDivElement>, debounceMs = 100) {
+export function useDebouncedWidth(ref: React.RefObject<HTMLDivElement | null>, debounceMs = 100) {
   const [width, setWidth] = useState<number>(0);
 
   useEffect(() => {

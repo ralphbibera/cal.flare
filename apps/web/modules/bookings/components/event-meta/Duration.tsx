@@ -123,7 +123,9 @@ export const EventDuration = ({
               data-active={selectedDuration === duration ? "true" : "false"}
               key={index}
               onClick={() => setSelectedDuration(duration)}
-              ref={(el) => (itemRefs.current[duration] = el)}
+              ref={(el) => {
+                itemRefs.current[duration] = el;
+              }}
               className={classNames(
                 selectedDuration === duration ? "bg-emphasis" : "hover:text-emphasis",
                 "text-default cursor-pointer rounded-[4px] px-3 py-1.5 text-sm leading-tight transition"

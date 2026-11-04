@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { InstallAppButton } from "@calcom/app-store/InstallAppButton";
 import SettingsHeader from "@calcom/features/settings/appDir/SettingsHeader";
 import { useLocale } from "@calcom/lib/hooks/useLocale";

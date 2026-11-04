@@ -46,7 +46,7 @@ type Props = {
   isPlatform?: boolean;
   tabsNavigation: VerticalTabItemProps[];
   allowDelete?: boolean;
-  saveButtonRef?: React.RefObject<HTMLButtonElement>;
+  saveButtonRef?: React.RefObject<HTMLButtonElement | null>;
 };
 
 function EventTypeSingleLayout({

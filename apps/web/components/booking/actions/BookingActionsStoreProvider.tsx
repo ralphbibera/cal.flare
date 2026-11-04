@@ -13,7 +13,7 @@ export interface BookingActionsStoreProviderProps {
 }
 
 export const BookingActionsStoreProvider = ({ children }: BookingActionsStoreProviderProps) => {
-  const storeRef = useRef<StoreApi<BookingActionsStore>>();
+  const storeRef = useRef<StoreApi<BookingActionsStore>>(undefined);
   if (!storeRef.current) {
     storeRef.current = createBookingActionsStore();
   }

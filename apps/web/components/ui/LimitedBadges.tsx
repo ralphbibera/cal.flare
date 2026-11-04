@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import useMediaQuery from "@calcom/lib/hooks/useMediaQuery";
 import { Badge } from "@calcom/ui/components/badge";
 import { Button } from "@calcom/ui/components/button";

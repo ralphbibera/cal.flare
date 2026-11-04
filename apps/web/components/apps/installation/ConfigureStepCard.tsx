@@ -38,7 +38,7 @@ export type ConfigureStepCardProps = {
   credentialId?: number;
   loading?: boolean;
   isConferencing: boolean;
-  formPortalRef: React.RefObject<HTMLDivElement>;
+  formPortalRef: React.RefObject<HTMLDivElement | null>;
   eventTypeGroups: TEventTypeGroup[];
   setConfigureStep: Dispatch<SetStateAction<boolean>>;
   handleSetUpLater: () => void;

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import process from "node:process";
 
 import { notFound } from "next/navigation";

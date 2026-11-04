@@ -480,7 +480,7 @@ const EmailEmbedPreview = ({
 }: {
   eventType: EventType;
   timezone?: string;
-  emailContentRef: RefObject<HTMLDivElement>;
+  emailContentRef: RefObject<HTMLDivElement | null>;
   username?: string;
   month?: string;
   selectedDateAndTime: { [key: string]: string[] };
@@ -765,7 +765,7 @@ const EmbedTypeCodeAndPreviewDialogContent = ({
           }),
     };
   });
-  const embedCodeRefs: Record<(typeof tabs)[0]["name"], RefObject<HTMLTextAreaElement>> = {};
+  const embedCodeRefs: Record<(typeof tabs)[0]["name"], RefObject<HTMLTextAreaElement | null>> = {};
   tabs
     .filter((tab) => tab.type === "code")
     .forEach((codeTab) => {

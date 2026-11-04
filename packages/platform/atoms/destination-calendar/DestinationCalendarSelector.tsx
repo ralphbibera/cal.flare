@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import { useState, useEffect, useMemo } from "react";
 
 import {

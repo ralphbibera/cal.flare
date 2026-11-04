@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 import type { ReactNode } from "react";
 import React from "react";

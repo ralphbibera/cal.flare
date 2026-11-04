@@ -1,5 +1,6 @@
 "use client";
 
+import type { JSX } from "react";
 import AppCategoryNavigation from "@calcom/app-store/_components/AppCategoryNavigation";
 import { appKeysSchemas } from "@calcom/app-store/apps.keys-schemas.generated";
 import { Dialog } from "@calcom/features/components/controlled-dialog";

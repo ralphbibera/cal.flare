@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { getQueryParam } from "@calcom/features/bookings/Booker/utils/query-param";
 import { useTroubleshooterStore } from "@calcom/features/troubleshooter/store";
 import { useLocale } from "@calcom/lib/hooks/useLocale";

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useId } from "@radix-ui/react-id";
 import type { ReactElement, ReactNode, Ref } from "react";
 import React, { forwardRef } from "react";
@@ -220,11 +221,7 @@ const PlainForm = <T extends FieldValues>(props: FormProps<T>, ref: Ref<HTMLForm
         {
           /* @see https://react-hook-form.com/advanced-usage/#SmartFormComponent */
           React.Children.map(props.children, (child) => {
-            return typeof child !== "string" &&
-              typeof child !== "number" &&
-              typeof child !== "boolean" &&
-              child &&
-              "props" in child &&
+            return React.isValidElement<{ name?: string; register?: UseFormReturn<T>["register"] }>(child) &&
               child.props.name
               ? React.createElement(child.type, {
                   ...{
