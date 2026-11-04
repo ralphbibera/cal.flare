@@ -1,8 +1,6 @@
 import type { ConfigType } from "@calcom/dayjs";
 import dayjs from "@calcom/dayjs";
-import type { Availability } from "@calcom/prisma/client";
-import type { Schedule, TimeRange, WorkingHours } from "@calcom/types/schedule";
-
+import type { Availability, Schedule, TimeRange, WorkingHours } from "@calcom/types/schedule";
 import { nameOfDay } from "./weekday";
 
 // sets the desired time in current date, needs to be current date for proper DST translation
@@ -21,34 +19,38 @@ export const DEFAULT_SCHEDULE: Schedule = [
   [],
 ];
 
-export function getAvailabilityFromSchedule(schedule: Schedule): Availability[] {
-  return schedule.reduce((availability: Availability[], times: TimeRange[], day: number) => {
-    const addNewTime = (time: TimeRange) =>
-      ({
+export function getAvailabilityFromSchedule(
+  schedule: Schedule
+): Pick<Availability, "days" | "startTime" | "endTime">[] {
+  return schedule.reduce<Pick<Availability, "days" | "startTime" | "endTime">[]>(
+    (availability, times: TimeRange[], day: number) => {
+      const addNewTime = (time: TimeRange) => ({
         days: [day],
         startTime: time.start,
         endTime: time.end,
-      }) as Availability;
+      });
 
-    const filteredTimes = times.filter((time) => {
-      let idx: number;
-      if (
-        (idx = availability.findIndex(
-          (schedule) =>
-            schedule.startTime.toString() === time.start.toString() &&
-            schedule.endTime.toString() === time.end.toString()
-        )) !== -1
-      ) {
-        availability[idx].days.push(day);
-        return false;
-      }
-      return true;
-    });
-    filteredTimes.forEach((time) => {
-      availability.push(addNewTime(time));
-    });
-    return availability;
-  }, [] as Availability[]);
+      const filteredTimes = times.filter((time) => {
+        let idx: number;
+        if (
+          (idx = availability.findIndex(
+            (schedule) =>
+              schedule.startTime.toString() === time.start.toString() &&
+              schedule.endTime.toString() === time.end.toString()
+          )) !== -1
+        ) {
+          availability[idx].days.push(day);
+          return false;
+        }
+        return true;
+      });
+      filteredTimes.forEach((time) => {
+        availability.push(addNewTime(time));
+      });
+      return availability;
+    },
+    []
+  );
 }
 
 export const MINUTES_IN_DAY = 60 * 24;

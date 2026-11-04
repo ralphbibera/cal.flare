@@ -1,3 +1,7 @@
+import type { Availability as StoredAvailability } from "@calcom/prisma/client";
+
+export type Availability = Omit<StoredAvailability, "days"> & { days: number[] };
+
 export type TimeRange = {
   userId?: number | null;
   start: Date;

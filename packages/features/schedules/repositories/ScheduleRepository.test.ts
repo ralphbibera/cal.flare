@@ -1,4 +1,5 @@
 import prismaMock from "@calcom/testing/lib/__mocks__/prismaMock";
+import { parseAvailability, parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import type { Schedule, User } from "@calcom/prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ScheduleRepository } from "./ScheduleRepository";
@@ -6,11 +7,43 @@ import { ScheduleRepository } from "./ScheduleRepository";
 vi.mock("@calcom/lib/hasEditPermissionForUser", () => ({
   hasReadPermissionsForUserId: vi.fn(),
 }));
+
 import { hasReadPermissionsForUserId } from "@calcom/lib/hasEditPermissionForUser";
 
 const mockHasReadPermissions = vi.mocked(hasReadPermissionsForUserId);
 
 describe("ScheduleRepository", () => {
+  describe("stored availability projection", () => {
+    it("preserves ordered Int32 days, duplicates, selected fields and Date values", () => {
+      const startTime = new Date("1970-01-01T09:00:00.000Z");
+      const endTime = new Date("1970-01-01T17:00:00.000Z");
+      const availability = { days: [6, 1, 1, -2147483648, 2147483647], startTime, endTime };
+      const result = parseScheduleAvailability({ id: 3, availability: [availability] });
+      expect(result).toEqual({ id: 3, availability: [availability] });
+      expect(result.availability[0].startTime).toBe(startTime);
+      expect(result.availability[0].endTime).toBe(endTime);
+    });
+
+    it("projects SQL null days to the original empty-list contract", () => {
+      expect(parseAvailability({ days: null, date: null })).toEqual({ days: [], date: null });
+      expect(parseAvailability({ days: [] })).toEqual({ days: [] });
+    });
+
+    it.each([
+      {},
+      { set: [1] },
+      { push: 1 },
+      "[1]",
+      [null],
+      ["1"],
+      [[1]],
+      [1.5],
+      [2147483648],
+    ])("rejects malformed stored days %j", (days) => {
+      expect(() => parseAvailability({ days })).toThrow();
+    });
+  });
+
   let scheduleRepository: ScheduleRepository;
 
   beforeEach(() => {
