@@ -54,7 +54,7 @@ Cal.flare is **100% MIT-licensed** with no proprietary "Enterprise Edition" feat
 
 - [vinext](https://vinext.dev/)
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/)
-- [Bun](https://bun.com/) 1.4.4
+- [Bun](https://bun.com/)
 - [tRPC](https://trpc.io/)
 - [React.js](https://reactjs.org/)
 - [Tailwind CSS](https://tailwindcss.com/)
@@ -527,7 +527,7 @@ Cal.flare is built on the foundation created by [Cal.com](https://cal.com) and t
 - [Vercel](https://vercel.com/)
 - [vinext](https://vinext.dev/)
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/)
-- [Bun](https://bun.com/) 1.4.4
+- [Bun](https://bun.com/)
 - [Day.js](https://day.js.org/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Prisma](https://prisma.io/)
