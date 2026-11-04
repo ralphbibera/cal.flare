@@ -3171,7 +3171,7 @@ describe("handleNewBooking", () => {
             webhooks: [
               {
                 userId: organizer.id,
-                eventTriggers: ["BOOKING_CREATED"],
+                eventTriggers: ["BOOKING_CREATED", "BOOKING_PAYMENT_INITIATED"],
                 subscriberUrl: "http://my-webhook.example.com",
                 active: true,
                 eventTypeId: 1,
@@ -3318,7 +3318,7 @@ describe("handleNewBooking", () => {
             webhooks: [
               {
                 userId: organizer.id,
-                eventTriggers: ["BOOKING_CREATED"],
+                eventTriggers: ["BOOKING_CREATED", "BOOKING_PAYMENT_INITIATED"],
                 subscriberUrl,
                 active: true,
                 eventTypeId: 1,
