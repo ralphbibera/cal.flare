@@ -185,13 +185,16 @@ describe("D1 migration history", () => {
       ],
       { cwd: root }
     );
+    const migrationNames = (await readdir(new URL("./migrations-d1/", import.meta.url)))
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
     expect(JSON.parse(stdout)).toMatchObject({
-      applied: 1,
+      applied: migrationNames.length,
       database: "DB-calflare-web",
       persistence: persistTo,
     });
-    expect((await readDatabase("SELECT name FROM _calflare_migrations")).results).toEqual([
-      { name: "0001_holiday_cache.sql" },
-    ]);
+    expect((await readDatabase("SELECT name FROM _calflare_migrations ORDER BY position")).results).toEqual(
+      migrationNames.map((name) => ({ name }))
+    );
   });
 });

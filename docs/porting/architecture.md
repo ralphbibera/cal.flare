@@ -230,8 +230,8 @@ Prisma uses `engineType = "client"`, a Workers-compatible generated module, and 
 `packages/prisma/migrations-d1/` owns ordered SQLite SQL migrations for the complete domain and auth schema. `packages/prisma/schema.prisma` remains the domain generator input. The same package owns synthetic seeds and migration-history handling.
 PostgreSQL auto-migrations and Docker DB setup leave the target execution graph. Original history remains available. No destructive live-data reset is authorized.
 Use Prisma generation for client/enums/Zod output and `prisma migrate diff` to produce domain SQL for review. Auth schema output is reviewed into the same ordered SQL sequence.
-The migration runner applies each SQL file plus its `_calflare_migrations` history insert through `cf d1 query --batch @<generated.json>`; `--local` targets synthetic D1.
-Migrations and both product Workers resolve the same DB identity/local storage location. Remote migration requires separate authorization. No PostgreSQL `prisma migrate deploy` runs.
+The pinned `cf` runner applies each SQL file plus its `_calflare_migrations` history insert through `cf d1 raw --batch @<generated.json>`; `--local` targets synthetic D1. Its local explorer does not implement the `d1 query` endpoint.
+Migrations and both product Workers must share the SDK-resolved local DB ID `DB-calflare-web` and persistence root `apps/web/.cloudflare/state` with SDK storage under `v3`; future v2 configuration must preserve both. Remote migration requires separate authorization. No PostgreSQL `prisma migrate deploy` runs.
 Dependent writes and former interactive `$transaction` callbacks become guarded `DB.batch()` statements at their existing repositories.
 [Cloudflare documents batch rollback on failure][d1-batch]. Independent calls, earlier reads, provider HTTP requests, and later queue sends are not part of that transaction.
 Use SQL subqueries and stable unique keys for dependent generated IDs. `RETURNING` collects committed results; it does not feed JavaScript results into a later prebuilt statement.
