@@ -7,7 +7,8 @@
   "description": "Google Calendar is a time management and scheduling service developed by Google. Allows users to create and edit events, with options available for type and time. Available to anyone that has a Gmail account on both mobile and web versions.",
   "dependencies": {
     "@calcom/prisma": "workspace:*",
-    "@googleapis/calendar": "9.7.9"
+    "@googleapis/calendar": "9.7.9",
+    "googleapis-common": "7.0.1"
   },
   "devDependencies": {
     "@calcom/types": "workspace:*"

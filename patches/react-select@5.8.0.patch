@@ -1,0 +1,90 @@
+diff --git a/dist/declarations/src/NonceProvider.d.ts b/dist/declarations/src/NonceProvider.d.ts
+--- a/dist/declarations/src/NonceProvider.d.ts
++++ b/dist/declarations/src/NonceProvider.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/Select.d.ts b/dist/declarations/src/Select.d.ts
+--- a/dist/declarations/src/Select.d.ts
++++ b/dist/declarations/src/Select.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/animated/MultiValue.d.ts b/dist/declarations/src/animated/MultiValue.d.ts
+--- a/dist/declarations/src/animated/MultiValue.d.ts
++++ b/dist/declarations/src/animated/MultiValue.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/animated/Placeholder.d.ts b/dist/declarations/src/animated/Placeholder.d.ts
+--- a/dist/declarations/src/animated/Placeholder.d.ts
++++ b/dist/declarations/src/animated/Placeholder.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/animated/SingleValue.d.ts b/dist/declarations/src/animated/SingleValue.d.ts
+--- a/dist/declarations/src/animated/SingleValue.d.ts
++++ b/dist/declarations/src/animated/SingleValue.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/animated/ValueContainer.d.ts b/dist/declarations/src/animated/ValueContainer.d.ts
+--- a/dist/declarations/src/animated/ValueContainer.d.ts
++++ b/dist/declarations/src/animated/ValueContainer.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/animated/transitions.d.ts b/dist/declarations/src/animated/transitions.d.ts
+--- a/dist/declarations/src/animated/transitions.d.ts
++++ b/dist/declarations/src/animated/transitions.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/Control.d.ts b/dist/declarations/src/components/Control.d.ts
+--- a/dist/declarations/src/components/Control.d.ts
++++ b/dist/declarations/src/components/Control.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/Group.d.ts b/dist/declarations/src/components/Group.d.ts
+--- a/dist/declarations/src/components/Group.d.ts
++++ b/dist/declarations/src/components/Group.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/Menu.d.ts b/dist/declarations/src/components/Menu.d.ts
+--- a/dist/declarations/src/components/Menu.d.ts
++++ b/dist/declarations/src/components/Menu.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/MultiValue.d.ts b/dist/declarations/src/components/MultiValue.d.ts
+--- a/dist/declarations/src/components/MultiValue.d.ts
++++ b/dist/declarations/src/components/MultiValue.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/Option.d.ts b/dist/declarations/src/components/Option.d.ts
+--- a/dist/declarations/src/components/Option.d.ts
++++ b/dist/declarations/src/components/Option.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/Placeholder.d.ts b/dist/declarations/src/components/Placeholder.d.ts
+--- a/dist/declarations/src/components/Placeholder.d.ts
++++ b/dist/declarations/src/components/Placeholder.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/SingleValue.d.ts b/dist/declarations/src/components/SingleValue.d.ts
+--- a/dist/declarations/src/components/SingleValue.d.ts
++++ b/dist/declarations/src/components/SingleValue.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/containers.d.ts b/dist/declarations/src/components/containers.d.ts
+--- a/dist/declarations/src/components/containers.d.ts
++++ b/dist/declarations/src/components/containers.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/components/indicators.d.ts b/dist/declarations/src/components/indicators.d.ts
+--- a/dist/declarations/src/components/indicators.d.ts
++++ b/dist/declarations/src/components/indicators.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/internal/A11yText.d.ts b/dist/declarations/src/internal/A11yText.d.ts
+--- a/dist/declarations/src/internal/A11yText.d.ts
++++ b/dist/declarations/src/internal/A11yText.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
+diff --git a/dist/declarations/src/internal/DummyInput.d.ts b/dist/declarations/src/internal/DummyInput.d.ts
+--- a/dist/declarations/src/internal/DummyInput.d.ts
++++ b/dist/declarations/src/internal/DummyInput.d.ts
+@@ -0,0 +1 @@
++import type { JSX } from 'react';
