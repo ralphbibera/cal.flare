@@ -17,6 +17,26 @@ function createMockTRPCError(code: string): Error {
 }
 
 describe("defaultResponder", () => {
+  it("returns the handler result once when production endpoint tracing is enabled", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const f = vi.fn().mockResolvedValue({ success: true });
+      const req = { method: "GET", url: "/api/test" } as NextApiRequest;
+      const res = {
+        json: vi.fn(),
+        writableEnded: false,
+        setHeader: vi.fn(),
+      } as unknown as NextApiResponse;
+
+      await defaultResponder(f, "/api/test")(req, res);
+
+      expect(f).toHaveBeenCalledTimes(1);
+      expect(res.json).toHaveBeenCalledExactlyOnceWith({ success: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("should call res.json when response is still writable and result is not null", async () => {
     const f = vi.fn().mockResolvedValue({});
     const req = {} as NextApiRequest;
