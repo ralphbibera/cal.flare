@@ -10,14 +10,16 @@ concurrency:
 jobs:
   i18n:
     name: Run i18n
-    if: ${{ secrets.CI_LINGO_DOT_DEV_API_KEY != '' }}
     runs-on: ubuntu-latest
+    env:
+      LINGO_CONFIGURED: ${{ secrets.CI_LINGO_DOT_DEV_API_KEY != '' }}
     permissions:
       actions: write
       contents: write
       pull-requests: write
     steps:
       - name: Generate GitHub App token
+        if: env.LINGO_CONFIGURED == 'true'
         id: generate-token
         uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94
         with:
@@ -26,11 +28,14 @@ jobs:
           repositories: 'cal.com'
 
       - uses: actions/checkout@v4
+        if: env.LINGO_CONFIGURED == 'true'
       - uses: actions/setup-node@v4
+        if: env.LINGO_CONFIGURED == 'true'
         with:
           node-version: "24.22.0"
           cache: 'npm'
       - uses: lingodotdev/lingo.dev@cee3eb86550ca4905fc99fe90786fb7523288a61 # main
+        if: env.LINGO_CONFIGURED == 'true'
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         with:
