@@ -106,14 +106,28 @@ function apiV2Transport(): Plugin {
   };
 }
 
+function sentryRuntime(): Plugin {
+  const configOwner = fileURLToPath(new URL("./instrumentation.ts", import.meta.url));
+  return {
+    name: "calflare:sentry-runtime",
+    enforce: "pre",
+    async resolveId(source) {
+      if (source !== "@sentry/nextjs") return;
+      const target =
+        this.environment.config.consumer === "client" || this.environment.name === "ssr"
+          ? "@sentry/react"
+          : "@sentry/cloudflare";
+      const resolved = await this.resolve(target, configOwner, { skipSelf: true });
+      if (!resolved) throw new Error(`Unable to resolve ${target} from the web configuration`);
+      return resolved;
+    },
+  };
+}
+
 export default defineConfig({
   envPrefix: [],
-  environments: {
-    rsc: { resolve: { alias: [{ find: /^@sentry\/nextjs$/, replacement: "@sentry/cloudflare" }] } },
-    ssr: { resolve: { alias: [{ find: /^@sentry\/nextjs$/, replacement: "@sentry/react" }] } },
-    client: { resolve: { alias: [{ find: /^@sentry\/nextjs$/, replacement: "@sentry/react" }] } },
-  },
   plugins: [
+    sentryRuntime(),
     apiV2Transport(),
     patchCssModules({ exportMode: "default" }),
     vinext({ cache: responseStoreAdapter({ mode: "self-contained" }) }),
