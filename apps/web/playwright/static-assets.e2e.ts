@@ -14,6 +14,8 @@ test("serves original oversized media bytes and HEAD metadata", async ({ request
   expect(response.status()).toBe(200);
   expect(hash(await response.body())).toBe(hash(original));
   expect(response.headers()["content-type"]).toBe("video/mp4");
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response.headers()["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   expect(response.headers()["content-length"]).toBe(String(original.length));
   expect(response.headers().etag).toMatch(/^W\/"/);
   const head = await request.head(pathname);
