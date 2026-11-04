@@ -83,7 +83,7 @@ Actual ordering belongs to the transition tables below.
 
 This specification records source inspection and bounded model execution.
 It does not record a completed differential replay of the full product.
-Inherited suites named below are existing pin evidence sources, not newly written port tests and not claims that those suites ran in this PR.
+Inherited suites named below identify baseline assertions. Their existence does not establish that they execute against the accepted runtime.
 Suite presence does not establish an executed gate. This research ran no product suite or provider delivery.
 PostgreSQL is the reference storage behavior only. The complete product database must migrate to D1 on Workers; external PostgreSQL and Node-hosted application services are forbidden target substitutes.
 

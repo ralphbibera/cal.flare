@@ -21,7 +21,7 @@ A source citation proves what was inspected. It does not prove that the complete
 Reuse retained upstream snapshots, fixtures and assertions when their inputs and owning source remain valid.
 Where a missing runtime observation is necessary for a parity conclusion, record that exact gap instead of fabricating the result.
 Any isolated reference tooling is evidence generation, not an external PostgreSQL/Node application deployment option for Cal.flare.
-The first PR neither provisions a reference service nor runs a whole-product migration prototype.
+A reference service or whole-product prototype is not a substitute for the owned boundary checks.
 
 ## Target evidence
 
@@ -38,4 +38,4 @@ Use the original component markup and styles as the rendering contract. An isola
 Record the tested head, baseline, source/caller paths, commands, fixture identity/configuration, outputs and specific pass predicates.
 A dependency or behavior change invalidates only affected evidence. Unchanged behavior does not need another review ceremony.
 Keep implementation proof separate from real provider delivery and deployed release acceptance.
-Do not copy the failed port's check status, old pin, old runtime measurements or model claims into this fresh baseline without verifying relevance.
+Do not reuse checks or measurements from another baseline or runtime without verifying their relevance.

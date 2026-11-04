@@ -6,8 +6,7 @@ Port Cal.diy main at `e8afecd163cd3a0a3ff279bd4721aa7f073c4685` to vinext, React
 Preserve every in-scope product behavior, original route, component, copy, translation key, provider effect, and inherited test.
 Application hosting and persistent application storage stay on Cloudflare. External PostgreSQL and Node application hosting are excluded.
 
-This first PR binds architecture, source inventory, behavior, documentation and execution. It does not implement the port.
-The fresh public fork is `ralphbibera/cal.flare`. Original routing and package ownership are retained.
+Original routing and package ownership are retained.
 
 ## How to read this
 
@@ -18,32 +17,14 @@ A PR is verified only when its required checks and scoped acceptance pass.
 [Execution](execution.md) binds source inspection, ownership, proof and delivery.
 
 Use Kitchen Refactoring for behavior-preserving migration and Bug fix for demonstrated regressions.
-The current grant is full-stop for this specification PR. Keep it open, unmerged and free of auto-merge or queue enrollment at handoff.
-Future product slices need their own execution grant. Deployment, real credentials, paid-resource creation and live-data changes remain external gates.
+Deployment, real credentials, paid-resource creation and live-data changes require their own prepared procedure and authorization.
 
-## Phase 1. Prepare the source-bound specification PR
-
-**Build.**
-
-- [ ] Freeze latest upstream main as the documented baseline and retain upstream history in the fresh fork.
-- [ ] Replace the upstream project introduction with an honest Cal.flare README and repository-specific agent instructions. Add no scripts, dependencies or CI workflows.
-- [ ] Bind exact stack choices, original folder ownership, complete source dispositions, data representation, behavior contracts and acceptance.
-- [ ] Remove stale Astro assumptions and requirements to use the failed port's custom Next runtime or import codemod.
-
-**You see.**
-
-- [ ] A new contributor can identify the target stack, every source destination, the original behavior oracle, the migration sequence and what is not implemented.
-
-**Verify.**
-
-- [ ] Compare static source rows with `git ls-tree -r --name-only e8afecd163cd3a0a3ff279bd4721aa7f073c4685`. Pass when every baseline file appears exactly once with a destination or disposition.
-- [ ] Run `git diff --check` and verify baseline anchors, local links, domain references and route declaration coverage. Pass when the documentation has no invalid source references or unexplained coverage gaps.
-- [ ] Review `git diff e8afecd163cd3a0a3ff279bd4721aa7f073c4685...HEAD`. Pass when source implementation, generated clients, secrets and runtime manifests remain untouched, and the documentation states its proof limits.
-
-## Phase 2. Establish the original application on vinext
+## Phase 1. Establish the original application on vinext
 
 **Build.**
 
+- [ ] Set `packageManager` to `bun@1.4.4`, preserve workspace names and `workspace:*` links, and convert consumed Yarn commands in scripts and CI to Bun.
+- [ ] Commit `bun.lock` with retained dependency resolutions, translated overrides/patches and reviewed lifecycle trust. Remove unused Yarn files only after frozen installs work.
 - [ ] Keep `apps/web/app`, `pages`, `modules`, providers, components, assets and shared packages in their original folders.
 - [ ] Add the selected vinext, React, React DOM, RSC, Vite and Cloudflare build dependencies at the architecture's exact versions.
 - [ ] Add source Vite and Cloudflare configuration with selected asset routing, bindings, cache policy, image policy and compatibility flags.
@@ -56,11 +37,12 @@ Future product slices need their own execution grant. Deployment, real credentia
 
 **Verify.**
 
+- [ ] Run `bun --version` and `bun install --frozen-lockfile` from a clean checkout. Pass when Bun is 1.4.4, the install leaves `bun.lock` unchanged and consumed commands need no Yarn installation.
 - [ ] Run the planned `bun run --cwd apps/web check:compat`, `bun run --cwd apps/web build` and `bun run --cwd apps/web preview`. Pass when the actual consumed graph builds for Workers and named compatibility findings have source-backed dispositions.
 - [ ] Drive hard load, navigation, back/forward, form action, loading/error/not-found, locale, cookie and static asset cases. Pass when their `D_SHELL` outcomes match the baseline in workerd.
 - [ ] Run the planned root `bun run lint` and `bun run type-check:ci`. Pass when they check the actual accepted source without shim stubs or exclusions that hide reachable failures.
 
-## Phase 3. Complete D1 and identity contracts
+## Phase 2. Complete D1 and identity contracts
 
 **Build.**
 
@@ -80,7 +62,7 @@ Future product slices need their own execution grant. Deployment, real credentia
 - [ ] Replay `D_AUTH`, `D_ONBOARDING` and consumed query/write cases with identical synthetic state. Pass when HTTP, session projections, changed rows, rollback and guards match the baseline.
 - [ ] Run the owned `bun run test` cases and direct failure/concurrency probes at each changed write boundary. Pass when atomicity and contention outcomes match the original contract, without adding stronger global booking guarantees.
 
-## Phase 4. Complete public booking and organizer workflows
+## Phase 3. Complete public booking and organizer workflows
 
 **Build.**
 
@@ -99,7 +81,7 @@ Future product slices need their own execution grant. Deployment, real credentia
 - [ ] Replay `D_BOOKING`, `D_AVAILABILITY`, `D_EVENTS`, `D_BOOKINGS`, `D_SETTINGS`, `D_APPS` and `D_PAYMENTS`. Pass when every owned transition has equivalent success, denial, invalid input, post-write failure and provider effects.
 - [ ] Follow `docs/porting/verification.md` to capture original desktop/mobile, light/dark, loading/empty/error and representative locale states. Pass when original markup, copy, styles and interactions remain equivalent. Screenshots alone do not accept behavior.
 
-## Phase 5. Complete delivery, jobs, v2 and remaining product surfaces
+## Phase 4. Complete delivery, jobs, v2 and remaining product surfaces
 
 **Build.**
 
@@ -119,7 +101,7 @@ Future product slices need their own execution grant. Deployment, real credentia
 - [ ] Replay `D_JOBS`, `D_API`, `D_EMBEDS`, `D_DOCS` and each integration row. Pass when signed requests, receiver records, retry/exhaustion, queue/cache behavior, embed messages, content URLs and final rows match the baseline.
 - [ ] Compare planned `bun run --cwd apps/api/v2 generate-swagger` output with the baseline. Pass when no in-scope path, method, version, schema, required field or response difference remains unexplained.
 
-## Phase 6. Complete authorized release acceptance
+## Phase 5. Complete authorized release acceptance
 
 **Build.**
 
@@ -140,7 +122,6 @@ Future product slices need their own execution grant. Deployment, real credentia
 - [ ] Account for every inventory row, behavior domain, external gate and approved deviation with specific evidence.
 - [ ] Report specification completeness, implementation completeness, local parity, real provider delivery and deployed acceptance separately.
 - [ ] Preserve baseline behavior, including source defects and community-edition stubs, unless a separate product change is authorized.
-- [ ] Confirm the first specification PR remains open and unmerged, with auto-merge and queue enrollment disabled.
 
 ## Release workload
 

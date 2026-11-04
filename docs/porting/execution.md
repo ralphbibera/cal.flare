@@ -2,7 +2,6 @@
 
 Use [the plan](plan.md), [architecture](architecture.md), [behavior](behavior.md), [inventory](inventory/README.md) and [verification contract](verification.md).
 The exact baseline is `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`.
-The first PR changes specification and documentation only. Its full-stop grant never authorizes merge, auto-merge, queue enrollment or default-branch pushes.
 
 ## Bind one result before editing
 
@@ -67,10 +66,9 @@ For uncovered behavior, use direct operational observations against the real pro
 No replacement port-only suite, deletion inventory or parallel test framework is required.
 TLA+ checks a bounded abstraction. It cannot prove D1 atomicity or that implementation matches the model.
 
-The first PR contains documentation and static inventories only. It adds no scripts, dependencies, runtime implementation or CI workflows.
-Keep existing project checks unchanged. Run `git diff --check` and inspect the scoped source diff.
-Record one-time exhaustive inventory, source-anchor, relative-link and model-artifact validation in the PR.
-These checks do not install or claim a working vinext application.
+For documentation changes, run `git diff --check` and validate affected source references, links and inventory rows.
+Keep existing project checks unchanged unless the owned migration explicitly replaces their tooling.
+Documentation checks do not establish a working runtime or product parity.
 
 The source baseline still contains upstream Yarn/Next/PostgreSQL tooling until the implementation slices replace it.
 Target application hosting remains Workers and target persistence remains D1. Baseline tooling is not a supported deployment alternative.

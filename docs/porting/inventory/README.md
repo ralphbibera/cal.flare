@@ -37,7 +37,7 @@ Check middleware and rewrites, preserve the absent-handler result, and invent no
 Repository-maintenance schedules remain GitHub automation. Product schedules move to Worker dispatch with their method, auth and calendar conditions.
 Metadata enablement variables do not cover every credential consumer. Use the environment inventory and implementation source as well.
 
-The inventories were derived from baseline Git objects and verified once during this PR. No generator or new repository script is introduced.
+The static inventories are derived from baseline Git objects.
 Use `git ls-tree -r --name-only e8afecd163cd3a0a3ff279bd4721aa7f073c4685` to inspect the authoritative source set.
 The source-map rows must match that set exactly, with no duplicate or blank dispositions.
 A static count or valid source reference proves accounting, not semantic equivalence, provider delivery or deployability.

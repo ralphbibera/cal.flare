@@ -2,15 +2,12 @@
 
 This reference binds the non-enterprise Cal.diy port at `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`.
 [Plan](plan.md), [behavior](behavior.md), [execution](execution.md), and [source map](inventory/source-map.tsv) define scope, acceptance, and ownership.
-The fresh public `ralphbibera/cal.flare` fork starts at this latest upstream pin. Documentation branch is `docs/port-architecture`.
-Delivery is FULL-STOP for the first architecture/README/inventory PR. This specification authorizes no merge, installation, implementation, provisioning, deployment, credentials, or live-data migration.
-The first PR contains documentation and static inventories only. It adds no helper scripts, validators, or inventory generators. Existing required project checks remain intact.
 
 ## Evidence and stack
 
 Observed facts below come from pinned source, official documentation, or registry metadata checked on 2026-11-04.
 Selected decisions bind future implementation. Neither source inspection nor package availability proves whole-product compatibility.
-Executed work covers research and this specification only. No product build, authentication flow, provider delivery, or deployed Worker is certified here.
+Product builds, authentication flows, provider delivery and deployed behavior require their own execution evidence.
 Cloudflare recommends [vinext for Next.js applications][cf-next] and identifies its beta status. Vinext remains selected.
 
 Exact direct pins below replace floating initializer defaults. Retained dependencies keep their pinned manifests and resolved `yarn.lock` versions until the clean target records equivalent frozen Bun resolutions.
@@ -41,6 +38,19 @@ Exact direct pins below replace floating initializer defaults. Retained dependen
 Exact-version registry reads succeeded for the new pins. No registry-unavailability blocker remains. A fresh install, peer audit, and Worker import probes remain unexecuted.
 Better Auth carries its own Zod 4 and JOSE 6 dependencies. Keep domain Zod 3 and JOSE 4 consumers scoped to their original packages.
 No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, Accelerate, external Redis, Neon, Hyperdrive-to-PG, or Node application server belongs in the target runtime.
+
+## Bun workspaces and lockfile
+
+Bun `1.4.4` replaces Yarn for dependency installation, workspace selection, package commands and CI.
+Set the root `packageManager` to `bun@1.4.4` and retain original workspace package names and `workspace:*` relationships.
+Commit one root `bun.lock`; CI and clean-checkout verification use `bun install --frozen-lockfile`.
+Preserve retained dependency resolutions while translating Yarn overrides, patches and any consumed package-manager behavior.
+Review dependency lifecycle scripts explicitly instead of trusting every install hook.
+Replace consumed `yarn`, `yarn workspace` and `yarn dlx` invocations with the corresponding Bun package/workspace commands.
+Retain Vitest and Playwright. Package-manager migration does not replace test frameworks or change expected behavior.
+Remove `.yarn/`, `.yarnrc.yml` and `yarn.lock` after the accepted workspace graph installs and runs without Yarn.
+Node remains available only for build tools with a Node engine requirement; it is not the application host.
+The [Bun workspace](https://bun.com/docs/pm/workspaces) and [lockfile](https://bun.com/docs/pm/lockfile) contracts govern workspace resolution and frozen installs.
 
 ## Folders and runtime ownership
 
@@ -256,13 +266,12 @@ Only an explicit public-build allowlist exposes consumed `NEXT_PUBLIC_*` values.
 Local `.dev.vars` stays ignored. Generated `Env` files contain types, not values. Logs preserve request IDs/error classes with credentials, cookies, and private payloads redacted.
 Retain per-route HTTP errors, tRPC formatting, v2 filters, and source log behavior. Sentry Worker wrapping observes failures without changing public responses.
 
-The first PR adds no scripts, dependencies or CI workflow. Existing project checks remain unchanged.
-Implementation-stage CI uses frozen Bun install, generated D1/auth schema checks, type/lint checks across consumed workspaces, production vinext/v2/docs builds, and relevant retained unit/integration/browser cases.
+Target CI uses frozen Bun install, generated D1/auth schema checks, type/lint checks across consumed workspaces, production vinext/v2/docs builds, and relevant retained unit/integration/browser cases.
 Connect existing runners to built workerd and fresh synthetic D1 before treating green results as port evidence. Keep inherited tests and strict main checks intact.
 Focused probes cover auth projections/expiry, i18n isolation, raw bodies, route precedence, Server Actions/hydration, cache variants/invalidation, D1 rollback, Queue redelivery, and DO TTL/counters.
 A complete-product prototype, deployment, or paid resource is not a prerequisite for beginning implementation. Each slice proves its concrete boundary and records remaining external gates.
 Release verification records compressed bundle, CPU, memory, subrequests, D1 workload/parameters, migrations/recovery, and provider effects against current account limits.
-Specification completeness, local behavior, live provider delivery, and deployed acceptance remain separate results. This research establishes only the specification.
+Specification completeness, local behavior, live provider delivery, and deployed acceptance remain separate results. Selected decisions do not establish implementation acceptance.
 
 [cf-next]: https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/
 [vx-migrate]: https://vinext.dev/docs/getting-started/migrating
