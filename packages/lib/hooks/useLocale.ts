@@ -1,11 +1,9 @@
-import { createInstance } from "i18next";
-import type { TFunction, i18n } from "i18next";
-import { useContext } from "react";
-import { useTranslation } from "react-i18next";
-
 import { useAtomsContext } from "@calcom/atoms/hooks/useAtomsContext";
 import { AppRouterI18nContext } from "@calcom/web/app/AppRouterI18nProvider";
 import { CustomI18nContext } from "@calcom/web/app/CustomI18nProvider";
+import type { i18n, TFunction } from "i18next";
+import { useContext } from "react";
+import { useTranslation } from "react-i18next";
 
 type useLocaleReturnType = {
   i18n: i18n;
@@ -14,9 +12,9 @@ type useLocaleReturnType = {
 };
 
 // @internal
-const useClientLocale = (namespace: Parameters<typeof useTranslation>[0] = "common"): useLocaleReturnType => {
+const useClientLocale = (instance?: i18n): useLocaleReturnType => {
   const context = useAtomsContext();
-  const { i18n, t } = useTranslation(namespace);
+  const { i18n, t } = useTranslation("common", { i18n: instance });
   const isLocaleReady = Object.keys(i18n).length > 0;
   if (context?.clientId) {
     return { i18n: context.i18n, t: context.t, isLocaleReady: true } as unknown as useLocaleReturnType;
@@ -28,38 +26,14 @@ const useClientLocale = (namespace: Parameters<typeof useTranslation>[0] = "comm
   };
 };
 
-// @internal
-const serverI18nInstances = new Map();
-
 export const useLocale = (): useLocaleReturnType => {
   const appRouterContext = useContext(AppRouterI18nContext);
   const customI18nContext = useContext(CustomI18nContext);
-  const clientI18n = useClientLocale();
+  const context = appRouterContext ? (customI18nContext ?? appRouterContext) : null;
+  const clientI18n = useClientLocale(context?.i18n);
 
-  if (appRouterContext) {
-    const { translations, locale, ns } = customI18nContext ?? appRouterContext;
-    const instanceKey = `${locale}-${ns}`;
-
-    // Check if we already have an instance for this locale and namespace
-    if (!serverI18nInstances.has(instanceKey)) {
-      const i18n = createInstance();
-      i18n.init({
-        lng: locale,
-        resources: {
-          [locale]: {
-            [ns]: translations,
-          },
-        },
-      });
-
-      serverI18nInstances.set(instanceKey, {
-        t: i18n.getFixedT(locale, ns),
-        isLocaleReady: true,
-        i18n,
-      });
-    }
-
-    return serverI18nInstances.get(instanceKey);
+  if (context) {
+    return { i18n: context.i18n, t: context.t, isLocaleReady: true };
   }
 
   console.warn(
