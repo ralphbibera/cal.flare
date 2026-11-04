@@ -140,7 +140,11 @@ export class WebhookRepository implements IWebhookRepository {
       WHEN "teamId" IN (SELECT value FROM json_each(${ids})) THEN 5
       ELSE 6 END, id`
     );
-    return webhooks.map((webhook) => ({ ...webhook, version: parseWebhookVersion(webhook.version) }));
+    // Preserve the raw subscriber path's inherited unchecked version contract.
+    return webhooks.map((webhook) => ({
+      ...webhook,
+      version: webhook.version as WebhookSubscriber["version"],
+    }));
   }
 
   async getWebhookById(id: string): Promise<WebhookSubscriber | null> {
