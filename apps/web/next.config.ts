@@ -1,9 +1,9 @@
+import i18nConfig from "@calcom/i18n/next-i18next.config";
 import { withBotId } from "botid/next/config";
 import { config as dotenvConfig } from "dotenv";
 import type { NextConfig } from "next";
 import type { RouteHas } from "next/dist/lib/load-custom-routes";
 import { withAxiom } from "next-axiom";
-import i18nConfig from "@calcom/i18n/next-i18next.config";
 import packageJson from "./package.json";
 import {
   nextJsOrgRewriteConfig,
@@ -130,11 +130,22 @@ if (process.env.GOOGLE_API_CREDENTIALS && !validJson(process.env.GOOGLE_API_CRED
 const plugins: NextConfigPlugin[] = [];
 
 if (process.env.ANALYZE === "true") {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const withBundleAnalyzer = require("@next/bundle-analyzer")({
-    enabled: true,
-  });
-  plugins.push(withBundleAnalyzer);
+  throw new Error(
+    "ANALYZE uses the Next webpack analyzer. Use Vite build output to inspect the Workers bundle."
+  );
+}
+
+if (process.env.BUILD_STANDALONE === "true") {
+  throw new Error("BUILD_STANDALONE requires a Node application host. Cal.flare runs on Cloudflare Workers.");
+}
+
+if (
+  process.env.NEXT_PUBLIC_VERCEL_USE_BOTID_IN_BOOKER === "1" &&
+  (process.env.NODE_ENV === "production" || process.env.CALCOM_ENV === "production")
+) {
+  throw new Error(
+    "BotID production verification requires Vercel OIDC and mutateResponseHeadersBeforeFlush. No Workers adapter is available."
+  );
 }
 
 plugins.push(withAxiom);
@@ -222,17 +233,6 @@ const nextConfig = (phase: string): NextConfig => {
   }
 
   return {
-    output: process.env.BUILD_STANDALONE === "true" ? "standalone" : undefined,
-    serverExternalPackages: [
-      "deasync",
-      "http-cookie-agent",
-      "rest-facade",
-      "superagent-proxy",
-      "superagent",
-      "formidable",
-      "@boxyhq/saml-jackson",
-      "jose",
-    ],
     experimental: {
       optimizePackageImports: ["@calcom/ui"],
     },

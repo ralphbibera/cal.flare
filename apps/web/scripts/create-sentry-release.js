@@ -1,6 +1,7 @@
+const process = require("node:process");
 const { execSync } = require("node:child_process");
 
-const CLIENT_FILES_PATH = ".next/static/chunks";
+const CLIENT_FILES_PATH = "dist/client/_next/static";
 
 try {
   // Continue if required any env vars are not set
