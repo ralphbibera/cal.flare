@@ -4,6 +4,7 @@ import {
   getRoutedUsersWithContactOwnerAndFixedUsers,
 } from "@calcom/features/users/lib/getRoutedUsers";
 import { UserRepository, withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
+import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import { HttpError } from "@calcom/lib/http-error";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
@@ -12,7 +13,10 @@ import { Prisma } from "@calcom/prisma/client";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import type { NewBookingEventType } from "./getEventTypesFromDB";
 
-const getOrgDomainConfig = (..._args: unknown[]) => ({ currentOrgDomain: null as string | null, isValidOrgDomain: false });
+const getOrgDomainConfig = (..._args: unknown[]) => ({
+  currentOrgDomain: null as string | null,
+  isValidOrgDomain: false,
+});
 
 const log = logger.getSubLogger({ prefix: ["[loadUsers]:handleNewBooking "] });
 
@@ -141,7 +145,7 @@ export const findUsersByUsername = async ({
       },
     })
   ).map((_user) => {
-    const user = withSelectedCalendars(_user);
+    const user = withSelectedCalendars(parseUserAvailability(_user));
     const profile = profiles?.find((profile) => profile.user.id === user.id) ?? null;
     return {
       ...user,

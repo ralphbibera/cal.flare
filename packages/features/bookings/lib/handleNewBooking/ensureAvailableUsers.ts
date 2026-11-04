@@ -1,11 +1,10 @@
-import type { Logger } from "tslog";
-
-import dayjs from "@calcom/dayjs";
 import type { Dayjs } from "@calcom/dayjs";
+import dayjs from "@calcom/dayjs";
 import { checkForConflicts } from "@calcom/features/bookings/lib/conflictChecker/checkForConflicts";
 import { getBusyTimesService } from "@calcom/features/di/containers/BusyTimes";
 import { getUserAvailabilityService } from "@calcom/features/di/containers/GetUserAvailability";
 import { buildDateRanges } from "@calcom/features/schedules/lib/date-ranges";
+import { parseAvailability } from "@calcom/lib/availability/parseAvailability";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { parseBookingLimit } from "@calcom/lib/intervalLimits/isBookingLimits";
 import { parseDurationLimit } from "@calcom/lib/intervalLimits/isDurationLimits";
@@ -14,7 +13,7 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import prisma from "@calcom/prisma";
 import type { CalendarFetchMode } from "@calcom/types/Calendar";
-
+import type { Logger } from "tslog";
 import type { getEventTypeResponse } from "./getEventTypesFromDB";
 import type { BookingType } from "./originalRescheduledBookingUtils";
 import type { IsFixedAwareUser } from "./types";
@@ -178,12 +177,7 @@ const _ensureAvailableUsers = async (
         throw new Error(ErrorCode.BookingNotAllowedByRestrictionSchedule);
       }
 
-      const restrictionAvailability = restrictionSchedule.availability.map((rule) => ({
-        days: rule.days,
-        startTime: rule.startTime,
-        endTime: rule.endTime,
-        date: rule.date,
-      }));
+      const restrictionAvailability = restrictionSchedule.availability.map(parseAvailability);
 
       const isDefaultSchedule = restrictionSchedule.user.defaultScheduleId === restrictionSchedule.id;
       const travelSchedules =

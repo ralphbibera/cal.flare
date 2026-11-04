@@ -2,6 +2,11 @@ import type { LocationObject } from "@calcom/app-store/locations";
 import { getBookingFieldsWithSystemFields } from "@calcom/features/bookings/lib/getBookingFields";
 import type { DefaultEvent } from "@calcom/features/eventtypes/lib/defaultEvents";
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
+import {
+  parseAvailability,
+  parseScheduleAvailability,
+  parseUserAvailability,
+} from "@calcom/lib/availability/parseAvailability";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import { prisma } from "@calcom/prisma";
@@ -218,13 +223,16 @@ export const getEventTypesFromDB = async (eventTypeId: number) => {
 
   const hostsWithSelectedCalendars = hosts.map((host) => ({
     ...host,
-    user: withSelectedCalendars(host.user),
+    user: withSelectedCalendars(parseUserAvailability(host.user)),
+    schedule: host.schedule ? parseScheduleAvailability(host.schedule) : null,
   }));
 
-  const usersWithSelectedCalendars = users.map((user) => withSelectedCalendars(user));
+  const usersWithSelectedCalendars = users.map((user) => withSelectedCalendars(parseUserAvailability(user)));
 
   return {
     ...restEventType,
+    availability: eventType.availability.map(parseAvailability),
+    schedule: eventType.schedule ? parseScheduleAvailability(eventType.schedule) : null,
     hosts: hostsWithSelectedCalendars,
     users: usersWithSelectedCalendars,
     metadata: EventTypeMetaDataSchema.parse(eventType?.metadata || {}),
