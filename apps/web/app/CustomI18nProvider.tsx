@@ -1,15 +1,17 @@
 "use client";
 
+import type { loadTranslations } from "@calcom/i18n/server";
+import type { Context, JSX, ReactNode } from "react";
 import { createContext, useMemo } from "react";
-import type { ReactNode } from "react";
 
 type CustomI18nContextType = {
-  translations: Record<string, string>;
+  translations: Awaited<ReturnType<typeof loadTranslations>>;
   ns: string;
   locale: string;
 };
 
-export const CustomI18nContext = createContext<CustomI18nContextType | null>(null);
+export const CustomI18nContext: Context<CustomI18nContextType | null> =
+  createContext<CustomI18nContextType | null>(null);
 
 export function CustomI18nProvider({
   children,
@@ -18,7 +20,7 @@ export function CustomI18nProvider({
   ns,
 }: CustomI18nContextType & {
   children: ReactNode;
-}) {
+}): JSX.Element {
   // Memoize the value to prevent re-renders unless the data changes
   const value = useMemo(
     () => ({
