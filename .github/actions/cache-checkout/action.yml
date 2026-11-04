@@ -23,7 +23,6 @@ runs:
         sparse-checkout-cone-mode: false
         sparse-checkout: |
           /*
-          !/example-apps/
           !**/*.mp4
           /packages/app-store/salesroom/static/salesroom-demo.mp4
           !/docs/images/
