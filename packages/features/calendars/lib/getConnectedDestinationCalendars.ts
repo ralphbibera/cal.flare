@@ -1,4 +1,5 @@
 import { enrichUserWithDelegationCredentialsIncludeServiceAccountKey } from "@calcom/app-store/delegationCredential";
+import { PrismaCredentialRepository } from "@calcom/app-store/repositories/PrismaCredentialRepository";
 import type { CredentialDataWithTeamName } from "@calcom/app-store/utils";
 import {
   cleanIntegrationKeys,
@@ -6,14 +7,12 @@ import {
   getConnectedCalendars,
 } from "@calcom/features/calendars/lib/CalendarManager";
 import { DestinationCalendarRepository } from "@calcom/features/calendars/repositories/DestinationCalendarRepository";
+import { SelectedCalendarRepository } from "@calcom/features/selectedCalendar/repositories/SelectedCalendarRepository";
 import { isDelegationCredential } from "@calcom/lib/delegationCredential";
 import logger from "@calcom/lib/logger";
-import { SelectedCalendarRepository } from "@calcom/features/selectedCalendar/repositories/SelectedCalendarRepository";
 import type { PrismaClient } from "@calcom/prisma";
 import prisma from "@calcom/prisma";
 import type { DestinationCalendar, SelectedCalendar, User } from "@calcom/prisma/client";
-import { AppCategories } from "@calcom/prisma/enums";
-import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import type { IntegrationCalendar } from "@calcom/types/Calendar";
 
 const log = logger.getSubLogger({ prefix: ["getConnectedDestinationCalendarsAndEnsureDefaultsInDb"] });
@@ -288,23 +287,9 @@ export async function getConnectedDestinationCalendarsAndEnsureDefaultsInDb({
   destinationCalendar: DestinationCalendar & Omit<IntegrationCalendar, "id" | "userId">;
   connectedCalendars: Awaited<ReturnType<typeof getConnectedCalendars>>["connectedCalendars"];
 }> {
-  const userCredentials = await prisma.credential.findMany({
-    where: {
-      userId: user.id,
-      app: {
-        categories: { has: AppCategories.calendar },
-        enabled: true,
-      },
-    },
-    select: {
-      selectedCalendars: {
-        select: {
-          id: true,
-        },
-      },
-      ...credentialForCalendarServiceSelect,
-    },
-  });
+  const userCredentials = await new PrismaCredentialRepository().findEnabledCalendarCredentialsForUser(
+    user.id
+  );
 
   const selectedCalendars = getSelectedCalendars({ user, eventTypeId: eventTypeId ?? null });
   let connectedCalendars: Awaited<ReturnType<typeof getConnectedCalendars>>["connectedCalendars"] = [];

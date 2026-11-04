@@ -1,14 +1,11 @@
-import type { TFunction } from "i18next";
-
 import { enrichUserWithDelegationConferencingCredentialsWithoutOrgId } from "@calcom/app-store/delegationCredential";
 import { defaultVideoAppCategories } from "@calcom/app-store/utils";
 import { prisma } from "@calcom/prisma";
-import type { Prisma } from "@calcom/prisma/client";
 import { AppCategories } from "@calcom/prisma/enums";
-import { PrismaCredentialRepository } from "./repositories/PrismaCredentialRepository";
-
+import type { TFunction } from "i18next";
 import getEnabledAppsFromCredentials from "./_utils/getEnabledAppsFromCredentials";
 import { defaultLocations } from "./locations";
+import { type CredentialOwner, PrismaCredentialRepository } from "./repositories/PrismaCredentialRepository";
 
 export async function getLocationGroupedOptions(
   userOrTeamId: { userId: number } | { teamId: number },
@@ -28,7 +25,7 @@ export async function getLocationGroupedOptions(
   > = {};
 
   // don't default to {}, when you do TS no longer determines the right types.
-  let idToSearchObject: Prisma.CredentialWhereInput;
+  let owner: CredentialOwner;
   let user = null;
   if ("teamId" in userOrTeamId) {
     const teamId = userOrTeamId.teamId;
@@ -44,16 +41,12 @@ export async function getLocationGroupedOptions(
     });
 
     if (org) {
-      idToSearchObject = {
-        teamId: {
-          in: [teamId, org.id],
-        },
-      };
+      owner = { teamIds: [teamId, org.id] };
     } else {
-      idToSearchObject = { teamId };
+      owner = { teamIds: [teamId] };
     }
   } else {
-    idToSearchObject = { userId: userOrTeamId.userId };
+    owner = { userId: userOrTeamId.userId };
     user = await prisma.user.findUnique({
       where: {
         id: userOrTeamId.userId,
@@ -61,10 +54,10 @@ export async function getLocationGroupedOptions(
     });
   }
 
-  const credentialRepository = new PrismaCredentialRepository(prisma);  
-  const nonDelegationCredentials = await credentialRepository.findNonDelegationCredentialsByAppCategories({  
-    idToSearchObject,
-    appCategories: defaultVideoAppCategories,  
+  const credentialRepository = new PrismaCredentialRepository();
+  const nonDelegationCredentials = await credentialRepository.findNonDelegationCredentialsByAppCategories({
+    owner,
+    appCategories: defaultVideoAppCategories,
   });
 
   let credentials;
@@ -80,7 +73,7 @@ export async function getLocationGroupedOptions(
     );
     credentials = allCredentials;
   } else {
-    credentials = nonDelegationCredentials;  
+    credentials = nonDelegationCredentials;
   }
 
   const integrations = await getEnabledAppsFromCredentials(credentials, { filterOnCredentials: true });
