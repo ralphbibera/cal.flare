@@ -23,7 +23,7 @@ Then you need to copy these values to the platform examples app environment.
 Then, we need to setup platform OAuth 2.0 client. We will need an id, and then hashed and plain secrets. To generate them you can:
 ```
 cd apps/api/v2
-yarn generate-secrets
+bun run generate-secrets
 ```
 
 and then the secrets will be written to `apps/api/v2/.generated-secrets` file containing:
@@ -69,7 +69,7 @@ Then you need to copy id and secret to the platform examples app environment.
 Then, we need to setup platform OAuth 2.0 client. We will need an id, and then hashed and plain secrets. To generate them you can:
 ```
 cd apps/api/v2
-yarn generate-secrets
+bun run generate-secrets
 ```
 
 and then the secrets will be written to `apps/api/v2/.generated-secrets` file containing:
@@ -123,34 +123,34 @@ comment this variable or set to false.
 # Running everything
 1. Build atoms for local development:
 cd packages/platform/atoms
-yarn dev-on
-yarn build-npm
+bun run dev-on
+bun run build-npm
 ```
-The dev-on command changes how atoms are built. Remember to run `yarn dev-off` when you are done testing atoms locally. If you update anything related to frontend, for example, Booker, then you need to run `yarn build-npm` again to rebuild atoms.
+The dev-on command changes how atoms are built. Remember to run `bun run dev-off` when you are done testing atoms locally. If you update anything related to frontend, for example, Booker, then you need to run `bun run build-npm` again to rebuild atoms.
 
 2. Start api v2:
 ```
 Sometimes it happens that v2 api restarts because some unrelated log of build files changed, and if it makes examples app not wor you can just start it using:
 ```
 cd apps/api/v2
-yarn dev:build
-yarn start
+bun run dev:build
+bun run start
 ```
 
 3. Setups examples app sqlite database.
 ```
 cd packages/platform/examples/base
-rm -f prisma/dev.db && yarn prisma db push
+rm -f prisma/dev.db && bun run prisma db push
 ```
 4. Run examples app and open localhost:4321
 ```
 cd packages/platform/examples/base
-yarn dev
+bun run dev
 ```
 
 If you have set `NEXT_PUBLIC_OAUTH2_MODE="true"` then here is how to test it:
 
 If you do test OAuth 2.0 using atoms then do below:
-1. Start cal web app locally by running `yarn dev` in the root folder and login using any user into cal web app running locally.
+1. Start cal web app locally by running `bun run dev` in the root folder and login using any user into cal web app running locally.
 2. Using client id and redirect_uri information above create /authorize url. Example http://localhost:3000/auth/oauth2/authorize?client_id=1c70be53f35aa480a5e3146d361fd993d265e564d2d86a203df3adbd05186517&redirect_uri=http://localhost:4321&state=texas or if you have setup localhost:3000 to map to app.cal.local http://app.cal.local:3000/auth/oauth2/authorize?client_id=1c70be53f35aa480a5e3146d361fd993d265e564d2d86a203df3adbd05186517&redirect_uri=http://localhost:4321&state=texas and authorize test OAuth client. You will be redirected to localhost:4321?code=abc and this route will exchange the authorization code for access and refresh tokens for the logged in cal user and store them in the examples app SQLite database.
 3. Examples app is ready to use. If you update, let's say an availability, then it will be reflected in the availability of admin@example.com in the web app running locally.

@@ -10,7 +10,7 @@ Selected decisions bind future implementation. Neither source inspection nor pac
 Product builds, authentication flows, provider delivery and deployed behavior require their own execution evidence.
 Cloudflare recommends [vinext for Next.js applications][cf-next] and identifies its beta status. Vinext remains selected.
 
-Exact direct pins below replace floating initializer defaults. Retained dependencies keep their pinned manifests and resolved `yarn.lock` versions until the clean target records equivalent frozen Bun resolutions.
+Exact direct pins below replace floating initializer defaults. Retained dependencies keep their pinned manifests and resolved upstream lockfile versions until the clean target records equivalent frozen Bun resolutions.
 
 | Responsibility | Selected version and rule |
 | --- | --- |
@@ -42,14 +42,14 @@ No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, 
 
 ## Bun workspaces and lockfile
 
-Bun `1.4.4` replaces Yarn for dependency installation, workspace selection, package commands and CI.
+Bun `1.4.4` handles dependency installation, workspace selection, package commands and CI.
 Set the root `packageManager` to `bun@1.4.4` and retain original workspace package names and `workspace:*` relationships.
 Commit one root `bun.lock`; CI and clean-checkout verification use `bun install --frozen-lockfile`.
-Preserve retained dependency resolutions while translating Yarn overrides, patches and any consumed package-manager behavior.
+Preserve retained dependency resolutions while translating upstream overrides, patches and any consumed package-manager behavior.
 Review dependency lifecycle scripts explicitly instead of trusting every install hook.
-Replace consumed `yarn`, `yarn workspace` and `yarn dlx` invocations with the corresponding Bun package/workspace commands.
+Use Bun package commands, explicit workspace directories and `bunx` for consumed scripts and CI.
 Retain Vitest and Playwright. Package-manager migration does not replace test frameworks or change expected behavior.
-Remove `.yarn/`, `.yarnrc.yml` and `yarn.lock` after the accepted workspace graph installs and runs without Yarn.
+Retire the former installer, configuration and lockfile once frozen Bun installs and consumed commands pass.
 Node remains available only for build tools with a Node engine requirement; it is not the application host.
 The [Bun workspace](https://bun.com/docs/pm/workspaces) and [lockfile](https://bun.com/docs/pm/lockfile) contracts govern workspace resolution and frozen installs.
 

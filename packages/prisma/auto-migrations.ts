@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     return;
   }
   // throws an error if migration fails
-  const { stdout, stderr } = await exec("yarn prisma migrate deploy", {
+  const { stdout, stderr } = await exec("bun run prisma migrate deploy", {
     env: {
       ...process.env,
     },

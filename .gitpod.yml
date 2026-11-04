@@ -1,6 +1,6 @@
 tasks:
   - init: |
-      yarn &&
+      bun install --frozen-lockfile &&
       cp .env.example .env &&
       next_auth_secret=$(openssl rand -base64 32) &&
       calendso_encryption_key=$(openssl rand -base64 24) &&
@@ -8,7 +8,7 @@ tasks:
              -e "s|^CALENDSO_ENCRYPTION_KEY=.*|CALENDSO_ENCRYPTION_KEY=$calendso_encryption_key|" \
              -e "s|http://localhost:3000|https://localhost:3000|" \
              -e "s|localhost:3000|3000-$GITPOD_WORKSPACE_ID.$GITPOD_WORKSPACE_CLUSTER_HOST|" .env
-    command: yarn dx
+    command: bun run dx
 
 ports:
   - port: 3000

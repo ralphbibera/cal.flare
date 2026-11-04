@@ -1,4 +1,5 @@
-FROM --platform=$BUILDPLATFORM node:22 AS builder
+FROM --platform=$BUILDPLATFORM node:24.22.0 AS builder
+COPY --from=oven/bun:1.4.4 /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /calcom
 
@@ -34,32 +35,32 @@ ENV NEXT_PUBLIC_WEBAPP_URL=http://NEXT_PUBLIC_WEBAPP_URL_PLACEHOLDER \
   BUILD_STANDALONE=true \
   CSP_POLICY=$CSP_POLICY
 
-COPY package.json yarn.lock .yarnrc.yml playwright.config.ts turbo.json i18n.json ./
-COPY .yarn ./.yarn
+COPY package.json bun.lock bunfig.toml playwright.config.ts turbo.json i18n.json ./
+COPY patches ./patches
 COPY apps/web ./apps/web
 COPY apps/api/v2 ./apps/api/v2
 COPY packages ./packages
 
-RUN yarn config set httpTimeout 1200000
 RUN npx turbo prune --scope=@calcom/web --scope=@calcom/trpc --docker
-RUN yarn install
+RUN bun install --frozen-lockfile
 # Build and make embed servable from web/public/embed folder
-RUN yarn workspace @calcom/trpc run build
-RUN yarn --cwd packages/embeds/embed-core workspace @calcom/embed-core run build
-RUN yarn --cwd apps/web workspace @calcom/web run copy-app-store-static
-RUN yarn --cwd apps/web workspace @calcom/web run build
-RUN rm -rf node_modules/.cache .yarn/cache apps/web/.next/cache
+RUN bun run --cwd packages/trpc build
+RUN bun run --cwd packages/embeds/embed-core build
+RUN bun run --cwd apps/web copy-app-store-static
+RUN bun run --cwd apps/web build
+RUN rm -rf node_modules/.cache apps/web/.next/cache
 
-FROM node:22 AS builder-two
+FROM node:24.22.0 AS builder-two
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /calcom
 ARG NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000
 
 ENV NODE_ENV=production
 
-COPY package.json .yarnrc.yml turbo.json i18n.json ./
-COPY .yarn ./.yarn
-COPY --from=builder /calcom/yarn.lock ./yarn.lock
+COPY package.json bunfig.toml turbo.json i18n.json ./
+COPY patches ./patches
+COPY --from=builder /calcom/bun.lock ./bun.lock
 COPY --from=builder /calcom/node_modules ./node_modules
 COPY --from=builder /calcom/packages ./packages
 COPY --from=builder /calcom/apps/web ./apps/web
@@ -74,7 +75,8 @@ ENV NEXT_PUBLIC_WEBAPP_URL=$NEXT_PUBLIC_WEBAPP_URL \
 
 RUN scripts/replace-placeholder.sh http://NEXT_PUBLIC_WEBAPP_URL_PLACEHOLDER ${NEXT_PUBLIC_WEBAPP_URL}
 
-FROM node:22 AS runner
+FROM node:24.22.0 AS runner
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /calcom
 

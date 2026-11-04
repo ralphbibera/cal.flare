@@ -23,8 +23,8 @@ source	domain	action	destination
 .github/actions/cache-db-key/action.yml	D_SHELL	retain-repository-file	.github/actions/cache-db-key/action.yml
 .github/actions/cache-db/action.yml	D_SHELL	retain-repository-file	.github/actions/cache-db/action.yml
 .github/actions/docker-build-and-test/action.yml	D_SHELL	retain-repository-file	.github/actions/docker-build-and-test/action.yml
-.github/actions/yarn-install/action.yml	D_SHELL	retain-repository-file	.github/actions/yarn-install/action.yml
-.github/actions/yarn-playwright-install/action.yml	D_SHELL	retain-repository-file	.github/actions/yarn-playwright-install/action.yml
+.github/actions/yarn-install/action.yml	D_SHELL	adapt-build-tool	.github/actions/bun-install/action.yml
+.github/actions/yarn-playwright-install/action.yml	D_SHELL	adapt-build-tool	.github/actions/bun-playwright-install/action.yml
 .github/labeler.yml	D_SHELL	retain-repository-file	.github/labeler.yml
 .github/matchers/tsc-absolute.json	D_SHELL	retain-repository-file	.github/matchers/tsc-absolute.json
 .github/oasdiff-err-ignore.txt	D_SHELL	retain-repository-file	.github/oasdiff-err-ignore.txt

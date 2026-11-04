@@ -22,8 +22,8 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 **Build.**
 
-- [x] Set `packageManager` to `bun@1.4.4`, preserve workspace names and `workspace:*` links, and convert consumed Yarn commands in scripts and CI to Bun.
-- [x] Commit `bun.lock` with retained dependency resolutions, translated overrides/patches and reviewed lifecycle trust. Remove unused Yarn files only after frozen installs work.
+- [x] Set `packageManager` to `bun@1.4.4`, preserve workspace names and `workspace:*` links, and convert consumed package-manager commands in scripts and CI to Bun.
+- [x] Commit `bun.lock` with retained dependency resolutions, translated upstream overrides/patches and reviewed lifecycle trust. Remove replaced installer files only after frozen installs work.
 - [x] Keep `apps/web/app`, `pages`, `modules`, providers, components, assets and shared packages in their original folders.
 - [x] Add the selected vinext, React, React DOM, RSC, Vite and Cloudflare build dependencies at the architecture's exact versions.
 - [x] Add source Vite and Cloudflare configuration with selected asset routing, bindings, cache policy, image policy and compatibility flags.
@@ -36,7 +36,7 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 **Verify.**
 
-- [x] Run `bun --version` and `bun install --frozen-lockfile` from a clean checkout. Pass when Bun is 1.4.4, the install leaves `bun.lock` unchanged and consumed commands need no Yarn installation.
+- [x] Run `bun --version` and `bun install --frozen-lockfile` from a clean checkout. Pass when Bun is 1.4.4, the install leaves `bun.lock` unchanged and consumed commands use Bun.
 - [x] Run the planned `bun run --cwd apps/web check:compat`, `bun run --cwd apps/web build` and `bun run --cwd apps/web preview`. Pass when the actual consumed graph builds for Workers and named compatibility findings have source-backed dispositions.
 - [ ] Drive hard load, navigation, back/forward, form action, loading/error/not-found, locale, cookie and static asset cases. Pass when their `D_SHELL` outcomes match the baseline in workerd.
 - [x] Run the planned root `bun run lint` and `bun run type-check:ci`. Pass when they check the actual accepted source without shim stubs or exclusions that hide reachable failures.

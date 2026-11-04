@@ -124,10 +124,10 @@ In `apps/api/v2/src/modules/billing/services/billing.service.ts`, ensure that `q
 1. Start the API v2 server:
 
    ```sh
-   yarn start
+   bun run start
    ```
 
-   > **Note:** It's recommended to use `yarn start` instead of `yarn dev` for testing Stripe integrations.
+   > **Note:** It's recommended to use `bun run start` instead of `bun run dev` for testing Stripe integrations.
 
 2. Start the web application in a separate terminal.
 
