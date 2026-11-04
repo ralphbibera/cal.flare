@@ -74,7 +74,7 @@ The clean target preserves original paths. A source-map destination is not evide
 
 Dependency direction stays route or action -> existing feature/service -> repository/provider -> D1 or outbound API.
 UI imports browser-safe package entrypoints. `cloudflare:workers` and `env` remain server-only.
-`apps/web/vite.config.ts` and `cloudflare.config.ts` own vinext, Cloudflare plugin v2, bindings, and build output.
+`apps/web/vite.config.mts` and `cloudflare.config.ts` own vinext, Cloudflare plugin v2, bindings, and build output.
 `apps/api/v2` owns its Fetch entry and matching Cloudflare configuration. Web reaches v2 through a service binding at the original `/api/v2` URL.
 Both product Workers share the same authoritative `DB`; docs has no product DB binding.
 An implementation move uses `git mv` before edits where a source actually changes location. No blind copy from the Astro port.
@@ -102,6 +102,10 @@ Hard loads and client navigation retain provider order, boundary placement, meta
 Original tRPC Pages handlers and `createTRPCNext` stay under vinext. Preserve split endpoints, `skipBatch`, SuperJSON, SSR disabled state, retry rules, and `1000` ms stale time from [the client][pin-trpc].
 
 Static Assets uses `htmlHandling: "none"`, `notFoundHandling: "none"`, and `runWorkerFirst: ["/*", "!/_next/static/*", "!/*/_next/static/*"]`.
+The original 39,079,898-byte Salesroom video exceeds the 25 MiB individual Static Asset limit.
+Its generated upload copy becomes two parts of at most 20 MiB; source files and the original public URL remain in place.
+A request-scoped `ASSETS.fetch` adapter assembles that resolved public file after native middleware dispatch, preserving bytes, stat validators, conditional requests, ranges and `HEAD`.
+Final Worker response framing uses `FixedLengthStream`; generated parts remain Static Assets and require no additional storage binding.
 These [documented patterns][vx-cloudflare] preserve middleware before public files and let hashed build output bypass the Worker. Removing either exclusion can break scripts and CSS.
 Preserve both favicon sources and the pinned route winner. No missing asset, reserved route, or API path becomes a username page.
 Keep `next/font` calls through vinext initially. Verify CalSans and Inter bytes, glyphs, metrics, preload, and CSS variables against [the root layout][pin-layout].

@@ -30,7 +30,7 @@ const IS_EMBED_REACT_TEST = process.argv.some((a) => a.startsWith("--project=@ca
 const webServer: PlaywrightTestConfig["webServer"] = [
   {
     command:
-      "yarn workspace @calcom/web copy-app-store-static && NEXT_PUBLIC_IS_E2E=1 NODE_OPTIONS='--dns-result-order=ipv4first' yarn workspace @calcom/web start -p 3000",
+      "bun run --cwd apps/web copy-app-store-static && NEXT_PUBLIC_IS_E2E=1 bun run --cwd apps/web preview --host 127.0.0.1 --port 3000",
     port: 3000,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
@@ -43,7 +43,7 @@ if (IS_EMBED_TEST) {
   ensureAppServerIsReadyToServeEmbed(webServer[0]);
 
   webServer.push({
-    command: "yarn workspace @calcom/embed-core dev",
+    command: "bun run --filter @calcom/embed-core dev",
     port: 3100,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
@@ -56,7 +56,7 @@ if (IS_EMBED_REACT_TEST) {
   ensureAppServerIsReadyToServeEmbed(webServer[0]);
 
   webServer.push({
-    command: "yarn workspace @calcom/embed-react dev",
+    command: "bun run --filter @calcom/embed-react dev",
     port: 3101,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
@@ -71,12 +71,14 @@ const DEFAULT_CHROMIUM: NonNullable<PlaywrightTestConfig["projects"]>[number]["u
   storageState: {
     cookies: [
       {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore TS definitions for USE are wrong.
-        url: WEBAPP_URL,
+        domain: new URL(WEBAPP_URL).hostname,
+        path: "/",
         name: "calcom-timezone-dialog",
         expires: -1,
         value: "1",
+        httpOnly: false,
+        secure: new URL(WEBAPP_URL).protocol === "https:",
+        sameSite: "Lax",
       },
     ],
   },
