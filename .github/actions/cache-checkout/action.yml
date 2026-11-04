@@ -25,6 +25,7 @@ runs:
           /*
           !/example-apps/
           !**/*.mp4
+          /packages/app-store/salesroom/static/salesroom-demo.mp4
           !/docs/images/
           !packages/app-store/*/static/*.png
           !packages/app-store/*/static/*.jpg

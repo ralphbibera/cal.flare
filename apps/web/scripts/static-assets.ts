@@ -12,7 +12,8 @@ export function staticAssets(): Plugin {
   let config: ResolvedConfig;
   let plan: Promise<Record<string, SplitStaticAsset>> | undefined;
 
-  const readPlan = () => {
+  const readPlan = (): Promise<Record<string, SplitStaticAsset>> => {
+    if (config.command !== "build") return Promise.resolve({});
     plan ??= (async () => {
       const filename = path.join(config.publicDir, publicFile);
       const info = await stat(filename);
