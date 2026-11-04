@@ -1,12 +1,14 @@
 // This file configures the initialization of Sentry on the client.
 // The added config here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
-import * as Sentry from "@sentry/nextjs";
+
+import * as Sentry from "@sentry/react";
 import { initBotId } from "botid/client/core";
 
 if (process.env.NODE_ENV === "production") {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN_CLIENT,
+    integrations: [Sentry.browserTracingIntegration({ instrumentNavigation: false })],
 
     sampleRate: parseFloat(process.env.SENTRY_SAMPLE_RATE ?? "1.0") || 1.0,
     // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
@@ -46,7 +48,12 @@ if (process.env.NODE_ENV === "production") {
 
 export function onRouterTransitionStart(url: string, navigationType: "push" | "replace" | "traverse") {
   if (process.env.NODE_ENV === "production") {
-    Sentry.captureRouterTransitionStart(url, navigationType);
+    const client = Sentry.getClient();
+    if (!client) return;
+    Sentry.startBrowserTracingNavigationSpan(client, {
+      name: url,
+      attributes: { "sentry.source": "url", "navigation.type": navigationType },
+    });
   }
 }
 

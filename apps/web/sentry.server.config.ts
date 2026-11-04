@@ -1,22 +1,22 @@
-//biome-ignore-all lint/style/noProcessEnv: Server side
-//biome-ignore-all lint/correctness/noProcessGlobal: Server side
+import type { CloudflareOptions } from "@sentry/cloudflare";
 
-// This file configures the initialization of Sentry on the server.
-// The config you add here will be used whenever the server handles a request.
-// https://docs.sentry.io/platforms/javascript/guides/nextjs/
-import * as Sentry from "@sentry/nextjs";
+export interface SentryEnvironment {
+  NEXT_PUBLIC_SENTRY_DSN?: string;
+  SENTRY_DEBUG?: string;
+  SENTRY_SAMPLE_RATE?: string;
+  SENTRY_TRACES_SAMPLE_RATE?: string;
+}
 
-Sentry.init({
-  debug: !!process.env.SENTRY_DEBUG,
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  sampleRate: parseFloat(process.env.SENTRY_SAMPLE_RATE ?? "1.0") || 1.0,
-  tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.0") || 0.0,
-  integrations: [Sentry.prismaIntegration(), Sentry.httpIntegration()],
-  beforeSend(event) {
-    event.tags = {
-      ...event.tags,
-      errorSource: "server",
-    };
-    return event;
-  },
-});
+export function getSentryOptions(env: SentryEnvironment): CloudflareOptions {
+  return {
+    enabled: process.env.NODE_ENV === "production" && !!env.NEXT_PUBLIC_SENTRY_DSN,
+    debug: !!env.SENTRY_DEBUG,
+    dsn: env.NEXT_PUBLIC_SENTRY_DSN,
+    sampleRate: parseFloat(env.SENTRY_SAMPLE_RATE ?? "1.0") || 1.0,
+    tracesSampleRate: parseFloat(env.SENTRY_TRACES_SAMPLE_RATE ?? "0.0") || 0.0,
+    beforeSend(event) {
+      event.tags = { errorSource: "server", ...event.tags };
+      return event;
+    },
+  };
+}
