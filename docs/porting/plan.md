@@ -22,13 +22,13 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 **Build.**
 
-- [ ] Set `packageManager` to `bun@1.4.4`, preserve workspace names and `workspace:*` links, and convert consumed Yarn commands in scripts and CI to Bun.
-- [ ] Commit `bun.lock` with retained dependency resolutions, translated overrides/patches and reviewed lifecycle trust. Remove unused Yarn files only after frozen installs work.
-- [ ] Keep `apps/web/app`, `pages`, `modules`, providers, components, assets and shared packages in their original folders.
-- [ ] Add the selected vinext, React, React DOM, RSC, Vite and Cloudflare build dependencies at the architecture's exact versions.
-- [ ] Add source Vite and Cloudflare configuration with selected asset routing, bindings, cache policy, image policy and compatibility flags.
-- [ ] Adapt withAxiom, optional withBotId, Node build hooks and unsupported configuration at their owning boundaries.
-- [ ] Connect existing checking and inherited test runners to the consumed graph. Preserve test semantics and file ownership.
+- [x] Set `packageManager` to `bun@1.4.4`, preserve workspace names and `workspace:*` links, and convert consumed Yarn commands in scripts and CI to Bun.
+- [x] Commit `bun.lock` with retained dependency resolutions, translated overrides/patches and reviewed lifecycle trust. Remove unused Yarn files only after frozen installs work.
+- [x] Keep `apps/web/app`, `pages`, `modules`, providers, components, assets and shared packages in their original folders.
+- [x] Add the selected vinext, React, React DOM, RSC, Vite and Cloudflare build dependencies at the architecture's exact versions.
+- [x] Add source Vite and Cloudflare configuration with selected asset routing, bindings, cache policy, image policy and compatibility flags.
+- [x] Adapt withAxiom, optional withBotId, Node build hooks and unsupported configuration at their owning boundaries.
+- [x] Connect existing checking and inherited test runners to the consumed graph. Preserve test semantics and file ownership.
 
 **You see.**
 
@@ -37,9 +37,17 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 **Verify.**
 
 - [ ] Run `bun --version` and `bun install --frozen-lockfile` from a clean checkout. Pass when Bun is 1.4.4, the install leaves `bun.lock` unchanged and consumed commands need no Yarn installation.
-- [ ] Run the planned `bun run --cwd apps/web check:compat`, `bun run --cwd apps/web build` and `bun run --cwd apps/web preview`. Pass when the actual consumed graph builds for Workers and named compatibility findings have source-backed dispositions.
+- [x] Run the planned `bun run --cwd apps/web check:compat`, `bun run --cwd apps/web build` and `bun run --cwd apps/web preview`. Pass when the actual consumed graph builds for Workers and named compatibility findings have source-backed dispositions.
 - [ ] Drive hard load, navigation, back/forward, form action, loading/error/not-found, locale, cookie and static asset cases. Pass when their `D_SHELL` outcomes match the baseline in workerd.
-- [ ] Run the planned root `bun run lint` and `bun run type-check:ci`. Pass when they check the actual accepted source without shim stubs or exclusions that hide reachable failures.
+- [x] Run the planned root `bun run lint` and `bun run type-check:ci`. Pass when they check the actual accepted source without shim stubs or exclusions that hide reachable failures.
+
+Observed Worker cases pass for the original authentication error page in English, German and Arabic, including SSR, hydration, metadata, provider placement, RTL and a navigation/back probe. Seven retained-framework Playwright cases cover that page and the original oversized Salesroom asset, including full-file SHA, middleware headers, `HEAD`, ranges, conditionals and cancellation. These cases do not accept the remaining shell flows.
+
+Retained unit discovery covers the same 417 files without duplicates. The isolated run passes 4,135 tests with 47 inherited skips and three todos; Los Angeles timezone cases pass 62 with two inherited skips. Root type checking passes nine tasks; Biome lint passes eleven tasks with warnings. Unit CI builds the real packaged embed prerequisites and uses Vitest's per-file isolation, preserving assertions and job ownership.
+
+`/login` and `/login/invalid` currently return 500 with Prisma 6.16.1's `WebAssembly.Module(): Wasm code generation disallowed by embedder`. The reached boundary still uses `PrismaPg` in `packages/prisma/index.ts` and a PostgreSQL schema. The smallest selected prerequisite is Phase 2's Worker-compatible generated Prisma client, D1 adapter/schema/migrations and real synthetic data fixtures. No PostgreSQL host or replacement queries are used to pass these cases.
+
+Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/header wrappers are retained; enabled production BotID fails because its SDK requires Vercel runtime APIs. Sentry resolves to the selected Worker/browser SDKs, with source-map upload left unexecuted without credentials. Configuration-only CommonJS adapters preserve original i18n exports and the backend's declared CJS entry; filesystem loading and NextAuth replacement remain Phase 2 obligations.
 
 ## Phase 2. Complete D1 and identity contracts
 
