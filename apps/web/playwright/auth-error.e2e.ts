@@ -4,6 +4,9 @@ for (const { locale, lang, dir, title } of [
   { locale: "en-US", lang: "en", dir: "ltr", title: "Error | Cal.diy" },
   { locale: "de-DE", lang: "de", dir: "ltr", title: "Fehler | Cal.diy" },
   { locale: "ar-SA", lang: "ar", dir: "rtl", title: "خطأ | Cal.diy" },
+  { locale: "ja-JP", lang: "ja", dir: "ltr", title: "エラー | Cal.diy" },
+  { locale: "zh", lang: "zh", dir: "ltr", title: "错误 | Cal.diy" },
+  { locale: "zz-ZZ", lang: "zz-ZZ", dir: "ltr", title: "Error | Cal.diy" },
 ]) {
   test.describe(locale, () => {
     test.use({ locale });
