@@ -62,6 +62,7 @@ Cal.flare is **100% MIT-licensed** with no proprietary "Enterprise Edition" feat
 - [Daily.co](https://daily.co/)
 
 The [port plan](docs/porting/plan.md), [architecture](docs/porting/architecture.md) and [inventory](docs/porting/inventory/README.md) describe the Cloudflare/Bun substitutions.
+Prisma remains the normal data-access layer through the official D1 adapter. Existing atomic multi-row operations use native guarded D1 batches; see [D1 and Prisma usage](docs/porting/architecture.md#d1-and-prisma-usage).
 
 <!-- GETTING STARTED -->
 

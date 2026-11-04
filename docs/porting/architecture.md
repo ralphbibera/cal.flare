@@ -177,6 +177,35 @@ Acceptance compares SSR and hydration in concurrent locales, missing keys/namesp
 
 ## Full D1 schema and atomicity
 
+### D1 and Prisma usage
+
+D1 replaces PostgreSQL as the authoritative relational database. Prisma remains the application's normal domain data-access layer.
+Use `prisma`, `@prisma/client` and the official `@prisma/adapter-d1` at the same pinned version, `6.16.1`.
+The [official D1 connector documentation](https://www.prisma.io/docs/orm/v6/overview/databases/cloudflare-d1) requires the SQLite provider and D1 adapter.
+Application runtime connects through `PrismaD1(env.DB)`, not a PostgreSQL URL or connection pool.
+
+| Operation | Selected access path and ownership |
+| --- | --- |
+| Ordinary domain reads and compatible writes | Existing `@calcom/prisma` client and repository methods. Keep field selection, extensions, DTOs and caller-visible results. |
+| PostgreSQL-specific reads/filters | Translate at the existing query owner to compatible Prisma operations or parameterized SQLite raw queries. Native D1 reads are limited to contracts or metadata the adapter cannot provide. |
+| Required atomic multi-statement writes | Prepared, bound statements in one native `DB.batch()` through the existing repository boundary. Shared binding/batch plumbing belongs in `packages/prisma`; domain SQL and result mapping stay with their current owner. |
+| Bulk/upsert/nested writes | Inspect the emitted statements and required source guarantee. One Prisma call is not evidence of one SQL statement or an atomic unit. Use a guarded native batch when multiple statements must commit together. |
+| Schema and generated domain types | Keep `packages/prisma/schema.prisma` as the domain model source, with `provider = "sqlite"` and the Worker-compatible client generator. Adapt unsupported fields/queries in place. |
+| Database changes | Reviewed SQLite SQL in `packages/prisma/migrations-d1/`, applied by the D1 migration runner with one history. Prisma generation and `migrate diff` are build tools, not a separate production migration authority. |
+| Better Auth records | Its selected native D1 integration owns the separate auth-table format in the same database. Include its generated schema changes in the same reviewed D1 migration sequence; do not auto-migrate at request startup. |
+
+Keep the named and default Prisma exports, `customPrisma`, `readonlyPrisma`, existing selects and extension contracts.
+The target `readonlyPrisma` reads the same D1 database. URL-based custom clients cannot create an external database path; reconcile those consumers with the selected binding.
+Preserve existing repository/service placement rather than moving untouched calls merely to standardize architecture.
+Native SQL must retain the effects of the locked-user, pending-payment, booking-idempotency and undefined-filter guards where those contracts apply.
+Generated client types follow the converted schema; preserve domain-facing values without hand-editing generated output or disguising incompatible filters.
+
+The [exact 6.16.1 Worker adapter](https://github.com/prisma/prisma/blob/6.16.1/packages/adapter-d1/src/d1-worker.ts#L98-L112) has no-op transaction commit/rollback methods.
+Its [transaction implementation](https://github.com/prisma/prisma/blob/6.16.1/packages/adapter-d1/src/d1-worker.ts#L160-L178) warns that implicit and explicit transactions execute as individual queries.
+Do not rely on `$transaction`, an interactive callback or a nested create to preserve the source's all-or-nothing multi-row behavior.
+D1's native `batch()` is the atomic path. Put required guards and dependent writes inside that batch, not in a separate Prisma call before it.
+Verify failure rollback, generated relationships, defaults, extension-produced values and relevant simultaneous requests for each migrated write boundary.
+
 Every in-scope relational model, join, unique constraint, foreign key, default, index, enum value, and persisted feature belongs in D1.
 No partial booking-only database, external PostgreSQL, or second authoritative relational store is selected.
 Prisma uses `engineType = "client"`, a Workers-compatible generated module, and `PrismaD1(env.DB)`. Retain extension/select contracts and package exports.
@@ -196,7 +225,8 @@ Prisma uses `engineType = "client"`, a Workers-compatible generated module, and 
 [Pinned schema][pin-schema] defines source types. [The exact D1 adapter package][npm-d1] establishes date serialization, not query equivalence.
 `packages/prisma/migrations-d1/` owns ordered SQLite SQL migrations for the complete domain and auth schema. `packages/prisma/schema.prisma` remains the domain generator input. The same package owns synthetic seeds and migration-history handling.
 PostgreSQL auto-migrations and Docker DB setup leave the target execution graph. Original history remains available. No destructive live-data reset is authorized.
-Prisma generation remains build tooling. The migration runner applies each SQL file plus its `_calflare_migrations` history insert through `cf d1 query --batch @<generated.json>`; `--local` targets synthetic D1.
+Use Prisma generation for client/enums/Zod output and `prisma migrate diff` to produce domain SQL for review. Auth schema output is reviewed into the same ordered SQL sequence.
+The migration runner applies each SQL file plus its `_calflare_migrations` history insert through `cf d1 query --batch @<generated.json>`; `--local` targets synthetic D1.
 Migrations and both product Workers resolve the same DB identity/local storage location. Remote migration requires separate authorization. No PostgreSQL `prisma migrate deploy` runs.
 Dependent writes and former interactive `$transaction` callbacks become guarded `DB.batch()` statements at their existing repositories.
 [Cloudflare documents batch rollback on failure][d1-batch]. Independent calls, earlier reads, provider HTTP requests, and later queue sends are not part of that transaction.

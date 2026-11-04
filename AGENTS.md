@@ -136,7 +136,7 @@ packages/lib/                # Shared utilities
 - **Framework**: vinext with the original Next-compatible App Router and Pages Router
 - **Language**: TypeScript (strict)
 - **Package manager**: Bun 1.4.4
-- **Database**: Cloudflare D1 with Prisma ORM
+- **Database**: Cloudflare D1 with Prisma ORM through `@prisma/adapter-d1`; native guarded D1 batches preserve required atomic writes
 - **Hosting**: Cloudflare Workers Paid plan for deployment
 - **API**: tRPC for type-safe APIs
 - **Auth**: Self-hosted Better Auth on Workers/D1, preserving Cal authentication policy

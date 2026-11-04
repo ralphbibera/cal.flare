@@ -48,6 +48,9 @@ Set a consumed secret on both Workers when shared services need it.
 4. Validate IDs, relationships, defaults, list/JSON fields and timezone/date representation through the real Prisma/D1 boundary.
 5. Verify rollback and guarded concurrent writes before accepting booking mutations.
 
+Prisma is the normal domain access path through the official D1 adapter. Required atomic writes use native guarded batches at the existing repository boundary.
+Prisma domain SQL and Better Auth schema changes share one reviewed D1 migration sequence. See [D1 and Prisma usage](porting/architecture.md#d1-and-prisma-usage).
+
 Both Workers must resolve the same local D1 storage identity during development.
 PostgreSQL migration commands and the upstream Docker database are not Cal.flare deployment steps.
 See [Cloudflare D1 setup](https://developers.cloudflare.com/d1/get-started/) and the [complete D1 contract](porting/architecture.md#full-d1-schema-and-atomicity).

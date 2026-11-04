@@ -45,7 +45,9 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 **Build.**
 
+- [ ] Bind the existing `@calcom/prisma` exports and extensions to `PrismaD1(env.DB)` at version 6.16.1, preserving repository/service ownership.
 - [ ] Convert the in-scope Prisma schema, PostgreSQL-only reads, views with consumers and every reached multi-row write to D1.
+- [ ] Put domain and auth schema changes through one reviewed D1 SQL migration history. Do not add independent runtime schema synchronization.
 - [ ] Keep original model IDs, public UIDs, relations, defaults, date/time units, JSON semantics, ordering and caller error mappings.
 - [ ] Keep guards and dependent writes in one atomic D1 batch. Prove rollback and concurrency at each original transactional boundary.
 - [ ] Replace next-auth at the selected self-hosted auth boundary while preserving original sessions, OAuth linking, bcrypt, MFA, recovery, roles, profile checks, public URLs and redirects.
