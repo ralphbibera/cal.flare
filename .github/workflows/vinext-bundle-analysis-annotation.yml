@@ -16,9 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bun-install
-      - uses: ./.github/actions/cache-build
-      - name: Analyze current bundle
-        run: bun run --cwd apps/web analyze
+      - run: bun run prisma generate
+      - uses: ./.github/actions/ci-build-env
+        env:
+          NEXTAUTH_SECRET: ${{ secrets.CI_NEXTAUTH_SECRET }}
+          CALENDSO_ENCRYPTION_KEY: ${{ secrets.CI_CALENDSO_ENCRYPTION_KEY }}
+      - name: Build Worker and current bundle reports
+        run: bun run build --force
+        env:
+          ANALYZE: "true"
+          NEXTAUTH_URL: ${{ secrets.CI_NEXTAUTH_URL || 'http://localhost:3000/api/auth' }}
+          NODE_OPTIONS: --max_old_space_size=8192
 
       - name: Download base branch bundle stats
         uses: dawidd6/action-download-artifact@v6
