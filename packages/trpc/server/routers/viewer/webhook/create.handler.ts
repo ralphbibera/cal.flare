@@ -1,15 +1,12 @@
-import { v4 } from "uuid";
-
+import { parseWebhookEventTriggers } from "@calcom/features/webhooks/lib/eventTriggers";
 import { updateTriggerForExistingBookings } from "@calcom/features/webhooks/lib/scheduleTrigger";
 import { validateUrlForSSRFSync } from "@calcom/lib/ssrfProtection";
 import { prisma } from "@calcom/prisma";
-import type { Webhook } from "@calcom/prisma/client";
-import type { Prisma } from "@calcom/prisma/client";
+import type { Prisma, Webhook } from "@calcom/prisma/client";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
-
 import { TRPCError } from "@trpc/server";
-
+import { v4 } from "uuid";
 import type { TCreateInputSchema } from "./create.schema";
 
 type CreateOptions = {
@@ -76,7 +73,7 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create webhook" });
   }
 
-  await updateTriggerForExistingBookings(newWebhook, [], newWebhook.eventTriggers);
+  await updateTriggerForExistingBookings(newWebhook, [], parseWebhookEventTriggers(newWebhook).eventTriggers);
 
-  return newWebhook;
+  return parseWebhookEventTriggers(newWebhook);
 };
