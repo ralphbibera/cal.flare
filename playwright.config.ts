@@ -43,7 +43,7 @@ if (IS_EMBED_TEST) {
   ensureAppServerIsReadyToServeEmbed(webServer[0]);
 
   webServer.push({
-    command: "bun run --filter @calcom/embed-core dev",
+    command: "bun run --cwd packages/embeds/embed-core dev",
     port: 3100,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
@@ -56,7 +56,7 @@ if (IS_EMBED_REACT_TEST) {
   ensureAppServerIsReadyToServeEmbed(webServer[0]);
 
   webServer.push({
-    command: "bun run --filter @calcom/embed-react dev",
+    command: "bun run --cwd packages/embeds/embed-react dev",
     port: 3101,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,

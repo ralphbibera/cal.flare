@@ -11,8 +11,8 @@
     "directory": "packages/embeds/embed-core"
   },
   "scripts": {
-    "embed-dev": "bun run --filter @calcom/embed-core dev",
-    "embed-web-start": "bun run --filter @calcom/web start",
+    "embed-dev": "bun run --cwd . dev",
+    "embed-web-start": "bun run --cwd ../../../apps/web start",
     "__build": "bun run tailwind && vite build && tsc --emitDeclarationOnly --declarationDir dist && npx shx cp -r ../../../apps/web/public/embed ./dist/",
     "__dev": "bun run tailwind && vite build --mode development",
     "build": "npx rimraf dist && NEXT_PUBLIC_EMBED_FINGER_PRINT=$(git rev-parse --short HEAD) NEXT_PUBLIC_EMBED_VERSION=$(node -p 'require(\"./package.json\").version') bun run __build",

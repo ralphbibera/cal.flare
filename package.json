@@ -22,7 +22,7 @@
     "create-app": "bun run app-store create",
     "edit-app": "bun run app-store edit",
     "withEmbedPublishEnv": "NEXT_PUBLIC_EMBED_LIB_URL='https://app.cal.com/embed/embed.js' NEXT_PUBLIC_WEBAPP_URL='https://app.cal.com' bun run",
-    "publish-embed": "bun run withEmbedPublishEnv --filter @calcom/embed-core build && bun run withEmbedPublishEnv --filter @calcom/embed-snippet build && (cd packages/embeds/embed-core && bun publish --access=public) && (cd packages/embeds/embed-react && bun publish --access=public) && (cd packages/embeds/embed-snippet && bun publish --access=public)",
+    "publish-embed": "bun run withEmbedPublishEnv --cwd packages/embeds/embed-core build && bun run withEmbedPublishEnv --cwd packages/embeds/embed-snippet build && (cd packages/embeds/embed-core && bun publish --access=public) && (cd packages/embeds/embed-react && bun publish --access=public) && (cd packages/embeds/embed-snippet && bun publish --access=public)",
     "delete-app": "bun run app-store delete",
     "create-app-template": "bun run app-store create-template",
     "edit-app-template": "bun run app-store edit-template",
