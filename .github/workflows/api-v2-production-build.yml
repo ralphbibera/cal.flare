@@ -41,7 +41,7 @@ jobs:
       - uses: ./.github/actions/bun-install
       - name: Generate Prisma schemas
         working-directory: apps/api/v2
-        run: bun run --filter @calcom/api-v2 generate-schemas
+        run: bun run generate-schemas
       - name: Build API v2 with Turbo
         run: |
           export NODE_OPTIONS="--max_old_space_size=8192"

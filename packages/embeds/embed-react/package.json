@@ -22,8 +22,8 @@
     "packaged:tests": "cd test/packaged && bun run tsc --noEmit && VITEST_MODE=packaged-embed bun run --cwd ../../../../.. test",
     "withEmbedPublishEnv": "NEXT_PUBLIC_EMBED_LIB_URL='https://app.cal.com/embed/embed.js' NEXT_PUBLIC_WEBAPP_URL='https://app.cal.com' bun run",
     "prepack": "bun run --cwd ../../.. lint --filter='@calcom/embed-react' && bun run withEmbedPublishEnv build && bun run packaged:tests",
-    "embed-web-start": "bun run --filter @calcom/web start",
-    "embed-dev": "bun run --filter @calcom/embed-react dev",
+    "embed-web-start": "bun run --cwd ../../../apps/web start",
+    "embed-dev": "bun run --cwd . dev",
     "clean": "npx rimraf .turbo node_modules dist"
   },
   "main": "./dist/Cal.umd.js",

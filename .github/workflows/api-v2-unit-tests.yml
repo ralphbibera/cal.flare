@@ -21,4 +21,4 @@ jobs:
         working-directory: apps/api/v2
         run: |
           export NODE_OPTIONS="--max_old_space_size=8192"
-          bun run --filter @calcom/platform-libraries build && bun run test
+          bun run --cwd "$GITHUB_WORKSPACE/packages/platform/libraries" build && bun run test

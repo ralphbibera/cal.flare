@@ -33,5 +33,5 @@ jobs:
           export NODE_OPTIONS="--max_old_space_size=8192"
           rm -rf packages/platform/atoms/node_modules
           bun install --frozen-lockfile
-          bun run --filter @calcom/atoms build-npm
+          bun run --cwd packages/platform/atoms build-npm
         shell: bash

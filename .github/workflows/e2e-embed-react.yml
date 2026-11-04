@@ -84,7 +84,7 @@ jobs:
       - name: Run Tests
         run: |
           bun run e2e:embed-react --workers=4
-          bun run --filter @calcom/embed-react packaged:tests
+          bun run --cwd packages/embeds/embed-react packaged:tests
       - name: Upload Test Results
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
