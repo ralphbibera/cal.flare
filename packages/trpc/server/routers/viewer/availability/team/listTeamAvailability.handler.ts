@@ -3,11 +3,10 @@ import dayjs from "@calcom/dayjs";
 import type { DateRange } from "@calcom/features/schedules/lib/date-ranges";
 import { buildDateRanges } from "@calcom/features/schedules/lib/date-ranges";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
+import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { prisma } from "@calcom/prisma";
 import { Prisma } from "@calcom/prisma/client";
-
 import { TRPCError } from "@trpc/server";
-
 import type { TrpcSessionUser } from "../../../../types";
 import type { TListTeamAvailaiblityScheme } from "./listTeamAvailability.schema";
 
@@ -117,7 +116,7 @@ async function buildMember(member: Member, dateFrom: Dayjs, dateTo: Dayjs) {
     dateFrom,
     dateTo,
     timeZone,
-    availability: schedule?.availability ?? [],
+    availability: schedule ? parseScheduleAvailability(schedule).availability : [],
     travelSchedules: member.user.travelSchedules.map((schedule) => {
       return {
         startDate: dayjs(schedule.startDate),
@@ -239,7 +238,7 @@ export const listTeamAvailabilityHandler = async ({ ctx, input }: GetOptions) =>
     }
   }
 
-  let nextCursor: typeof cursor | undefined = undefined;
+  let nextCursor: typeof cursor | undefined;
   if (teamMembers && teamMembers.length > limit) {
     const nextItem = teamMembers.pop();
     nextCursor = nextItem?.id;

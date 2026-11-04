@@ -1,14 +1,17 @@
-import { CreateAvailabilityInput_2024_04_15 } from "@/platform/schedules/schedules_2024_04_15/inputs/create-availability.input";
-import { CreateScheduleInput_2024_04_15 } from "@/platform/schedules/schedules_2024_04_15/inputs/create-schedule.input";
+import { parseScheduleAvailability } from "@calcom/platform-libraries";
+import type { Prisma } from "@calcom/prisma/client";
+import { Injectable } from "@nestjs/common";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "@/modules/prisma/prisma-write.service";
-import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@calcom/prisma/client";
-
+import { CreateAvailabilityInput_2024_04_15 } from "@/platform/schedules/schedules_2024_04_15/inputs/create-availability.input";
+import { CreateScheduleInput_2024_04_15 } from "@/platform/schedules/schedules_2024_04_15/inputs/create-schedule.input";
 
 @Injectable()
 export class SchedulesRepository_2024_04_15 {
-  constructor(private readonly dbRead: PrismaReadService, private readonly dbWrite: PrismaWriteService) {}
+  constructor(
+    private readonly dbRead: PrismaReadService,
+    private readonly dbWrite: PrismaWriteService
+  ) {}
 
   async createScheduleWithAvailabilities(
     userId: number,
@@ -49,7 +52,7 @@ export class SchedulesRepository_2024_04_15 {
       },
     });
 
-    return createdSchedule;
+    return parseScheduleAvailability(createdSchedule);
   }
 
   async getScheduleById(scheduleId: number) {
@@ -62,7 +65,7 @@ export class SchedulesRepository_2024_04_15 {
       },
     });
 
-    return schedule;
+    return schedule ? parseScheduleAvailability(schedule) : null;
   }
 
   async getSchedulesByUserId(userId: number) {
@@ -75,7 +78,7 @@ export class SchedulesRepository_2024_04_15 {
       },
     });
 
-    return schedules;
+    return schedules.map(parseScheduleAvailability);
   }
 
   async deleteScheduleById(scheduleId: number) {

@@ -1,9 +1,9 @@
+import { parseScheduleAvailability } from "@calcom/platform-libraries";
+import type { CreateScheduleInput_2024_06_11 } from "@calcom/platform-types";
+import type { Prisma } from "@calcom/prisma/client";
+import { Injectable } from "@nestjs/common";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "@/modules/prisma/prisma-write.service";
-import { Injectable } from "@nestjs/common";
-
-import type { CreateScheduleInput_2024_06_11 } from "@calcom/platform-types";
-import { Prisma } from "@calcom/prisma/client";
 
 type InputScheduleAvailabilityTransformed = {
   days: number[];
@@ -24,7 +24,10 @@ type InputScheduleTransformed = Omit<CreateScheduleInput_2024_06_11, "availabili
 
 @Injectable()
 export class SchedulesRepository_2024_06_11 {
-  constructor(private readonly dbRead: PrismaReadService, private readonly dbWrite: PrismaWriteService) {}
+  constructor(
+    private readonly dbRead: PrismaReadService,
+    private readonly dbWrite: PrismaWriteService
+  ) {}
 
   async createSchedule(userId: number, schedule: Omit<InputScheduleTransformed, "isDefault">) {
     const { availability, overrides } = schedule;
@@ -55,6 +58,7 @@ export class SchedulesRepository_2024_06_11 {
     if (overrides && overrides.length > 0) {
       overrides.forEach((override) => {
         availabilitiesAndOverrides.push({
+          days: [],
           date: override.date,
           startTime: override.startTime,
           endTime: override.endTime,
@@ -80,7 +84,7 @@ export class SchedulesRepository_2024_06_11 {
       },
     });
 
-    return createdSchedule;
+    return parseScheduleAvailability(createdSchedule);
   }
 
   async getScheduleById(scheduleId: number) {
@@ -93,7 +97,7 @@ export class SchedulesRepository_2024_06_11 {
       },
     });
 
-    return schedule;
+    return schedule ? parseScheduleAvailability(schedule) : null;
   }
 
   async getScheduleByIdAndUserId(scheduleId: number, userId: number) {
@@ -159,6 +163,7 @@ export class SchedulesRepository_2024_06_11 {
     if (overrides && overrides.length > 0) {
       overrides.forEach((override) => {
         createOverridesStatements.push({
+          days: [],
           date: override.date,
           startTime: override.startTime,
           endTime: override.endTime,
@@ -198,7 +203,7 @@ export class SchedulesRepository_2024_06_11 {
       },
     });
 
-    return updatedSchedule;
+    return parseScheduleAvailability(updatedSchedule);
   }
 
   async getSchedulesByUserId(userId: number) {
@@ -211,7 +216,7 @@ export class SchedulesRepository_2024_06_11 {
       },
     });
 
-    return schedules;
+    return schedules.map(parseScheduleAvailability);
   }
 
   async deleteScheduleById(scheduleId: number) {
@@ -231,7 +236,7 @@ export class SchedulesRepository_2024_06_11 {
   }
 
   async getSchedulesByUserIds(userIds: number[], skip: number, take: number) {
-    return this.dbRead.prisma.schedule.findMany({
+    const schedules = await this.dbRead.prisma.schedule.findMany({
       where: {
         userId: {
           in: userIds,
@@ -243,10 +248,11 @@ export class SchedulesRepository_2024_06_11 {
       skip,
       take,
     });
+    return schedules.map(parseScheduleAvailability);
   }
 
   async getSchedulesByIds(scheduleIds: number[], skip: number, take: number) {
-    return this.dbRead.prisma.schedule.findMany({
+    const schedules = await this.dbRead.prisma.schedule.findMany({
       where: {
         id: {
           in: scheduleIds,
@@ -266,9 +272,10 @@ export class SchedulesRepository_2024_06_11 {
           },
         },
       },
-      orderBy: { id: 'asc' },
+      orderBy: { id: "asc" },
       skip,
       take,
     });
+    return schedules.map(parseScheduleAvailability);
   }
 }
