@@ -47,8 +47,9 @@ no live-provider, remote database, deployment, or startup-migration behavior.
 
 Dependency graph verification keeps domain Zod 3.25.76, JOSE 4.15.9,
 Prisma/client/adapter 6.16.1, and Kysely 0.28.14. Better Auth/core resolve their
-own Zod 4.6.6, JOSE 6.2.15, and Kysely 0.29.8. Bun's hoisted optional peer for
-`@better-auth/kysely-adapter` currently resolves Kysely 0.28.14, below its declared
-range. The native tests exercise that actual graph; this is not a declaration
-that every SDK operation supports that peer. Scoped resolutions did not change
-optional-peer placement and were discarded. No global version override is used.
+own Zod 4.6.6, JOSE 6.2.15, and Kysely 0.29.8. The root declares the SDK's
+Kysely 0.29.8 peer explicitly so the hoisted `@better-auth/kysely-adapter`
+resolves its supported version. Existing domain workspaces that imported
+Kysely through hoisting now declare their original 0.28.14 directly.
+Resolved imports verify that domain versions remain unchanged. No global
+version override or unsupported peer-range exception is used.
