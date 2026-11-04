@@ -1,0 +1,50 @@
+---
+title: Pinned booking lifecycle and external effect ordering
+---
+stateDiagram-v2
+    [*] --> Selecting
+    Selecting --> Validating: submit booking form
+    Validating --> Selecting: validation, verification, limit or host failure
+    Validating --> Seats: matched seated slot after validation
+    Validating --> Existing: pending or round-robin duplicate found
+    Validating --> Persisting: valid new request
+    Persisting --> Pending: effective confirmation required or positive price
+    Persisting --> Accepted: free without confirmation, or owner reschedule
+    Persisting --> RejectedRequest: transaction or unique conflict
+    Pending --> PaymentRequired: positive price and unpaid original
+    Pending --> ProviderCreate: authorized confirmation, free or paid
+    Pending --> Accepted: host confirms with payment row while unpaid
+    PaymentRequired --> PaidPending: supported receipt and confirmation still required
+    PaymentRequired --> PaidAccepted: supported receipt and no confirmation required
+    PaidPending --> ProviderCreate: authorized host confirms
+    PaidAccepted --> ProviderCreate: previously unconfirmed receipt fulfills after payment commit
+    ProviderCreate --> ConfirmationNotice: returns results, including all integrations failed
+    ConfirmationNotice --> Accepted: guarded dispatch, suppression or caught mail failure, then confirmation DB write
+    Accepted --> FreshProvider: default-accepted fresh creation
+    FreshProvider --> FreshNotice: returns results, including all integrations failed
+    FreshNotice --> Accepted: guarded confirmed dispatch or suppression after initial DB write
+    Accepted --> ProviderAttempt: already-accepted payment receipt
+    ProviderAttempt --> Accepted: external outcome recorded separately
+    Pending --> Rejected: authorized rejection, optional refund before status write
+    PaidPending --> Rejected: authorized rejection and refund policy
+    Accepted --> CancelWebhook: valid cancellation
+    Pending --> CancelWebhook: valid cancellation
+    CancelWebhook --> Cancelled: webhook attempt then DB cancellation
+    Cancelled --> Cleanup: provider, refund, references, jobs and mail
+    Cleanup --> Cancelled: later failures may be logged and success returned
+    Accepted --> Replacement: reschedule transaction cancels original and creates replacement
+    Pending --> Replacement: valid reschedule
+    Replacement --> ProviderAttempt: provider reschedule follows DB commit
+    Cancelled --> CancelRejected: cancelling unchanged cancelled original returns 400
+
+    state "Existing seated slot" as Seats {
+        [*] --> SeatRequest
+        SeatRequest --> SeatLocked: lock booking row in transaction
+        SeatLocked --> SeatFull: fresh count reaches positive capacity
+        SeatLocked --> SeatCommitted: nested attendee and seat commit
+        SeatCommitted --> SeatEffects: provider attendee update, payment and notification path
+        SeatEffects --> SeatCommitted: partial external failure follows caller policy
+        SeatCommitted --> AttendeeRemoved: valid seat and multiple attendees
+        SeatCommitted --> WholeBookingCancel: last attendee or authorized whole-event cancellation
+        SeatCommitted --> SeatMovedOrMerged: owner or attendee reschedule branch
+    }

@@ -63,7 +63,7 @@
 
 - [patterns-dependency-injection](rules/patterns-dependency-injection.md) - DI patterns
 - [patterns-factory-pattern](rules/patterns-factory-pattern.md) - Factory pattern
-- [patterns-workflow-triggers](rules/patterns-workflow-triggers.md) - Workflow implementation
+- [Webhook triggers](../packages/features/webhooks/lib/scheduleTrigger.ts) - Trigger implementation
 - [patterns-app-store](rules/patterns-app-store.md) - App store integration patterns
 - [patterns-trigger-dev](rules/patterns-trigger-dev.md) - Trigger.dev task implementation
 

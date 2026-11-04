@@ -1,6 +1,8 @@
-# Cal.diy Development Guide for AI Agents
+# Cal.flare Development Guide for AI Agents
 
-You are a senior Cal.diy engineer working in a Yarn/Turbo monorepo. You prioritize type safety, security, and small, reviewable diffs.
+You are a senior Cal.flare engineer working in a Bun/Turbo monorepo. You prioritize type safety, security, and small, reviewable diffs.
+
+The port targets vinext, React 19, Cloudflare Workers and D1. Follow the [port plan](docs/porting/plan.md) and [architecture](docs/porting/architecture.md) for those substitutions, preserving the existing application structure and behavior.
 
 ## Do
 
@@ -10,7 +12,7 @@ You are a senior Cal.diy engineer working in a Yarn/Turbo monorepo. You prioriti
 - Use `ErrorWithCode` for errors in non-tRPC files (services, repositories, utilities); use `TRPCError` only in tRPC routers
 - Use conventional commits: `feat:`, `fix:`, `refactor:`
 - Create PRs in draft mode by default
-- Run `yarn type-check:ci --force` before concluding CI failures are unrelated to your changes
+- Run `bun run type-check:ci --force` before concluding CI failures are unrelated to your changes
 - Import directly from source files, not barrel files (e.g., `@calcom/ui/components/button` not `@calcom/ui`)
 - Add translations to `packages/i18n/locales/en/common.json` for all UI strings
 - Use `date-fns` or native `Date` instead of Day.js when timezone awareness isn't needed
@@ -42,7 +44,7 @@ Large PRs are difficult to review, prone to errors, and slow down the developmen
 - **Files changed**: Keep PRs under 10 code files
 - **Single responsibility**: Each PR should do one thing well
 
-**Note**: These limits apply to code files only. Non-code files like documentation (README.md, CHANGELOG.md), lock files (yarn.lock, package-lock.json), and auto-generated files are excluded from the count.
+**Note**: These limits apply to code files only. Non-code files like documentation (README.md, CHANGELOG.md), lock files (bun.lock), and auto-generated files are excluded from the count.
 
 ### How to Split Large Changes
 
@@ -77,13 +79,13 @@ When a task requires extensive changes, break it into multiple PRs:
 
 ## Commands
 
-See [agents/commands.md](agents/commands.md) for full reference. Key commands:
+See [agents/commands.md](agents/commands.md) for full reference. Use Bun equivalents as the workspace scripts are converted. Key commands:
 
 ```bash
-yarn type-check:ci --force  # Type check (always run before pushing)
-yarn biome check --write .  # Lint and format
-TZ=UTC yarn test            # Run unit tests
-yarn prisma generate        # Regenerate types after schema changes
+bun run type-check:ci --force  # Type check (always run before pushing)
+bunx biome check --write .  # Lint and format
+TZ=UTC bun run test            # Run unit tests
+bun run prisma generate        # Regenerate types after schema changes
 ```
 
 
@@ -113,8 +115,8 @@ yarn prisma generate        # Regenerate types after schema changes
 ## Project Structure
 
 ```
-apps/web/                    # Main Next.js application
-packages/prisma/             # Database schema (schema.prisma) and migrations
+apps/web/                    # Main vinext application on Workers
+packages/prisma/             # Domain schema and D1 migrations
 packages/trpc/               # tRPC API layer (routers in server/routers/)
 packages/ui/                 # Shared UI components
 packages/features/           # Feature-specific code
@@ -127,18 +129,20 @@ packages/lib/                # Shared utilities
 - Database schema: `packages/prisma/schema.prisma`
 - tRPC routers: `packages/trpc/server/routers/`
 - Translations: `packages/i18n/locales/en/common.json`
-- Workflow constants: `packages/features/ee/workflows/lib/constants.ts`
+- Background tasks and webhook triggers: `packages/features/tasker/` and `packages/features/webhooks/`
 
 ## Tech Stack
 
-- **Framework**: Next.js 13+ (App Router in some areas)
+- **Framework**: vinext with the original Next-compatible App Router and Pages Router
 - **Language**: TypeScript (strict)
-- **Database**: PostgreSQL with Prisma ORM
+- **Package manager**: Bun 1.4.4
+- **Database**: Cloudflare D1 with Prisma ORM through `@prisma/adapter-d1`; native guarded D1 batches preserve required atomic writes
+- **Hosting**: Cloudflare Workers Paid plan for deployment
 - **API**: tRPC for type-safe APIs
-- **Auth**: NextAuth.js
+- **Auth**: Self-hosted Better Auth on Workers/D1, preserving Cal authentication policy
 - **Styling**: Tailwind CSS
 - **Testing**: Vitest (unit), Playwright (E2E)
-- **i18n**: next-i18next
+- **i18n**: i18next/react-i18next with Cloudflare-compatible resource loading
 
 ## Code Examples
 
@@ -210,8 +214,8 @@ import { ProfileRepository } from "@calcom/features/profile/repositories/Profile
 ## PR Checklist
 
 - [ ] Title follows conventional commits: `feat(scope): description`
-- [ ] Type check passes: `yarn type-check:ci --force`
-- [ ] Lint passes: `yarn lint:fix`
+- [ ] Type check passes: `bun run type-check:ci --force`
+- [ ] Lint passes: `bun run lint:fix`
 - [ ] Relevant tests pass
 - [ ] Diff is small and focused (<500 lines, <10 files)
 - [ ] No secrets or API keys committed
@@ -224,7 +228,7 @@ import { ProfileRepository } from "@calcom/features/profile/repositories/Profile
 - Propose a short plan for complex tasks
 - Open a draft PR with notes if unsure about approach
 - Fix type errors before test failures - they're often the root cause
-- Run `yarn prisma generate` if you see missing enum/type errors
+- Run `bun run prisma generate` if you see missing enum/type errors
 
 ## Spec-Driven Development (Opt-In)
 

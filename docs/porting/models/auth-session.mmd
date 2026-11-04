@@ -1,0 +1,50 @@
+---
+title: Pinned authentication, 2FA settings, and reset machines
+---
+stateDiagram-v2
+    [*] --> Account
+    state Account {
+        state "Login and session" as Login {
+            [*] --> Anonymous
+            Anonymous --> CredentialCheck: submit email and password
+            CredentialCheck --> LoginError: absent user, lock, rate limit, missing hash or bad password
+            CredentialCheck --> FactorChallenge: valid password and enabled 2FA
+            CredentialCheck --> Identity: valid password and no 2FA
+            FactorChallenge --> FactorChallenge: bad or missing code, retry or choose backup
+            FactorChallenge --> Identity: password and TOTP pass, or password and backup code pass then consume code
+            Anonymous --> OAuth: configured provider callback
+            OAuth --> LoginError: identity, verification or email-link conflict
+            OAuth --> FactorChallenge: existing 2FA redirects with signed totp parameter
+            OAuth --> Identity: callback accepts identity
+            Identity --> Token: JWT callback projects identity and profile
+            Token --> ClientSession: auth session callback projects token
+            Token --> ServerSession: server helper cache hit or DB and profile resolution
+            Token --> Anonymous: invalid token or unresolved user
+            ClientSession --> Anonymous: sign out or expired token
+            ServerSession --> Anonymous: sign out or expired token
+            LoginError --> Anonymous: user retries
+        }
+        --
+        state "2FA settings" as FactorSettings {
+            [*] --> Disabled
+            Disabled --> SetupPending: authorized setup stores encrypted secret and backup codes
+            SetupPending --> Enabled: valid secret and TOTP, enable flag
+            SetupPending --> SetupPending: incorrect TOTP or setup retry
+            Enabled --> Enabled: disable rejected by password or factor guard
+            Enabled --> Disabled: authorized disable clears flag, secret and backup codes
+        }
+        --
+        state "Password reset" as PasswordReset {
+            [*] --> NoRequest
+            NoRequest --> ResetValid: rate guard passes, create six-hour request before mail
+            ResetValid --> ResetValid: new request expires old request and creates replacement
+            ResetValid --> Expired: clock reaches expiry
+            ResetValid --> ResetValid: invalid CSRF or rejected password
+            ResetValid --> CsrfConsumed: matching CSRF cookie deleted
+            CsrfConsumed --> ResetError: rate or token lookup rejects, or user update fails
+            CsrfConsumed --> PasswordChanged: upsert password, verify email and set CAL identity
+            PasswordChanged --> Expired: separate request-expiry update
+            PasswordChanged --> ResetError: expiry write fails after password change
+            ResetError --> ResetValid: reload obtains new CSRF while request remains valid
+        }
+    }

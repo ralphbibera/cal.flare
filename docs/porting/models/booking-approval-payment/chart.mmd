@@ -1,0 +1,41 @@
+---
+title: "Booking DB status and paid state"
+---
+stateDiagram-v2
+  s0: No booking
+  s1: pending, unpaid
+  s2: accepted, unpaid
+  s3: rejected, unpaid
+  s4: pending, paid
+  s5: rejected, paid
+  s6: cancelled, unpaid
+  s7: cancelled, paid
+  s8: accepted, paid
+  [*] --> s0
+  s0 --> s1: booker submits valid request
+  s1 --> s2: host confirms [payment row exists, unpaid]
+  s1 --> s3: authorized host rejects
+  s1 --> s4: supported provider records successful payment
+  s2 --> s1: reschedule transaction cancels original and creates replacement
+  s3 --> s2: host confirms [payment row exists, unpaid]
+  s3 --> s1: reschedule transaction cancels original and creates replacement
+  s3 --> s5: supported provider records successful payment
+  s4 --> s5: authorized host rejects
+  s1 --> s6: save cancelled status
+  s5 --> s4: reschedule transaction cancels original and creates replacement
+  s2 --> s6: save cancelled status
+  s3 --> s6: save cancelled status
+  s4 --> s7: save cancelled status
+  s4 --> s8: save accepted status and references
+  s2 --> s8: receipt records payment [provider returned]
+  s5 --> s7: save cancelled status
+  s5 --> s8: save accepted status and references
+  s8 --> s4: reschedule transaction cancels original and creates replacement
+  s6 --> s2: host confirms [payment row exists, unpaid]
+  s6 --> s3: authorized host rejects
+  s6 --> s1: reschedule transaction cancels original and creates replacement
+  s6 --> s7: supported provider records successful payment
+  s7 --> s5: authorized host rejects
+  s7 --> s4: reschedule transaction cancels original and creates replacement
+  s8 --> s7: save cancelled status
+  s7 --> s8: save accepted status and references

@@ -9,56 +9,16 @@ tags: reference, development, setup
 
 ## Initial Setup
 
-```bash
-# Install dependencies
-yarn
-
-# Set up environment
-cp .env.example .env
-```
-
-## Environment Variables
-
-Generate required secrets:
-
-```bash
-# NEXTAUTH_SECRET
-openssl rand -base64 32
-
-# CALENDSO_ENCRYPTION_KEY (must be 32 characters for AES256)
-openssl rand -base64 24
-```
-
-Configure in `.env`:
-- `DATABASE_URL` - PostgreSQL connection string
-- `DATABASE_DIRECT_URL` - Same as DATABASE_URL
-
-## Database Setup
-
-```bash
-# Development
-yarn workspace @calcom/prisma db-migrate
-
-# Production
-yarn workspace @calcom/prisma db-deploy
-```
+Follow [README Setup](../../README.md#setup) for Bun, local Worker configuration, D1 and first-user setup.
+The [Cloudflare reference](../../docs/cloudflare.md) describes bindings, local database identity and deployed secrets.
 
 ## Test Users
 
-When setting up local development database, it creates test users. The passwords are the same as the username:
-- `free:free`
-- `pro:pro`
+Use the retained [development test users](../../README.md#development-test-users) after running the synthetic local D1 seed.
 
 ## Logging
 
-Control logging verbosity by setting `NEXT_PUBLIC_LOGGER_LEVEL` in .env:
-- 0: silly
-- 1: trace
-- 2: debug
-- 3: info
-- 4: warn
-- 5: error
-- 6: fatal
+Use the levels and configuration in [README Development tip](../../README.md#development-tip).
 
 ## API v2 Imports
 

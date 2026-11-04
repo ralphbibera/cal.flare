@@ -15,7 +15,7 @@ Waiting for CI checks on unpushed local commits is backwards - the CI runs on th
 
 **Proper sequence:**
 1. Commit locally
-2. Run local checks (`yarn type-check:ci --force`, `yarn biome check --write .`)
+2. Run local checks (`bun run type-check:ci --force`, `bunx biome check --write .`)
 3. Push to remote
 4. Monitor CI status
 
@@ -31,7 +31,7 @@ When asked to move changes to a different branch, use git commands to commit exi
 
 When making changes that affect tRPC components or after pulling updates that modify tRPC-related files:
 
-1. First run `yarn prisma generate` to ensure all database types are up-to-date
-2. Then run `cd packages/trpc && yarn build` to rebuild the tRPC package
+1. First run `bun run prisma generate` to ensure all database types are up-to-date
+2. Then run `cd packages/trpc && bun run build` to rebuild the tRPC package
 
 This sequence ensures that type definitions are properly generated before building.

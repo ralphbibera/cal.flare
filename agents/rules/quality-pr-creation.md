@@ -31,6 +31,6 @@ Create pull requests in draft mode by default, so that a human reviewer can mark
 
 ## Before Pushing
 
-1. Run `yarn type-check:ci --force` to check types
-2. Run `yarn biome check --write .` to lint and format
+1. Run `bun run type-check:ci --force` to check types
+2. Run `bunx biome check --write .` to lint and format
 3. Run relevant tests locally

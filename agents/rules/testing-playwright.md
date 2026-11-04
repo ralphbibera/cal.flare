@@ -17,12 +17,12 @@ tags: testing, playwright, e2e
 Use the command format:
 
 ```bash
-PLAYWRIGHT_HEADLESS=1 yarn e2e [test-file.e2e.ts]
+PLAYWRIGHT_HEADLESS=1 bun run e2e [test-file.e2e.ts]
 ```
 
 This format includes the proper timezone setting, virtual display server, and uses the repository's e2e runner.
 
-**Do not use** the standard `yarn playwright test` command.
+**Do not use** the standard `bunx playwright test` command.
 
 ## Local Testing First
 

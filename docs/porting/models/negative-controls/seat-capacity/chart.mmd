@@ -1,0 +1,29 @@
+---
+title: "Two attendees contend for one remaining seat"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: Breaks CapacityPreserved
+    lg1: Path to the CapacityPreserved bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  s0: Both requests wait
+  s1: One request owns booking row lock
+  s2: One seat committed
+  s3: Remaining request checks full booking
+  s4: One seat committed, other request rejected
+  s5: Two seats committed despite capacity one
+  [*] --> s0
+  s0 --> s1: one request locks booking row
+  s1 --> s2: fresh capacity check commits attendee and seat
+  s2 --> s3: one request locks booking row
+  s3 --> s4: fresh capacity check returns BookingSeatsFull
+  s3 --> s5: fresh capacity check commits attendee and seat
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s3 bugPath
+  class s5 breaks
+  class s5 bugPath

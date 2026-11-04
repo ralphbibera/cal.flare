@@ -1,0 +1,22 @@
+---
+title: "Booking DB status and paid state"
+---
+stateDiagram-v2
+  s0: No booking
+  s1: pending, unpaid
+  s2: rejected, unpaid
+  s3: cancelled, unpaid
+  s4: accepted, unpaid
+  [*] --> s0
+  s0 --> s1: booker submits valid request
+  s1 --> s2: authorized host rejects
+  s2 --> s1: reschedule transaction cancels original and creates replacement
+  s1 --> s3: save cancelled status
+  s1 --> s4: save accepted status and references
+  s2 --> s3: save cancelled status
+  s2 --> s4: save accepted status and references
+  s4 --> s1: reschedule transaction cancels original and creates replacement
+  s3 --> s2: authorized host rejects
+  s3 --> s1: reschedule transaction cancels original and creates replacement
+  s4 --> s3: save cancelled status
+  s3 --> s4: save accepted status and references

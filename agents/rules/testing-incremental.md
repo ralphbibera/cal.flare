@@ -15,8 +15,8 @@ This methodical approach makes it easier to identify and resolve specific issues
 
 ## Recommended Order
 
-1. Run `yarn type-check:ci --force` to identify TypeScript type errors
-2. Run `yarn test` to identify failing unit tests
+1. Run `bun run type-check:ci --force` to identify TypeScript type errors
+2. Run `bun run test` to identify failing unit tests
 3. Address both type errors and failing tests before considering the task complete
 4. Type errors often need to be fixed first as they may be causing the test failures
 
@@ -24,4 +24,4 @@ This methodical approach makes it easier to identify and resolve specific issues
 
 - Focus on getting each file's tests passing completely before moving on to the next file
 - Fix type errors before test failures - they're often the root cause
-- Run `yarn prisma generate` if you see missing enum/type errors
+- Run `bun run prisma generate` if you see missing enum/type errors

@@ -1,46 +1,45 @@
-> [!WARNING]  
-> Use at your own risk. Cal.diy is the open source community edition of Cal.com and it is intended for users who want to self-host their own Cal.diy instance. It is strictly recommended for personal, non-production use. Please review all installation and configuration steps carefully. Self-hosting requires advanced knowledge of server administration, database management, and securing sensitive data. Proceed only if you are comfortable with these responsibilities.
+> [!WARNING]
+> Use at your own risk. Cal.flare is the open source community edition of Cal.com and it is intended for users who want to self-host their own Cal.flare instance. It is strictly recommended for personal, non-production use. Please review all installation and configuration steps carefully. Self-hosting requires advanced knowledge of Cloudflare administration, D1 database management, and securing sensitive data. Proceed only if you are comfortable with these responsibilities.
 
 > [!TIP]
-> For any commercial and enterprise-ready scheduling infrastructure, use Cal.com, not Cal.diy; hosted by us or get invited to on-prem enterprise access here: <a href="https://cal.com/sales">https://cal.com/sales</a>
+> For any commercial and enterprise-ready scheduling infrastructure, use Cal.com, not Cal.flare; hosted by us or get invited to on-prem enterprise access here: <a href="https://cal.com/sales">https://cal.com/sales</a>
 
 <!-- PROJECT LOGO -->
 <p align="center">
-  <a href="https://github.com/calcom/cal.diy">
+  <a href="https://github.com/ralphbibera/cal.flare">
    <img src="https://user-images.githubusercontent.com/8019099/210054112-5955e812-a76e-4160-9ddd-58f2c72f1cce.png" alt="Logo">
   </a>
 
-  <h3 align="center">Cal.diy</h3>
+  <h1 align="center">Cal.flare</h1>
 
   <p align="center">
     The community-driven, open-source scheduling platform.
     <br />
-    <a href="https://github.com/calcom/cal.diy"><strong>GitHub</strong></a>
+    <a href="https://github.com/ralphbibera/cal.flare"><strong>GitHub</strong></a>
     <br />
-    <a href="https://github.com/calcom/cal.diy/issues">Issues</a>
+    <a href="https://github.com/ralphbibera/cal.flare/issues">Issues</a>
     &middot;
     <a href="./CONTRIBUTING.md">Contributing</a>
   </p>
 </p>
 
 <p align="center">
-   <a href="https://github.com/calcom/cal.diy/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
-   <a href="https://github.com/calcom/cal.diy/stargazers"><img src="https://img.shields.io/github/stars/calcom/cal.diy" alt="Github Stars"></a>
-   <a href="https://github.com/calcom/cal.diy/pulse"><img src="https://img.shields.io/github/commit-activity/m/calcom/cal.diy" alt="Commits-per-month"></a>
-   <a href="https://hub.docker.com/r/calcom/cal.diy"><img src="https://img.shields.io/docker/pulls/calcom/cal.diy" alt="Docker Pulls"></a>
-   <a href="https://github.com/calcom/cal.diy/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22"><img src="https://img.shields.io/badge/Help%20Wanted-Contribute-blue"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/stargazers"><img src="https://img.shields.io/github/stars/calcom/cal.diy" alt="Github Stars"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/pulse"><img src="https://img.shields.io/github/commit-activity/m/calcom/cal.diy" alt="Commits-per-month"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22"><img src="https://img.shields.io/badge/Help%20Wanted-Contribute-blue"></a>
    <a href="https://contributor-covenant.org/version/1/4/code-of-conduct/"><img src="https://img.shields.io/badge/Contributor%20Covenant-1.4-purple" /></a>
 </p>
 
 <!-- ABOUT THE PROJECT -->
 
-## About Cal.diy
+## About Cal.flare
 
-<img width="100%" alt="booking-screen" src="https://github.com/calcom/cal.diy/assets/8019099/407e727e-ff19-4ca4-bcae-049dca05cf02">
+<img width="100%" alt="booking-screen" src="https://github.com/ralphbibera/cal.flare/assets/8019099/407e727e-ff19-4ca4-bcae-049dca05cf02">
 
-**Cal.diy** is the community-driven, fully open-source scheduling platform — a fork of [Cal.com](https://cal.com) with all enterprise/commercial code removed.
+**Cal.flare** ports the community-driven, fully open-source [Cal.diy](https://github.com/calcom/cal.diy) scheduling platform to Cloudflare Workers and D1. Cal.diy is based on [Cal.com](https://cal.com), with its enterprise/commercial code removed.
 
-Cal.diy is **100% MIT-licensed** with no proprietary "Enterprise Edition" features. It's designed for individuals and self-hosters who want full control over their scheduling infrastructure without any commercial dependencies.
+Cal.flare is **100% MIT-licensed** with no proprietary "Enterprise Edition" features. It's designed for individuals and self-hosters who want full control over their scheduling infrastructure without any commercial dependencies.
 
 ### What's different from Cal.com?
 
@@ -49,16 +48,21 @@ Cal.diy is **100% MIT-licensed** with no proprietary "Enterprise Edition" featur
 - **100% open source** — The entire codebase is licensed under MIT, no "Open Core" split
 - **Community-maintained** — Contributions are welcome and go directly into this project (see [CONTRIBUTING.md](./CONTRIBUTING.md))
 
-> **Note:** Cal.diy is a self-hosted project. There is no hosted/managed version. You run it on your own infrastructure.
+> **Note:** Cal.flare is a self-hosted project. There is no hosted/managed version. You run it on your own infrastructure.
 
 ### Built With
 
-- [Next.js](https://nextjs.org/)
+- [vinext](https://vinext.dev/)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/)
+- [Bun](https://bun.com/)
 - [tRPC](https://trpc.io/)
 - [React.js](https://reactjs.org/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Prisma.io](https://prisma.io/)
 - [Daily.co](https://daily.co/)
+
+The [port plan](docs/porting/plan.md), [architecture](docs/porting/architecture.md) and [inventory](docs/porting/inventory/README.md) describe the Cloudflare/Bun substitutions.
+Prisma remains the normal data-access layer through the official D1 adapter. Existing atomic multi-row operations use native guarded D1 batches; see [D1 and Prisma usage](docs/porting/architecture.md#d1-and-prisma-usage).
 
 <!-- GETTING STARTED -->
 
@@ -68,11 +72,12 @@ To get a local copy up and running, please follow these simple steps.
 
 ### Prerequisites
 
-Here’s what you need to run Cal.diy.
+Here’s what you need to run Cal.flare.
 
-- Node.js (Version: >=18.x)
-- PostgreSQL (Version: >=13.x)
-- Yarn _(recommended)_
+- Bun 1.4.4
+- Node.js 24.22.0 for build tools that require it
+- A [Cloudflare Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) to deploy Cal.flare
+- Local workerd/D1 for development
 
 > If you want to enable any of the available integrations, you may want to obtain additional credentials for each one. More details on this can be found below under the [integrations section](#integrations).
 
@@ -80,65 +85,52 @@ Here’s what you need to run Cal.diy.
 
 ### Setup
 
-1. Clone the repo (or fork https://github.com/calcom/cal.diy/fork)
+1. Clone the repo (or fork https://github.com/ralphbibera/cal.flare/fork)
 
    ```sh
-   git clone https://github.com/calcom/cal.diy.git
+   git clone git@github.com:ralphbibera/cal.flare.git
    ```
 
    > If you are on Windows, run the following command in Git Bash with admin privileges:
-   > `git clone -c core.symlinks=true https://github.com/calcom/cal.diy.git`
+   > `git clone -c core.symlinks=true git@github.com:ralphbibera/cal.flare.git`
 
 2. Go to the project folder
 
    ```sh
-   cd cal.diy
+   cd cal.flare
    ```
 
-3. Install packages with yarn
+3. Select Bun 1.4.4 and Node 24.22.0 for build tooling. If you use [nvm](https://github.com/nvm-sh/nvm):
 
    ```sh
-   yarn
+   nvm install 24.22.0 && nvm use 24.22.0
+   bun --version
    ```
 
-4. Set up your `.env` file
-
-   - Duplicate `.env.example` to `.env`
-   - Use `openssl rand -base64 32` to generate a key and add it under `NEXTAUTH_SECRET` in the `.env` file.
-   - Use `openssl rand -base64 24` to generate a key and add it under `CALENDSO_ENCRYPTION_KEY` in the `.env` file.
-
- > **Windows users:** Replace the `packages/prisma/.env` symlink with a real copy to avoid a Prisma error (`unexpected character / in variable name`):
- >
- > ```sh
- > # Git Bash / WSL
- > rm packages/prisma/.env && cp .env packages/prisma/.env
- > ```
-
-5. Set up Node
-   If your Node version does not meet the project's requirements as instructed by the docs, "nvm" (Node Version Manager) allows using Node at the version required by the project:
+4. Install packages with Bun:
 
    ```sh
-   nvm use
+   bun install --frozen-lockfile
    ```
 
-   You first might need to install the specific version and then use it:
+5. Set up local Worker configuration:
+
+   - Set consumed variables in ignored `.dev.vars` files for web and API v2. Use [.env.example](.env.example) and [.env.appStore.example](.env.appStore.example) for existing names, with the [Cloudflare binding and secret configuration](docs/cloudflare.md).
+   - Generate `NEXTAUTH_SECRET` with `openssl rand -base64 32`.
+   - Generate `CALENDSO_ENCRYPTION_KEY` with `openssl rand -base64 24`.
+   - Store each value in the consuming Worker's `.dev.vars` file for local development, and in Worker secrets for deployment.
+
+6. Bind the web and API v2 Workers to the same local D1 database and apply the converted migrations. See the [D1 configuration reference](docs/cloudflare.md#prepare-d1).
+7. Create your [first user](#setting-up-your-first-user), or load the development fixtures below.
+8. Start the application:
 
    ```sh
-   nvm install && nvm use
+   bun run dev
    ```
 
-   You can install nvm from [here](https://github.com/nvm-sh/nvm).
+#### Development test users
 
-#### Quick start with `yarn dx`
-
-> - **Requires Docker and Docker Compose to be installed**
-> - Will start a local Postgres instance with a few test users - the credentials will be logged in the console
-
-```sh
-yarn dx
-```
-
-**Default credentials created:**
+**Development seed credentials:**
 
 | Email | Password | Role |
 |-------|----------|------|
@@ -148,15 +140,15 @@ yarn dx
 | `admin@example.com` | `ADMINadmin2022!` | Admin user |
 | `onboarding@example.com` | `onboarding` | Onboarding incomplete |
 
-You can use any of these credentials to sign in at [http://localhost:3000](http://localhost:3000)
+After running the synthetic development seed, you can use these credentials at your local application origin. Keep these fixture accounts out of production data.
 
-> **Tip**: To view the full list of seeded users and their details, run `yarn db-studio` and visit [http://localhost:5555](http://localhost:5555)
+> **Tip**: Inspect the seeded records using the local D1 tools. PostgreSQL Prisma Studio is not the D1 inspection path.
 
 #### Development tip
 
-1. Add `export NODE_OPTIONS="--max-old-space-size=16384"` to your shell script to increase the memory limit for the node process. Alternatively, you can run this in your terminal before running the app. Replace 16384 with the amount of RAM you want to allocate to the node process.
+1. Add `export NODE_OPTIONS="--max-old-space-size=16384"` to your shell script to increase the memory limit for a Node build-tool process. This does not change Worker runtime limits. Alternatively, you can run this in your terminal before running the app. Replace 16384 with the amount of RAM you want to allocate to the node process.
 
-2. Add `NEXT_PUBLIC_LOGGER_LEVEL={level}` to your .env file to control the logging verbosity for all tRPC queries and mutations.\
+2. Add `NEXT_PUBLIC_LOGGER_LEVEL={level}` to local Worker configuration to control the logging verbosity for all tRPC queries and mutations.\
    Where {level} can be one of the following:
 
    `0` for silly \
@@ -167,7 +159,7 @@ You can use any of these credentials to sign in at [http://localhost:3000](http:
    `5` for error \
    `6` for fatal
 
-   When you set `NEXT_PUBLIC_LOGGER_LEVEL={level}` in your .env file, it enables logging at that level and higher. Here's how it works:
+   When you set `NEXT_PUBLIC_LOGGER_LEVEL={level}` in local Worker configuration, it enables logging at that level and higher. Here's how it works:
 
    The logger will include all logs that are at the specified level or higher. For example: \
 
@@ -175,77 +167,45 @@ You can use any of these credentials to sign in at [http://localhost:3000](http:
    - If you set `NEXT_PUBLIC_LOGGER_LEVEL=3`, it will log from level 3 (info) upwards, meaning levels 3 (info), 4 (warn), 5 (error), and 6 (fatal) will be logged, but level 2 (debug) and level 1 (trace) will be ignored. \
 
 ```sh
-echo 'NEXT_PUBLIC_LOGGER_LEVEL=3' >> .env
+echo 'NEXT_PUBLIC_LOGGER_LEVEL=3' >> apps/web/.dev.vars
 ```
 
 for Logger level to be set at info, for example.
 
 #### Gitpod Setup
 
-1. Click the button below to open this project in Gitpod.
+Use the same Bun, Node build-tool and local workerd/D1 setup in a Gitpod workspace.
+Forward the development port and configure application/auth URLs for that origin. The inherited Docker/PostgreSQL workspace tasks need the Cloudflare substitutions before they can be used for this target.
 
-2. This will open a fully configured workspace in your browser with all the necessary dependencies already installed.
+#### Setting up your first user
 
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/calcom/cal.diy)
+##### Approach 1
 
-#### Manual setup
+Open the application after its D1 schema and authentication configuration are ready. Use the setup/signup flow to create your first user.
+This runs the existing password hashing, profile defaults, verification and admin policy instead of bypassing them with manual row edits.
 
-1. Configure environment variables in the `.env` file. Replace `<user>`, `<pass>`, `<db-host>`, and `<db-port>` with their applicable values
+##### Approach 2
 
-   ```
-   DATABASE_URL='postgresql://<user>:<pass>@<db-host>:<db-port>'
-   ```
+Run the ported synthetic seed against isolated local D1. The [upstream seed](scripts/seed.ts) defines the dummy users above.
+Do not use development seed accounts for a production installation.
 
-   <details>
-   <summary>If you don't know how to configure the DATABASE_URL, then follow the steps here to create a quick local DB</summary>
+### E2E-Testing
 
-   1. [Download](https://www.postgresql.org/download/) and install PostgreSQL locally (if you don't have it already).
+Point the retained Playwright runner at the vinext/workerd application and D1. Keep its existing assertions and scenarios.
 
-   2. Create your own local db by executing `createDB <DB name>`
+Be sure to set the environment variable `NEXTAUTH_URL` to the correct value. If you are running locally, as the documentation within `.env.example` mentions, the value should be `http://localhost:3000`.
 
-   3. Now open your psql shell with the DB you created: `psql -h localhost -U postgres -d <DB name>`
+```sh
+# In a terminal just run:
+bun run test-e2e
 
-   4. Inside the psql shell execute `\conninfo`. And you will get the following info.
-      ![image](https://user-images.githubusercontent.com/39329182/236612291-51d87f69-6dc1-4a23-bf4d-1ca1754e0a35.png)
-
-   5. Now extract all the info and add it to your DATABASE_URL. The url would look something like this
-      `postgresql://postgres:postgres@localhost:5432/Your-DB-Name`. The port is configurable and does not have to be 5432.
-
-   </details>
-
-   If you don't want to create a local DB. Then you can also consider using services like railway.app, Northflank or render.
-   
-
-   - [Setup postgres DB with railway.app](https://docs.railway.app/guides/postgresql)
-   - [Setup postgres DB with Northflank](https://northflank.com/guides/deploy-postgres-database-on-northflank)
-   - [Setup postgres DB with render](https://render.com/docs/databases)
-
-2. Copy and paste your `DATABASE_URL` from `.env` to `.env.appStore`.
-
-3. Set up the database using the Prisma schema (found in `packages/prisma/schema.prisma`)
-
-   In a development environment, run:
-
-   ```sh
-   yarn workspace @calcom/prisma db-migrate
-   ```
-
-   In a production environment, run:
-
-   ```sh
-   yarn workspace @calcom/prisma db-deploy
-   ```
-
-  **Note for Windows/PowerShell users:** If running the database deployment scripts fails with an error stating `Environment variable not found: DATABASE_DIRECT_URL`, Turbo might be failing to inject the root `.env` variables. You can bypass this by executing the commands directly from the prisma package directory in PowerShell:
-
-```powershell
-cd packages/prisma
-$env:DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres"; $env:DATABASE_DIRECT_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres"
-npx prisma db push
-cd ../..
+# To open the last HTML report run:
+bunx playwright show-report test-results/reports/playwright-html-report
 ```
-   
-4. Run [mailhog](https://github.com/mailhog/MailHog) to view emails sent during development
+
+#### Development mail receiver
+
+Run [mailhog](https://github.com/mailhog/MailHog) to view emails sent during development
 
    > **_NOTE:_** Required when `E2E_TEST_MAILHOG_ENABLED` is "1"
 
@@ -254,55 +214,12 @@ cd ../..
    docker run -d -p 8025:8025 -p 1025:1025 mailhog/mailhog
    ```
 
-5. Run (in development mode)
-
-   ```sh
-   yarn dev
-   ```
-
-#### Setting up your first user
-
-##### Approach 1
-
-1. Open [Prisma Studio](https://prisma.io/studio) to look at or modify the database content:
-
-   ```sh
-   yarn db-studio
-   ```
-
-1. Click on the `User` model to add a new user record.
-1. Fill out the fields `email`, `username`, `password`, and set `metadata` to empty `{}` (remembering to encrypt your password with [BCrypt](https://bcrypt-generator.com/)) and click `Save 1 Record` to create your first user.
-   > New users are set on a `TRIAL` plan by default. You might want to adjust this behavior to your needs in the `packages/prisma/schema.prisma` file.
-1. Open a browser to [http://localhost:3000](http://localhost:3000) and login with your just created, first user.
-
-##### Approach 2
-
-Seed the local db by running
-
-```sh
-cd packages/prisma
-yarn db-seed
-```
-
-The above command will populate the local db with dummy users.
-
-### E2E-Testing
-
-Be sure to set the environment variable `NEXTAUTH_URL` to the correct value. If you are running locally, as the documentation within `.env.example` mentions, the value should be `http://localhost:3000`.
-
-```sh
-# In a terminal just run:
-yarn test-e2e
-
-# To open the last HTML report run:
-yarn playwright show-report test-results/reports/playwright-html-report
-```
 
 #### Resolving issues
 
 ##### E2E test browsers not installed
 
-Run `npx playwright install` to download test browsers and resolve the error below when running `yarn test-e2e`:
+Run `bunx playwright install` to download test browsers and resolve the error below when running `bun run test-e2e`:
 
 ```
 Executable doesn't exist at /Users/alice/Library/Caches/ms-playwright/chromium-1048/chrome-mac/Chromium.app/Contents/MacOS/Chromium
@@ -319,42 +236,29 @@ Executable doesn't exist at /Users/alice/Library/Caches/ms-playwright/chromium-1
 1. Check if dependencies got added/updated/removed
 
    ```sh
-   yarn
+   bun install --frozen-lockfile
    ```
 
-1. Apply database migrations by running <b>one of</b> the following commands:
+1. Apply the reviewed D1 migrations in order. Back up production data and retain a recovery procedure before changing its schema.
+   Use the local D1 database for development; do not run a development reset or seed against production.
 
-   In a development environment, run:
-
-   ```sh
-   yarn workspace @calcom/prisma db-migrate
-   ```
-
-   (This can clear your development database in some cases)
-
-   In a production environment, run:
+1. Check for Worker variable, secret and binding changes
 
    ```sh
-   yarn workspace @calcom/prisma db-deploy
-   ```
-
-1. Check for `.env` variables changes
-
-   ```sh
-   yarn predev
+   bun run predev
    ```
 
 1. Start the server. In a development environment, just do:
 
    ```sh
-   yarn dev
+   bun run dev
    ```
 
    For a production build, run for example:
 
    ```sh
-   yarn build
-   yarn start
+   bun run build
+   bun run --cwd apps/web deploy
    ```
 
 1. Enjoy the new version.
@@ -363,301 +267,86 @@ Executable doesn't exist at /Users/alice/Library/Caches/ms-playwright/chromium-1
 
 ## Deployment
 
-### Docker
+### Cloudflare Workers
 
-The Docker image can be found on DockerHub at [https://hub.docker.com/r/calcom/cal.diy](https://hub.docker.com/r/calcom/cal.diy).
-
-**Note for ARM Users**: Use the {version}-arm suffix for pulling images. Example: `docker pull calcom/cal.diy:v5.6.19-arm`.
+Use the native vinext Cloudflare integration and each application's `vite.config.ts` and `cloudflare.config.ts`.
+The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secrets, D1 and deployment configuration.
 
 #### Requirements
 
-Make sure you have `docker` & `docker compose` installed on the server / system. Both are installed by most docker utilities, including Docker Desktop and Rancher Desktop.
-
-Note: `docker compose` without the hyphen is now the primary method of using docker-compose, per the Docker documentation.
-
-#### Running Cal.diy with Docker Compose
-
-1. Clone the repository
-
-   ```bash
-   git clone --recursive https://github.com/calcom/cal.diy.git
-   ```
-
-2. Change into the directory
-
-   ```bash
-   cd cal.diy
-   ```
-
-3. Prepare your configuration: Rename `.env.example` to `.env` and then update `.env`
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Most configurations can be left as-is, but for configuration options see [Important Run-time variables](#important-run-time-variables) below.
-
-   **Required Secret Keys**
-
-   Before starting, you must generate secure values for `NEXTAUTH_SECRET` and `CALENDSO_ENCRYPTION_KEY`. Using the default `secret` placeholder in production is a security risk.
-
-   Generate `NEXTAUTH_SECRET` (cookie encryption key):
-
-   ```bash
-   openssl rand -base64 32
-   ```
-
-   Generate `CALENDSO_ENCRYPTION_KEY` (must be 32 bytes for AES256):
-
-   ```bash
-   openssl rand -base64 24
-   ```
-
-   Update your `.env` file with these values:
-
-   ```env
-   NEXTAUTH_SECRET=<your_generated_secret>
-   CALENDSO_ENCRYPTION_KEY=<your_generated_key>
-   ```
-
-   **Push Notifications (VAPID Keys)**
-   If you see an error like:
-
-   ```
-   Error: No key set vapidDetails.publicKey
-   ```
-
-   This means your environment variables for Web Push are missing.
-   You must generate and set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`.
-
-   Generate them with:
-
-   ```bash
-   npx web-push generate-vapid-keys
-   ```
-
-   Then update your `.env` file:
-
-   ```env
-   NEXT_PUBLIC_VAPID_PUBLIC_KEY=your_public_key_here
-   VAPID_PRIVATE_KEY=your_private_key_here
-   ```
-
-   Do **not** commit real keys to `.env.example` — only placeholders.
-
-   Update the appropriate values in your .env file, then proceed.
-
-4. (optional) Pre-Pull the images by running the following command:
-
-   ```bash
-   docker compose pull
-   ```
-
-5. Start Cal.diy via docker compose
-
-   To run the complete stack, which includes a local Postgres database, Cal.diy web app, and Prisma Studio:
-
-   ```bash
-   docker compose up -d
-   ```
-
-   To run Cal.diy web app and Prisma Studio against a remote database, ensure that DATABASE_URL is configured for an available database and run:
-
-   ```bash
-   docker compose up -d calcom studio
-   ```
-
-   To run only the Cal.diy web app, ensure that DATABASE_URL is configured for an available database and run:
-
-   ```bash
-   docker compose up -d calcom
-   ```
-
-   **Note: to run in attached mode for debugging, remove `-d` from your desired run command.**
-
-6. Open a browser to [http://localhost:3000](http://localhost:3000), or your defined NEXT_PUBLIC_WEBAPP_URL. The first time you run Cal.diy, a setup wizard will initialize. Define your first user, and you're ready to go!
-
-   **Note for first-time setup (Calendar integration)**: During the setup wizard, you may encounter a "Connect your Calendar" step that appears to be required. If you do not wish to connect a calendar at this time, you can skip this step by navigating directly to the dashboard at `<NEXT_PUBLIC_WEBAPP_URL>/event-types`. Calendar integrations can be added later from the Settings > Integrations page.
-
-#### Updating Cal.diy
-
-1. Stop the Cal.diy stack
-
-   ```bash
-   docker compose down
-   ```
-
-2. Pull the latest changes
-
-   ```bash
-   docker compose pull
-   ```
-
-3. Update env vars as necessary.
-4. Re-start the Cal.diy stack
-
-   ```bash
-   docker compose up -d
-   ```
-
-#### Building from source with Docker
-
-1. Clone the repository
-
-   ```bash
-   git clone https://github.com/calcom/cal.diy.git
-   ```
-
-2. Change into the directory
-
-   ```bash
-   cd cal.diy
-   ```
-
-3. Rename `.env.example` to `.env` and then update `.env`
-
-   For configuration options see [Build-time variables](#build-time-variables) below. Update the appropriate values in your .env file, then proceed.
-
-4. Build the Cal.diy docker image:
-
-   Note: Due to application configuration requirements, an available database is currently required during the build process.
-
-   a) If hosting elsewhere, configure the `DATABASE_URL` in the .env file, and skip the next step
-
-   b) If a local or temporary database is required, start a local database via docker compose.
-
-   ```bash
-   docker compose up -d database
-   ```
-
-5. Build Cal.diy via docker compose (DOCKER_BUILDKIT=0 must be provided to allow a network bridge to be used at build time. This requirement will be removed in the future)
-
-   ```bash
-   DOCKER_BUILDKIT=0 docker compose build calcom
-   ```
-
-6. Start Cal.diy via docker compose
-
-   To run the complete stack, which includes a local Postgres database, Cal.diy web app, and Prisma Studio:
-
-   ```bash
-   docker compose up -d
-   ```
-
-   To run Cal.diy web app and Prisma Studio against a remote database, ensure that DATABASE_URL is configured for an available database and run:
-
-   ```bash
-   docker compose up -d calcom studio
-   ```
-
-   To run only the Cal.diy web app, ensure that DATABASE_URL is configured for an available database and run:
-
-   ```bash
-   docker compose up -d calcom
-   ```
-
-   **Note: to run in attached mode for debugging, remove `-d` from your desired run command.**
-
-7. Open a browser to [http://localhost:3000](http://localhost:3000), or your defined NEXT_PUBLIC_WEBAPP_URL. The first time you run Cal.diy, a setup wizard will initialize. Define your first user, and you're ready to go!
+- **Cloudflare Workers Paid is required to deploy Cal.flare.**
+- The web and API v2 Workers share one authoritative D1 database.
+- `ASSETS` serves public files, fonts, embeds and built output.
+- `API_V2` binds web to API v2 at the original `/api/v2` URL.
+- `JOBS`, `RUNTIME_STATE` and the selected cache bindings supply Cloudflare job/state/cache resources.
+- The docs application has its own static assets and no application database binding.
+
+#### Deploying Cal.flare
+
+Follow the [Cloudflare deployment procedure](docs/cloudflare.md#deploy-and-verify) for D1 migration ordering, resource bindings, application builds and provider verification.
+Keep source configuration and ordered migrations in Git; generated build output and secrets stay outside it.
 
 #### Configuration
 
 ##### Important Run-time variables
 
-These variables must also be provided at runtime
+Provide these values through Worker bindings, variables and secrets:
 
-| Variable | Description | Required | Default |
-| --- | --- | --- | --- |
-| DATABASE_URL | database url with credentials - if using a connection pooler, this setting should point there | required | `postgresql://unicorn_user:magical_password@database:5432/calendso` |
-| NEXT_PUBLIC_WEBAPP_URL | Base URL of the site. NOTE: if this value differs from the value used at build-time, there will be a slight delay during container start (to update the statically built files). | optional | `http://localhost:3000` |
-| NEXTAUTH_URL | Location of the auth server. By default, this is the Cal.diy docker instance itself. | optional | `{NEXT_PUBLIC_WEBAPP_URL}/api/auth` |
-| NEXTAUTH_SECRET | Cookie encryption key. Must match build variable. Generate with: `openssl rand -base64 32` | required | `secret` |
-| CALENDSO_ENCRYPTION_KEY | Authentication encryption key (32 bytes for AES256). Must match build variable. Generate with: `openssl rand -base64 24` | required | `secret` |
+| Variable or binding | Description | Required |
+| --- | --- | --- |
+| `DB` | D1 application/auth database, shared by web and API v2. | required |
+| `NEXT_PUBLIC_WEBAPP_URL` | Public web origin, consistent with client build configuration. | required |
+| `NEXTAUTH_URL` | Public authentication origin and callback configuration. | required |
+| `NEXTAUTH_SECRET` | Installation session/signing secret; generate during [Setup](#setup). | required |
+| `CALENDSO_ENCRYPTION_KEY` | Stable 32-character Cal encryption key; generate during [Setup](#setup). | required |
+| `CRON_API_KEY` | Authentication for retained cron HTTP endpoints. | where consumed |
+| `EMAIL_FROM` | Sender identity for application mail. | for mail delivery |
+
+Mail uses `RESEND_API_KEY`, `EMAIL_SERVER`, or the existing SMTP host/port/user/password fields.
+Use a supported public TLS/STARTTLS relay on Workers; local sendmail is not available there.
+Store private values as Worker secrets. Use ignored `.dev.vars` files for local development, and configure each consuming Worker.
 
 ##### Build-time variables
 
-If building the image yourself, these variables must be provided at the time of the docker build, and can be provided by updating the .env file. Currently, if you require changes to these variables, you must follow the instructions to build and publish your own image.
+Provide consumed public values through the explicit client-build allowlist:
 
-| Variable | Description | Required | Default |
-| --- | --- | --- | --- |
-| DATABASE_URL | database url with credentials - if using a connection pooler, this setting should point there | required | `postgresql://unicorn_user:magical_password@database:5432/calendso` |
-| MAX_OLD_SPACE_SIZE | Needed for Nodejs/NPM build options | required | 4096 |
-| NEXTAUTH_SECRET | Cookie encryption key | required | `secret` |
-| CALENDSO_ENCRYPTION_KEY | Authentication encryption key | required | `secret` |
-| NEXT_PUBLIC_WEBAPP_URL | Base URL injected into static files | optional | `http://localhost:3000` |
-| NEXT_PUBLIC_WEBSITE_TERMS_URL | custom URL for terms and conditions website | optional | |
-| NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL | custom URL for privacy policy website | optional | |
-| CALCOM_TELEMETRY_DISABLED | Allow Cal.diy to collect anonymous usage data (set to `1` to disable) | optional | |
+| Variable | Description | Default |
+| --- | --- | --- |
+| `NEXT_PUBLIC_WEBAPP_URL` | Base URL injected into client output. | local development origin |
+| `NEXT_PUBLIC_WEBSITE_URL` | Website origin where consumed. | application configuration |
+| `NEXT_PUBLIC_EMBED_LIB_URL` | Public embed script URL. | application configuration |
+| `NEXT_PUBLIC_WEBSITE_TERMS_URL` | Optional terms and conditions URL. | |
+| `NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL` | Optional privacy-policy URL. | |
+| `CALCOM_TELEMETRY_DISABLED` | Set to `1` to disable telemetry where consumed. | |
+
+Rebuild client assets when a public build-time value changes. Auth, encryption and provider secrets remain server-side.
+See the [environment inventory](docs/porting/inventory/environment.tsv) for retained names and the [architecture](docs/porting/architecture.md) for exact resource bindings.
 
 #### Troubleshooting
 
 ##### SSL edge termination
 
-If running behind a load balancer which handles SSL certificates, you will need to add the environmental variable `NODE_TLS_REJECT_UNAUTHORIZED=0` to prevent requests from being rejected. Only do this if you know what you are doing and trust the services/load-balancers directing traffic to your service.
+Cloudflare handles public TLS. Keep the application/auth origins and provider callbacks consistent with the actual HTTPS domain.
+Fix certificate, trust or URL configuration instead of disabling TLS verification.
 
 ##### Failed to commit changes: Invalid 'prisma.user.create()'
 
-Certain versions may have trouble creating a user if the field `metadata` is empty. Using an empty json object `{}` as the field value should resolve this issue. Also, the `id` field will autoincrement, so you may also try leaving the value of `id` as empty.
+Inspect the actual input and D1/Prisma error for the failing field or relation. Preserve the original metadata, null and generated-ID contract.
+Use the setup/signup service so password hashing and user defaults run; do not bypass those services with manual rows.
 
 ##### CLIENT_FETCH_ERROR
 
-If you experience this error, it may be the way the default Auth callback in the server is using the WEBAPP_URL as a base url. The container does not necessarily have access to the same DNS as your local machine, and therefore needs to be configured to resolve to itself. You may be able to correct this by configuring `NEXTAUTH_URL=http://localhost:3000/api/auth`, to help the backend loop back to itself.
-
-```
-docker-calcom-1  | @calcom/web:start: [next-auth][error][CLIENT_FETCH_ERROR]
-docker-calcom-1  | @calcom/web:start: https://next-auth.js.org/errors#client_fetch_error request to http://testing.localhost:3000/api/auth/session failed, reason: getaddrinfo ENOTFOUND testing.localhost {
-docker-calcom-1  | @calcom/web:start:   error: {
-docker-calcom-1  | @calcom/web:start:     message: 'request to http://testing.localhost:3000/api/auth/session failed, reason: getaddrinfo ENOTFOUND testing.localhost',
-docker-calcom-1  | @calcom/web:start:     stack: 'FetchError: request to http://testing.localhost:3000/api/auth/session failed, reason: getaddrinfo ENOTFOUND testing.localhost\n' +
-docker-calcom-1  | @calcom/web:start:       '    at ClientRequest.<anonymous> (/calcom/node_modules/next/dist/compiled/node-fetch/index.js:1:65756)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at ClientRequest.emit (node:events:513:28)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at ClientRequest.emit (node:domain:489:12)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at Socket.socketErrorListener (node:_http_client:494:9)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at Socket.emit (node:events:513:28)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at Socket.emit (node:domain:489:12)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at emitErrorNT (node:internal/streams/destroy:157:8)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at emitErrorCloseNT (node:internal/streams/destroy:122:3)\n' +
-docker-calcom-1  | @calcom/web:start:       '    at processTicksAndRejections (node:internal/process/task_queues:83:21)',
-docker-calcom-1  | @calcom/web:start:     name: 'FetchError'
-docker-calcom-1  | @calcom/web:start:   },
-docker-calcom-1  | @calcom/web:start:   url: 'http://testing.localhost:3000/api/auth/session',
-docker-calcom-1  | @calcom/web:start:   message: 'request to http://testing.localhost:3000/api/auth/session failed, reason: getaddrinfo ENOTFOUND testing.localhost'
-docker-calcom-1  | @calcom/web:start: }
-```
-
-### Railway
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/cal)
-
-You can deploy Cal.diy on [Railway](https://railway.app). The team at Railway also have a [detailed blog post](https://blog.railway.app/p/calendso) on deploying on their platform.
-
-### Northflank
-
-[![Deploy on Northflank](https://assets.northflank.com/deploy_to_northflank_smm_36700fb050.svg)](https://northflank.com/stacks/deploy-calcom)
-
-You can deploy Cal.diy on [Northflank](https://northflank.com). The team at Northflank also have a [detailed blog post](https://northflank.com/guides/deploy-calcom-with-northflank) on deploying on their platform.
-
-### Vercel
-
-Currently Vercel Pro Plan is required to be able to Deploy this application with Vercel, due to limitations on the number of serverless functions on the free plan.
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fcalcom%2Fcal.diy&env=DATABASE_URL,NEXT_PUBLIC_WEBAPP_URL,NEXTAUTH_URL,NEXTAUTH_SECRET,CRON_API_KEY,CALENDSO_ENCRYPTION_KEY&envDescription=See%20all%20available%20env%20vars&envLink=https%3A%2F%2Fgithub.com%2Fcalcom%2Fcal.diy%2Fblob%2Fmain%2F.env.example&project-name=cal&repo-name=cal.diy&build-command=cd%20../..%20%26%26%20yarn%20build&root-directory=apps%2Fweb%2F)
-
-### Render
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/calcom/docker)
-
-### Elestio
-
-[![Deploy on Elestio](https://elest.io/images/logos/deploy-to-elestio-btn.png)](https://elest.io/open-source/cal.com)
+Check `NEXTAUTH_URL`, the public web origin, cookie domain/secure settings and installation secrets.
+Inspect the Worker auth response and its `Set-Cookie` headers, then compare the original server/browser session projections.
+Docker service-name and loopback-DNS workarounds are not the Worker routing model.
 
 <!-- LICENSE -->
 
 ## License
 
-Cal.diy is fully open source, licensed under the [MIT License](https://opensource.org/license/mit).
+Cal.flare is fully open source, licensed under the [MIT License](https://opensource.org/license/mit).
 
-Unlike Cal.com's "Open Core" model, Cal.diy has **no commercial/enterprise code**. The entire codebase is available under the same open-source license.
+Unlike Cal.com's "Open Core" model, Cal.flare has **no commercial/enterprise code**. The entire codebase is available under the same open-source license.
 
 ## Enabling Content Security Policy
 
@@ -665,45 +354,47 @@ Unlike Cal.com's "Open Core" model, Cal.diy has **no commercial/enterprise code*
 
 ## Integrations
 
+Provider credentials and consent are still required on Cloudflare. Use your public web origin for callback URLs.
+Store deployment secrets in Worker secret bindings and local values in ignored `.dev.vars` files. Apply a secret to each Worker that consumes it.
+Some apps use **Settings → Admin → Apps** key fields instead of environment variables; keep that adapter's key schema.
+The [integration guide](docs/integrations.md) and [complete catalog](docs/integrations.md#complete-integration-catalog) cover every app-store definition and existing per-app setup guide.
+
 ### Obtaining the Google API Credentials
 
 1. Open [Google API Console](https://console.cloud.google.com/apis/dashboard). If you don't have a project in your Google Cloud subscription, you'll need to create one before proceeding further. Under Dashboard pane, select Enable APIS and Services.
 2. In the search box, type calendar and select the Google Calendar API search result.
 3. Enable the selected API.
 4. Next, go to the [OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent) from the side pane. Select the app type (Internal or External) and enter the basic app details on the first page.
-5. In the second page on Scopes, select Add or Remove Scopes. Search for Calendar.event and select the scope with scope value `.../auth/calendar.events`, `.../auth/calendar.readonly` and select Update.
+5. Add the Calendar scopes requested by the adapter: `https://www.googleapis.com/auth/calendar.events` and `https://www.googleapis.com/auth/calendar.readonly`. Keep the profile/email scopes required by the enabled login flow.
 6. In the third page (Test Users), add the Google account(s) you'll be using. Make sure the details are correct on the last page of the wizard and your consent screen will be configured.
 7. Now select [Credentials](https://console.cloud.google.com/apis/credentials) from the side pane and then select Create Credentials. Select the OAuth Client ID option.
 8. Select Web Application as the Application Type.
-9. Under Authorized redirect URI's, select Add URI and then add the URI `<Cal.diy URL>/api/integrations/googlecalendar/callback` and `<Cal.diy URL>/api/auth/callback/google` replacing Cal.diy URL with the URI at which your application runs.
+9. Register `<Cal.flare URL>/api/integrations/googlecalendar/callback`. For Google login, also register `<Cal.flare URL>/api/auth/callback/google`, using your actual public origin.
 10. The key will be created and you will be redirected back to the Credentials page. Select the newly generated client ID under OAuth 2.0 Client IDs.
-11. Select Download JSON. Copy the contents of this file and paste the entire JSON string in the `.env` file as the value for `GOOGLE_API_CREDENTIALS` key.
+11. Select Download JSON. Copy the contents of this file and paste the entire JSON string as the `GOOGLE_API_CREDENTIALS` Worker secret.
 
-#### _Adding google calendar to Cal.diy App Store_
+#### Add Google Calendar to the app store
 
-After adding Google credentials, you can now add the Google Calendar app to the App Store.
-You can repopulate the App Store by running
+After the D1 app-store seed is ported, populate app metadata using the Bun workspace command:
 
-```
-cd packages/prisma
-yarn seed-app-store
+```sh
+bun run --cwd packages/prisma seed-app-store
 ```
 
-You will need to complete a few more steps to activate Google Calendar App.
-Make sure to complete section "Obtaining the Google API Credentials". After that do the
-following
-
-1. Add extra redirect URL `<Cal.diy URL>/api/auth/callback/google`
-1. Under 'OAuth consent screen', click "PUBLISH APP"
+Enable the Google Calendar app, connect the intended account and choose its destination/conflict calendars.
+Set `GOOGLE_LOGIN_ENABLED=true` when enabling Google login, and register its callback as described above.
+Publish or verify the OAuth consent application when required for the users and scopes you intend to support; test-user access follows Google's consent configuration.
 
 ### Obtaining Microsoft Graph Client ID and Secret
 
 1. Open [Azure App Registration](https://portal.azure.com/#blade/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/RegisteredApps) and select New registration
 2. Name your application
 3. Set **Who can use this application or access this API?** to **Accounts in any organizational directory (Any Azure AD directory - Multitenant)**
-4. Set the **Web** redirect URI to `<Cal.diy URL>/api/integrations/office365calendar/callback` replacing Cal.diy URL with the URI at which your application runs.
-5. Use **Application (client) ID** as the **MS_GRAPH_CLIENT_ID** attribute value in .env
-6. Click **Certificates & secrets** create a new client secret and use the value as the **MS_GRAPH_CLIENT_SECRET** attribute
+4. Set the **Web** redirect URI to `<Cal.flare URL>/api/integrations/office365calendar/callback` replacing Cal.flare URL with the URI at which your application runs.
+5. Use **Application (client) ID** as the **MS_GRAPH_CLIENT_ID** server configuration value
+6. Create a client secret under **Certificates & secrets** and store its value as **MS_GRAPH_CLIENT_SECRET**.
+7. Grant the delegated scopes requested by the adapter: `User.Read`, `Calendars.Read`, `Calendars.ReadWrite` and `offline_access`, with consent appropriate to your tenant.
+8. Connect the account and select its calendars. Teams conferencing requires an eligible work or school account.
 
 ### Obtaining Zoom Client ID and Secret
 
@@ -713,45 +404,45 @@ following
 4. Name your App.
 5. Choose "User-managed app" for "Select how the app is managed".
 6. De-select the option to publish the app on the Zoom App Marketplace, if asked.
-7. Now copy the Client ID and Client Secret to your `.env` file into the `ZOOM_CLIENT_ID` and `ZOOM_CLIENT_SECRET` fields.
-8. Set the "OAuth Redirect URL" under "OAuth Information" as `<Cal.diy URL>/api/integrations/zoomvideo/callback` replacing Cal.diy URL with the URI at which your application runs.
+7. Now copy the Client ID and Client Secret to server-side configuration under the `ZOOM_CLIENT_ID` and `ZOOM_CLIENT_SECRET` fields.
+8. Set the "OAuth Redirect URL" under "OAuth Information" as `<Cal.flare URL>/api/integrations/zoomvideo/callback` replacing Cal.flare URL with the URI at which your application runs.
 9. Also add the redirect URL given above as an allow list URL and enable "Subdomain check". Make sure, it says "saved" below the form.
 10. You don't need to provide basic information about your app. Instead click on "Scopes" and then on "+ Add Scopes". On the left,
     1. click the category "Meeting" and check the scope `meeting:write:meeting`.
     2. click the category "User" and check the scope `user:read:settings`.
 11. Click "Done".
-12. You're good to go. Now you can easily add your Zoom integration in the Cal.diy settings.
+12. Enable Zoom in Cal.flare, connect the account, and verify the meeting operations used by your event types.
 
 ### Obtaining Daily API Credentials
 
 1. Open [Daily.co](https://daily.co/) and create an account.
 2. From within your dashboard, go to the [developers](https://dashboard.daily.co/developers) tab.
 3. Copy your API key.
-4. Now paste the API key to your `.env` file into the `DAILY_API_KEY` field in your `.env` file.
-5. If you have the [Daily Scale Plan](https://daily.co/pricing) set the `DAILY_SCALE_PLAN` variable to `true` in order to use features like video recording.
+4. Store the API key as the `DAILY_API_KEY` Worker secret.
+5. Set `DAILY_SCALE_PLAN` only when your Daily account supports the features it enables, such as recording.
 
 ### Obtaining Basecamp Client ID and Secret
 
-1. Visit the [37 Signals Integrations Dashboard](launchpad.37signals.com/integrations) and sign in.
+1. Visit the [37signals integrations dashboard](https://launchpad.37signals.com/integrations) and sign in.
 2. Register a new application by clicking the Register one now link.
 3. Fill in your company details.
 4. Select Basecamp 4 as the product to integrate with.
-5. Set the Redirect URL for OAuth `<Cal.diy URL>/api/integrations/basecamp3/callback` replacing Cal.diy URL with the URI at which your application runs.
+5. Set the Redirect URL for OAuth `<Cal.flare URL>/api/integrations/basecamp3/callback` replacing Cal.flare URL with the URI at which your application runs.
 6. Click on done and copy the Client ID and secret into the `BASECAMP3_CLIENT_ID` and `BASECAMP3_CLIENT_SECRET` fields.
-7. Set the `BASECAMP3_CLIENT_SECRET` env variable to `{your_domain} ({support_email})`.
+7. Set `BASECAMP3_USER_AGENT` to identify your application and support contact. Keep the OAuth client secret in `BASECAMP3_CLIENT_SECRET`.
 
 ### Obtaining HubSpot Client ID and Secret
 
 1. Open [HubSpot Developer](https://developer.hubspot.com/) and sign into your account, or create a new one.
 2. From within the home of the Developer account page, go to "Manage apps".
-3. Click "Create legacy app" button top right and select public app.
+3. Create a public OAuth application using the app-registration flow available to your developer account.
 4. Fill in any information you want in the "App info" tab
 5. Go to tab "Auth"
-6. Now copy the Client ID and Client Secret to your `.env` file into the `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET` fields.
-7. Set the Redirect URL for OAuth `<Cal.diy URL>/api/integrations/hubspot/callback` replacing Cal.diy URL with the URI at which your application runs.
-8. In the "Scopes" section at the bottom of the page, make sure you select "Read" and "Write" for scopes called `crm.objects.contacts` and `crm.lists`.
+6. Now copy the Client ID and Client Secret to server-side configuration under the `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET` fields.
+7. Set the Redirect URL for OAuth `<Cal.flare URL>/api/integrations/hubspot/callback` replacing Cal.flare URL with the URI at which your application runs.
+8. Grant the adapter's scopes: `crm.objects.contacts.read`, `crm.objects.contacts.write` and `crm.objects.owners.read`.
 9. Click the "Save" button at the bottom footer.
-10. You're good to go. Now you can see any booking in Cal.diy created as a meeting in HubSpot for your contacts.
+10. Connect the HubSpot account, then verify the expected contact and meeting effects with a synthetic booking.
 
 ### Obtaining Webex Client ID and Secret
 
@@ -764,11 +455,11 @@ following
 3. Click "ADD CLIENT" button top right and select "Server-based Applications".
 4. Fill in any information you want in the "Client Details" tab
 5. Go to tab "Client Secret" tab.
-6. Now copy the Client ID and Client Secret to your `.env` file into the `ZOHOCRM_CLIENT_ID` and `ZOHOCRM_CLIENT_SECRET` fields.
-7. Set the Redirect URL for OAuth `<Cal.diy URL>/api/integrations/zohocrm/callback` replacing Cal.diy URL with the URI at which your application runs.
+6. Now copy the Client ID and Client Secret to server-side configuration under the `ZOHOCRM_CLIENT_ID` and `ZOHOCRM_CLIENT_SECRET` fields.
+7. Set the Redirect URL for OAuth `<Cal.flare URL>/api/integrations/zohocrm/callback` replacing Cal.flare URL with the URI at which your application runs.
 8. In the "Settings" section check the "Multi-DC" option if you wish to use the same OAuth credentials for all data centers.
 9. Click the "Save"/ "UPDATE" button at the bottom footer.
-10. You're good to go. Now you can easily add your ZohoCRM integration in the Cal.diy settings.
+10. Enable the Zoho CRM app, connect the account and verify its intended booking effects.
 
 ### Obtaining Zoho Calendar Client ID and Secret
 
@@ -782,24 +473,27 @@ following
 
 [Follow these steps](./packages/app-store/pipedrive-crm/)
 
-### Rate Limiting with Unkey
+### Rate limiting
 
-Cal.diy uses [Unkey](https://unkey.com) for rate limiting. This is an optional feature and is not required for self-hosting.
+The Cloudflare target uses the `RUNTIME_STATE` Durable Object for limiter storage.
+Preserve the original namespaces, windows, response shape, fail-open behavior and enabled/disabled configuration.
+An installation with the legacy `UNKEY_ROOT_KEY` unset must not gain rate limiting merely because the DO exists.
+Follow the [state and job contract](docs/porting/architecture.md#jobs-ephemeral-state-and-integrations) when migrating the configuration; an external Unkey service is not required by the selected target.
 
-If you want to enable rate limiting:
+### Payments and automation
 
-1. Sign up for an account at [unkey.com](https://unkey.com)
-2. Create a Root key with permissions for
-   `ratelimit.create_namespace` and `ratelimit.limit`
-3. Copy the root key to your `.env` file into the `UNKEY_ROOT_KEY` field
+- [Stripe setup](packages/app-store/stripepayment/README.md) covers Connect OAuth and payment credentials.
+- [HitPay](packages/app-store/hitpay/README.md), [PayPal](packages/app-store/paypal), [BTCPay](packages/app-store/btcpayserver) and [Alby](packages/app-store/alby) retain their own provider settings and signature rules.
+- [Zapier](packages/app-store/zapier/README.md) and [Make](packages/app-store/make/README.md) describe API-key connections and webhook setup.
 
-Note: If you don't configure Unkey, Cal.diy will work normally without rate limiting enabled.
+The community baseline contains Stripe webhook stubs. Registering credentials does not replace those stubs with payment fulfillment.
+Check the [payment behavior contract](docs/porting/behavior.md#d_payments) for the specific flow and limitations.
 
 ## Contributing
 
-We welcome contributions! Whether it's fixing a typo, improving documentation, or building new features, your help makes Cal.diy better.
+We welcome contributions! Whether it's fixing a typo, improving documentation, or building new features, your help makes Cal.flare better.
 
-> **Important:** Cal.diy is a community fork. Contributions to this repo do **not** flow to Cal.com's production platform. See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+> **Important:** Cal.flare is a community fork. Contributions to this repo do **not** flow to Cal.com's production platform. See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 - Check out our [Contributing Guide](./CONTRIBUTING.md) for detailed steps.
 - Please follow our coding standards and commit message conventions to keep the project consistent.
@@ -808,13 +502,13 @@ Even small improvements matter — thank you for helping us grow!
 
 ### Good First Issues
 
-We have a list of [help wanted](https://github.com/calcom/cal.diy/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22) that contain small features and bugs which have a relatively limited scope. This is a great place to get started, gain experience, and get familiar with our contribution process.
+We have a list of [help wanted](https://github.com/ralphbibera/cal.flare/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22) that contain small features and bugs which have a relatively limited scope. This is a great place to get started, gain experience, and get familiar with our contribution process.
 
 <!-- CONTRIBUTORS -->
 
 ### Contributors
 
-<a href="https://github.com/calcom/cal.diy/graphs/contributors">
+<a href="https://github.com/ralphbibera/cal.flare/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=calcom/cal.diy" />
 </a>
 
@@ -822,16 +516,18 @@ We have a list of [help wanted](https://github.com/calcom/cal.diy/issues?q=is:is
 
 ### Translations
 
-Don't code but still want to contribute? help translate Cal.diy into your language.
+Don't code but still want to contribute? help translate Cal.flare into your language.
 
 <!-- ACKNOWLEDGEMENTS -->
 
 ## Acknowledgements
 
-Cal.diy is built on the foundation created by [Cal.com](https://cal.com) and the many contributors to the original project. Special thanks to:
+Cal.flare is built on the foundation created by [Cal.com](https://cal.com) and the many contributors to the original project. Special thanks to:
 
 - [Vercel](https://vercel.com/)
-- [Next.js](https://nextjs.org/)
+- [vinext](https://vinext.dev/)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/)
+- [Bun](https://bun.com/)
 - [Day.js](https://day.js.org/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Prisma](https://prisma.io/)

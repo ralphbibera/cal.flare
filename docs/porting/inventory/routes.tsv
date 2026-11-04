@@ -1,0 +1,363 @@
+source	domain	kind	url_or_decorator	entrypoint	methods
+apps/api/v2/src/app.controller.ts#L5	D_API	v2-decorator	/api/v2/health [version=default-version]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/api-keys/controllers/api-keys.controller.ts#L28	D_API	v2-decorator	/api/v2/api-keys/refresh [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/atoms/controllers/atoms.conferencing-apps.controller.ts#L27	D_API	v2-decorator	/api/v2/atoms/conferencing [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L44	D_EVENTS	v2-decorator	/api/v2/atoms/event-types/list-with-team [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L55	D_EVENTS	v2-decorator	/api/v2/atoms/event-types/:eventSlug/public [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L76	D_EVENTS	v2-decorator	/api/v2/atoms/event-types/:eventTypeId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L90	D_EVENTS	v2-decorator	/api/v2/atoms/event-types [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L101	D_EVENTS	v2-decorator	/api/v2/atoms/event-types-app/:appSlug [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L119	D_EVENTS	v2-decorator	/api/v2/atoms/payment/:uid [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L130	D_EVENTS	v2-decorator	/api/v2/atoms/event-types/bulk-update-to-default-location [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/atoms/controllers/atoms.event-types.controller.ts#L143	D_EVENTS	v2-decorator	/api/v2/atoms/event-types/:eventTypeId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/atoms/controllers/atoms.schedules.controller.ts#L54	D_API	v2-decorator	/api/v2/atoms/schedules [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.schedules.controller.ts#L76	D_API	v2-decorator	/api/v2/atoms/schedules/event-type/:eventSlug [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.schedules.controller.ts#L91	D_API	v2-decorator	/api/v2/atoms/schedules/all [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.schedules.controller.ts#L106	D_API	v2-decorator	/api/v2/atoms/schedules/:scheduleId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/atoms/controllers/atoms.schedules.controller.ts#L127	D_API	v2-decorator	/api/v2/atoms/schedules/create [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/atoms/controllers/atoms.schedules.controller.ts#L143	D_API	v2-decorator	/api/v2/atoms/schedules/:scheduleId/duplicate [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/atoms/controllers/atoms.verification.controller.ts#L41	D_API	v2-decorator	/api/v2/atoms/verification/email/send-code [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/atoms/controllers/atoms.verification.controller.ts#L61	D_API	v2-decorator	/api/v2/atoms/verification/email/check [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.verification.controller.ts#L78	D_API	v2-decorator	/api/v2/atoms/verification/email/verify-code [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/atoms/controllers/atoms.verification.controller.ts#L93	D_API	v2-decorator	/api/v2/atoms/verification/email/verify-code-authenticated [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/atoms/controllers/atoms.verification.controller.ts#L112	D_API	v2-decorator	/api/v2/atoms/emails/verified-emails [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/atoms/controllers/atoms.verification.controller.ts#L132	D_API	v2-decorator	/api/v2/atoms/emails/verified-emails [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/auth/oauth2/controllers/atoms-oauth2.controller.ts#L30	D_AUTH	v2-decorator	/api/v2/atoms/auth/oauth2/clients/:clientId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/auth/oauth2/controllers/oauth2.controller.ts#L45	D_AUTH	v2-decorator	/api/v2/auth/oauth2/clients/:clientId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/auth/oauth2/controllers/oauth2.controller.ts#L65	D_AUTH	v2-decorator	/api/v2/auth/oauth2/token [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L44	D_API	v2-decorator	/api/v2/calendars/connections [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L69	D_API	v2-decorator	/api/v2/calendars/connections/:connectionId/events [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L100	D_API	v2-decorator	/api/v2/calendars/connections/:connectionId/events [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L127	D_API	v2-decorator	/api/v2/calendars/connections/:connectionId/events/:eventId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L154	D_API	v2-decorator	/api/v2/calendars/connections/:connectionId/events/:eventId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L183	D_API	v2-decorator	/api/v2/calendars/connections/:connectionId/events/:eventId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L203	D_API	v2-decorator	/api/v2/calendars/connections/:connectionId/freebusy [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L241	D_API	v2-decorator	/api/v2/calendars/:calendar/events/:eventUid [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L241	D_API	v2-decorator	/api/v2/calendars/:calendar/event/:eventUid [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L269	D_API	v2-decorator	/api/v2/calendars/:calendar/events/:eventUid [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L269	D_API	v2-decorator	/api/v2/calendars/:calendar/event/:eventUid [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L288	D_API	v2-decorator	/api/v2/calendars/:calendar/events [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L319	D_API	v2-decorator	/api/v2/calendars/:calendar/events [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L343	D_API	v2-decorator	/api/v2/calendars/:calendar/events/:eventUid [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/cal-unified-calendars/controllers/cal-unified-calendars.controller.ts#L361	D_API	v2-decorator	/api/v2/calendars/:calendar/freebusy [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L67	D_API	v2-decorator	/api/v2/conferencing/:app/connect [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L86	D_API	v2-decorator	/api/v2/conferencing/:app/oauth/auth-url [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L130	D_API	v2-decorator	/api/v2/conferencing/:app/oauth/callback [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L185	D_API	v2-decorator	/api/v2/conferencing [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L200	D_API	v2-decorator	/api/v2/conferencing/:app/default [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L219	D_API	v2-decorator	/api/v2/conferencing/default [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/conferencing/controllers/conferencing.controller.ts#L229	D_API	v2-decorator	/api/v2/conferencing/:app/disconnect [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/destination-calendars/controllers/destination-calendars.controller.ts#L28	D_API	v2-decorator	/api/v2/destination-calendars [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PUT
+apps/api/v2/src/modules/event-types/controllers/event-types-webhooks.controller.ts#L50	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/event-types/controllers/event-types-webhooks.controller.ts#L68	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/event-types/controllers/event-types-webhooks.controller.ts#L86	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/event-types/controllers/event-types-webhooks.controller.ts#L98	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/event-types/controllers/event-types-webhooks.controller.ts#L119	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/event-types/controllers/event-types-webhooks.controller.ts#L132	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-users/oauth-client-users.controller.ts#L62	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/users [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-users/oauth-client-users.controller.ts#L81	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/users [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-users/oauth-client-users.controller.ts#L111	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/users/:userId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-users/oauth-client-users.controller.ts#L130	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/users/:userId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-users/oauth-client-users.controller.ts#L159	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/users/:userId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-users/oauth-client-users.controller.ts#L181	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/users/:userId/force-refresh [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-webhooks/oauth-client-webhooks.controller.ts#L45	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-webhooks/oauth-client-webhooks.controller.ts#L68	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-webhooks/oauth-client-webhooks.controller.ts#L91	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-webhooks/oauth-client-webhooks.controller.ts#L108	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-webhooks/oauth-client-webhooks.controller.ts#L133	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-client-webhooks/oauth-client-webhooks.controller.ts#L153	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-clients/oauth-clients.controller.ts#L56	D_AUTH	v2-decorator	/api/v2/oauth-clients [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-clients/oauth-clients.controller.ts#L81	D_AUTH	v2-decorator	/api/v2/oauth-clients [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-clients/oauth-clients.controller.ts#L93	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-clients/oauth-clients.controller.ts#L106	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId/managed-users [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-clients/oauth-clients.controller.ts#L130	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-clients/oauth-clients.controller.ts#L147	D_AUTH	v2-decorator	/api/v2/oauth-clients/:clientId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-flow/oauth-flow.controller.ts#L48	D_AUTH	v2-decorator	/api/v2/oauth/:clientId/authorize [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-flow/oauth-flow.controller.ts#L83	D_AUTH	v2-decorator	/api/v2/oauth/:clientId/exchange [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/oauth-clients/controllers/oauth-flow/oauth-flow.controller.ts#L108	D_AUTH	v2-decorator	/api/v2/oauth/:clientId/refresh [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/selected-calendars/controllers/selected-calendars.controller.ts#L31	D_API	v2-decorator	/api/v2/selected-calendars [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/selected-calendars/controllers/selected-calendars.controller.ts#L45	D_API	v2-decorator	/api/v2/selected-calendars [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/slots/slots-2024-04-15/controllers/slots.controller.ts#L45	D_AVAILABILITY	v2-decorator	/api/v2/slots/reserve [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14, VERSION_2024_08_13]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/slots/slots-2024-04-15/controllers/slots.controller.ts#L76	D_AVAILABILITY	v2-decorator	/api/v2/slots/selected-slot [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14, VERSION_2024_08_13]]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/slots/slots-2024-04-15/controllers/slots.controller.ts#L100	D_AVAILABILITY	v2-decorator	/api/v2/slots/available [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14, VERSION_2024_08_13]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/slots/slots-2024-09-04/controllers/slots.controller.ts#L60	D_AVAILABILITY	v2-decorator	/api/v2/slots [version=VERSION_2024_09_04]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/slots/slots-2024-09-04/controllers/slots.controller.ts#L271	D_AVAILABILITY	v2-decorator	/api/v2/slots/reservations [version=VERSION_2024_09_04]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/slots/slots-2024-09-04/controllers/slots.controller.ts#L298	D_AVAILABILITY	v2-decorator	/api/v2/slots/reservations/:uid [version=VERSION_2024_09_04]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/slots/slots-2024-09-04/controllers/slots.controller.ts#L314	D_AVAILABILITY	v2-decorator	/api/v2/slots/reservations/:uid [version=VERSION_2024_09_04]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/slots/slots-2024-09-04/controllers/slots.controller.ts#L334	D_AVAILABILITY	v2-decorator	/api/v2/slots/reservations/:uid [version=VERSION_2024_09_04]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/modules/stripe/controllers/stripe.controller.ts#L49	D_PAYMENTS	v2-decorator	/api/v2/stripe/connect [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/stripe/controllers/stripe.controller.ts#L79	D_PAYMENTS	v2-decorator	/api/v2/stripe/save [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/stripe/controllers/stripe.controller.ts#L150	D_PAYMENTS	v2-decorator	/api/v2/stripe/check [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/timezones/controllers/timezones.controller.ts#L20	D_API	v2-decorator	/api/v2/timezones [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L41	D_API	v2-decorator	/api/v2/verified-resources/emails/verification-code/request [version=default-version]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L64	D_API	v2-decorator	/api/v2/verified-resources/phones/verification-code/request [version=default-version]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L84	D_API	v2-decorator	/api/v2/verified-resources/emails/verification-code/verify [version=default-version]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L103	D_API	v2-decorator	/api/v2/verified-resources/phones/verification-code/verify [version=default-version]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L120	D_API	v2-decorator	/api/v2/verified-resources/emails [version=default-version]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L141	D_API	v2-decorator	/api/v2/verified-resources/phones [version=default-version]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L164	D_API	v2-decorator	/api/v2/verified-resources/emails/:id [version=default-version]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/verified-resources/controllers/users-verified-resources.controller.ts#L181	D_API	v2-decorator	/api/v2/verified-resources/phones/:id [version=default-version]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/webhooks/controllers/webhooks.controller.ts#L39	D_JOBS	v2-decorator	/api/v2/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/modules/webhooks/controllers/webhooks.controller.ts#L57	D_JOBS	v2-decorator	/api/v2/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/modules/webhooks/controllers/webhooks.controller.ts#L76	D_JOBS	v2-decorator	/api/v2/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/webhooks/controllers/webhooks.controller.ts#L87	D_JOBS	v2-decorator	/api/v2/webhooks [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/modules/webhooks/controllers/webhooks.controller.ts#L111	D_JOBS	v2-decorator	/api/v2/webhooks/:webhookId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L129	D_BOOKINGS	v2-decorator	/api/v2/bookings [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L164	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L178	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/reschedule [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L196	D_BOOKINGS	v2-decorator	/api/v2/bookings [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L234	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/cancel [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L290	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/mark-no-show [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-04-15/controllers/bookings.controller.ts#L313	D_BOOKINGS	v2-decorator	/api/v2/bookings/recurring [version=[VERSION_2024_04_15, VERSION_2024_06_11, VERSION_2024_06_14]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/booking-attendees.controller.ts#L49	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/attendees [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/booking-attendees.controller.ts#L72	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/attendees/:attendeeId [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/booking-attendees.controller.ts#L95	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/attendees [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/booking-attendees.controller.ts#L134	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/attendees/:attendeeId [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/booking-guests.controller.ts#L35	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/guests [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/booking-location.controller.ts#L48	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/location [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L105	D_BOOKINGS	v2-decorator	/api/v2/bookings [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L163	D_BOOKINGS	v2-decorator	/api/v2/bookings/by-seat/:seatUid [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L190	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L223	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/recordings [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L244	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/transcripts [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L269	D_BOOKINGS	v2-decorator	/api/v2/bookings [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L296	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/reschedule [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L336	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/cancel [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L390	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/mark-absent [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L415	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/reassign [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L439	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/reassign/:userId [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L470	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/confirm [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L494	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/decline [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L519	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/calendar-links [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L540	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/references [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/bookings/2024-08-13/controllers/bookings.controller.ts#L566	D_BOOKINGS	v2-decorator	/api/v2/bookings/:bookingUid/conferencing-sessions [version=VERSION_2024_08_13_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L91	D_APPS	v2-decorator	/api/v2/calendars/ics-feed/save [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L103	D_APPS	v2-decorator	/api/v2/calendars/ics-feed/check [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L113	D_APPS	v2-decorator	/api/v2/calendars/busy-times [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L145	D_APPS	v2-decorator	/api/v2/calendars [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L166	D_APPS	v2-decorator	/api/v2/calendars/:calendar/connect [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L200	D_APPS	v2-decorator	/api/v2/calendars/:calendar/save [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L249	D_APPS	v2-decorator	/api/v2/calendars/:calendar/credentials [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L274	D_APPS	v2-decorator	/api/v2/calendars/:calendar/check [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/calendars/controllers/calendars.controller.ts#L303	D_APPS	v2-decorator	/api/v2/calendars/:calendar/disconnect [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/event-types-private-links/controllers/event-types-private-links.controller.ts#L30	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/private-links [version=default-version]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/event-types-private-links/controllers/event-types-private-links.controller.ts#L48	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/private-links [version=default-version]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types-private-links/controllers/event-types-private-links.controller.ts#L64	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/private-links/:linkId [version=default-version]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/event-types-private-links/controllers/event-types-private-links.controller.ts#L83	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId/private-links/:linkId [version=default-version]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L67	D_EVENTS	v2-decorator	/api/v2/event-types [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L82	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L101	D_EVENTS	v2-decorator	/api/v2/event-types [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L118	D_EVENTS	v2-decorator	/api/v2/event-types/:username/:eventSlug/public [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L160	D_EVENTS	v2-decorator	/api/v2/event-types/:username/public [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L170	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/event-types/event-types_2024_04_15/controllers/event-types.controller.ts#L188	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId [version=[VERSION_2024_04_15, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/platform/event-types/event-types_2024_06_14/controllers/event-types.controller.ts#L83	D_EVENTS	v2-decorator	/api/v2/event-types [version=VERSION_2024_06_14_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/event-types/event-types_2024_06_14/controllers/event-types.controller.ts#L108	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId [version=VERSION_2024_06_14_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types/event-types_2024_06_14/controllers/event-types.controller.ts#L152	D_EVENTS	v2-decorator	/api/v2/event-types [version=VERSION_2024_06_14_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/event-types/event-types_2024_06_14/controllers/event-types.controller.ts#L181	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId [version=VERSION_2024_06_14_VALUE]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/event-types/event-types_2024_06_14/controllers/event-types.controller.ts#L209	D_EVENTS	v2-decorator	/api/v2/event-types/:eventTypeId [version=VERSION_2024_06_14_VALUE]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/platform/gcal/gcal.controller.ts#L56	D_API	v2-decorator	/api/v2/gcal/oauth/auth-url [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/gcal/gcal.controller.ts#L76	D_API	v2-decorator	/api/v2/gcal/oauth/save [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/gcal/gcal.controller.ts#L87	D_API	v2-decorator	/api/v2/gcal/check [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/me/me.controller.ts#L32	D_API	v2-decorator	/api/v2/me [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/me/me.controller.ts#L55	D_API	v2-decorator	/api/v2/me [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/provider/provider.controller.ts#L34	D_API	v2-decorator	/api/v2/provider/:clientId [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/provider/provider.controller.ts#L55	D_API	v2-decorator	/api/v2/provider/:clientId/access-token [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_04_15/controllers/schedules.controller.ts#L42	D_AVAILABILITY	v2-decorator	/api/v2/schedules [version=VERSION_2024_04_15_VALUE]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/schedules/schedules_2024_04_15/controllers/schedules.controller.ts#L56	D_AVAILABILITY	v2-decorator	/api/v2/schedules/default [version=VERSION_2024_04_15_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_04_15/controllers/schedules.controller.ts#L69	D_AVAILABILITY	v2-decorator	/api/v2/schedules/:scheduleId [version=VERSION_2024_04_15_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_04_15/controllers/schedules.controller.ts#L83	D_AVAILABILITY	v2-decorator	/api/v2/schedules [version=VERSION_2024_04_15_VALUE]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_04_15/controllers/schedules.controller.ts#L99	D_AVAILABILITY	v2-decorator	/api/v2/schedules/:scheduleId [version=VERSION_2024_04_15_VALUE]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/schedules/schedules_2024_04_15/controllers/schedules.controller.ts#L118	D_AVAILABILITY	v2-decorator	/api/v2/schedules/:scheduleId [version=VERSION_2024_04_15_VALUE]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/platform/schedules/schedules_2024_06_11/controllers/schedules.controller.ts#L54	D_AVAILABILITY	v2-decorator	/api/v2/schedules [version=[VERSION_2024_06_14, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	POST
+apps/api/v2/src/platform/schedules/schedules_2024_06_11/controllers/schedules.controller.ts#L88	D_AVAILABILITY	v2-decorator	/api/v2/schedules/default [version=[VERSION_2024_06_14, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_06_11/controllers/schedules.controller.ts#L110	D_AVAILABILITY	v2-decorator	/api/v2/schedules/:scheduleId [version=[VERSION_2024_06_14, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_06_11/controllers/schedules.controller.ts#L128	D_AVAILABILITY	v2-decorator	/api/v2/schedules [version=[VERSION_2024_06_14, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	GET
+apps/api/v2/src/platform/schedules/schedules_2024_06_11/controllers/schedules.controller.ts#L146	D_AVAILABILITY	v2-decorator	/api/v2/schedules/:scheduleId [version=[VERSION_2024_06_14, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	PATCH
+apps/api/v2/src/platform/schedules/schedules_2024_06_11/controllers/schedules.controller.ts#L169	D_AVAILABILITY	v2-decorator	/api/v2/schedules/:scheduleId [version=[VERSION_2024_06_14, VERSION_2024_06_11]]	apps/api/v2/src/worker.ts	DELETE
+apps/api/v2/src/vercel-webhook.controller.ts#L27	D_JOBS	v2-decorator	/api/v2/webhooks/vercel/deployment-promoted [version=API_VERSIONS_VALUES]	apps/api/v2/src/worker.ts	POST
+apps/docs/content/apps/daily.mdx	D_DOCS	docs-content	/apps/daily	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/google.mdx	D_DOCS	docs-content	/apps/google	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/hubspot.mdx	D_DOCS	docs-content	/apps/hubspot	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/microsoft.mdx	D_DOCS	docs-content	/apps/microsoft	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/sendgrid.mdx	D_DOCS	docs-content	/apps/sendgrid	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/stripe.mdx	D_DOCS	docs-content	/apps/stripe	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/twilio.mdx	D_DOCS	docs-content	/apps/twilio	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/zoho.mdx	D_DOCS	docs-content	/apps/zoho	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/apps/zoom.mdx	D_DOCS	docs-content	/apps/zoom	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/database-migrations.mdx	D_DOCS	docs-content	/database-migrations	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/aws.mdx	D_DOCS	docs-content	/deployments/aws	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/azure.mdx	D_DOCS	docs-content	/deployments/azure	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/elestio.mdx	D_DOCS	docs-content	/deployments/elestio	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/gcp.mdx	D_DOCS	docs-content	/deployments/gcp	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/northflank.mdx	D_DOCS	docs-content	/deployments/northflank	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/railway.mdx	D_DOCS	docs-content	/deployments/railway	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/render.mdx	D_DOCS	docs-content	/deployments/render	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/deployments/vercel.mdx	D_DOCS	docs-content	/deployments/vercel	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/docker.mdx	D_DOCS	docs-content	/docker	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/index.mdx	D_DOCS	docs-content	/	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/installation.mdx	D_DOCS	docs-content	/installation	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/troubleshooting.mdx	D_DOCS	docs-content	/troubleshooting	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/docs/content/upgrading.mdx	D_DOCS	docs-content	/upgrading	apps/docs/app/[[...mdxPath]]/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/[user]/[type]/embed/page.tsx	D_EMBEDS	app-page	/[user]/[type]/embed	apps/web/app/(booking-page-wrapper)/[user]/[type]/embed/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/[user]/[type]/page.tsx	D_BOOKING	app-page	/[user]/[type]	apps/web/app/(booking-page-wrapper)/[user]/[type]/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/[user]/embed/page.tsx	D_EMBEDS	app-page	/[user]/embed	apps/web/app/(booking-page-wrapper)/[user]/embed/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/[user]/page.tsx	D_BOOKING	app-page	/[user]	apps/web/app/(booking-page-wrapper)/[user]/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/booking-successful/[uid]/page.tsx	D_BOOKING	app-page	/booking-successful/[uid]	apps/web/app/(booking-page-wrapper)/booking-successful/[uid]/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/booking/[uid]/embed/page.tsx	D_EMBEDS	app-page	/booking/[uid]/embed	apps/web/app/(booking-page-wrapper)/booking/[uid]/embed/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/booking/[uid]/page.tsx	D_BOOKING	app-page	/booking/[uid]	apps/web/app/(booking-page-wrapper)/booking/[uid]/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/booking/dry-run-successful/page.tsx	D_BOOKING	app-page	/booking/dry-run-successful	apps/web/app/(booking-page-wrapper)/booking/dry-run-successful/page.tsx	GET
+apps/web/app/(booking-page-wrapper)/d/[link]/[slug]/page.tsx	D_BOOKING	app-page	/d/[link]/[slug]	apps/web/app/(booking-page-wrapper)/d/[link]/[slug]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/(main-nav)/availability/page.tsx	D_AVAILABILITY	app-page	/availability	apps/web/app/(use-page-wrapper)/(main-nav)/availability/page.tsx	GET
+apps/web/app/(use-page-wrapper)/(main-nav)/booking/[uid]/logs/page.tsx	D_BOOKING	app-page	/booking/[uid]/logs	apps/web/app/(use-page-wrapper)/(main-nav)/booking/[uid]/logs/page.tsx	GET
+apps/web/app/(use-page-wrapper)/(main-nav)/bookings/[status]/page.tsx	D_BOOKINGS	app-page	/bookings/[status]	apps/web/app/(use-page-wrapper)/(main-nav)/bookings/[status]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/(main-nav)/event-types/page.tsx	D_EVENTS	app-page	/event-types	apps/web/app/(use-page-wrapper)/(main-nav)/event-types/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/(homepage)/page.tsx	D_APPS	app-page	/apps	apps/web/app/(use-page-wrapper)/apps/(homepage)/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/[slug]/page.tsx	D_APPS	app-page	/apps/[slug]	apps/web/app/(use-page-wrapper)/apps/[slug]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/[slug]/setup/page.tsx	D_APPS	app-page	/apps/[slug]/setup	apps/web/app/(use-page-wrapper)/apps/[slug]/setup/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/categories/[category]/page.tsx	D_APPS	app-page	/apps/categories/[category]	apps/web/app/(use-page-wrapper)/apps/categories/[category]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/categories/page.tsx	D_APPS	app-page	/apps/categories	apps/web/app/(use-page-wrapper)/apps/categories/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/installation/[[...step]]/page.tsx	D_APPS	app-page	/apps/installation/[[...step]]	apps/web/app/(use-page-wrapper)/apps/installation/[[...step]]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/apps/installed/[category]/page.tsx	D_APPS	app-page	/apps/installed/[category]	apps/web/app/(use-page-wrapper)/apps/installed/[category]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/error/page.tsx	D_AUTH	app-page	/auth/error	apps/web/app/(use-page-wrapper)/auth/error/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/forgot-password/[id]/page.tsx	D_AUTH	app-page	/auth/forgot-password/[id]	apps/web/app/(use-page-wrapper)/auth/forgot-password/[id]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/forgot-password/page.tsx	D_AUTH	app-page	/auth/forgot-password	apps/web/app/(use-page-wrapper)/auth/forgot-password/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/login/page.tsx	D_AUTH	app-page	/auth/login	apps/web/app/(use-page-wrapper)/auth/login/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/logout/page.tsx	D_AUTH	app-page	/auth/logout	apps/web/app/(use-page-wrapper)/auth/logout/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/oauth2/authorize/page.tsx	D_AUTH	app-page	/auth/oauth2/authorize	apps/web/app/(use-page-wrapper)/auth/oauth2/authorize/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/setup/page.tsx	D_AUTH	app-page	/auth/setup	apps/web/app/(use-page-wrapper)/auth/setup/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/signin/page.tsx	D_AUTH	app-page	/auth/signin	apps/web/app/(use-page-wrapper)/auth/signin/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/verify-email-change/page.tsx	D_AUTH	app-page	/auth/verify-email-change	apps/web/app/(use-page-wrapper)/auth/verify-email-change/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/verify-email/page.tsx	D_AUTH	app-page	/auth/verify-email	apps/web/app/(use-page-wrapper)/auth/verify-email/page.tsx	GET
+apps/web/app/(use-page-wrapper)/auth/verify/page.tsx	D_AUTH	app-page	/auth/verify	apps/web/app/(use-page-wrapper)/auth/verify/page.tsx	GET
+apps/web/app/(use-page-wrapper)/availability/[schedule]/page.tsx	D_AVAILABILITY	app-page	/availability/[schedule]	apps/web/app/(use-page-wrapper)/availability/[schedule]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/availability/troubleshoot/page.tsx	D_AVAILABILITY	app-page	/availability/troubleshoot	apps/web/app/(use-page-wrapper)/availability/troubleshoot/page.tsx	GET
+apps/web/app/(use-page-wrapper)/enterprise/page.tsx	D_SHELL	app-page	/enterprise	apps/web/app/(use-page-wrapper)/enterprise/page.tsx	GET
+apps/web/app/(use-page-wrapper)/event-types/[type]/page.tsx	D_EVENTS	app-page	/event-types/[type]	apps/web/app/(use-page-wrapper)/event-types/[type]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/getting-started/[[...step]]/page.tsx	D_ONBOARDING	app-page	/getting-started/[[...step]]	apps/web/app/(use-page-wrapper)/getting-started/[[...step]]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/maintenance/page.tsx	D_SHELL	app-page	/maintenance	apps/web/app/(use-page-wrapper)/maintenance/page.tsx	GET
+apps/web/app/(use-page-wrapper)/more/page.tsx	D_SHELL	app-page	/more	apps/web/app/(use-page-wrapper)/more/page.tsx	GET
+apps/web/app/(use-page-wrapper)/onboarding/getting-started/page.tsx	D_ONBOARDING	app-page	/onboarding/getting-started	apps/web/app/(use-page-wrapper)/onboarding/getting-started/page.tsx	GET
+apps/web/app/(use-page-wrapper)/onboarding/personal/calendar/page.tsx	D_ONBOARDING	app-page	/onboarding/personal/calendar	apps/web/app/(use-page-wrapper)/onboarding/personal/calendar/page.tsx	GET
+apps/web/app/(use-page-wrapper)/onboarding/personal/profile/page.tsx	D_ONBOARDING	app-page	/onboarding/personal/profile	apps/web/app/(use-page-wrapper)/onboarding/personal/profile/page.tsx	GET
+apps/web/app/(use-page-wrapper)/onboarding/personal/settings/page.tsx	D_ONBOARDING	app-page	/onboarding/personal/settings	apps/web/app/(use-page-wrapper)/onboarding/personal/settings/page.tsx	GET
+apps/web/app/(use-page-wrapper)/payment/[uid]/page.tsx	D_PAYMENTS	app-page	/payment/[uid]	apps/web/app/(use-page-wrapper)/payment/[uid]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/refer/page.tsx	D_SHELL	app-page	/refer	apps/web/app/(use-page-wrapper)/refer/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/apps/[category]/page.tsx	D_SETTINGS	app-page	/settings/admin/apps/[category]	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/apps/[category]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/flags/page.tsx	D_SETTINGS	app-page	/settings/admin/flags	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/flags/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/lockedSMS/page.tsx	D_SETTINGS	app-page	/settings/admin/lockedSMS	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/lockedSMS/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/oauth/page.tsx	D_AUTH	app-page	/settings/admin/oauth	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/oauth/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/page.tsx	D_SETTINGS	app-page	/settings/admin	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/playground/date-range-filter/page.tsx	D_SETTINGS	app-page	/settings/admin/playground/date-range-filter	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/playground/date-range-filter/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/playground/page.tsx	D_SETTINGS	app-page	/settings/admin/playground	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/playground/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/users/[id]/edit/page.tsx	D_SETTINGS	app-page	/settings/admin/users/[id]/edit	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/users/[id]/edit/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/users/add/page.tsx	D_SETTINGS	app-page	/settings/admin/users/add	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/users/add/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/users/page.tsx	D_SETTINGS	app-page	/settings/admin/users	apps/web/app/(use-page-wrapper)/settings/(admin-layout)/admin/users/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/api-keys/page.tsx	D_SETTINGS	app-page	/settings/developer/api-keys	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/api-keys/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/oauth/page.tsx	D_AUTH	app-page	/settings/developer/oauth	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/oauth/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/(with-loader)/page.tsx	D_SETTINGS	app-page	/settings/developer/webhooks	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/(with-loader)/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/[id]/page.tsx	D_SETTINGS	app-page	/settings/developer/webhooks/[id]	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/[id]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/new/page.tsx	D_SETTINGS	app-page	/settings/developer/webhooks/new	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/new/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/appearance/page.tsx	D_SETTINGS	app-page	/settings/my-account/appearance	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/appearance/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/calendars/page.tsx	D_SETTINGS	app-page	/settings/my-account/calendars	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/calendars/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/conferencing/page.tsx	D_SETTINGS	app-page	/settings/my-account/conferencing	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/conferencing/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/general/page.tsx	D_SETTINGS	app-page	/settings/my-account/general	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/general/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/out-of-office/page.tsx	D_SETTINGS	app-page	/settings/my-account/out-of-office	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/out-of-office/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/profile/page.tsx	D_SETTINGS	app-page	/settings/my-account/profile	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/profile/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/push-notifications/page.tsx	D_SETTINGS	app-page	/settings/my-account/push-notifications	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/my-account/push-notifications/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/security/password/page.tsx	D_AUTH	app-page	/settings/security/password	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/security/password/page.tsx	GET
+apps/web/app/(use-page-wrapper)/settings/(settings-layout)/security/two-factor-auth/page.tsx	D_AUTH	app-page	/settings/security/two-factor-auth	apps/web/app/(use-page-wrapper)/settings/(settings-layout)/security/two-factor-auth/page.tsx	GET
+apps/web/app/(use-page-wrapper)/signup/page.tsx	D_ONBOARDING	app-page	/signup	apps/web/app/(use-page-wrapper)/signup/page.tsx	GET
+apps/web/app/(use-page-wrapper)/upgrade/page.tsx	D_SHELL	app-page	/upgrade	apps/web/app/(use-page-wrapper)/upgrade/page.tsx	GET
+apps/web/app/(use-page-wrapper)/video/[uid]/page.tsx	D_APPS	app-page	/video/[uid]	apps/web/app/(use-page-wrapper)/video/[uid]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/video/meeting-ended/[uid]/page.tsx	D_APPS	app-page	/video/meeting-ended/[uid]	apps/web/app/(use-page-wrapper)/video/meeting-ended/[uid]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/video/meeting-not-started/[uid]/page.tsx	D_APPS	app-page	/video/meeting-not-started/[uid]	apps/web/app/(use-page-wrapper)/video/meeting-not-started/[uid]/page.tsx	GET
+apps/web/app/(use-page-wrapper)/video/no-meeting-found/page.tsx	D_APPS	app-page	/video/no-meeting-found	apps/web/app/(use-page-wrapper)/video/no-meeting-found/page.tsx	GET
+apps/web/app/api/auth/forgot-password/route.ts	D_AUTH	app-api	/api/auth/forgot-password	apps/web/app/api/auth/forgot-password/route.ts	POST
+apps/web/app/api/auth/oauth/me/route.ts	D_AUTH	app-api	/api/auth/oauth/me	apps/web/app/api/auth/oauth/me/route.ts	GET,POST
+apps/web/app/api/auth/oauth/refreshToken/route.ts	D_AUTH	app-api	/api/auth/oauth/refreshToken	apps/web/app/api/auth/oauth/refreshToken/route.ts	POST
+apps/web/app/api/auth/oauth/token/route.ts	D_AUTH	app-api	/api/auth/oauth/token	apps/web/app/api/auth/oauth/token/route.ts	POST
+apps/web/app/api/auth/reset-password/route.ts	D_AUTH	app-api	/api/auth/reset-password	apps/web/app/api/auth/reset-password/route.ts	POST
+apps/web/app/api/auth/setup/route.ts	D_AUTH	app-api	/api/auth/setup	apps/web/app/api/auth/setup/route.ts	POST
+apps/web/app/api/auth/signup/route.ts	D_AUTH	app-api	/api/auth/signup	apps/web/app/api/auth/signup/route.ts	POST
+apps/web/app/api/auth/two-factor/totp/disable/route.ts	D_AUTH	app-api	/api/auth/two-factor/totp/disable	apps/web/app/api/auth/two-factor/totp/disable/route.ts	POST
+apps/web/app/api/auth/two-factor/totp/enable/route.ts	D_AUTH	app-api	/api/auth/two-factor/totp/enable	apps/web/app/api/auth/two-factor/totp/enable/route.ts	POST
+apps/web/app/api/auth/two-factor/totp/setup/route.ts	D_AUTH	app-api	/api/auth/two-factor/totp/setup	apps/web/app/api/auth/two-factor/totp/setup/route.ts	POST
+apps/web/app/api/availability/calendar/route.ts	D_AVAILABILITY	app-api	/api/availability/calendar	apps/web/app/api/availability/calendar/route.ts	DELETE,GET,POST
+apps/web/app/api/avatar/[uuid]/route.ts	D_SHELL	app-api	/api/avatar/[uuid]	apps/web/app/api/avatar/[uuid]/route.ts	GET
+apps/web/app/api/cancel/route.ts	D_SHELL	app-api	/api/cancel	apps/web/app/api/cancel/route.ts	DELETE,POST
+apps/web/app/api/cron/bookingReminder/route.ts	D_JOBS	app-api	/api/cron/bookingReminder	apps/web/app/api/cron/bookingReminder/route.ts	POST
+apps/web/app/api/cron/calendar-subscriptions-cleanup/route.ts	D_JOBS	app-api	/api/cron/calendar-subscriptions-cleanup	apps/web/app/api/cron/calendar-subscriptions-cleanup/route.ts	GET
+apps/web/app/api/cron/calendar-subscriptions/route.ts	D_JOBS	app-api	/api/cron/calendar-subscriptions	apps/web/app/api/cron/calendar-subscriptions/route.ts	GET
+apps/web/app/api/cron/changeTimeZone/route.ts	D_JOBS	app-api	/api/cron/changeTimeZone	apps/web/app/api/cron/changeTimeZone/route.ts	POST
+apps/web/app/api/cron/selected-calendars/route.ts	D_JOBS	app-api	/api/cron/selected-calendars	apps/web/app/api/cron/selected-calendars/route.ts	GET
+apps/web/app/api/cron/syncAppMeta/route.ts	D_JOBS	app-api	/api/cron/syncAppMeta	apps/web/app/api/cron/syncAppMeta/route.ts	POST
+apps/web/app/api/cron/webhookTriggers/route.ts	D_JOBS	app-api	/api/cron/webhookTriggers	apps/web/app/api/cron/webhookTriggers/route.ts	POST
+apps/web/app/api/csrf/route.ts	D_SHELL	app-api	/api/csrf	apps/web/app/api/csrf/route.ts	GET
+apps/web/app/api/email/route.ts	D_SHELL	app-api	/api/email	apps/web/app/api/email/route.ts	GET
+apps/web/app/api/geolocation/route.ts	D_SHELL	app-api	/api/geolocation	apps/web/app/api/geolocation/route.ts	GET
+apps/web/app/api/ip/route.ts	D_SHELL	app-api	/api/ip	apps/web/app/api/ip/route.ts	GET
+apps/web/app/api/link/route.ts	D_SHELL	app-api	/api/link	apps/web/app/api/link/route.ts	GET
+apps/web/app/api/logo/route.ts	D_SHELL	app-api	/api/logo	apps/web/app/api/logo/route.ts	GET
+apps/web/app/api/me/route.ts	D_SHELL	app-api	/api/me	apps/web/app/api/me/route.ts	GET
+apps/web/app/api/recorded-daily-video/route.ts	D_SHELL	app-api	/api/recorded-daily-video	apps/web/app/api/recorded-daily-video/route.ts	POST
+apps/web/app/api/social/og/image/route.tsx	D_SHELL	app-api	/api/social/og/image	apps/web/app/api/social/og/image/route.tsx	GET
+apps/web/app/api/sync/helpscout/route.ts	D_SHELL	app-api	/api/sync/helpscout	apps/web/app/api/sync/helpscout/route.ts	POST
+apps/web/app/api/tasks/cleanup/route.ts	D_JOBS	app-api	/api/tasks/cleanup	apps/web/app/api/tasks/cleanup/route.ts	GET
+apps/web/app/api/tasks/cron/route.ts	D_JOBS	app-api	/api/tasks/cron	apps/web/app/api/tasks/cron/route.ts	GET
+apps/web/app/api/user/referrals-token/route.ts	D_SHELL	app-api	/api/user/referrals-token	apps/web/app/api/user/referrals-token/route.ts	GET
+apps/web/app/api/username/route.ts	D_SHELL	app-api	/api/username	apps/web/app/api/username/route.ts	POST
+apps/web/app/api/verify-booking-token/route.ts	D_SHELL	app-api	/api/verify-booking-token	apps/web/app/api/verify-booking-token/route.ts	GET,POST
+apps/web/app/api/version/route.ts	D_SHELL	app-api	/api/version	apps/web/app/api/version/route.ts	GET
+apps/web/app/api/video/guest-session/route.ts	D_APPS	app-api	/api/video/guest-session	apps/web/app/api/video/guest-session/route.ts	POST
+apps/web/app/api/video/recording/route.ts	D_APPS	app-api	/api/video/recording	apps/web/app/api/video/recording/route.ts	GET
+apps/web/app/api/webhook/app-credential/route.ts	D_JOBS	app-api	/api/webhook/app-credential	apps/web/app/api/webhook/app-credential/route.ts	POST
+apps/web/app/api/webhooks/calendar-subscription/[provider]/route.ts	D_JOBS	app-api	/api/webhooks/calendar-subscription/[provider]	apps/web/app/api/webhooks/calendar-subscription/[provider]/route.ts	POST
+apps/web/app/e2e/session-warmup/page.tsx	D_SHELL	test-helper	/e2e/session-warmup	not-shipped-test-helper	GET
+apps/web/app/favicon.ico	D_SHELL	app-metadata	/favicon.ico	apps/web/app/favicon.ico	framework-dispatch
+apps/web/app/icons/page.tsx	D_SHELL	app-page	/icons	apps/web/app/icons/page.tsx	GET
+apps/web/app/page.tsx	D_SHELL	app-page	/	apps/web/app/page.tsx	GET
+apps/web/app/reschedule/[uid]/embed/page.tsx	D_EMBEDS	app-page	/reschedule/[uid]/embed	apps/web/app/reschedule/[uid]/embed/page.tsx	GET
+apps/web/app/reschedule/[uid]/page.tsx	D_BOOKING	app-page	/reschedule/[uid]	apps/web/app/reschedule/[uid]/page.tsx	GET
+apps/web/pages/api/auth/[...nextauth].ts	D_AUTH	pages-api	/api/auth/[...nextauth]	apps/web/pages/api/auth/[...nextauth].ts	handler-dispatch
+apps/web/pages/api/auth/verify-email.ts	D_AUTH	pages-api	/api/auth/verify-email	apps/web/pages/api/auth/verify-email.ts	handler-dispatch
+apps/web/pages/api/book/event.ts	D_BOOKING	pages-api	/api/book/event	apps/web/pages/api/book/event.ts	handler-dispatch
+apps/web/pages/api/book/recurring-event.test.ts	D_BOOKING	pages-api	/api/book/recurring-event.test	apps/web/pages/api/book/recurring-event.test.ts	handler-dispatch
+apps/web/pages/api/book/recurring-event.ts	D_BOOKING	pages-api	/api/book/recurring-event	apps/web/pages/api/book/recurring-event.ts	handler-dispatch
+apps/web/pages/api/integrations/[...args].ts	D_SHELL	pages-api	/api/integrations/[...args]	apps/web/pages/api/integrations/[...args].ts	handler-dispatch
+apps/web/pages/api/integrations/alby/webhook.ts	D_PAYMENTS	pages-api	/api/integrations/alby/webhook	apps/web/pages/api/integrations/alby/webhook.ts	handler-dispatch
+apps/web/pages/api/integrations/btcpayserver/webhook.ts	D_PAYMENTS	pages-api	/api/integrations/btcpayserver/webhook	apps/web/pages/api/integrations/btcpayserver/webhook.ts	handler-dispatch
+apps/web/pages/api/integrations/paypal/webhook.ts	D_PAYMENTS	pages-api	/api/integrations/paypal/webhook	apps/web/pages/api/integrations/paypal/webhook.ts	handler-dispatch
+apps/web/pages/api/integrations/stripepayment/webhook.ts	D_PAYMENTS	pages-api	/api/integrations/stripepayment/webhook	apps/web/pages/api/integrations/stripepayment/webhook.ts	handler-dispatch
+apps/web/pages/api/stripe/webhook.ts	D_PAYMENTS	pages-api	/api/stripe/webhook	apps/web/pages/api/stripe/webhook.ts	handler-dispatch
+apps/web/pages/api/trpc/admin/[trpc].ts	D_SETTINGS	pages-api	/api/trpc/admin/[trpc]	apps/web/pages/api/trpc/admin/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/apiKeys/[trpc].ts	D_API	pages-api	/api/trpc/apiKeys/[trpc]	apps/web/pages/api/trpc/apiKeys/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/apps/[trpc].ts	D_APPS	pages-api	/api/trpc/apps/[trpc]	apps/web/pages/api/trpc/apps/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/appsRouter/[trpc].ts	D_API	pages-api	/api/trpc/appsRouter/[trpc]	apps/web/pages/api/trpc/appsRouter/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/auth/[trpc].ts	D_AUTH	pages-api	/api/trpc/auth/[trpc]	apps/web/pages/api/trpc/auth/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/availability/[trpc].ts	D_AVAILABILITY	pages-api	/api/trpc/availability/[trpc]	apps/web/pages/api/trpc/availability/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/bookings/[trpc].ts	D_BOOKINGS	pages-api	/api/trpc/bookings/[trpc]	apps/web/pages/api/trpc/bookings/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/calVideo/[trpc].ts	D_API	pages-api	/api/trpc/calVideo/[trpc]	apps/web/pages/api/trpc/calVideo/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/calendars/[trpc].ts	D_APPS	pages-api	/api/trpc/calendars/[trpc]	apps/web/pages/api/trpc/calendars/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/credentials/[trpc].ts	D_APPS	pages-api	/api/trpc/credentials/[trpc]	apps/web/pages/api/trpc/credentials/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/deploymentSetup/[trpc].ts	D_API	pages-api	/api/trpc/deploymentSetup/[trpc]	apps/web/pages/api/trpc/deploymentSetup/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/eventTypes/[trpc].ts	D_EVENTS	pages-api	/api/trpc/eventTypes/[trpc]	apps/web/pages/api/trpc/eventTypes/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/eventTypesHeavy/[trpc].ts	D_EVENTS	pages-api	/api/trpc/eventTypesHeavy/[trpc]	apps/web/pages/api/trpc/eventTypesHeavy/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/features/[trpc].ts	D_API	pages-api	/api/trpc/features/[trpc]	apps/web/pages/api/trpc/features/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/feedback/[trpc].ts	D_API	pages-api	/api/trpc/feedback/[trpc]	apps/web/pages/api/trpc/feedback/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/googleWorkspace/[trpc].ts	D_API	pages-api	/api/trpc/googleWorkspace/[trpc]	apps/web/pages/api/trpc/googleWorkspace/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/holidays/[trpc].ts	D_SETTINGS	pages-api	/api/trpc/holidays/[trpc]	apps/web/pages/api/trpc/holidays/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/i18n/[trpc].ts	D_EMBEDS	pages-api	/api/trpc/i18n/[trpc]	apps/web/pages/api/trpc/i18n/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/loggedInViewerRouter/[trpc].ts	D_API	pages-api	/api/trpc/loggedInViewerRouter/[trpc]	apps/web/pages/api/trpc/loggedInViewerRouter/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/me/[trpc].ts	D_API	pages-api	/api/trpc/me/[trpc]	apps/web/pages/api/trpc/me/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/oAuth/[trpc].ts	D_AUTH	pages-api	/api/trpc/oAuth/[trpc]	apps/web/pages/api/trpc/oAuth/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/ooo/[trpc].ts	D_API	pages-api	/api/trpc/ooo/[trpc]	apps/web/pages/api/trpc/ooo/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/public/[trpc].ts	D_API	pages-api	/api/trpc/public/[trpc]	apps/web/pages/api/trpc/public/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/slots/[trpc].ts	D_AVAILABILITY	pages-api	/api/trpc/slots/[trpc]	apps/web/pages/api/trpc/slots/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/timezones/[trpc].ts	D_API	pages-api	/api/trpc/timezones/[trpc]	apps/web/pages/api/trpc/timezones/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/travelSchedules/[trpc].ts	D_API	pages-api	/api/trpc/travelSchedules/[trpc]	apps/web/pages/api/trpc/travelSchedules/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/users/[trpc].ts	D_SETTINGS	pages-api	/api/trpc/users/[trpc]	apps/web/pages/api/trpc/users/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/viewer/[trpc].ts	D_API	pages-api	/api/trpc/viewer/[trpc]	apps/web/pages/api/trpc/viewer/[trpc].ts	handler-dispatch
+apps/web/pages/api/trpc/webhook/[trpc].ts	D_JOBS	pages-api	/api/trpc/webhook/[trpc]	apps/web/pages/api/trpc/webhook/[trpc].ts	handler-dispatch
+apps/web/pages/router/embed.tsx	D_SHELL	pages-page	/router/embed	apps/web/pages/router/embed.tsx	GET
+apps/web/pages/router/index.tsx	D_SHELL	pages-page	/router	apps/web/pages/router/index.tsx	GET
