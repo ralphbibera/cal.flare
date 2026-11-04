@@ -17,8 +17,8 @@ import type {
   BookingReference,
   Membership,
   Prisma,
-  WebhookTriggerEvents,
 } from "@calcom/prisma/client";
+import { WebhookTriggerEvents } from "@calcom/prisma/enums";
 import type {
   BookingStatus,
   PaymentOption,
@@ -42,7 +42,7 @@ import type {
 } from "@calcom/types/Calendar";
 import type { CredentialPayload } from "@calcom/types/Credential";
 import type { VideoApiAdapter } from "@calcom/types/VideoApiAdapter";
-import type { z } from "zod";
+import { z } from "zod";
 import type { getMockRequestDataForBooking } from "./getMockRequestDataForBooking";
 import { getMockPaymentService } from "./MockPaymentService";
 
@@ -93,6 +93,58 @@ vi.mock("@calcom/lib/crypto", async (importOriginal) => {
     ...actual,
     symmetricEncrypt: vi.fn((serviceAccountKey) => serviceAccountKey),
     symmetricDecrypt: vi.fn((serviceAccountKey) => serviceAccountKey),
+  };
+});
+
+vi.mock("@calcom/features/webhooks/lib/queryWebhookRows", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@calcom/features/webhooks/lib/queryWebhookRows")>();
+  return {
+    ...actual,
+    queryWebhookSubscribers: async (
+      ...[client, predicate, order]: Parameters<typeof actual.queryWebhookSubscribers>
+    ) => {
+      const scope = z
+        .tuple([z.string(), z.number(), z.number(), z.number(), z.string(), z.string()])
+        .safeParse(predicate.values);
+      if (
+        order ||
+        !scope.success ||
+        !predicate.sql.includes('AND (platform = true OR "userId" = ? OR "eventTypeId" = ?')
+      ) {
+        return actual.queryWebhookSubscribers(client, predicate, order);
+      }
+      const [eventsJson, userId, eventTypeId, parentId, teamsJson, oAuthClientId] = scope.data;
+      const eventsSchema = z.array(z.nativeEnum(WebhookTriggerEvents));
+      const events = eventsSchema.parse(JSON.parse(eventsJson));
+      const teamIds = z.array(z.number()).parse(JSON.parse(teamsJson));
+      const webhooks = await prismock.webhook.findMany({
+        where: {
+          active: true,
+          OR: [
+            { platform: true },
+            { userId },
+            { eventTypeId },
+            { eventTypeId: parentId },
+            { teamId: { in: teamIds } },
+            { platformOAuthClientId: oAuthClientId },
+          ],
+        },
+        select: {
+          id: true,
+          subscriberUrl: true,
+          payloadTemplate: true,
+          appId: true,
+          secret: true,
+          time: true,
+          timeUnit: true,
+          eventTriggers: true,
+          version: true,
+        },
+      });
+      return webhooks
+        .map((webhook) => ({ ...webhook, eventTriggers: eventsSchema.parse(webhook.eventTriggers ?? []) }))
+        .filter((webhook) => events.every((event) => webhook.eventTriggers.includes(event)));
+    },
   };
 });
 
