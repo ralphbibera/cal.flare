@@ -15,6 +15,7 @@ export { slugifyLenient } from "@calcom/lib/slugify-lenient";
 export { getBookingForReschedule };
 
 export { getWebhookProducer } from "@calcom/features/di/webhooks/containers/webhook";
+export { parseWebhookEventTriggers } from "@calcom/features/webhooks/lib/eventTriggers";
 export { getUsernameList } from "@calcom/features/eventtypes/lib/defaultEvents";
 export {
   DEFAULT_WEBHOOK_VERSION,
