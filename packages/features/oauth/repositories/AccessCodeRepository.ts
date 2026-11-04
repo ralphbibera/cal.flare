@@ -1,4 +1,5 @@
 import dayjs from "@calcom/dayjs";
+import { parseAccessCodeScopes } from "@calcom/features/oauth/utils/accessScopes";
 import type { PrismaClient } from "@calcom/prisma";
 import type { AccessScope } from "@calcom/prisma/enums";
 
@@ -30,7 +31,7 @@ export class AccessCodeRepository {
   }
 
   async findValidCode(code: string, clientId: string) {
-    return this.prisma.accessCode.findFirst({
+    const accessCode = await this.prisma.accessCode.findFirst({
       where: {
         code,
         clientId,
@@ -46,6 +47,9 @@ export class AccessCodeRepository {
         codeChallengeMethod: true,
       },
     });
+    if (!accessCode) return null;
+
+    return { ...accessCode, scopes: parseAccessCodeScopes(accessCode.scopes) };
   }
 
   async deleteExpiredAndUsedCodes(code: string, clientId: string) {
