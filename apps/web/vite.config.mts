@@ -139,6 +139,28 @@ export const { i18n, fallbackLng, reloadOnPrerender, localePath } = config;`;
   };
 }
 
+function i18nextBackendRequire(): Plugin {
+  return {
+    name: "calflare:i18next-backend-require",
+    enforce: "pre",
+    async resolveId(source, importer) {
+      if (
+        source !== "i18next-fs-backend" ||
+        !importer
+          ?.split("?")[0]
+          .replaceAll("\\", "/")
+          .endsWith("/next-i18next/dist/commonjs/createClient/node.js")
+      )
+        return;
+      const resolved = await this.resolve("i18next-fs-backend/cjs", importer, { skipSelf: true });
+      if (!resolved || !resolved.id.replaceAll("\\", "/").endsWith("/i18next-fs-backend/cjs/index.js")) {
+        throw new Error("Unable to resolve the original i18next filesystem backend CommonJS entry");
+      }
+      return resolved;
+    },
+  };
+}
+
 function sentryRuntime(): Plugin {
   const configOwner = fileURLToPath(new URL("./instrumentation.ts", import.meta.url));
   return {
@@ -162,6 +184,7 @@ export default defineConfig({
   plugins: [
     bundleAnalysis(),
     i18nConfigInterop(),
+    i18nextBackendRequire(),
     sentryRuntime(),
     apiV2Transport(),
     patchCssModules({ exportMode: "default" }),
