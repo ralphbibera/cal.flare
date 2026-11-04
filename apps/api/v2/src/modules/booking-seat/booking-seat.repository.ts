@@ -1,3 +1,4 @@
+import { parseBookingScheduledJobs } from "@calcom/platform-libraries";
 import { Injectable } from "@nestjs/common";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "@/modules/prisma/prisma-write.service";
@@ -21,7 +22,7 @@ export class BookingSeatRepository {
   }
 
   async getByReferenceUidIncludeBookingWithAttendeesAndUserAndEvent(referenceUid: string) {
-    return this.dbRead.prisma.bookingSeat.findUnique({
+    const seat = await this.dbRead.prisma.bookingSeat.findUnique({
       where: {
         referenceUid,
       },
@@ -115,5 +116,7 @@ export class BookingSeatRepository {
         },
       },
     });
+    if (!seat) return null;
+    return { ...seat, booking: parseBookingScheduledJobs(seat.booking) };
   }
 }
