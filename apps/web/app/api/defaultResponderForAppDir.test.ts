@@ -1,4 +1,5 @@
 import type { Params } from "app/_types";
+import { ApiError } from "next/dist/server/api-utils";
 import { NextResponse, type NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,16 @@ vi.mock("next/server", () => {
 });
 
 describe("defaultResponderForAppDir", () => {
+  it("preserves API error status and request details", async () => {
+    const f = vi.fn().mockRejectedValue(new ApiError(413, "Payload too large"));
+    const req = { method: "POST", url: "/api/test" } as NextRequest;
+
+    const response = await defaultResponderForAppDir(f)(req, { params: Promise.resolve<Params>({}) });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ message: "Payload too large", url: "/api/test", method: "POST" });
+  });
+
   it("preserves the handler response when production endpoint tracing is enabled", async () => {
     vi.stubEnv("NODE_ENV", "production");
     try {

@@ -9,7 +9,7 @@ expect.extend(matchers);
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
+  value: vi.fn((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -49,7 +49,8 @@ vi.mock("@calcom/app-store/locations", () => ({
   getSuccessPageLocationMessage: vi.fn(),
 }));
 
-vi.mock("@calcom/app-store/utils", () => ({
+vi.mock("@calcom/app-store/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@calcom/app-store/utils")>()),
   getEventTypeAppData: vi.fn(),
 }));
 
@@ -67,6 +68,8 @@ vi.mock("@calcom/embed-core/embed-iframe", () => {
     useIsEmbed: vi.fn(),
     useEmbedNonStylesConfig: vi.fn(),
     useEmbedStyles: vi.fn(),
+    useEmbedUiConfig: vi.fn(() => ({})),
+    useSlotsViewOnSmallScreen: vi.fn(() => false),
   };
 });
 
@@ -78,16 +81,13 @@ vi.mock("@calcom/lib/bookings/SystemField", () => {
   return {};
 });
 
-vi.mock("@calcom/lib/constants", () => {
+vi.mock("@calcom/lib/constants", async (importOriginal) => {
   return {
+    ...(await importOriginal<typeof import("@calcom/lib/constants")>()),
     DEFAULT_LIGHT_BRAND_COLOR: "DEFAULT_LIGHT_BRAND_COLOR",
     DEFAULT_DARK_BRAND_COLOR: "DEFAULT_DARK_BRAND_COLOR",
     BOOKER_NUMBER_OF_DAYS_TO_LOAD: 1,
   };
-});
-
-vi.mock("@calcom/lib/dayjs", () => {
-  return {};
 });
 
 vi.mock("@calcom/lib/getBrandColours", () => {
@@ -98,7 +98,7 @@ vi.mock("@calcom/lib/getBrandColours", () => {
 
 vi.mock("@calcom/lib/hooks/useCompatSearchParams", () => {
   return {
-    useCompatSearchParams: vi.fn(),
+    useCompatSearchParams: vi.fn(() => new URLSearchParams()),
   };
 });
 
@@ -133,10 +133,8 @@ vi.mock("@calcom/lib/recurringStrings", () => {
   return {};
 });
 
-vi.mock("@calcom/prisma/zod-utils", () => ({
-  BookerLayouts: {
-    MONTH_VIEW: "month",
-  },
+vi.mock("@calcom/prisma/zod-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@calcom/prisma/zod-utils")>()),
   EventTypeMetaDataSchema: {
     parse: vi.fn(),
   },

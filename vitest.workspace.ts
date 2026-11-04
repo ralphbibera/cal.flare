@@ -1,4 +1,16 @@
-import { defineWorkspace } from "vitest/config";
+import path from "node:path";
+import process from "node:process";
+import { mergeConfig } from "vite";
+import type { TestProjectInlineConfiguration } from "vitest/config";
+
+const baseExclude = [
+  "**/node_modules/**",
+  "**/dist/**",
+  "apps/api/v2/**/*.spec.ts",
+  "__checks__/**/*.spec.ts",
+];
+
+const nonJsxTests = "**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}";
 
 // Vitest 4.0 no longer allows custom CLI flags, so we use environment variables instead
 // eslint-disable-next-line turbo/no-undeclared-env-vars
@@ -16,22 +28,23 @@ if (timeZoneDependentTestsOnly && !envTZ) {
 // Use pool: "forks" to prevent "Closing rpc while fetch was pending" errors.
 const pool = "forks" as const;
 
-const workspaces = packagedEmbedTestsOnly
-  ? [
-      {
-        test: {
-          name: "PackagedEmbedTests",
-          include: ["packages/embeds/**/packaged/**/*.{test,spec}.{ts,js}"],
-          environment: "jsdom",
-          pool,
-        },
-      },
-    ]
+const packagedEmbedProject = {
+  test: {
+    name: "PackagedEmbedTests",
+    include: ["packages/embeds/**/packaged/**/*.{test,spec}.{ts,js}"],
+    environment: "jsdom",
+    pool,
+  },
+} satisfies TestProjectInlineConfiguration;
+
+const workspaces: TestProjectInlineConfiguration[] = packagedEmbedTestsOnly
+  ? [packagedEmbedProject]
   : integrationTestsOnly
     ? [
         {
           test: {
-            name: `IntegrationTests`,
+            name: "IntegrationTests",
+            environment: "node",
             include: ["packages/**/*.integration-test.ts", "apps/**/*.integration-test.ts"],
             exclude: ["**/node_modules/**/*", "packages/embeds/**/*"],
             setupFiles: ["packages/testing/src/setupVitest.ts"],
@@ -45,6 +58,7 @@ const workspaces = packagedEmbedTestsOnly
           {
             test: {
               name: `TimezoneDependentTests:${envTZ}`,
+              environment: "node",
               include: ["packages/**/*.timezone.test.ts", "apps/**/*.timezone.test.ts"],
               // TODO: Ignore the api until tests are fixed
               exclude: ["**/node_modules/**/*", "packages/embeds/**/*"],
@@ -56,14 +70,20 @@ const workspaces = packagedEmbedTestsOnly
       : [
           {
             test: {
-              include: ["packages/**/*.{test,spec}.{ts,js}", "apps/**/*.{test,spec}.{ts,js}"],
+              include: [nonJsxTests],
+              environment: "node",
               exclude: [
                 "**/node_modules/**/*",
                 "**/.next/**/*",
                 "packages/embeds/**/*",
                 "packages/lib/hooks/**/*",
                 "packages/platform/**/*",
-                "apps/api/v2/**/*",
+                "apps/web/modules/bookings/lib/bookingSheetKeyboardHandler.test.ts",
+                "packages/features/auth/signup/lib/fetchSignup.test.ts",
+                "packages/app-store/closecom/**/*.{test,spec}.{ts,js}",
+                "packages/app-store/*.{test,spec}.[jt]s?(x)",
+                "packages/ui/components/**/*.{test,spec}.[jt]s?(x)",
+                "packages/app-store/_components/**/*.{test,spec}.[jt]s?(x)",
               ],
               name: "@calcom/lib",
               setupFiles: ["packages/testing/src/setupVitest.ts"],
@@ -83,7 +103,10 @@ const workspaces = packagedEmbedTestsOnly
             test: {
               globals: true,
               name: "@calcom/features",
-              include: ["packages/features/**/*.{test,spec}.tsx"],
+              include: [
+                "packages/features/**/*.{test,spec}.tsx",
+                "packages/features/auth/signup/lib/fetchSignup.test.ts",
+              ],
               exclude: ["packages/features/form-builder/**/*", "packages/features/bookings/**/*"],
               environment: "jsdom",
               setupFiles: ["setupVitest.ts", "packages/ui/components/test-setup.tsx"],
@@ -174,7 +197,7 @@ const workspaces = packagedEmbedTestsOnly
           {
             test: {
               name: "@calcom/packages/lib/hooks",
-              include: ["packages/lib/hooks/**/*.{test,spec}.{ts,js}"],
+              include: ["packages/lib/hooks/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}"],
               environment: "jsdom",
               setupFiles: [],
               pool,
@@ -185,7 +208,10 @@ const workspaces = packagedEmbedTestsOnly
               globals: true,
               environment: "jsdom",
               name: "@calcom/web/modules/views",
-              include: ["apps/web/modules/**/*.{test,spec}.tsx"],
+              include: [
+                "apps/web/modules/**/*.{test,spec}.tsx",
+                "apps/web/modules/bookings/lib/bookingSheetKeyboardHandler.test.ts",
+              ],
               setupFiles: ["apps/web/modules/test-setup.ts"],
               pool,
             },
@@ -201,6 +227,49 @@ const workspaces = packagedEmbedTestsOnly
               pool,
             },
           },
+          packagedEmbedProject,
+          {
+            test: {
+              name: "@calcom/unclaimed",
+              include: [
+                "**/*.{test,spec}.{jsx,tsx}",
+                "packages/platform/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}",
+              ],
+              exclude: [
+                "packages/features/**/*.{test,spec}.tsx",
+                "packages/ui/components/**/*.{test,spec}.[jt]s?(x)",
+                "apps/web/components/**/*.{test,spec}.[jt]sx",
+                "apps/web/modules/**/*.{test,spec}.tsx",
+                "packages/app-store/*.{test,spec}.[jt]s?(x)",
+                "packages/app-store/_components/**/*.{test,spec}.[jt]s?(x)",
+              ],
+              environment: "jsdom",
+              setupFiles: ["packages/testing/src/setupVitest.ts"],
+              pool,
+            },
+          },
         ];
 
-export default defineWorkspace(workspaces);
+export default workspaces.map(
+  (project): TestProjectInlineConfiguration => ({
+    ...project,
+    extends: true,
+    resolve: mergeConfig(
+      {
+        alias: {
+          ...(project.test?.name === "PackagedEmbedTests"
+            ? {}
+            : {
+                "@calcom/embed-react": path.resolve("packages/embeds/embed-react/src/index.ts"),
+                "@calcom/embed-snippet": path.resolve("packages/embeds/embed-snippet/src/index.ts"),
+              }),
+        },
+      },
+      project.resolve ?? {}
+    ),
+    test: {
+      ...project.test,
+      exclude: [...baseExclude, ...(project.test?.exclude ?? [])],
+    },
+  })
+);

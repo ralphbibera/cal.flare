@@ -17,6 +17,17 @@ jobs:
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/yarn-install
       - run: bun run prisma generate
-      - run: bun run test --no-isolate
+      - name: Build embed snippet package
+        working-directory: packages/embeds/embed-snippet
+        run: |
+          bun run vite build
+          bun run tsc --emitDeclarationOnly --declarationDir dist
+      - name: Build React embed package
+        working-directory: packages/embeds/embed-react
+        run: |
+          bun run vite build
+          cp dist/Cal.es.js dist/Cal.es.mjs
+          bun run tsc --emitDeclarationOnly --declarationDir dist
+      - run: bun run test
       # We could add different timezones here that we need to run our tests in
-      - run: TZ=America/Los_Angeles VITEST_MODE=timezone bun run test --no-isolate
+      - run: TZ=America/Los_Angeles VITEST_MODE=timezone bun run vitest run
