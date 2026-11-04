@@ -1619,6 +1619,7 @@
         "@calcom/features": "workspace:*",
         "@calcom/i18n": "workspace:*",
         "@calcom/lib": "workspace:*",
+        "kysely": "0.28.14",
       },
       "devDependencies": {
         "@types/node": "20.17.23",
