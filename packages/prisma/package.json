@@ -19,6 +19,7 @@
     "db-up": "docker compose up -d || docker-compose up -d",
     "dx": "bun run db-setup",
     "generate-schemas": "prisma generate",
+    "generate-d1-domain": "bun run generate-d1-domain.mts",
     "post-install": "bun run generate-schemas",
     "seed-app-store": "ts-node --transpile-only ../../scripts/seed-app-store.ts",
     "delete-app": "ts-node --transpile-only ./delete-app.ts",
