@@ -107,6 +107,38 @@ function apiV2Transport(): Plugin {
   };
 }
 
+function i18nConfigInterop(): Plugin {
+  const configPath = fileURLToPath(new URL("../../packages/i18n/next-i18next.config.js", import.meta.url));
+  const facadeId = "\0calflare:i18n-config";
+  const localePathExpression = 'path.resolve(__dirname, "./locales")';
+  return {
+    name: "calflare:i18n-config-interop",
+    enforce: "pre",
+    resolveId(source) {
+      if (source === "@calcom/i18n/next-i18next.config") return facadeId;
+    },
+    transform(code, id) {
+      if (id.split("?")[0] !== configPath) return;
+      if (code.split(localePathExpression).length !== 2) {
+        throw new Error("i18n config localePath changed. Review its source-relative build boundary.");
+      }
+      return {
+        code: code.replace(
+          localePathExpression,
+          JSON.stringify(path.join(path.dirname(configPath), "locales"))
+        ),
+        map: null,
+      };
+    },
+    load(id) {
+      if (id !== facadeId) return;
+      return `import config from ${JSON.stringify(configPath)};
+export default config;
+export const { i18n, fallbackLng, reloadOnPrerender, localePath } = config;`;
+    },
+  };
+}
+
 function sentryRuntime(): Plugin {
   const configOwner = fileURLToPath(new URL("./instrumentation.ts", import.meta.url));
   return {
@@ -129,6 +161,7 @@ export default defineConfig({
   envPrefix: [],
   plugins: [
     bundleAnalysis(),
+    i18nConfigInterop(),
     sentryRuntime(),
     apiV2Transport(),
     patchCssModules({ exportMode: "default" }),
