@@ -76,3 +76,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH_KEY: ${{ github.head_ref || github.ref_name }}
       - uses: ./.github/actions/cache-build
+      - name: Check original Worker APIs
+        run: bun run playwright test apps/web/playwright/auth-error.e2e.ts --project=@calcom/web --workers=1 --grep 'through the original'
+        env:
+          NEXTAUTH_URL: http://localhost:3000/api/auth
+          NEXT_PUBLIC_WEBAPP_URL: http://localhost:3000
+          NEXT_PUBLIC_IS_E2E: "1"
