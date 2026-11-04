@@ -51,5 +51,5 @@ own Zod 4.6.6, JOSE 6.2.15, and Kysely 0.29.8. The root declares the SDK's
 Kysely 0.29.8 peer explicitly so the hoisted `@better-auth/kysely-adapter`
 resolves its supported version. Existing domain workspaces that imported
 Kysely through hoisting now declare their original 0.28.14 directly.
-Resolved imports verify that domain versions remain unchanged. No global
+The platform library also declares its original version because its built CommonJS output leaves Kysely external. Resolved imports verify that source consumers and built output retain their domain versions. No global
 version override or unsupported peer-range exception is used.
