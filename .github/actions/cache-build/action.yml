@@ -20,6 +20,6 @@ runs:
         key: ${{ steps.cache-key.outputs.key }}
     - run: |
         export NODE_OPTIONS="--max_old_space_size=8192"
-        yarn build
+        bun run build
       if: steps.cache-build.outputs.cache-hit != 'true'
       shell: bash

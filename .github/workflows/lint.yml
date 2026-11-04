@@ -15,4 +15,4 @@ jobs:
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/yarn-install
       - name: Run Lint
-        run: yarn lint
+        run: bun run lint

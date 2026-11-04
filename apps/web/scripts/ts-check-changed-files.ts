@@ -18,7 +18,7 @@ console.log(files.map((str) => `  - ${str}`).join("\n"));
 
 try {
   console.log("⏳ Checking type errors..");
-  execSync("yarn tsc --noEmit", {});
+  execSync("bun run tsc --noEmit", {});
 
   console.log("😻 No errors!");
 } catch (_err) {

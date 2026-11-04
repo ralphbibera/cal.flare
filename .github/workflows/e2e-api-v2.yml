@@ -81,7 +81,7 @@ jobs:
       - uses: ./.github/actions/cache-db
       - name: Build platform packages with Turbo
         run: |
-          yarn turbo run build \
+          bun run turbo run build \
             --filter=@calcom/platform-constants \
             --filter=@calcom/platform-enums \
             --filter=@calcom/platform-utils \
@@ -92,9 +92,9 @@ jobs:
       - name: Run Tests
         working-directory: apps/api/v2
         run: |
-          yarn test:e2e:ci --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          bun run test:e2e:ci --shard=${{ matrix.shard }}/${{ strategy.job-total }}
           EXIT_CODE=$?
-          echo "yarn test:e2e:ci --shard=${{ matrix.shard }}/${{ strategy.job-total }} command exit code: $EXIT_CODE"
+          echo "bun run test:e2e:ci --shard=${{ matrix.shard }}/${{ strategy.job-total }} command exit code: $EXIT_CODE"
           exit $EXIT_CODE
 
       - name: Upload Test Results

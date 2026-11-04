@@ -1,22 +1,11 @@
-########################################################################################
-# "yarn install" composite action for yarn 2/3/4+ and "nodeLinker: node-modules"       #
-#--------------------------------------------------------------------------------------#
-# Cache:                                                                               #
-#   - Downloaded zip archive (multi-arch, preserved across yarn.lock changes)          #
-#   - Yarn install state (discarded on yarn.lock changes)                              #
-# References:                                                                          #
-#   - bench: https://gist.github.com/belgattitude/0ecd26155b47e7be1be6163ecfbb0f0b     #
-#   - vs @setup/node: https://github.com/actions/setup-node/issues/325                 #
-########################################################################################
-
-name: "Yarn install"
-description: "Run yarn install with node_modules linker and cache enabled"
+name: "Bun install"
+description: "Install the frozen Bun workspace graph with dependency caching"
 inputs:
   node_version:
     required: false
-    default: v22.x
+    default: "24.22.0"
   skip-install-if-cache-hit:
-    description: "Skip yarn install if node_modules cache is hit. Use this for jobs that only need to check that cache exists."
+    description: "Skip installation when dependency caches already exist."
     required: false
     default: "false"
 
@@ -27,97 +16,56 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node_version }}
-    - name: Expose yarn config as "$GITHUB_OUTPUT"
-      id: yarn-config
-      shell: bash
-      run: |
-        echo "CACHE_FOLDER=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
-
-    # When skip-install-if-cache-hit is true, first check if all caches exist without downloading (lookup-only mode)
-    # This avoids downloading ~1.2GB of cache data when we just want to verify caches exist
-    - name: Check yarn cache (lookup-only)
-      if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
-      uses: actions/cache/restore@v4
-      id: yarn-download-cache-check
+    - name: Use Bun 1.4.4
+      uses: oven-sh/setup-bun@v2
       with:
-        path: ${{ steps.yarn-config.outputs.CACHE_FOLDER }}
-        key: yarn-download-cache-${{ hashFiles('yarn.lock') }}
-        lookup-only: true
-
-    - name: Check node_modules cache (lookup-only)
+        bun-version: "1.4.4"
+    - name: Check Bun download cache
       if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
       uses: actions/cache/restore@v4
-      id: yarn-nm-cache-check
+      id: bun-download-cache-check
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-download-${{ hashFiles('bun.lock') }}
+        lookup-only: true
+    - name: Check node_modules cache
+      if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
+      uses: actions/cache/restore@v4
+      id: bun-nm-cache-check
       with:
         path: |
           **/node_modules/
           !**/.next/node_modules/
-        key: ${{ runner.os }}-yarn-nm-cache-${{ inputs.node_version }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-nm-${{ inputs.node_version }}-${{ hashFiles('bun.lock', 'bunfig.toml', 'package.json', 'patches/**') }}
         lookup-only: true
-
-    - name: Check yarn install state cache (lookup-only)
-      if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
-      uses: actions/cache/restore@v4
-      id: yarn-install-state-cache-check
-      with:
-        path: .yarn/ci-cache/
-        key: ${{ runner.os }}-yarn-install-state-cache-${{ inputs.node_version }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
-        lookup-only: true
-
-    # Compute whether all caches hit (only in skip mode)
     - name: Check if all caches hit
       if: ${{ inputs.skip-install-if-cache-hit == 'true' }}
       id: all-caches-check
       shell: bash
       run: |
-        if [[ "${{ steps.yarn-download-cache-check.outputs.cache-hit }}" == "true" && \
-              "${{ steps.yarn-nm-cache-check.outputs.cache-hit }}" == "true" && \
-              "${{ steps.yarn-install-state-cache-check.outputs.cache-hit }}" == "true" ]]; then
-          echo "all-hit=true" >> $GITHUB_OUTPUT
+        if [[ "${{ steps.bun-download-cache-check.outputs.cache-hit }}" == "true" && \
+              "${{ steps.bun-nm-cache-check.outputs.cache-hit }}" == "true" ]]; then
+          echo "all-hit=true" >> "$GITHUB_OUTPUT"
         else
-          echo "all-hit=false" >> $GITHUB_OUTPUT
+          echo "all-hit=false" >> "$GITHUB_OUTPUT"
         fi
-
-    # Yarn rotates the downloaded cache archives, @see https://github.com/actions/setup-node/issues/325
-    # Yarn cache is also reusable between arch and os.
-    # Only restore if not in skip mode, or if skip mode but any cache check missed
-    - name: Restore yarn cache
+    - name: Restore Bun download cache
       if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
       uses: actions/cache@v4
-      id: yarn-download-cache
       with:
-        path: ${{ steps.yarn-config.outputs.CACHE_FOLDER }}
-        key: yarn-download-cache-${{ hashFiles('yarn.lock') }}
-
-    # Invalidated on yarn.lock changes
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-download-${{ hashFiles('bun.lock') }}
     - name: Restore node_modules
       if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
-      id: yarn-nm-cache
       uses: actions/cache@v4
       with:
         path: |
           **/node_modules/
           !**/.next/node_modules/
-        key: ${{ runner.os }}-yarn-nm-cache-${{ inputs.node_version }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
-
-    # Invalidated on yarn.lock changes
-    - name: Restore yarn install state
-      if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
-      id: yarn-install-state-cache
-      uses: actions/cache@v4
-      with:
-        path: .yarn/ci-cache/
-        key: ${{ runner.os }}-yarn-install-state-cache-${{ inputs.node_version }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
-
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-1.4.4-nm-${{ inputs.node_version }}-${{ hashFiles('bun.lock', 'bunfig.toml', 'package.json', 'patches/**') }}
     - name: Install dependencies
       if: ${{ inputs.skip-install-if-cache-hit != 'true' || steps.all-caches-check.outputs.all-hit != 'true' }}
       shell: bash
-      run: yarn install --inline-builds
+      run: bun install --frozen-lockfile
       env:
-        # CI optimizations. Overrides yarnrc.yml options (or their defaults) in the CI action.
-        YARN_ENABLE_IMMUTABLE_INSTALLS: "false" # So it doesn't try to remove our private submodule deps
-        YARN_ENABLE_GLOBAL_CACHE: "false" # Use local cache folder to keep downloaded archives
-        YARN_INSTALL_STATE_PATH: .yarn/ci-cache/install-state.gz # Very small speedup when lock does not change
-        YARN_NM_MODE: "hardlinks-local" # Reduce node_modules size
-        # Other environment variables
-        HUSKY: "0" # By default do not run HUSKY install
+        HUSKY: "0"

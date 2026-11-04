@@ -14,6 +14,6 @@ jobs:
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/yarn-install
       - name: Report all vulnerabilities
-        run: yarn npm audit --all --recursive || true
+        run: bun audit || true
       - name: Fail on critical vulnerabilities
-        run: yarn npm audit --all --recursive --severity critical
+        run: bun audit --audit-level critical

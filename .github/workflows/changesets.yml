@@ -24,10 +24,10 @@ jobs:
       - name: Setup Node and registry for OIDC
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24.22.0"
           registry-url: "https://registry.npmjs.org"
           always-auth: false
-      - name: Setup node, yarn and install dependencies
+      - name: Setup Node, Bun and install dependencies
         uses: ./.github/actions/yarn-install
       - name: Install npm at version supporting OIDC
         run: npm install -g npm@11.5.1
@@ -35,8 +35,8 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          version: yarn changesets-version
-          publish: yarn changesets-release
+          version: bun run changesets-version
+          publish: bun run changesets-release
           commit: "chore: version packages" # commit message
           title: "chore: version packages" # PR title
         env:

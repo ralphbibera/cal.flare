@@ -43,15 +43,14 @@ async function main() {
     ] = `npm:@calcom/platform-libraries@${publishedVersion}`;
     fs.writeFileSync(apiV2PackageJsonPath, `${JSON.stringify(apiV2PackageJson, null, 2)}\n`);
 
-    // Run yarn install
-    const yarnInstall = spawn("yarn", ["install"], {
+    const bunInstall = spawn("bun", ["install"], {
       stdio: "inherit",
       cwd: path.join(librariesPath, "..", "..", ".."),
     });
 
-    yarnInstall.on("close", (code) => {
+    bunInstall.on("close", (code) => {
       if (code !== 0) {
-        console.error("yarn install failed");
+        console.error("bun install failed");
         process.exit(1);
       }
       console.log("Successfully reset version and updated dependencies");

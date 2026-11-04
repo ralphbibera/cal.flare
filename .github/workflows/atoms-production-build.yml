@@ -21,7 +21,7 @@ jobs:
         id: cache-atoms-build
         env:
           cache-name: atoms-build
-          key-1: ${{ hashFiles('yarn.lock') }}
+          key-1: ${{ hashFiles('bun.lock') }}
           key-2: ${{ hashFiles('packages/platform/atoms/**.[jt]s', 'packages/platform/atoms/**.[jt]sx', 'packages/platform/atoms/package.json', '!**/node_modules') }}
         with:
           path: |
@@ -32,6 +32,6 @@ jobs:
         run: |
           export NODE_OPTIONS="--max_old_space_size=8192"
           rm -rf packages/platform/atoms/node_modules
-          yarn install
-          yarn workspace @calcom/atoms run build-npm
+          bun install --frozen-lockfile
+          bun run --filter @calcom/atoms build-npm
         shell: bash
