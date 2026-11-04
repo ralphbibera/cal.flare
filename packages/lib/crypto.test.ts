@@ -1,10 +1,22 @@
+import { createDecipheriv } from "node:crypto";
 import { describe, expect, it } from "vitest";
-
 import { symmetricDecrypt, symmetricEncrypt } from "./crypto";
 
 describe("crypto", () => {
   const testKey = "12345678901234567890123456789012"; // 32 bytes key
   const testText = "Hello, World!";
+
+  it("decrypts persisted ciphertext from the original Node cipher alias", () => {
+    const legacy =
+      "01010101010101010101010101010101:152fd224463425f58f7e1775a819d97d5a1826f23c3b7604820af76b9701935a";
+    expect(symmetricDecrypt(legacy, testKey)).toBe("Legacy MFA 世界");
+  });
+
+  it("keeps new ciphertext readable by the original Node cipher alias", () => {
+    const [iv, ciphertext] = symmetricEncrypt(testText, testKey).split(":");
+    const decipher = createDecipheriv("aes256", Buffer.from(testKey, "latin1"), Buffer.from(iv, "hex"));
+    expect(decipher.update(ciphertext, "hex", "utf8") + decipher.final("utf8")).toBe(testText);
+  });
 
   describe("symmetricEncrypt", () => {
     it("should encrypt text with a valid key", () => {
