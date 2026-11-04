@@ -1,6 +1,6 @@
 import { ScheduleRepository } from "@calcom/features/schedules/repositories/ScheduleRepository";
+import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { prisma } from "@calcom/prisma";
-
 import type { TrpcSessionUser } from "../../../types";
 
 type ListOptions = {
@@ -57,7 +57,7 @@ export const listHandler = async ({ ctx }: ListOptions) => {
 
   return {
     schedules: schedules.map((schedule) => ({
-      ...schedule,
+      ...parseScheduleAvailability(schedule),
       isDefault: schedule.id === defaultScheduleId,
     })),
   };

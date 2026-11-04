@@ -7,6 +7,7 @@ import dayjs from "@calcom/dayjs";
 import { getBookingFieldsWithSystemFields } from "@calcom/features/bookings/lib/getBookingFields";
 import { getDefaultEvent, getUsernameList } from "@calcom/features/eventtypes/lib/defaultEvents";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
+import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { getOrgOrTeamAvatar, getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import { isRecurringEvent, parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
@@ -201,7 +202,7 @@ export async function isCurrentlyAvailable({
   const currentDay = now.day();
   const meetingEndTime = now.add(length, "minute");
 
-  const res = await prisma.schedule.findUniqueOrThrow({
+  const storedSchedule = await prisma.schedule.findUniqueOrThrow({
     where: {
       id: instantMeetingScheduleId,
     },
@@ -210,6 +211,7 @@ export async function isCurrentlyAvailable({
     },
   });
 
+  const res = parseScheduleAvailability(storedSchedule);
   const dateOverride = res.availability.find((a) => a.date && dayjs(a.date).isSame(now, "day"));
 
   if (dateOverride) {
@@ -305,8 +307,7 @@ export const getPublicEvent = async (
     // this reason (sortUsersByDynamicList in getLocationValuesForDb.ts) — without the same sort
     // here, the booking page can advertise a different location than the one actually booked.
     const users = [...usersInOrgContext].sort(
-      (a, b) =>
-        usernameList.indexOf(a.username ?? "") - usernameList.indexOf(b.username ?? "")
+      (a, b) => usernameList.indexOf(a.username ?? "") - usernameList.indexOf(b.username ?? "")
     );
 
     const defaultEvent = getDefaultEvent(eventSlug);

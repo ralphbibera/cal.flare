@@ -90,12 +90,12 @@ export { paymentDataSelect };
 export { confirmHandler as confirmBookingHandler } from "@calcom/trpc/server/routers/viewer/bookings/confirm.handler";
 export { getBookingFieldsWithSystemFields };
 
-export { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 export { sendLocationChangeEmailsAndSMS } from "@calcom/emails/email-manager";
+export { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 export { verifyCodeUnAuthenticated } from "@calcom/features/auth/lib/verifyCodeUnAuthenticated";
 export { sendEmailVerificationByCode } from "@calcom/features/auth/lib/verifyEmail";
-export { getCalendarLinks } from "@calcom/features/bookings/lib/getCalendarLinks";
 export { BookingReferenceRepository } from "@calcom/features/bookingReference/repositories/BookingReferenceRepository";
+export { getCalendarLinks } from "@calcom/features/bookings/lib/getCalendarLinks";
 export { BookingAccessService } from "@calcom/features/bookings/services/BookingAccessService";
 export { CredentialRepository } from "@calcom/features/credentials/repositories/CredentialRepository";
 export type { OrgMembershipLookup } from "@calcom/features/di/modules/OrgMembershipLookup";
@@ -212,3 +212,5 @@ export async function verifyPhoneNumber(
 ): Promise<boolean> {
   throw new Error("Phone verification is not available in community edition");
 }
+
+export { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";

@@ -1,10 +1,9 @@
-import { UsersRepository } from "@/modules/users/users.repository";
-import { Injectable } from "@nestjs/common";
-
 import type { WeekDay } from "@calcom/platform-types";
-import type { Availability, Schedule } from "@calcom/prisma/client";
+import { Injectable } from "@nestjs/common";
+import type { SchedulesRepository_2024_06_11 } from "../schedules.repository";
+import { UsersRepository } from "@/modules/users/users.repository";
 
-type DatabaseSchedule = Schedule & { availability: Availability[] };
+type DatabaseSchedule = NonNullable<Awaited<ReturnType<SchedulesRepository_2024_06_11["getScheduleById"]>>>;
 
 @Injectable()
 export class OutputSchedulesService_2024_06_11 {

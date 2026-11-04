@@ -26,7 +26,6 @@ import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import type {
-  Availability,
   Booking,
   OutOfOfficeEntry,
   OutOfOfficeReason,
@@ -39,7 +38,7 @@ import { SchedulingType } from "@calcom/prisma/enums";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import type { CalendarFetchMode, EventBusyDetails, IntervalLimitUnit } from "@calcom/types/Calendar";
 import type { CredentialForCalendarService } from "@calcom/types/Credential";
-import type { TimeRange, WorkingHours as WorkingHoursWithUserId } from "@calcom/types/schedule";
+import type { Availability, TimeRange, WorkingHours as WorkingHoursWithUserId } from "@calcom/types/schedule";
 import type { Ensure, Optional } from "@calcom/types/utils";
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
