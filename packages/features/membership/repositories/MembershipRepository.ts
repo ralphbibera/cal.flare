@@ -3,7 +3,7 @@ import { withSelectedCalendars } from "@calcom/features/users/repositories/UserR
 import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
-import { eventTypeSelect } from "@calcom/lib/server/eventTypeSelect";
+import { eventTypeSelect, parseInstantMeetingParameters } from "@calcom/lib/server/eventTypeSelect";
 import { availabilityUserSelect, type PrismaTransaction, prisma } from "@calcom/prisma";
 import type { Membership, Prisma, PrismaClient } from "@calcom/prisma/client";
 import { MembershipRole } from "@calcom/prisma/enums";
@@ -191,7 +191,7 @@ export class MembershipRepository {
       })
     );
 
-    return await prisma.membership.findMany({
+    const memberships = await prisma.membership.findMany({
       where: prismaWhere,
       include: {
         team: {
@@ -247,6 +247,16 @@ export class MembershipRepository {
         },
       },
     });
+    return memberships.map((membership) => ({
+      ...membership,
+      team: {
+        ...membership.team,
+        eventTypes: membership.team.eventTypes.map((eventType) => ({
+          ...parseInstantMeetingParameters(eventType),
+          children: eventType.children.map(parseInstantMeetingParameters),
+        })),
+      },
+    }));
   }
 
   static async findAllByUpIdIncludeMinimalEventTypes(
@@ -301,9 +311,19 @@ export class MembershipRepository {
       },
     } satisfies Prisma.MembershipSelect;
 
-    return await prisma.membership.findMany({
+    const memberships = await prisma.membership.findMany({
       where: prismaWhere,
       select,
+    });
+    return memberships.map((membership) => {
+      const { eventTypes, ...team } = membership.team;
+      return {
+        ...membership,
+        team: {
+          ...team,
+          ...(eventTypes ? { eventTypes: eventTypes.map(parseInstantMeetingParameters) } : {}),
+        },
+      };
     });
   }
 

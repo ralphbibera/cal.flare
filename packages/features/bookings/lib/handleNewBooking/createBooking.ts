@@ -1,4 +1,5 @@
 import dayjs from "@calcom/dayjs";
+import { parseBookingScheduledJobs } from "@calcom/features/bookings/lib/scheduledJobs";
 import { isPrismaObjOrUndefined } from "@calcom/lib/isPrismaObj";
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import prisma from "@calcom/prisma";
@@ -143,7 +144,7 @@ async function saveBooking(
 
     const booking = await tx.booking.create(createBookingObj);
 
-    return { ...booking, userUuid: booking.user?.uuid ?? null };
+    return { ...parseBookingScheduledJobs(booking), userUuid: booking.user?.uuid ?? null };
   });
 }
 
