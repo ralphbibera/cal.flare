@@ -7,6 +7,6 @@
   "scripts": {
     "build": "tsc --build --force tsconfig.json",
     "build:watch": "tsc --build --force ./tsconfig.json --watch",
-    "post-install": "yarn build"
+    "post-install": "bun run build"
   }
 }

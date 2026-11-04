@@ -16,8 +16,8 @@
     "type-check": "tsc --pretty --noEmit",
     "type-check:ci": "tsc-absolute --pretty --noEmit",
     "lint": "biome lint src",
-    "withEmbedPublishEnv": "NEXT_PUBLIC_EMBED_LIB_URL='https://app.cal.com/embed/embed.js' NEXT_PUBLIC_WEBAPP_URL='https://app.cal.com' yarn",
-    "prepack": "yarn ../../../ lint --filter='@calcom/embed-snippet' && yarn withEmbedPublishEnv build",
+    "withEmbedPublishEnv": "NEXT_PUBLIC_EMBED_LIB_URL='https://app.cal.com/embed/embed.js' NEXT_PUBLIC_WEBAPP_URL='https://app.cal.com' bun run",
+    "prepack": "bun run --cwd ../../.. lint --filter='@calcom/embed-snippet' && bun run withEmbedPublishEnv build",
     "clean": "npx rimraf .turbo node_modules dist"
   },
   "files": [
