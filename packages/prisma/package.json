@@ -9,6 +9,7 @@
     "clean": "rm -rf .turbo && rm -rf node_modules",
     "build": "prisma generate",
     "db-deploy": "bun run prisma migrate deploy",
+    "db-deploy:d1": "bun run migrate-d1.mts",
     "db-migrate": "bun run prisma migrate dev",
     "db-nuke": "docker compose down --volumes --remove-orphans || docker-compose down --volumes --remove-orphans",
     "db-reset": "run-s db-nuke db-setup",
