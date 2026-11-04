@@ -3,6 +3,7 @@ import { MembershipRepository } from "@calcom/features/membership/repositories/M
 import { LookupTarget, ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import type { UserWithLegacySelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
+import { parseWebhookEventTriggers } from "@calcom/features/webhooks/lib/eventTriggers";
 import {
   parseAvailability,
   parseScheduleAvailability,
@@ -798,7 +799,7 @@ export class EventTypeRepository implements IEventTypesRepository {
     // This is more efficient than using a complex join with team.members in the query
     const userTeamIds = await MembershipRepository.findUserTeamIds({ userId });
 
-    return await this.prismaClient.eventType.findFirst({
+    const eventType = await this.prismaClient.eventType.findFirst({
       where: {
         AND: [
           {
@@ -825,6 +826,7 @@ export class EventTypeRepository implements IEventTypesRepository {
       },
       select: CompleteEventTypeSelect,
     });
+    return eventType ? { ...eventType, webhooks: eventType.webhooks.map(parseWebhookEventTriggers) } : null;
   }
 
   async findByIdForOrgAdmin({ id, organizationId }: { id: number; organizationId: number }) {
@@ -1082,7 +1084,7 @@ export class EventTypeRepository implements IEventTypesRepository {
       AND: [{ teamId: { not: null } }, { team: { parentId: organizationId } }],
     };
 
-    return await this.prismaClient.eventType.findFirst({
+    const eventType = await this.prismaClient.eventType.findFirst({
       where: {
         AND: [
           { id },
@@ -1093,6 +1095,7 @@ export class EventTypeRepository implements IEventTypesRepository {
       },
       select: CompleteEventTypeSelect,
     });
+    return eventType ? { ...eventType, webhooks: eventType.webhooks.map(parseWebhookEventTriggers) } : null;
   }
 
   async findByIdMinimal({ id }: { id: number }) {
