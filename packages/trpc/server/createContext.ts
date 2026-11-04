@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { GetServerSidePropsContext, NextApiRequest, NextApiResponse } from "next";
 import type { Session } from "next-auth";
-import type { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import type { SSRConfig } from "@calcom/i18n/ssr";
 
 import { getLocale } from "@calcom/features/auth/lib/getLocale";
 import getIP from "@calcom/lib/getIP";
@@ -38,7 +38,7 @@ export type CreateInnerContextOptions = {
     selectedCalendars?: Partial<SelectedCalendar>[];
     rawAvatar?: string;
   };
-  i18n?: Awaited<ReturnType<typeof serverSideTranslations>>;
+  i18n?: SSRConfig;
 } & Partial<CreateContextOptions>;
 
 export type GetSessionFn =

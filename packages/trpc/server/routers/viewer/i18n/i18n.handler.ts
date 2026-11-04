@@ -1,14 +1,14 @@
-import i18nConfig from "@calcom/i18n/next-i18next.config";
+import type { SSRConfig } from "@calcom/i18n/ssr";
+import { getServerTranslations } from "@calcom/i18n/ssr";
 import type { I18nInputSchema } from "./i18n.schema";
 
 type I18nOptions = {
   input: I18nInputSchema;
 };
 
-export const i18nHandler = async ({ input }: I18nOptions) => {
+export const i18nHandler = async ({ input }: I18nOptions): Promise<{ i18n: SSRConfig; locale: string }> => {
   const { locale } = input;
-  const { serverSideTranslations } = await import("next-i18next/serverSideTranslations");
-  const i18n = await serverSideTranslations(locale, ["common", "vital"], i18nConfig);
+  const i18n = await getServerTranslations(locale, ["common", "vital"]);
 
   return {
     i18n,

@@ -7,32 +7,53 @@
  * For App Router, use app-providers-app-dir.tsx instead.
  */
 
-import type { JSX } from "react";
 import process from "node:process";
 import type { ParsedUrlQuery } from "node:querystring";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";
+import type { SSRConfig } from "@calcom/i18n/ssr";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
 import { useViewerI18n } from "@components/I18nLanguageHandler";
 import useIsBookingPage from "@lib/hooks/useIsBookingPage";
 import { useNuqsParams } from "@lib/hooks/useNuqsParams";
 import type { WithLocaleProps } from "@lib/withLocale";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
-import { dir } from "i18next";
-import type { AppProps as NextAppProps, AppProps as NextJsAppProps } from "next/app";
+import { createInstance, dir } from "i18next";
+import type { AppProps as NextAppProps } from "next/app";
 import type { Session } from "next-auth";
 import { useSession } from "next-auth/react";
-import { appWithTranslation } from "next-i18next";
-import type { SSRConfig } from "next-i18next/dist/types/types";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/pages";
-import type { PropsWithChildren, ReactNode } from "react";
-import { useEffect } from "react";
+import type { JSX, PropsWithChildren, ReactNode } from "react";
+import { useEffect, useMemo } from "react";
+import { I18nextProvider } from "react-i18next";
 
-const I18nextAdapter = appWithTranslation<
-  NextJsAppProps<SSRConfig> & {
-    children: React.ReactNode;
-  }
->(({ children }) => <>{children}</>);
+export function I18nextAdapter({
+  pageProps,
+  children,
+}: {
+  pageProps: { _nextI18Next?: SSRConfig["_nextI18Next"]; newLocale?: string };
+  children?: ReactNode;
+}): JSX.Element {
+  const data = pageProps._nextI18Next;
+  const instance = useMemo(() => {
+    if (!data) return null;
+    const i18n = createInstance();
+    void i18n.init({
+      ...data.userConfig,
+      lng: data.initialLocale,
+      ns: data.ns,
+      defaultNS: "common",
+      resources: structuredClone(data.initialI18nStore),
+      initImmediate: false,
+      load: "currentOnly",
+      interpolation: { escapeValue: false },
+      react: { useSuspense: false },
+    });
+    return i18n;
+  }, [data]);
+  if (!instance) return <>{children}</>;
+  return <I18nextProvider i18n={instance}>{children}</I18nextProvider>;
+}
 
 // Workaround for https://github.com/vercel/next.js/issues/8592
 export type AppProps = Omit<
@@ -61,7 +82,7 @@ type AppPropsWithChildren = AppProps & {
   children: ReactNode;
 };
 
-const getEmbedNamespace = (query: ParsedUrlQuery) => {
+const getEmbedNamespace = (query: ParsedUrlQuery): string | null => {
   // Mostly embed query param should be available on server. Use that there.
   // Use the most reliable detection on client
   return typeof window !== "undefined" ? window.getEmbedNamespace() : (query.embed as string) || null;
