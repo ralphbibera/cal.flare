@@ -1,11 +1,10 @@
 import { withReporting } from "@calcom/lib/sentryWrapper";
-import type { PrismaClient } from "@calcom/prisma";
 import defaultPrisma from "@calcom/prisma";
-import { Prisma } from "@calcom/prisma/client";
+import type { PrismaClient } from "@calcom/prisma";
 import type { WebhookTriggerEvents } from "@calcom/prisma/enums";
+
 import type { WebhookSubscriber } from "./dto/types";
 import { WebhookOutputMapper } from "./infrastructure/mappers/WebhookOutputMapper";
-import { queryWebhookSubscribers, webhookEventsMatch } from "./queryWebhookRows";
 
 export type GetSubscriberOptions = {
   userId?: number | null;
@@ -42,16 +41,49 @@ const getWebhooks = async (
   const managedParentEventTypeId = managedChildEventType?.parentId ?? 0;
 
   // if we have userId and teamId it is a managed event type and should trigger for team and user
-  const allWebhooks = await queryWebhookSubscribers(
-    prisma,
-    Prisma.sql`
-    active = true AND ${webhookEventsMatch([options.triggerEvent])}
-    AND (platform = true OR "userId" = ${userId} OR "eventTypeId" = ${eventTypeId}
-      OR "eventTypeId" = ${managedParentEventTypeId}
-      OR "teamId" IN (SELECT value FROM json_each(${JSON.stringify([...teamIds, orgId])}))
-      OR "platformOAuthClientId" = ${oAuthClientId})
-  `
-  );
+  const allWebhooks = await prisma.webhook.findMany({
+    where: {
+      OR: [
+        {
+          platform: true,
+        },
+        {
+          userId,
+        },
+        {
+          eventTypeId,
+        },
+        {
+          eventTypeId: managedParentEventTypeId,
+        },
+        {
+          teamId: {
+            in: [...teamIds, orgId],
+          },
+        },
+        { platformOAuthClientId: oAuthClientId },
+      ],
+      AND: {
+        eventTriggers: {
+          has: options.triggerEvent,
+        },
+        active: {
+          equals: true,
+        },
+      },
+    },
+    select: {
+      id: true,
+      subscriberUrl: true,
+      payloadTemplate: true,
+      appId: true,
+      secret: true,
+      time: true,
+      timeUnit: true,
+      eventTriggers: true,
+      version: true,
+    },
+  });
 
   return allWebhooks.map(WebhookOutputMapper.toSubscriberPartial);
 };
