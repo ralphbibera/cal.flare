@@ -17,7 +17,7 @@ The `app-store create` command supports a non-interactive mode when `--name`, `-
 Apps that redirect users to an external URL (e.g., Amie, Vimcal, Pipedream).
 
 ```bash
-yarn app-store create \
+bun run app-store create \
   --name "My External App" \
   --description "Redirects users to an external service" \
   --template link-as-an-app \
@@ -32,7 +32,7 @@ yarn app-store create \
 A minimal installable app with no additional features.
 
 ```bash
-yarn app-store create \
+bun run app-store create \
   --name "My Basic App" \
   --description "A simple installable app" \
   --template basic \
@@ -46,7 +46,7 @@ yarn app-store create \
 Analytics/tracking apps that inject scripts into booking pages (e.g., GA4, Fathom, Plausible).
 
 ```bash
-yarn app-store create \
+bun run app-store create \
   --name "My Analytics Tracker" \
   --description "Tracks booking page analytics" \
   --template booking-pages-tag \
@@ -60,7 +60,7 @@ yarn app-store create \
 Apps that add a configurable card to event type settings (e.g., Giphy, QR Code).
 
 ```bash
-yarn app-store create \
+bun run app-store create \
   --name "My Event Type Card" \
   --description "Adds a custom card to event type settings" \
   --template event-type-app-card \
@@ -74,7 +74,7 @@ yarn app-store create \
 Video conferencing apps that add a static location option to event types (e.g., Facetime, Skype).
 
 ```bash
-yarn app-store create \
+bun run app-store create \
   --name "My Video App" \
   --description "Adds a video conferencing location to event types" \
   --template event-type-location-video-static \
@@ -88,7 +88,7 @@ yarn app-store create \
 Apps with global settings in the installed apps section (e.g., Weather in your Calendar).
 
 ```bash
-yarn app-store create \
+bun run app-store create \
   --name "My Settings App" \
   --description "An app with global configuration settings" \
   --template general-app-settings \

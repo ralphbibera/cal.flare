@@ -7,14 +7,14 @@ To know how to use it, follow the steps at <https://developer.cal.com/embed/inst
 ## Development
 
 Following command starts a hot reloading server
-`yarn dev`
+`bun run dev`
 
-If you are working with embed on website, don't forget to do `yarn build` after every change.
+If you are working with embed on website, don't forget to do `bun run build` after every change.
 
 ## Running Tests
 
 Runs tests and updates the snapshots. Right now we don't care about snapshots
-`yarn embed-tests-quick --update-snapshots`
+`bun run embed-tests-quick --update-snapshots`
 TODO
 
 - Playwright tests.

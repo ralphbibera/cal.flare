@@ -29,7 +29,7 @@
       "label": "Web App(3000)",
       // The task will launch a shell
       "type": "shell",
-      "command": "yarn dev",
+      "command": "bun run dev",
       // Set the shell type
       // Mark as a background task to avoid the spinner animation on the terminal tab
       "isBackground": false,
@@ -38,28 +38,28 @@
     {
       "label": "Website(3001)",
       "type": "shell",
-      "command": "cd apps/website && yarn dev",
+      "command": "cd apps/website && bun run dev",
       "isBackground": false,
       "problemMatcher": []
     },
     {
       "label": "Embed Core(3100)",
       "type": "shell",
-      "command": "cd packages/embeds/embed-core && yarn dev",
+      "command": "cd packages/embeds/embed-core && bun run dev",
       "isBackground": false,
       "problemMatcher": []
     },
     {
       "label": "Embed React(3101)",
       "type": "shell",
-      "command": "cd packages/embeds/embed-react && yarn dev",
+      "command": "cd packages/embeds/embed-react && bun run dev",
       "isBackground": false,
       "problemMatcher": []
     },
     {
       "label": "Prisma Studio(5555)",
       "type": "shell",
-      "command": "yarn db-studio",
+      "command": "bun run db-studio",
       "isBackground": false,
       "problemMatcher": []
     },

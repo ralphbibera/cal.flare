@@ -6,12 +6,12 @@ then proceed to `apps/api/v2/README-PLATFORM.md` instead.
 
 1. Install dependencies
 ```bash
-$ yarn install
+$ bun install --frozen-lockfile
 ```
 2. Download and install Docker on your computer and then make sure it is running. You simply need to open Docker dashboard.
 3. Make sure that mailhog is running - it is used by v2 to send emails locally. You can start it by:
 ```bash
-$ cd packages/emails && yarn dx
+$ cd packages/emails && bun run dx
 ```
 4. Setup api v2 environment - make a copy of `apps/api/v2/.env.example` and rename it to `apps/api/v2/.env` - it has almost all the required values setup - ones you need to add will be explained below.
 - Then copy the value of `NEXTAUTH_SECRET` from there to the root `.env` `NEXTAUTH_SECRET`. If you have `NEXTAUTH_SECRET` already in the root `.env` then you can paste that value in `apps/api/v2/.env`.
@@ -30,9 +30,9 @@ CALCOM_LICENSE_KEY="00000000-0000-0000-0000-000000000000"
 6. (optional) Prisma setup and database seeding - if you need to setup and seed database you can do it:
 ```bash
 $ cd packages/prisma
-$ yarn prisma generate
-$ yarn prisma migrate dev
-$ yarn db-seed
+$ bun run prisma generate
+$ bun run prisma migrate dev
+$ bun run db-seed
 ```
 7. Proceed to the next section to start api v2
 
@@ -40,14 +40,14 @@ $ yarn db-seed
 
 Start api v2 using:
 ```bash
-$ yarn dev
+$ bun run dev
 ```
 
 Sometimes it happens that v2 api restarts because some unrelated log of build files changed if you are running it while cal web app is running. If it happens and is annoying you, you can just build it and then run without watch mode:
 ```
 cd apps/api/v2
-yarn dev:build
-yarn start
+bun run dev:build
+bun run start
 ```
 
 Api v2 depends on various platform packages "platform-libraries, platform-constants, platform-enums, platform-utils, platform-types" so if any of them change you might need to restart api v2 so it rebuild these dependencies and picks up the changes.
@@ -55,28 +55,28 @@ Api v2 depends on various platform packages "platform-libraries, platform-consta
 Notably, you can run following command(in different terminal) to ensure that any change in any of the dependencies is rebuilt and detected. It watches platform-libraries, platform-constants, platform-enums, platform-utils, platform-types.
 
 ```bash
-$ yarn run dev:build:watch
+$ bun run dev:build:watch
 ```
 
 OR if you don't want to use docker, you can run following command.
 ```bash
-$ yarn dev:no-docker
+$ bun run dev:no-docker
 ```
 
 ## Test
 
 ```bash
 # unit tests
-$ yarn run test
+$ bun run test
 
 # e2e tests
-$ yarn run test:e2e
+$ bun run test:e2e
 
 # run specific e2e test file in watch mode
-$ yarn run test:e2e some-file.e2e-spec.ts
+$ bun run test:e2e some-file.e2e-spec.ts
 
 # test coverage
-$ yarn run test:cov
+$ bun run test:cov
 ```
 
 # Conventions

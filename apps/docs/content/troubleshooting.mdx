@@ -195,10 +195,10 @@ NODE_TLS_REJECT_UNAUTHORIZED=0
 
 ```bash
 # For development
-yarn workspace @calcom/prisma db-migrate
+bun run --cwd packages/prisma db-migrate
 
 # For production / Docker
-yarn workspace @calcom/prisma db-deploy
+bun run --cwd packages/prisma db-deploy
 ```
 
 2. Verify the database is accessible and the `DATABASE_URL` in your `.env` is correct.

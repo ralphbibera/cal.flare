@@ -8,9 +8,9 @@ Cal.diy runs with pretty minimal hardware requirements by itself. The most inten
 
 Cal.diy works with a very large range of operating systems, as it only requires JavaScript execution to run. **Cal.diy is known to work well with Windows, Mac, Linux and BSD.** Although they do work well on all of them, for production deployments we would suggest Linux as the ideal platform. Any operating system that runs Node.js should be able to work too, but these are some of the common operating systems that we know work well.
 
-To run Cal.diy, you need to install a few things. **Node.js, yarn, Git and PostgreSQL**. We use **Prisma** for database maintenance, and is one of the dependencies. We won't publish installation guides for these as they have their own resources available on the internet. If you're on Linux/BSD, all of these things should be readily available on your package manager. Your best bet is searching for something like **Debian 12 PostgreSQL**, which will give you a guide to installing and configuring PostgreSQL on Debian Linux 12.
+To run Cal.diy, you need to install a few things. **Node.js, Bun, Git and PostgreSQL**. We use **Prisma** for database maintenance, and is one of the dependencies. We won't publish installation guides for these as they have their own resources available on the internet. If you're on Linux/BSD, all of these things should be readily available on your package manager. Your best bet is searching for something like **Debian 12 PostgreSQL**, which will give you a guide to installing and configuring PostgreSQL on Debian Linux 12.
 
-> To ensure optimal performance and compatibility, we highly recommend using Node.js version 18 for your development environment. This version provides the best balance of stability, features, and security for this project. Please make sure to update your Node.js installation if necessary.
+> Use Node.js 24.22.0 for build tooling and Bun 1.4.4 for package management, matching the repository version pins.
 
 ## Production Build
 
@@ -35,7 +35,7 @@ cd cal.diy
 and run
 
 ```bash
-yarn
+bun install --frozen-lockfile
 ```
 
 to install all of the dependencies. Essentially, dependencies are just things that Cal.diy needs to install to be able to work.
@@ -63,8 +63,8 @@ openssl rand -base64 32
 For a production build, **please make sure** to set up [E2E testing](/docs/developing/local-development#e2e-testing) and [Upgrading](/upgrading) the database from earlier version, and the proceed to build as follows:
 
 ```bash
-yarn build
-yarn start
+bun run build
+bun run start
 ```
 
 > **Warning:** Please make sure to upgrade your database before you build for production
@@ -96,19 +96,19 @@ cp .env.example .env
 
 #### Step 2
 
-Install packages with yarn:
+Install packages with Bun:
 
 ```bash
-yarn
+bun install --frozen-lockfile
 ```
 
 ### Running API server
 
-Build & Run the API V2 with yarn:
+Build & Run the API V2 with Bun:
 
 ```bash
-yarn workspace @calcom/api-v2 build
-yarn workspace @calcom/api-v2 start
+bun run --cwd apps/api/v2 build
+bun run --cwd apps/api/v2 start
 ```
 
 ## One Click Deployments

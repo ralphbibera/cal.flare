@@ -1,4 +1,5 @@
-FROM node:22-alpine AS build
+FROM node:24.22.0-alpine AS build
+COPY --from=oven/bun:1.4.4-alpine /usr/local/bin/bun /usr/local/bin/bun
 
 ARG DATABASE_DIRECT_URL
 ARG DATABASE_URL
@@ -16,11 +17,11 @@ ENV USE_POOL="true"
 
 COPY . .
 
-RUN yarn install
-RUN yarn workspace @calcom/api-v2 run generate-schemas
-RUN yarn workspace @calcom/api-v2 run build:docker
-RUN yarn workspace @calcom/api-v2 run build
+RUN bun install --frozen-lockfile
+RUN bun run --cwd apps/api/v2 generate-schemas
+RUN bun run --cwd apps/api/v2 build:docker
+RUN bun run --cwd apps/api/v2 build
 
 EXPOSE 80
 
-CMD [ "yarn", "workspace", "@calcom/api-v2", "start:prod"]
+CMD ["bun", "run", "--cwd", "apps/api/v2", "start:prod"]
