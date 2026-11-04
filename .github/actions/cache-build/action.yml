@@ -13,7 +13,7 @@ runs:
       id: cache-build
       with:
         path: |
-          ${{ github.workspace }}/apps/web/.next
+          ${{ github.workspace }}/apps/web/.cloudflare/output
           ${{ github.workspace }}/apps/web/public/embed
           **/.turbo/**
           **/dist/**

@@ -18,6 +18,6 @@ runs:
         CACHE_NAME: prod-build
         BRANCH_KEY: ${{ inputs.branch_key }}
         LOCKFILE_HASH: ${{ hashFiles('bun.lock') }}
-        SOURCE_HASH: ${{ hashFiles('apps/**/**.[jt]s', 'apps/**/**.[jt]sx', 'apps/**/*.json', 'apps/**/*.css', 'packages/**/**.[jt]s', 'packages/**/**.[jt]sx', 'packages/prisma/schema.prisma', 'packages/prisma/migrations/**/*.sql', '!**/node_modules/**', '!packages/prisma/generated/**', '!packages/prisma/client/**', '!packages/prisma/zod/**', '!packages/kysely/**') }}
+        SOURCE_HASH: ${{ hashFiles('apps/**/**.[jt]s', 'apps/**/**.[jt]sx', 'apps/**/*.mts', 'apps/**/*.cts', 'apps/**/*.mjs', 'apps/**/*.cjs', 'apps/**/*.json', 'apps/**/*.css', 'packages/**/**.[jt]s', 'packages/**/**.[jt]sx', 'packages/**/*.mts', 'packages/**/*.cts', 'packages/**/*.mjs', 'packages/**/*.cjs', 'packages/prisma/schema.prisma', 'packages/prisma/migrations/**/*.sql', '!**/node_modules/**', '!packages/prisma/generated/**', '!packages/prisma/client/**', '!packages/prisma/zod/**', '!packages/kysely/**') }}
       run: |
         echo "key=${CACHE_NAME}-${BRANCH_KEY}-${LOCKFILE_HASH}-${SOURCE_HASH}" >> $GITHUB_OUTPUT
