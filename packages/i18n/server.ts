@@ -1,6 +1,5 @@
 import type { TFunction } from "i18next";
 import { createInstance } from "i18next";
-import { brandTranslations } from "./branding";
 import englishTranslations from "./locales/en/common.json";
 import type { TranslationDictionary } from "./resources";
 import { i18n, loadDictionary } from "./resources";
@@ -8,7 +7,7 @@ import { i18n, loadDictionary } from "./resources";
 export function mergeWithEnglishFallback(
   localeTranslations: Readonly<TranslationDictionary>
 ): TranslationDictionary {
-  return brandTranslations({ ...englishTranslations, ...localeTranslations });
+  return structuredClone({ ...englishTranslations, ...localeTranslations });
 }
 
 export async function loadTranslations(_locale: string, _ns: string): Promise<TranslationDictionary> {
