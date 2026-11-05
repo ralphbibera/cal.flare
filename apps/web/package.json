@@ -3,9 +3,9 @@
   "version": "6.2.0",
   "private": true,
   "scripts": {
-    "analyze": "ANALYZE=true vite build",
-    "analyze:server": "BUNDLE_ANALYZE=server vite build",
-    "analyze:browser": "BUNDLE_ANALYZE=browser vite build",
+    "analyze": "turbo run copy-app-store-static && ANALYZE=true vite build",
+    "analyze:server": "turbo run copy-app-store-static && BUNDLE_ANALYZE=server vite build",
+    "analyze:browser": "turbo run copy-app-store-static && BUNDLE_ANALYZE=browser vite build",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf .next",
     "dev": "turbo run copy-app-store-static && vite dev",
     "dev:scan": "bun run dev & npx --yes react-scan@latest localhost:3000",
