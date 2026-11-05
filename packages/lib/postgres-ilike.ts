@@ -111,3 +111,44 @@ export function toSqliteContainsPrefilter(pattern: string): string {
   }
   return prefilter.replace(/^%+|%+$/g, "");
 }
+
+const SEARCH_SCAN_BATCH_SIZE = 100;
+
+export type KeysetPage = { after?: number; take: number };
+
+/**
+ * Applies a `contains` + `mode: "insensitive"` search in memory, before the page is cut, walking the caller's
+ * already-scoped rows in key order so cursors stay stable. Only use it on a bounded scope, since every
+ * candidate row is read. Returns up to limit + 1 rows for the hasMore check, or every match without a limit.
+ */
+export async function findSearchedRows<Row>({
+  search,
+  cursor,
+  limit,
+  fetchRows,
+  getKey,
+  getSearchValues,
+}: {
+  search?: string;
+  cursor?: number;
+  limit?: number;
+  fetchRows: (page: KeysetPage) => Promise<Row[]>;
+  getKey: (row: Row) => number;
+  getSearchValues: (row: Row) => Array<string | null | undefined>;
+}): Promise<Row[]> {
+  if (!search && limit !== undefined) return fetchRows({ after: cursor, take: limit + 1 });
+
+  const matches = search ? createContainsInsensitiveMatcher(search) : () => true;
+  const take = Math.max((limit ?? 0) + 1, SEARCH_SCAN_BATCH_SIZE);
+  const matched: Row[] = [];
+  let after = cursor;
+  while (limit === undefined || matched.length <= limit) {
+    const rows = await fetchRows({ after, take });
+    for (const row of rows) {
+      if (getSearchValues(row).some((value) => matches(value))) matched.push(row);
+    }
+    if (rows.length < take) break;
+    after = getKey(rows[rows.length - 1]);
+  }
+  return limit === undefined ? matched : matched.slice(0, limit + 1);
+}
