@@ -1,9 +1,13 @@
 import { POSTGRES_LOWERCASE_RANGES } from "./postgres-lowercase-ranges";
 
+const MAX_ASCII = 0x7f;
 const lowercaseByCodePoint = new Map<number, number>();
+const asciiFoldedFromNonAscii = new Set<number>();
 for (const [first, last, step, delta] of POSTGRES_LOWERCASE_RANGES) {
   for (let codePoint = first; codePoint <= last; codePoint += step) {
-    lowercaseByCodePoint.set(codePoint, codePoint + delta);
+    const lowercase = codePoint + delta;
+    lowercaseByCodePoint.set(codePoint, lowercase);
+    if (codePoint > MAX_ASCII && lowercase <= MAX_ASCII) asciiFoldedFromNonAscii.add(lowercase);
   }
 }
 
@@ -84,4 +88,26 @@ export function createIlikeMatcher(pattern: string): IlikeMatcher {
 /** Prisma interpolates `contains` into the pattern unescaped, so `%` and `_` in a search stay wildcards. */
 export function createContainsInsensitiveMatcher(search: string): IlikeMatcher {
   return createIlikeMatcher(`%${search}%`);
+}
+
+/**
+ * Builds a value for Prisma's SQLite `contains` that keeps every row the pattern could match, so lookups over
+ * large tables can narrow candidates in SQL and confirm them with createIlikeMatcher. SQLite's LIKE folds only
+ * ASCII, so any character it could not compare the way PostgreSQL does becomes a single-character wildcard.
+ */
+export function toSqliteContainsPrefilter(pattern: string): string {
+  let prefilter = "";
+  for (const token of compilePattern(pattern)) {
+    if (token === ANY_MANY) prefilter += "%";
+    else if (
+      token === ANY_ONE ||
+      token === PERCENT ||
+      token === UNDERSCORE ||
+      token > MAX_ASCII ||
+      asciiFoldedFromNonAscii.has(token)
+    ) {
+      prefilter += "_";
+    } else prefilter += String.fromCodePoint(token);
+  }
+  return prefilter.replace(/^%+|%+$/g, "");
 }
