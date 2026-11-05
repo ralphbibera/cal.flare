@@ -2,6 +2,7 @@ import process from "node:process";
 import { updateProfilePhotoGoogle } from "@calcom/app-store/_utils/oauth/updateProfilePhotoGoogle";
 import { updateProfilePhotoMicrosoft } from "@calcom/app-store/_utils/oauth/updateProfilePhotoMicrosoft";
 import { createGoogleCalendarServiceWithGoogleType } from "@calcom/app-store/googlecalendar/lib/CalendarService";
+import { findUserIdByInsensitiveField } from "@calcom/features/auth/lib/findUserIdByInsensitiveField";
 import { getIdentityProvider } from "@calcom/features/auth/lib/identityProviders";
 import {
   OUTLOOK_CLIENT_ID,
@@ -687,27 +688,28 @@ export const getOptions = ({
           return "/auth/error?error=unverified-email";
         }
 
-        let existingUser = await prisma.user.findFirst({
-          include: {
-            password: {
-              select: {
-                hash: true,
-              },
-            },
-            accounts: {
-              where: {
-                provider: account.provider,
-              },
-            },
-          },
-          where: {
-            identityProvider: idP,
-            identityProviderId: {
-              equals: account.providerAccountId,
-              mode: "insensitive",
-            },
-          },
+        const existingUserId = await findUserIdByInsensitiveField({
+          where: { identityProvider: idP },
+          field: "identityProviderId",
+          value: account.providerAccountId,
         });
+        let existingUser = existingUserId
+          ? await prisma.user.findFirst({
+              include: {
+                password: {
+                  select: {
+                    hash: true,
+                  },
+                },
+                accounts: {
+                  where: {
+                    provider: account.provider,
+                  },
+                },
+              },
+              where: { id: existingUserId },
+            })
+          : null;
 
         /* --- START FIX LEGACY ISSUE WHERE 'identityProviderId' was accidentally set to userId --- */
         if (!existingUser) {
@@ -790,21 +792,22 @@ export const getOptions = ({
         // a new account. If an account already exists with the incoming email
         // address return an error for now.
 
-        const existingUserWithEmail = await prisma.user.findFirst({
-          where: {
-            email: {
-              equals: user.email,
-              mode: "insensitive",
-            },
-          },
-          include: {
-            password: {
-              select: {
-                hash: true,
-              },
-            },
-          },
+        const existingUserWithEmailId = await findUserIdByInsensitiveField({
+          field: "email",
+          value: user.email,
         });
+        const existingUserWithEmail = existingUserWithEmailId
+          ? await prisma.user.findFirst({
+              where: { id: existingUserWithEmailId },
+              include: {
+                password: {
+                  select: {
+                    hash: true,
+                  },
+                },
+              },
+            })
+          : null;
 
         if (existingUserWithEmail) {
           // if self-hosted then we can allow auto-merge of identity providers if email is verified
