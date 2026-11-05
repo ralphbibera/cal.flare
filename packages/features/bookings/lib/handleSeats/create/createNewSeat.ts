@@ -6,7 +6,7 @@ import { handlePayment } from "@calcom/features/bookings/lib/handlePayment";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { HttpError } from "@calcom/lib/http-error";
 import prisma from "@calcom/prisma";
-import type { PrismaClient } from "@calcom/prisma/client";
+import type { Prisma, PrismaClient } from "@calcom/prisma/client";
 import { cloneDeep } from "lodash";
 import { uuid } from "short-uuid";
 import { findBookingQuery } from "../../handleNewBooking/findBookingQuery";
