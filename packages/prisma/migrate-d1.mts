@@ -75,7 +75,7 @@ async function migrateD1({
         [cf, "d1", "raw", binding.id, "--local", "--persist-to", persistence, "--batch", `@${batchPath}`],
         {
           cwd: temporary,
-          env: { ...process.env, CI: "true", CLOUDFLARE_SEND_METRICS: "false" },
+          env: Object.assign({}, process.env, { CI: "true", CLOUDFLARE_SEND_METRICS: "false" }),
           maxBuffer: 16 * 1024 * 1024,
         }
       );
