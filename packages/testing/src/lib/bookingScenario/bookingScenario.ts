@@ -71,6 +71,18 @@ vi.mock("@calcom/app-store/calendar.services.generated", () => ({
 
 const mockVideoAdapterRegistry: Record<string, unknown> = {};
 
+vi.mock("@calcom/features/bookings/lib/handleNewBooking/createBookingInD1", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@calcom/features/bookings/lib/handleNewBooking/createBookingInD1")>();
+  return {
+    ...actual,
+    createBookingInD1: async ({ data, cancellation }: Parameters<typeof actual.createBookingInD1>[0]) => {
+      if (cancellation) await prismock.booking.update(cancellation);
+      return prismock.booking.create({ data, include: actual.bookingRelations });
+    },
+  };
+});
+
 vi.mock("@calcom/app-store/video.adapters.generated", () => ({
   VideoApiAdapterMap: new Proxy(
     {},
