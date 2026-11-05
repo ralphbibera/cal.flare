@@ -3,7 +3,9 @@ import { DATABASE_CHUNK_SIZE } from "@calcom/lib/constants";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import prisma from "@calcom/prisma";
-import type { Prisma, PrismaClient, User as PrismaUser, Team } from "@calcom/prisma/client";
+import type { PrismaClient, User as PrismaUser, Team } from "@calcom/prisma/client";
+import { Prisma } from "@calcom/prisma/client";
+import { getD1Database } from "@calcom/prisma/d1";
 import { MembershipRole } from "@calcom/prisma/enums";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { UpId, UserAsPersonalProfile, UserProfile } from "@calcom/types/UserProfile";
@@ -89,6 +91,44 @@ const profileSelect = {
 export enum LookupTarget {
   User,
   Profile,
+}
+
+const insertConstraintErrorCodes = {
+  "NOT NULL constraint failed": "P2011",
+  "FOREIGN KEY constraint failed": "P2003",
+  "CHECK constraint failed": "P2003",
+};
+
+// The canonical SQLite client has no skipDuplicates. A target-less ON CONFLICT skips every unique key while
+// still failing FK and NOT NULL violations, which INSERT OR IGNORE would swallow; the batch rolls them back.
+async function insertSkippingDuplicates(
+  rows: { uid: string; userId: number; organizationId: number; username: string }[]
+) {
+  if (rows.length === 0) return { count: 0 };
+  const db = getD1Database();
+  const updatedAt = new Date().toISOString().replace("Z", "+00:00");
+  try {
+    const results = await db.batch(
+      rows.map((row) =>
+        db
+          .prepare(`INSERT INTO "Profile" ("uid", "userId", "organizationId", "username", "updatedAt")
+          VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+          .bind(row.uid, row.userId, row.organizationId, row.username, updatedAt)
+      )
+    );
+    return { count: results.reduce((count, result) => count + result.meta.changes, 0) };
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    const code = Object.entries(insertConstraintErrorCodes).find(([message]) =>
+      error.message.includes(message)
+    )?.[1];
+    if (!code) throw error;
+    throw new Prisma.PrismaClientKnownRequestError(error.message, {
+      code,
+      clientVersion: Prisma.prismaVersion.client,
+      meta: { modelName: "Profile" },
+    });
+  }
 }
 
 export class ProfileRepository implements IProfileRepository {
@@ -314,15 +354,14 @@ export class ProfileRepository implements IProfileRepository {
     organizationId: number;
     orgAutoAcceptEmail: string;
   }) {
-    await prisma.profile.createMany({
-      data: users.map((user) => ({
+    await insertSkippingDuplicates(
+      users.map((user) => ({
         uid: ProfileRepository.generateProfileUid(),
         userId: user.id,
         organizationId,
         username: user?.username || getOrgUsernameFromEmail(user.email, orgAutoAcceptEmail),
-      })),
-      skipDuplicates: true,
-    });
+      }))
+    );
 
     // Populate the movedFromUser
     const createdProfiles = await prisma.profile.findMany({
@@ -362,15 +401,14 @@ export class ProfileRepository implements IProfileRepository {
     organizationId: number;
     orgAutoAcceptEmail: string;
   }) {
-    return await prisma.profile.createMany({
-      data: users.map((user) => ({
+    return await insertSkippingDuplicates(
+      users.map((user) => ({
         uid: ProfileRepository.generateProfileUid(),
         userId: user.id,
         organizationId,
         username: user?.username || getOrgUsernameFromEmail(user.email, orgAutoAcceptEmail),
-      })),
-      skipDuplicates: true,
-    });
+      }))
+    );
   }
 
   static createMany({
@@ -382,15 +420,14 @@ export class ProfileRepository implements IProfileRepository {
     organizationId: number;
     orgAutoAcceptEmail: string;
   }) {
-    return prisma.profile.createMany({
-      data: users.map((user) => ({
+    return insertSkippingDuplicates(
+      users.map((user) => ({
         uid: ProfileRepository.generateProfileUid(),
         userId: user.id,
         organizationId,
         username: user?.username || getOrgUsernameFromEmail(user.email, orgAutoAcceptEmail),
-      })),
-      skipDuplicates: true,
-    });
+      }))
+    );
   }
 
   static delete({ userId, organizationId }: { userId: number; organizationId: number }) {
