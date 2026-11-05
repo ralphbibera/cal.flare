@@ -1,13 +1,12 @@
-import { describe, expect, vi } from "vitest";
-
+import { createRequire } from "node:module";
 import { ORGANIZER_EMAIL_EXEMPT_DOMAINS } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
-import { buildCalendarEvent, buildPerson } from "@calcom/lib/test/builder";
-import { buildVideoCallData } from "@calcom/lib/test/builder";
-import type { CalendarEvent } from "@calcom/types/Calendar";
+import { buildCalendarEvent, buildPerson, buildVideoCallData } from "@calcom/lib/test/builder";
 import { test } from "@calcom/testing/lib/fixtures/fixtures";
-
+import type { CalendarEvent } from "@calcom/types/Calendar";
+import { describe, expect, vi } from "vitest";
+import { z } from "zod";
 import generateIcsString from "./generateIcsString";
 
 const assertHasIcsString = (icsString: string | undefined) => {
@@ -16,6 +15,23 @@ const assertHasIcsString = (icsString: string | undefined) => {
   expect(icsString).toBeDefined();
 
   return icsString;
+};
+
+const calendarProperty = z
+  .tuple([z.string(), z.record(z.unknown()), z.string(), z.unknown()])
+  .rest(z.unknown());
+const calendarComponent = z.tuple([z.string(), z.array(calendarProperty), z.array(z.unknown())]);
+const calendar = z.tuple([z.literal("vcalendar"), z.array(calendarProperty), z.array(calendarComponent)]);
+const parser = z
+  .object({ parse: z.function().args(z.string()).returns(z.unknown()) })
+  .parse(createRequire(import.meta.url)("ical.js"));
+
+const getEventProperty = (icsString: string, name: string) => {
+  const parsed = calendar.parse(parser.parse(icsString));
+  const event = parsed[2].find(([type]) => type === "vevent");
+  const property = event?.[1].find(([key]) => key === name);
+  if (!property) throw new Error(`Calendar property ${name} is missing`);
+  return { parameters: property[1], value: property[3] };
 };
 
 const testIcsStringContains = ({
@@ -36,14 +52,13 @@ const testIcsStringContains = ({
   // Sometimes the deeply equal stringMatching error appears. Don't want to add flakey tests
   // expect(icsString).toEqual(expect.stringContaining(`SUMMARY:${event.title}`));
   expect(icsString).toEqual(expect.stringContaining(`DTSTART:${DTSTART}`));
-  if (event.hideOrganizerEmail && !isOrganizerExempt) {
-    expect(icsString).toEqual(expect.stringContaining(`ORGANIZER;CN=${event.organizer.name}`));
-    expect(icsString).not.toEqual(expect.stringContaining(`mailto:${event.organizer.email}`));
-  } else {
-    expect(icsString).toEqual(
-      expect.stringContaining(`ORGANIZER;CN=${event.organizer.name}:mailto:${event.organizer.email}`)
-    );
-  }
+  const organizer = getEventProperty(icsString, "organizer");
+  const address = z.string().parse(organizer.value);
+  expect(organizer.parameters.cn).toBe(event.organizer.name);
+  expect(address).toMatch(/^mailto:/i);
+  expect(address.replace(/^mailto:/i, "")).toBe(
+    event.hideOrganizerEmail && !isOrganizerExempt ? "no-reply@cal.com" : event.organizer.email
+  );
   expect(icsString).toEqual(expect.stringContaining(`DTEND:${DTEND}`));
   expect(icsString).toEqual(expect.stringContaining(`STATUS:${status}`));
   expect(icsString).toEqual(
@@ -60,6 +75,37 @@ const testIcsStringContains = ({
 };
 
 describe("generateIcsString", () => {
+  test.each([undefined, ""])("generates a UID when both event IDs are %s", (id) => {
+    const event = buildCalendarEvent({ iCalUID: id, uid: id });
+    const first = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+    const second = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+    const firstUid = getEventProperty(first, "uid").value;
+    const secondUid = getEventProperty(second, "uid").value;
+    expect(firstUid).toEqual(expect.any(String));
+    expect(secondUid).toEqual(expect.any(String));
+    expect(firstUid).toBeTruthy();
+    expect(secondUid).toBeTruthy();
+    expect(secondUid).not.toBe(firstUid);
+  });
+
+  test("preserves participant names, addresses and response fields through quoted parameters", () => {
+    const organizer = buildPerson({ name: "Organizer, Café; Team", email: "organizer@example.com" });
+    const attendee = buildPerson({ name: "Attendee, North; Team", email: "attendee@example.com" });
+    const event = buildCalendarEvent({ organizer, attendees: [attendee], iCalSequence: 3 });
+    const value = assertHasIcsString(
+      generateIcsString({ event, status: "CONFIRMED", partstat: "TENTATIVE" })
+    );
+    testIcsStringContains({ icsString: value, event, status: "CONFIRMED" });
+    const participant = getEventProperty(value, "attendee");
+    const address = z.string().parse(participant.value);
+    expect(participant.parameters.cn).toBe(attendee.name);
+    expect(address.replace(/^mailto:/i, "")).toBe(attendee.email);
+    expect(participant.parameters.role).toBe("REQ-PARTICIPANT");
+    expect(participant.parameters.partstat).toBe("TENTATIVE");
+    expect(participant.parameters.rsvp).toBe("TRUE");
+    expect(getEventProperty(value, "sequence").value).toBe(3);
+  });
+
   describe("booking actions", () => {
     test("when bookingAction is Create", () => {
       const event = buildCalendarEvent({
@@ -186,7 +232,7 @@ describe("generateIcsString", () => {
 
       createEventSpy.mockReturnValueOnce({
         error: validationError as unknown as Error,
-        value: undefined,
+        value: null,
       });
 
       const event = buildCalendarEvent({
@@ -224,7 +270,7 @@ describe("generateIcsString", () => {
 
       createEventSpy.mockReturnValueOnce({
         error: genericError,
-        value: undefined,
+        value: null,
       });
 
       const event = buildCalendarEvent({
