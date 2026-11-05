@@ -91,7 +91,7 @@
     "@faker-js/faker": "9.2.0",
     "@jetstreamapp/soql-parser-js": "6.1.0",
     "@playwright/test": "1.57.0",
-    "@prisma/internals": "6.16.2",
+    "@prisma/internals": "6.16.3",
     "@snaplet/copycat": "4.1.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "5.17.0",
@@ -246,7 +246,6 @@
     "framer-motion@10.12.8": "patches/framer-motion@10.12.8.patch",
     "react-select@5.8.0": "patches/react-select@5.8.0.patch",
     "vinext@1.4.2": "patches/vinext@1.4.2.patch",
-    "prisma@6.16.1": "patches/prisma@6.16.1.patch",
     "ics@2.37.0": "patches/ics@2.37.0.patch"
   },
   "trustedDependencies": [
