@@ -1,3 +1,4 @@
+import { type KeysetPage as NumericKeysetPage, scanKeysetBatches } from "./keyset-scan";
 import { POSTGRES_LOWERCASE_RANGES } from "./postgres-lowercase-ranges";
 
 const MAX_ASCII = 0x7f;
@@ -114,7 +115,7 @@ export function toSqliteContainsPrefilter(pattern: string): string {
 
 const SEARCH_SCAN_BATCH_SIZE = 100;
 
-export type KeysetPage = { after?: number; take: number };
+export type KeysetPage = NumericKeysetPage<number>;
 
 /**
  * Applies a `contains` + `mode: "insensitive"` search in memory, before the page is cut, walking the caller's
@@ -141,14 +142,11 @@ export async function findSearchedRows<Row>({
   const matches = search ? createContainsInsensitiveMatcher(search) : () => true;
   const take = Math.max((limit ?? 0) + 1, SEARCH_SCAN_BATCH_SIZE);
   const matched: Row[] = [];
-  let after = cursor;
-  while (limit === undefined || matched.length <= limit) {
-    const rows = await fetchRows({ after, take });
+  for await (const rows of scanKeysetBatches({ fetchRows, getKey, after: cursor, take })) {
     for (const row of rows) {
       if (getSearchValues(row).some((value) => matches(value))) matched.push(row);
     }
-    if (rows.length < take) break;
-    after = getKey(rows[rows.length - 1]);
+    if (limit !== undefined && matched.length > limit) break;
   }
   return limit === undefined ? matched : matched.slice(0, limit + 1);
 }
