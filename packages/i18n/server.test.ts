@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import localeConfig from "../../i18n.json";
+import { APP_NAME } from "./branding";
+import englishTranslations from "./locales/en/common.json";
 import { getTranslation, loadTranslations, mergeWithEnglishFallback } from "./server";
+import { getServerTranslations } from "./ssr";
 
 describe("mergeWithEnglishFallback", () => {
   it("should merge locale translations with English fallback", () => {
@@ -180,6 +183,16 @@ describe("getTranslation", () => {
 });
 
 describe("request translation policy", () => {
+  it("brands Pages Router resources without changing namespace or language fallback", async () => {
+    const { _nextI18Next } = await getServerTranslations("de", ["common", "vital"]);
+    expect(_nextI18Next.initialI18nStore.de.common.create_your_calcom_account).toBe(
+      `Erstellen Sie Ihr ${APP_NAME}-Konto`
+    );
+    expect(_nextI18Next.initialI18nStore.en.common.sign_in_to_cal_com).toBe(`Sign in to ${APP_NAME}`);
+    expect(_nextI18Next.initialI18nStore.de.vital).toEqual({});
+    expect(_nextI18Next.userConfig.fallbackLng).toEqual({ default: ["en"], zh: ["zh-CN"] });
+  });
+
   it("keeps concurrent locales, Chinese alias and unsupported namespace fallback independent", async () => {
     const [en, de, ar, zh, zhCN, unknown] = await Promise.all(
       ["en", "de", "ar", "zh", "zh-CN", "unknown"].map((locale) => getTranslation(locale, "vital"))
@@ -194,10 +207,59 @@ describe("request translation policy", () => {
 
   it.each(
     localeConfig.locale.targets
-  )("loads the original %s dictionary with English fallback", async (locale) => {
+  )("preserves the %s dictionary with deployment branding and English fallback", async (locale) => {
     const dictionary = await loadTranslations(locale, "common");
     const original = await import(`./locales/${locale}/common.json`);
-    expect(dictionary).toEqual({ ...mergeWithEnglishFallback({}), ...original.default });
+    const canonical: unknown = JSON.parse(
+      JSON.stringify(dictionary)
+        .replaceAll(APP_NAME, "Cal.diy")
+        .replace(/cal\.diy/gi, "Cal.diy")
+    );
+    const expected: unknown = JSON.parse(
+      JSON.stringify({ ...englishTranslations, ...original.default }).replace(/cal\.diy/gi, "Cal.diy")
+    );
+    expect(canonical).toEqual(expected);
+    expect(JSON.stringify(dictionary)).not.toMatch(/Cal\.diy(?!\.[a-z])/);
+  });
+
+  it("brands nested copy without changing URLs, interpolation or the source dictionary", () => {
+    const source = {
+      nested: { welcome: "Welcome to cal.diy, {{name}}" },
+      upstream: "https://github.com/calcom/cal.diy",
+      capitalizedUrl: "https://Cal.diy/docs",
+      hostname: "Cal.diy.com",
+      bookingExample: "cal.diy/anna+brian",
+      support: "help@cal.diy",
+    };
+    const branded = mergeWithEnglishFallback(source);
+    expect(branded.nested).toEqual({ welcome: `Welcome to ${APP_NAME}, {{name}}` });
+    expect(branded.upstream).toBe(source.upstream);
+    expect(branded.capitalizedUrl).toBe(source.capitalizedUrl);
+    expect(branded.hostname).toBe(source.hostname);
+    expect(branded.bookingExample).toBe(source.bookingExample);
+    expect(branded.support).toBe(source.support);
+    expect(source.nested.welcome).toBe("Welcome to cal.diy, {{name}}");
+  });
+
+  it("uses the deployment brand in translated signup and sign-in text", async () => {
+    const english = await getTranslation("en", "common");
+    expect(english("create_your_calcom_account")).toBe(`Create your ${APP_NAME} account`);
+    expect(english("sign_in_to_cal_com")).toBe(`Sign in to ${APP_NAME}`);
+    const german = await getTranslation("de", "common");
+    expect(german("create_your_calcom_account")).toBe(`Erstellen Sie Ihr ${APP_NAME}-Konto`);
+  });
+
+  it("honors a configured deployment name without interpreting replacement tokens", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_NAME", "Example $& Booking");
+    vi.resetModules();
+    try {
+      const { getTranslation: configuredTranslation } = await import("./server");
+      const translate = await configuredTranslation("en", "common");
+      expect(translate("sign_in_to_cal_com")).toBe("Sign in to Example $& Booking");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 
   it("does not let English resource mutations escape a request", async () => {

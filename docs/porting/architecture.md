@@ -8,6 +8,7 @@ This reference binds the non-enterprise Cal.diy port at `e8afecd163cd3a0a3ff279b
 Observed facts below come from pinned source, official documentation, or registry metadata checked on 2026-11-04.
 Selected decisions bind future implementation. Neither source inspection nor package availability proves whole-product compatibility.
 Product builds, authentication flows, provider delivery and deployed behavior require their own execution evidence.
+Cal.flare is the deployment's default display brand. Shared translation loading applies the configured app name to inherited Cal.diy display copy across locales; original provider URLs, identifiers and upstream attribution remain intact.
 Cloudflare recommends [vinext for Next.js applications][cf-next] and identifies its beta status. Vinext remains selected.
 
 Exact direct pins below replace floating initializer defaults. Retained dependencies keep their pinned manifests and resolved upstream lockfile versions until the clean target records equivalent frozen Bun resolutions.

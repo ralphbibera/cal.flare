@@ -1,4 +1,5 @@
 import type { InitOptions } from "i18next";
+import { brandTranslations } from "./branding";
 import type { TranslationDictionary } from "./resources";
 import { i18n, loadDictionary } from "./resources";
 
@@ -18,7 +19,9 @@ export async function getServerTranslations(locale: string, namespaces: string[]
       const dictionary = await loadDictionary(language);
       return [
         language,
-        Object.fromEntries(namespaces.map((ns) => [ns, ns === "common" ? structuredClone(dictionary) : {}])),
+        Object.fromEntries(
+          namespaces.map((ns) => [ns, ns === "common" ? brandTranslations(dictionary) : {}])
+        ),
       ];
     })
   );
