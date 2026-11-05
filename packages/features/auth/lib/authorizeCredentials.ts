@@ -5,7 +5,6 @@ import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowE
 import { symmetricDecrypt, symmetricEncrypt } from "@calcom/lib/crypto";
 import { isENVDev } from "@calcom/lib/env";
 import logger from "@calcom/lib/logger";
-import { safeStringify } from "@calcom/lib/safeStringify";
 import { hashEmail } from "@calcom/lib/server/PiiHasher";
 import prisma from "@calcom/prisma";
 import { IdentityProvider, UserPermissionRole } from "@calcom/prisma/enums";
@@ -39,7 +38,7 @@ const log = logger.getSubLogger({ prefix: ["next-auth-options"] });
 export async function authorizeCredentials(
   credentials: Record<"email" | "password" | "totpCode" | "backupCode", string> | undefined
 ): Promise<AuthorizedCredentialsUser> {
-  log.debug("CredentialsProvider:credentials:authorize", safeStringify({ credentials }));
+  log.debug("CredentialsProvider:credentials:authorize");
   if (!credentials) {
     console.error(`For some reason credentials are missing`);
     throw new Error(ErrorCode.InternalServerError);
