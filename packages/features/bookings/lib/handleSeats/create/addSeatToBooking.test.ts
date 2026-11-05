@@ -7,9 +7,17 @@ import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
 import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { Miniflare } from "miniflare";
-import { uuid } from "short-uuid";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { type AddSeatInput, addD1BookingSeat } from "./D1BookingSeatPersistence";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { type AddSeatInput, addSeatToBooking } from "./createNewSeat";
+import { addD1BookingSeat } from "./D1BookingSeatPersistence";
+
+vi.mock("@calcom/app-store/zod-utils", () => ({}));
+vi.mock("@calcom/emails/email-manager", () => ({}));
+vi.mock("@calcom/features/bookings/lib/EventManager", () => ({ default: class {} }));
+vi.mock("@calcom/features/bookings/lib/getAllCredentialsForUsersOnEvent/refreshCredentials", () => ({}));
+vi.mock("@calcom/features/bookings/lib/handlePayment", () => ({}));
+vi.mock("../../handleNewBooking/findBookingQuery", () => ({}));
+vi.mock("@calcom/prisma", () => ({ default: {} }));
 
 describe("addSeatToBooking on D1", () => {
   let directory: string;
@@ -25,7 +33,7 @@ describe("addSeatToBooking on D1", () => {
     seatData: {},
   };
   const addSeat = (overrides: Partial<AddSeatInput> = {}) =>
-    withD1Database({ DB: db }, () => addD1BookingSeat({ ...input, ...overrides }, uuid()));
+    withD1Database({ DB: db }, () => addSeatToBooking({ ...input, ...overrides }));
   const seatCount = () =>
     db
       .prepare(`SELECT COUNT(*) FROM "Attendee" a WHERE a."bookingId" = 1
