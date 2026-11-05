@@ -2,7 +2,6 @@ name: Delete
 
 on:
   delete:
-    branches-ignore: [main, gh-pages]
 
 permissions:
   contents: write
@@ -17,23 +16,30 @@ concurrency:
 jobs:
   delete_reports:
     name: Delete Reports
+    if: ${{ github.event.ref_type == 'branch' && github.event.ref != 'main' && github.event.ref != 'gh-pages' }}
     runs-on: ubuntu-latest
     env:
       # Contains all reports for deleted branch
       BRANCH_REPORTS_DIR: reports/${{ github.event.ref }}
+      HEAD_REF: ${{ github.event.ref }}
     steps:
+      - name: Check report repository configuration
+        env:
+          REPORT_REPOSITORY: ${{ vars.CI_TEST_RESULTS_REPOSITORY }}
+        run: |
+          : "${REPORT_REPOSITORY:?Set CI_TEST_RESULTS_REPOSITORY to the report repository name}"
       - name: Generate GitHub App token
         id: generate-token
         uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94
         with:
           app-id: ${{ secrets.CI_CAL_APP_ID }}
           private-key: ${{ secrets.CI_CAL_APP_PRIVATE_KEY }}
-          repositories: 'test-results-2'
+          repositories: ${{ vars.CI_TEST_RESULTS_REPOSITORY }}
 
       - name: Checkout GitHub Pages Branch
         uses: actions/checkout@v4
         with:
-          repository: calcom/test-results-2
+          repository: ${{ github.repository_owner }}/${{ vars.CI_TEST_RESULTS_REPOSITORY }}
           ref: gh-pages
           token: ${{ steps.generate-token.outputs.token }}
       - name: Set Git User
@@ -43,7 +49,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Check for workflow reports
         run: |
-          if [ -z "$(ls -A $BRANCH_REPORTS_DIR)" ]; then
+          if [ -z "$(ls -A "$BRANCH_REPORTS_DIR")" ]; then
             echo "BRANCH_REPORTS_EXIST="false"" >> $GITHUB_ENV
           else
             echo "BRANCH_REPORTS_EXIST="true"" >> $GITHUB_ENV
@@ -52,11 +58,9 @@ jobs:
         if: ${{ env.BRANCH_REPORTS_EXIST == 'true' }}
         timeout-minutes: 3
         run: |
-          cd $BRANCH_REPORTS_DIR/..
-
-          rm -rf ${{ github.event.ref }}
+          rm -rf "$BRANCH_REPORTS_DIR"
           git add .
-          git commit -m "workflow: remove all reports for branch ${{ github.event.ref }}"
+          git commit -m "workflow: remove all reports for branch $HEAD_REF"
 
           while true; do
             git pull --rebase

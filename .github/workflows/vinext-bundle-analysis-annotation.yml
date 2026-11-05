@@ -10,21 +10,21 @@ permissions:
   pull-requests: write
 
 jobs:
-  build:
-    uses: ./.github/workflows/production-build-without-database.yml
-    secrets: inherit
-
   annotate:
-    needs: [build]
+    if: always()
     runs-on: ubuntu-latest
+    env:
+      CALENDSO_ENCRYPTION_KEY: ${{ secrets.CI_CALENDSO_ENCRYPTION_KEY }}
+      DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
+      NEXTAUTH_SECRET: ${{ secrets.CI_NEXTAUTH_SECRET }}
+      NEXTAUTH_URL: ${{ secrets.CI_NEXTAUTH_URL }}
+      NEXT_PUBLIC_WEBAPP_URL: ${{ vars.CI_NEXT_PUBLIC_WEBAPP_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/bun-install
-      - name: Download current bundle stats
-        uses: actions/download-artifact@v4
-        with:
-          name: bundle
-          path: apps/web/dist/analyze
+      - uses: ./.github/actions/cache-build
+      - name: Analyze current bundle
+        run: bun run --cwd apps/web analyze
 
       - name: Download base branch bundle stats
         uses: dawidd6/action-download-artifact@v6

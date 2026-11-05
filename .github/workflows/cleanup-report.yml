@@ -11,18 +11,23 @@ jobs:
   cleanup-report:
     runs-on: ubuntu-latest
     steps:
+      - name: Check report repository configuration
+        env:
+          REPORT_REPOSITORY: ${{ vars.CI_TEST_RESULTS_REPOSITORY }}
+        run: |
+          : "${REPORT_REPOSITORY:?Set CI_TEST_RESULTS_REPOSITORY to the report repository name}"
       - name: Generate GitHub App token
         id: generate-token
         uses: actions/create-github-app-token@7e473efe3cb98aa54f8d4bac15400b15fad77d94
         with:
           app-id: ${{ secrets.CI_CAL_APP_ID }}
           private-key: ${{ secrets.CI_CAL_APP_PRIVATE_KEY }}
-          repositories: 'test-results-2'
+          repositories: ${{ vars.CI_TEST_RESULTS_REPOSITORY }}
 
       - name: Checkout GitHub Pages Branch
         uses: actions/checkout@v4
         with:
-          repository: calcom/test-results-2
+          repository: ${{ github.repository_owner }}/${{ vars.CI_TEST_RESULTS_REPOSITORY }}
           ref: gh-pages
           token: ${{ steps.generate-token.outputs.token }}
 
