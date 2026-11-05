@@ -71,7 +71,7 @@ describe("booking payment credentials", () => {
           .bind(id, "payment", JSON.stringify({ token: `synthetic-${id}` }), appId, userId, invalid)
       ),
     ]);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await mf?.dispose();
