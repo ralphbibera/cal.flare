@@ -3,6 +3,7 @@ import manifest from "virtual:calflare-static-assets";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
+import { withRuntimeState } from "@calcom/lib/runtimeStateContext";
 import { withD1Database } from "@calcom/prisma/d1";
 import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
@@ -43,7 +44,10 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
           )
         );
       },
-      () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
+      () =>
+        withD1Database(env, () =>
+          withRuntimeState(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+        ),
       (promise) => ctx.waitUntil(promise)
     );
   },
