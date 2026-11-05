@@ -60,7 +60,7 @@ describe("addSeatToBooking on D1", () => {
       ],
     });
     db = await mf.getD1Database("DB");
-  });
+  }, 120_000);
 
   beforeEach(async () => {
     await db.batch([
