@@ -1,12 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { plugin } from "bun";
 
 plugin({
   name: "prisma-wasm-for-bun-tools",
   setup(build) {
-    build.onLoad({ filter: /\/internal\/query_compiler_bg\.wasm\?module$/ }, ({ path }) => {
-      const parent = join(dirname(path), "class.ts");
+    // Reject lookalikes during resolution so Bun can retain its native WASM loading.
+    build.onResolve({ filter: /query_compiler_bg\.wasm\?module$/ }, ({ path, importer }) => {
+      const target = resolve(dirname(importer), path);
+      if (!target.endsWith("/internal/query_compiler_bg.wasm?module")) return;
+      const parent = join(dirname(target), "class.ts");
       if (!existsSync(parent)) return;
       const source = readFileSync(parent, "utf8");
       if (
@@ -16,11 +19,12 @@ plugin({
         !source.includes('"@prisma/client/runtime/wasm-compiler-edge"')
       )
         return;
-      return {
-        loader: "js",
-        contents: `import { readFileSync } from "node:fs";
-export default new WebAssembly.Module(readFileSync(${JSON.stringify(path.replace(/\?module$/, ""))}));`,
-      };
+      return { path: target, namespace: "prisma-compiler" };
     });
+    build.onLoad({ filter: /.*/, namespace: "prisma-compiler" }, ({ path }) => ({
+      loader: "js",
+      contents: `import { readFileSync } from "node:fs";
+export default new WebAssembly.Module(readFileSync(${JSON.stringify(path.replace(/\?module$/, ""))}));`,
+    }));
   },
 });
