@@ -1,5 +1,10 @@
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { createContainsInsensitiveMatcher, createIlikeMatcher } from "./postgres-ilike";
+import {
+  createContainsInsensitiveMatcher,
+  createIlikeMatcher,
+  toSqliteContainsPrefilter,
+} from "./postgres-ilike";
 
 const values = [
   "I",
@@ -78,5 +83,63 @@ describe("PostgreSQL ILIKE parity", () => {
   it("does not backtrack exponentially on repeated wildcards", () => {
     const matches = createIlikeMatcher(`${"%a".repeat(50)}%b`);
     expect(matches("a".repeat(5_000))).toBe(false);
+  });
+});
+
+describe("toSqliteContainsPrefilter", () => {
+  it.each([
+    ["ADA@example.com", "ada@example.com"],
+    ["%top%", "top"],
+    ["a%b", "a%b"],
+    ["a_b", "a_b"],
+    ["a\\_b", "a_b"],
+    ["a\\%b", "a_b"],
+    ["kit", "__t"],
+    ["é", "_"],
+  ])("builds %j", (pattern, expected) => {
+    expect(toSqliteContainsPrefilter(pattern)).toBe(expected);
+  });
+
+  it("keeps every match when SQLite evaluates the prefilter", () => {
+    const database = new DatabaseSync(":memory:");
+    const like = database.prepare("SELECT ? LIKE ? AS matched");
+    const alphabet = [
+      "a",
+      "A",
+      "i",
+      "I",
+      "İ",
+      "ı",
+      "k",
+      "K",
+      "\u212a",
+      "é",
+      "É",
+      "σ",
+      "Σ",
+      "ς",
+      "😀",
+      "%",
+      "_",
+      "\\",
+    ];
+    let seed = 7;
+    const random = (size: number) => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed % size;
+    };
+    const text = (length: number) =>
+      Array.from({ length: random(length) }, () => alphabet[random(alphabet.length)]).join("");
+
+    let matches = 0;
+    for (let round = 0; round < 20_000; round++) {
+      const pattern = text(5).replace(/\\$/, "");
+      const value = text(7);
+      if (!createIlikeMatcher(pattern)(value)) continue;
+      matches++;
+      const { matched } = like.get(value, `%${toSqliteContainsPrefilter(pattern)}%`) as { matched: number };
+      expect({ pattern, value, matched }).toEqual({ pattern, value, matched: 1 });
+    }
+    expect(matches).toBeGreaterThan(100);
   });
 });
