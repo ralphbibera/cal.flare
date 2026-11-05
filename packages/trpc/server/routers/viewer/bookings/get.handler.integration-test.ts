@@ -1,8 +1,14 @@
-import prisma from "@calcom/prisma";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import kysely from "@calcom/kysely";
+import prisma from "@calcom/prisma";
 import type { Booking, EventType, User } from "@calcom/prisma/client";
+import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { Miniflare } from "miniflare";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getBookings } from "./get.handler";
 
 let user1: User;
@@ -13,9 +19,47 @@ let booking2: Booking;
 let booking3: Booking;
 
 const timestamp = Date.now();
+let root: string;
+let runtime: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const request = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => Promise<void>) => it(name, () => request(callback));
 
 describe("getBookings - integration", () => {
   beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), "booking-list-d1-"));
+    execFileSync("bun", ["packages/prisma/migrate-d1.mts", "--local-only", "--persist-to", root]);
+    const { worker } = (await import(`${process.cwd()}/apps/web/cloudflare.config.ts`)).default;
+    runtime = new Miniflare({
+      cf: false,
+      enableDevRegistry: false,
+      telemetry: { enabled: false },
+      resourcePersistencePath: join(root, "v3"),
+      workers: [
+        {
+          config: {
+            name: worker.name,
+            compatibilityDate: worker.compatibilityDate,
+            compatibilityFlags: worker.compatibilityFlags,
+            env: {
+              DB: worker.env.DB,
+              OTHER: { type: "d1", name: "booking-list-other", dev: { remote: false } },
+            },
+            manifest: {
+              mainModule: "worker.js",
+              modules: {
+                "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+              },
+            },
+          },
+        },
+      ],
+    });
+    db = await runtime.getD1Database("DB");
+    await request(seedBookings);
+  }, 120_000);
+
+  const seedBookings = async () => {
     user1 = await prisma.user.create({
       data: {
         username: `getbookings-user1-${timestamp}`,
@@ -101,29 +145,15 @@ describe("getBookings - integration", () => {
         },
       },
     });
-  });
+  };
 
   afterAll(async () => {
-    try {
-      const bookingIds = [booking1?.id, booking2?.id, booking3?.id].filter(Boolean);
-      if (bookingIds.length > 0) {
-        await prisma.attendee.deleteMany({ where: { bookingId: { in: bookingIds } } });
-        await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
-      }
-      const eventTypeIds = [eventType1?.id].filter(Boolean);
-      if (eventTypeIds.length > 0) {
-        await prisma.eventType.deleteMany({ where: { id: { in: eventTypeIds } } });
-      }
-      const userIds = [user1?.id, user2?.id].filter(Boolean);
-      if (userIds.length > 0) {
-        await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-      }
-    } catch (error) {
-      console.warn("Test cleanup failed:", error);
-    }
+    vi.useRealTimers();
+    await runtime?.dispose();
+    if (root) await rm(root, { recursive: true, force: true });
   });
 
-  it("should return bookings created by the user", async () => {
+  d1Test("should return bookings created by the user", async () => {
     const result = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -139,7 +169,7 @@ describe("getBookings - integration", () => {
     expect(bookingIds).toContain(booking2.id);
   });
 
-  it("should return bookings where user is an attendee", async () => {
+  d1Test("should return bookings where user is an attendee", async () => {
     const result = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -154,7 +184,7 @@ describe("getBookings - integration", () => {
     expect(bookingIds).toContain(booking3.id);
   });
 
-  it("should not return duplicate bookings when user is both creator and attendee matches", async () => {
+  d1Test("should not return duplicate bookings when user is both creator and attendee matches", async () => {
     const result = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -172,7 +202,7 @@ describe("getBookings - integration", () => {
     expect(relevantBookingIds.length).toBe(uniqueIds.size);
   });
 
-  it("should return correct totalCount without duplicates", async () => {
+  d1Test("should return correct totalCount without duplicates", async () => {
     const resultUser1 = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -191,7 +221,7 @@ describe("getBookings - integration", () => {
     expect(resultUser1.totalCount).toBe(resultUser1.bookings.length);
   });
 
-  it("should respect pagination with correct ordering", async () => {
+  d1Test("should respect pagination with correct ordering", async () => {
     const page1 = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -221,7 +251,7 @@ describe("getBookings - integration", () => {
     expect(date1.getTime()).toBeLessThanOrEqual(date2.getTime());
   });
 
-  it("should return bookings for user2 including those where user2 is an attendee", async () => {
+  d1Test("should return bookings for user2 including those where user2 is an attendee", async () => {
     const result = await getBookings({
       user: { id: user2.id, email: user2.email, orgId: null },
       prisma,
@@ -236,4 +266,421 @@ describe("getBookings - integration", () => {
     expect(bookingIds).toContain(booking3.id);
     expect(bookingIds).toContain(booking1.id);
   });
+
+  it("requires a request binding and refuses interactive transactions", async () => {
+    await expect(kysely.selectFrom("Booking").select("id").execute()).rejects.toThrow("D1 request binding");
+    await expect(request(() => kysely.transaction().execute(async () => "unreachable"))).rejects.toThrow(
+      "D1 interactive transactions are unsupported"
+    );
+  });
+
+  d1Test(
+    "keeps nested DTOs, nullable booleans, JSON scalar text and ordered assignment reasons",
+    async () => {
+      const literal = '{"title":"literal"}';
+      await prisma.eventType.update({
+        where: { id: eventType1.id },
+        data: {
+          title: literal,
+          schedulingType: "ROUND_ROBIN",
+          disableGuests: true,
+          seatsShowAttendees: false,
+          metadata: {},
+          bookingFields: [{ name: "literal", label: literal }],
+          hosts: { create: { userId: user1.id } },
+          hostGroups: { create: { name: literal } },
+        },
+      });
+      const created = new Date("2026-11-05T12:34:56.789Z");
+      await prisma.booking.update({
+        where: { id: booking1.id },
+        data: {
+          title: literal,
+          description: "[literal]",
+          createdAt: created,
+          paid: true,
+          rescheduled: null,
+          customInputs: literal,
+          responses: { text: literal },
+          metadata: { nested: literal },
+          isRecorded: true,
+          payment: {
+            create: {
+              uid: "payment",
+              externalId: "payment",
+              amount: 120,
+              fee: 0,
+              currency: "usd",
+              success: true,
+              refunded: false,
+              data: {},
+            },
+          },
+          references: { create: { type: literal, uid: "reference", deleted: false } },
+          attendees: {
+            create: { name: literal, email: "literal@example.com", timeZone: "UTC", noShow: null },
+          },
+          assignmentReason: {
+            create: [
+              {
+                createdAt: new Date("2026-11-05T12:34:56.790Z"),
+                reasonEnum: "REASSIGNED",
+                reasonString: literal,
+              },
+              { createdAt: created, reasonEnum: "REROUTED", reasonString: "first" },
+            ],
+          },
+          report: {
+            create: { reason: "SPAM", bookerEmail: user2.email, description: literal, createdAt: created },
+          },
+        },
+      });
+      const result = await getBookings({
+        user: user1,
+        prisma,
+        kysely,
+        bookingListingByStatus: ["upcoming"],
+        filters: { bookingUid: booking1.uid },
+        take: 10,
+        skip: 0,
+      });
+      expect(result.bookings).toHaveLength(1);
+      expect(result.bookings[0]).toMatchObject({
+        title: literal,
+        description: "[literal]",
+        createdAt: created,
+        paid: true,
+        rescheduled: null,
+        customInputs: literal,
+        responses: { text: literal },
+        metadata: { nested: literal },
+        isRecorded: true,
+        status: BookingStatus.ACCEPTED,
+        eventType: {
+          title: literal,
+          schedulingType: "ROUND_ROBIN",
+          disableGuests: true,
+          seatsShowAttendees: false,
+          bookingFields: [{ name: "literal", label: literal }],
+          hosts: [{ userId: user1.id, user: { id: user1.id, email: user1.email } }],
+          hostGroups: [{ name: literal }],
+          team: null,
+        },
+        references: [{ type: literal, deleted: false }],
+        payment: [
+          {
+            amount: 120,
+            currency: "usd",
+            success: true,
+            refunded: false,
+            appId: null,
+            paymentOption: "ON_BOOKING",
+          },
+        ],
+        report: { reason: "SPAM", description: literal, createdAt: "2026-11-05T12:34:56.789" },
+      });
+      expect(result.bookings[0].attendees.find(({ email }) => email === "literal@example.com")).toMatchObject(
+        { name: literal, noShow: null }
+      );
+      expect(
+        result.bookings[0].assignmentReasonSortedByCreatedAt.map(({ reasonString }) => reasonString)
+      ).toEqual(["first", literal]);
+      expect(result.bookings[0]).not.toHaveProperty("assignmentReason");
+    }
+  );
+
+  d1Test(
+    "applies UTC millisecond boundaries, updatedAt null ordering and parameterized attendee filters",
+    async () => {
+      const now = new Date("2040-01-01T00:00:00.123Z");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(now);
+      try {
+        const data = {
+          userId: user1.id,
+          title: "Boundary",
+          startTime: new Date(now.getTime() - 60_000),
+          status: BookingStatus.ACCEPTED,
+        };
+        const before = await prisma.booking.create({
+          data: {
+            ...data,
+            uid: "boundary-before",
+            startTime: new Date(data.startTime.getTime() - 1),
+            endTime: new Date(now.getTime() - 1),
+          },
+        });
+        const exact = await prisma.booking.create({ data: { ...data, uid: "boundary-exact", endTime: now } });
+        const after = await prisma.booking.create({
+          data: {
+            ...data,
+            uid: "boundary-after",
+            startTime: new Date(data.startTime.getTime() + 1),
+            endTime: new Date(now.getTime() + 1),
+            attendees: { create: { name: "O'NEIL", email: "boundary@example.com", timeZone: "UTC" } },
+          },
+        });
+        const list = (
+          statuses: ("upcoming" | "past")[],
+          filters: Parameters<typeof getBookings>[0]["filters"] = {}
+        ) =>
+          getBookings({
+            user: user1,
+            prisma,
+            kysely,
+            bookingListingByStatus: statuses,
+            filters,
+            take: 100,
+            skip: 0,
+          });
+        expect((await list(["upcoming"])).bookings.map(({ id }) => id)).toEqual([exact.id, after.id]);
+        expect((await list(["past"], { bookingUid: before.uid })).bookings.map(({ id }) => id)).toEqual([
+          before.id,
+        ]);
+        expect(
+          (await list(["upcoming"], { beforeEndDate: now.toISOString() })).bookings.map(({ id }) => id)
+        ).toEqual([exact.id]);
+        expect(
+          (await list(["upcoming"], { afterStartDate: data.startTime.toISOString() })).bookings
+        ).toHaveLength(2);
+        expect(
+          (
+            await list(["upcoming"], {
+              attendeeName: { type: "t", data: { operator: "contains", operand: "o'nei" } },
+            })
+          ).bookings.map(({ id }) => id)
+        ).toEqual([after.id]);
+        expect((await list(["upcoming"], { attendeeName: "' OR 1=1 --" })).bookings).toEqual([]);
+        await db.prepare("UPDATE Booking SET updatedAt = NULL WHERE id = ?").bind(exact.id).run();
+        const sorted = await getBookings({
+          user: user1,
+          prisma,
+          kysely,
+          bookingListingByStatus: ["upcoming"],
+          filters: {},
+          take: 1,
+          skip: 0,
+          sort: { sortUpdated: "asc" },
+        });
+        expect(sorted.bookings.map(({ id }) => id)).toEqual([after.id]);
+        const nullFirst = await getBookings({
+          user: user1,
+          prisma,
+          kysely,
+          bookingListingByStatus: ["upcoming"],
+          filters: {},
+          take: 1,
+          skip: 0,
+          sort: { sortUpdated: "desc" },
+        });
+        expect(nullFirst.bookings[0]).toMatchObject({
+          id: exact.id,
+          updatedAt: null,
+          paid: false,
+          eventType: { price: 0 },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  d1Test("keeps ownership and user filter denial", async () => {
+    await expect(
+      getBookings({
+        user: user1,
+        prisma,
+        kysely,
+        bookingListingByStatus: ["upcoming"],
+        filters: { userIds: [user2.id] },
+        take: 10,
+        skip: 0,
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const result = await getBookings({
+      user: { id: -1, email: "outsider@example.com" },
+      prisma,
+      kysely,
+      bookingListingByStatus: ["upcoming"],
+      filters: {},
+      take: 10,
+      skip: 0,
+    });
+    expect(result).toMatchObject({ bookings: [], totalCount: 0, recurringInfo: [] });
+  });
+
+  d1Test("resolves overlapping Kysely requests independently across awaits", async () => {
+    const other = await runtime.getD1Database("OTHER");
+    await other.prepare("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)").run();
+    await other.prepare("INSERT INTO users VALUES (?, ?)").bind(user1.id, "other@example.com").run();
+    const started = Promise.withResolvers<void>();
+    const second = Promise.withResolvers<void>();
+    const firstQuery = request(async () => {
+      const row = await kysely
+        .selectFrom("users")
+        .select("email")
+        .where("id", "=", user1.id)
+        .executeTakeFirstOrThrow();
+      started.resolve();
+      await second.promise;
+      return [
+        row.email,
+        (
+          await kysely
+            .selectFrom("users")
+            .select("email")
+            .where("id", "=", user1.id)
+            .executeTakeFirstOrThrow()
+        ).email,
+      ];
+    });
+    const otherQuery = withD1Database({ DB: other }, async () => {
+      await started.promise;
+      const row = await kysely
+        .selectFrom("users")
+        .select("email")
+        .where("id", "=", user1.id)
+        .executeTakeFirstOrThrow();
+      second.resolve();
+      return row.email;
+    });
+    expect(await Promise.all([firstQuery, otherQuery])).toEqual([
+      [user1.email, user1.email],
+      "other@example.com",
+    ]);
+  });
+
+  d1Test("retains recurring summaries, managed team filters and seated attendee privacy", async () => {
+    const team = await prisma.team.create({ data: { name: "Booking team" } });
+    const parent = await prisma.eventType.create({
+      data: { title: "Parent", slug: "parent", length: 30, teamId: team.id },
+    });
+    const child = await prisma.eventType.create({
+      data: {
+        title: "Child",
+        slug: "child",
+        length: 30,
+        parentId: parent.id,
+        seatsPerTimeSlot: 3,
+        seatsShowAttendees: false,
+      },
+    });
+    const data = {
+      userId: user1.id,
+      title: "Recurring",
+      eventTypeId: child.id,
+      recurringEventId: "series",
+      status: BookingStatus.ACCEPTED,
+    };
+    const first = new Date("2041-01-01T00:00:00.123Z");
+    const booking = await prisma.booking.create({
+      data: {
+        ...data,
+        uid: "series-1",
+        startTime: first,
+        endTime: new Date(first.getTime() + 60_000),
+        attendees: {
+          create: [
+            { name: "Booker", email: user2.email, timeZone: "UTC" },
+            { name: "Private", email: "private@example.com", timeZone: "UTC" },
+          ],
+        },
+      },
+    });
+    const attendee = await prisma.attendee.findFirstOrThrow({
+      where: { bookingId: booking.id, email: user2.email },
+    });
+    await prisma.bookingSeat.create({
+      data: { referenceUid: "series-seat", bookingId: booking.id, attendeeId: attendee.id },
+    });
+    await prisma.booking.create({
+      data: {
+        ...data,
+        uid: "series-2",
+        startTime: new Date("2041-01-02T00:00:00.123Z"),
+        endTime: new Date("2041-01-02T00:01:00.123Z"),
+      },
+    });
+    const result = await getBookings({
+      user: user1,
+      prisma,
+      kysely,
+      bookingListingByStatus: ["recurring"],
+      filters: { teamIds: [team.id], eventTypeIds: [parent.id], userIds: [user1.id] },
+      take: 1,
+      skip: 0,
+    });
+    expect(result.totalCount).toBe(2);
+    expect(result.bookings.map(({ id }) => id)).toEqual([booking.id]);
+    expect(result.recurringInfo).toEqual([
+      {
+        recurringEventId: "series",
+        count: 2,
+        firstDate: first,
+        bookings: {
+          ACCEPTED: [first, new Date("2041-01-02T00:00:00.123Z")],
+          CANCELLED: [],
+          REJECTED: [],
+          PENDING: [],
+          AWAITING_HOST: [],
+        },
+      },
+    ]);
+    const guest = await getBookings({
+      user: user2,
+      prisma,
+      kysely,
+      bookingListingByStatus: ["upcoming"],
+      filters: { bookingUid: booking.uid },
+      take: 10,
+      skip: 0,
+    });
+    expect(guest.bookings[0].attendees.map(({ email }) => email)).toEqual([user2.email]);
+    expect(guest.bookings[0].seatsReferences).toEqual([
+      { referenceUid: "series-seat", attendee: { email: user2.email } },
+    ]);
+    expect(result.bookings[0].attendees).toHaveLength(2);
+  });
+
+  d1Test(
+    "preserves PostgreSQL nested JSON timestamp formatting without changing top-level dates",
+    async () => {
+      for (const [iso, nested] of [
+        ["2042-01-01T00:00:00.000Z", "2042-01-01T00:00:00"],
+        ["2042-01-01T00:00:00.120Z", "2042-01-01T00:00:00.12"],
+        ["2042-01-01T00:00:00.100Z", "2042-01-01T00:00:00.1"],
+        ["2042-01-01T00:00:00.123Z", "2042-01-01T00:00:00.123"],
+        ["2041-12-31T23:59:59.999Z", "2041-12-31T23:59:59.999"],
+      ]) {
+        const createdAt = new Date(iso);
+        await prisma.bookingReport.update({ where: { bookingUid: booking1.uid }, data: { createdAt } });
+        await prisma.assignmentReason.updateMany({ where: { bookingId: booking1.id }, data: { createdAt } });
+        const result = await getBookings({
+          user: user1,
+          prisma,
+          kysely,
+          bookingListingByStatus: ["upcoming"],
+          filters: { bookingUid: booking1.uid },
+          take: 10,
+          skip: 0,
+        });
+        expect(result.bookings[0].report?.createdAt).toBe(nested);
+        expect(
+          result.bookings[0].assignmentReasonSortedByCreatedAt.map(({ createdAt }) => createdAt)
+        ).toEqual([nested, nested]);
+        expect(result.bookings[0].createdAt).toEqual(new Date("2026-11-05T12:34:56.789Z"));
+        expect(result.bookings[0].updatedAt).toBeInstanceOf(Date);
+      }
+      const result = await getBookings({
+        user: user1,
+        prisma,
+        kysely,
+        bookingListingByStatus: ["upcoming"],
+        filters: { bookingUid: booking2.uid },
+        take: 10,
+        skip: 0,
+      });
+      expect(result.bookings[0]).toMatchObject({ report: null, assignmentReasonSortedByCreatedAt: [] });
+    }
+  );
 });
