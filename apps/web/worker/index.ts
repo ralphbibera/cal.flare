@@ -1,5 +1,6 @@
 import { EmailMessage } from "cloudflare:email";
 import manifest from "virtual:calflare-static-assets";
+import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-context";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
@@ -45,7 +46,12 @@ function serve(
         )
       );
     },
-    () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
+    () =>
+      withD1Database(env, () =>
+        withAuthRequestEnvironment({ NEXTAUTH_SECRET: env.NEXTAUTH_SECRET }, () =>
+          handler.fetch(request, withStaticAssets(env, manifest), ctx)
+        )
+      ),
     (promise) => ctx.waitUntil(promise)
   );
 }
