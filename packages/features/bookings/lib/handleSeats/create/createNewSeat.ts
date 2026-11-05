@@ -6,111 +6,19 @@ import { handlePayment } from "@calcom/features/bookings/lib/handlePayment";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { HttpError } from "@calcom/lib/http-error";
 import prisma from "@calcom/prisma";
-import type { Prisma, PrismaClient } from "@calcom/prisma/client";
-import { BookingStatus } from "@calcom/prisma/enums";
+import type { PrismaClient } from "@calcom/prisma/client";
 import { cloneDeep } from "lodash";
 import { uuid } from "short-uuid";
 import { findBookingQuery } from "../../handleNewBooking/findBookingQuery";
 import type { IEventTypePaymentCredentialType } from "../../handleNewBooking/types";
 import type { HandleSeatsResultBooking, NewSeatedBookingObject, SeatedBooking } from "../types";
+import { type AddSeatInput, addD1BookingSeat } from "./D1BookingSeatPersistence";
 
-export type AddSeatInput = {
-  bookingUid: string;
-  bookingId: number;
-  bookingStatus: BookingStatus;
-  seatsPerTimeSlot: number;
-  attendee: {
-    email: string;
-    phoneNumber?: string;
-    name: string;
-    timeZone: string;
-    locale: string;
-  };
-  seatData: {
-    description?: string;
-    responses?: Prisma.InputJsonValue | null;
-  };
-  metadata?: Record<string, string>;
-};
+export type { AddSeatInput } from "./D1BookingSeatPersistence";
 
-/**
- * Atomically adds a seat to a booking with race condition protection.
- * Uses a transaction with a fresh read to prevent TOCTOU race conditions
- * where concurrent requests could exceed the seat limit.
- */
-export async function addSeatToBooking(input: AddSeatInput, prismaClient: PrismaClient = prisma) {
-  const referenceUid = uuid();
-
-  return prismaClient.$transaction(async (tx) => {
-    // Lock the booking row with FOR UPDATE to prevent concurrent modifications
-    // This ensures only one transaction can read and modify seat count at a time
-    await tx.$queryRaw`SELECT id FROM "Booking" WHERE uid = ${input.bookingUid} FOR UPDATE`;
-
-    // Fresh read inside transaction to get the current seat count
-    const freshBooking = await tx.booking.findUnique({
-      where: { uid: input.bookingUid },
-      select: {
-        attendees: {
-          select: {
-            bookingSeat: {
-              select: { id: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (!freshBooking) {
-      throw new HttpError({ statusCode: 404, message: "Booking not found" });
-    }
-
-    // Check seat availability with fresh data
-    // Only enforce the limit when seatsPerTimeSlot > 0 (matching original behavior
-    // where falsy seatsPerTimeSlot would skip this check entirely)
-    const currentSeatCount = freshBooking.attendees.filter((attendee) => !!attendee.bookingSeat).length;
-    if (input.seatsPerTimeSlot > 0 && input.seatsPerTimeSlot <= currentSeatCount) {
-      throw new HttpError({
-        statusCode: 409,
-        message: ErrorCode.BookingSeatsFull,
-      });
-    }
-
-    // Create the attendee and seat atomically within the transaction
-    await tx.booking.update({
-      where: { uid: input.bookingUid },
-      data: {
-        attendees: {
-          create: {
-            email: input.attendee.email,
-            phoneNumber: input.attendee.phoneNumber,
-            name: input.attendee.name,
-            timeZone: input.attendee.timeZone,
-            locale: input.attendee.locale,
-            bookingSeat: {
-              create: {
-                referenceUid,
-                data: {
-                  description: input.seatData.description,
-                  responses: input.seatData.responses,
-                },
-                metadata: input.metadata,
-                booking: {
-                  connect: { id: input.bookingId },
-                },
-              },
-            },
-          },
-        },
-        ...(input.bookingStatus === BookingStatus.CANCELLED && {
-          status: BookingStatus.ACCEPTED,
-        }),
-      },
-    });
-
-    return await tx.bookingSeat.findUnique({
-      where: { referenceUid },
-    });
-  });
+export async function addSeatToBooking(input: AddSeatInput, _prismaClient?: PrismaClient) {
+  // Keep the optional caller argument; atomic writes require the request's native D1 binding.
+  return addD1BookingSeat(input, uuid());
 }
 
 const createNewSeat = async (
