@@ -17,6 +17,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | Installer and scripts | Bun `1.4.4`. Node `24.22.0` for build tools whose engine contracts require Node. Neither becomes an application host. |
 | Framework | `vinext` `1.4.2`, `@vinext/cloudflare` `1.3.2`, Vite `8.3.5`. Keep `next` `16.4.3` for original types, peers, and reference tooling. Production uses vinext aliases and workerd. |
 | React | `react`, `react-dom`, and explicit `react-server-dom-webpack` all `19.3.1`. `@types/react` and `@types/react-dom` both `19.3.0`. Upgrade original web React `18.2.0` throughout its consumed graph. |
+| React component libraries | `react-select` `5.10.2`, `framer-motion` `11.18.2`, and Emotion `11.14.0` use upstream React 19 declarations. The Emotion resolution requires `^11.14.0`; retain its frozen lock resolution. No local declaration patches. |
 | Vite peers | `@vitejs/plugin-rsc` `0.5.38`, `@vitejs/plugin-react` `6.2.1`. The latter's compiler peers are optional. Do not use `5.1.4`, whose declared Vite peer excludes 8. |
 | Deployment plan | Cloudflare Workers Paid is required to deploy Cal.flare. Local development uses workerd and local D1. |
 | Cloudflare tools | `@cloudflare/vite-plugin` `2.0.0-beta.v.11`, `cf` `1.0.0-beta.27`. Plugin v2 is under npm `beta`; npm `latest` resolves v1 `1.67.0`. |

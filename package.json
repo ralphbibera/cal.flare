@@ -217,7 +217,8 @@
     "vite@^6.0.0": "6.4.2",
     "vite@6.4.2": "6.4.2",
     "typeorm/dayjs": "1.11.13",
-    "mermaid/dayjs": "1.11.20"
+    "mermaid/dayjs": "1.11.20",
+    "@emotion/react": "^11.14.0"
   },
   "packageExtensions": {
     "ink@3.2.0": {
@@ -242,9 +243,6 @@
   "patchedDependencies": {
     "dayjs@1.11.4": "patches/dayjs-npm-1.11.4-97921cd375.patch",
     "libphonenumber-js@1.12.38": "patches/libphonenumber-js+1.12.38.patch",
-    "@emotion/react@11.9.0": "patches/@emotion%2Freact@11.9.0.patch",
-    "framer-motion@10.12.8": "patches/framer-motion@10.12.8.patch",
-    "react-select@5.8.0": "patches/react-select@5.8.0.patch",
     "vinext@1.4.2": "patches/vinext@1.4.2.patch",
     "ics@2.37.0": "patches/ics@2.37.0.patch"
   },
