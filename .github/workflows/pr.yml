@@ -7,8 +7,6 @@ on:
     branches:
       - main
       - gh-actions-test-branch
-      - 't3/**'
-      - 'port/**'
 
   workflow_dispatch:
 
@@ -363,7 +361,7 @@ jobs:
   build:
     name: Production builds
     needs: [prepare]
-    if: ${{ needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
+    if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/production-build-without-database.yml
     secrets: inherit
 
@@ -407,6 +405,12 @@ jobs:
     needs: [prepare, build, setup-db]
     if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/e2e-embed-react.yml
+    secrets: inherit
+
+  analyze:
+    name: Analyze Build
+    needs: [build]
+    uses: ./.github/workflows/vinext-bundle-analysis.yml
     secrets: inherit
 
   required:
@@ -456,9 +460,9 @@ jobs:
             needs.unit-test.result != 'success' ||
             needs.api-v2-unit-test.result != 'success' ||
             needs.security-audit.result != 'success' ||
-            needs.build.result != 'success' ||
             (needs.prepare.outputs.has-prisma-changes == 'true' && needs.check-prisma-migrations.result != 'success') ||
             (needs.prepare.outputs.run-e2e == 'true' && (
+              needs.build.result != 'success' ||
               needs.build-api-v2.result != 'success' ||
               needs.build-atoms.result != 'success' ||
               needs.setup-db.result != 'success' ||
