@@ -36,14 +36,30 @@ export function createCalSessionStore({ DB }: D1Environment) {
       const { claims, profile } = input;
       const now = new Date().toISOString();
       // The domain row must still exist and match the authorized identity at mapping time.
-      const mapping = await DB.prepare(`
+      const mapped = await DB.batch([
+        // Temporary non-email values allow stale mirrors to rotate without changing their owners.
+        DB.prepare(`
+          WITH RECURSIVE stale(id,email) AS (
+            SELECT a.id,u.email FROM "AuthUser" a JOIN users u ON u.id=a.calUserId
+            WHERE a.email=? AND a.email<>u.email
+              AND EXISTS (SELECT 1 FROM users WHERE id=? AND email=? AND locked=0)
+            UNION
+            SELECT a.id,u.email FROM "AuthUser" a JOIN users u ON u.id=a.calUserId
+            JOIN stale s ON a.email=s.email WHERE a.email<>u.email
+          )
+          UPDATE "AuthUser" SET email=char(0)||id WHERE id IN (SELECT id FROM stale)
+        `).bind(claims.email, claims.id, claims.email),
+        DB.prepare(`
+          UPDATE "AuthUser" SET email=(SELECT email FROM users WHERE id=calUserId)
+          WHERE email=char(0)||id
+        `),
+        DB.prepare(`
         INSERT INTO "AuthUser" (id,name,email,emailVerified,createdAt,updatedAt,calUserId)
         SELECT ?,?,?,?, ?,?,id FROM users WHERE id=? AND email=? AND locked=0
         ON CONFLICT(calUserId) DO UPDATE SET
           name=excluded.name,email=excluded.email,emailVerified=excluded.emailVerified,updatedAt=excluded.updatedAt
         RETURNING id
-      `)
-        .bind(
+      `).bind(
           crypto.randomUUID(),
           claims.name ?? "",
           claims.email,
@@ -52,8 +68,9 @@ export function createCalSessionStore({ DB }: D1Environment) {
           now,
           claims.id,
           claims.email
-        )
-        .first<{ id: string }>();
+        ),
+      ]);
+      const mapping = z.object({ id: z.string() }).optional().parse(mapped[2]?.results[0]);
       if (!mapping)
         throw new ErrorWithCode(ErrorCode.Unauthorized, "Authorized Cal identity no longer exists");
       const user = await ctx.context.internalAdapter.findUserById(mapping.id);
