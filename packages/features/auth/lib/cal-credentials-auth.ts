@@ -7,6 +7,7 @@ import { deleteSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 import { authorizeCredentials } from "./authorizeCredentials";
 import { createBetterAuth } from "./better-auth";
+import { createCalCsrfState } from "./cal-csrf";
 import { projectCalServerSession } from "./cal-server-session";
 import { browserSession, credentialSession } from "./cal-session";
 import {
@@ -31,11 +32,6 @@ const credentialsForm = form.extend({
   backupCode: z.string().default(""),
 });
 
-async function csrfHash(token: string, secret: string) {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token + secret));
-  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 // This credential unit remains unmounted until the retained email and OAuth branches are ported.
 export function createCalCredentialsAuth(config: AuthConfig) {
   const core = createBetterAuth(config);
@@ -50,19 +46,15 @@ export function createCalCredentialsAuth(config: AuthConfig) {
   const callbackCookie = `${prefix}next-auth.callback-url`;
 
   async function csrf(ctx: EndpointContext, submitted?: string) {
-    const cookie = ctx.getCookie(csrfCookie);
-    const [token, digest] = cookie?.split("|") ?? [];
-    if (token && digest === (await csrfHash(token, config.NEXTAUTH_SECRET))) {
-      return { token, verified: token === submitted };
-    }
-    const generated = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
-      byte.toString(16).padStart(2, "0")
-    ).join("");
-    ctx.setCookie(csrfCookie, `${generated}|${await csrfHash(generated, config.NEXTAUTH_SECRET)}`, {
-      ...attributes,
-      httpOnly: true,
+    const state = await createCalCsrfState({
+      cookie: ctx.getCookie(csrfCookie),
+      secret: config.NEXTAUTH_SECRET,
+      submitted,
     });
-    return { token: generated, verified: false };
+    if (state.kind === "created") {
+      ctx.setCookie(csrfCookie, state.cookie, { ...attributes, httpOnly: true });
+    }
+    return state;
   }
 
   function callback(ctx: EndpointContext, requested?: string) {
