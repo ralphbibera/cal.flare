@@ -169,6 +169,7 @@ jobs:
       has-files-requiring-all-checks: ${{ steps.filter-exclusions.outputs.has-files-requiring-all-checks }}
       has-api-v2-changes: ${{ steps.filter-inclusions.outputs.has-api-v2-changes }}
       has-prisma-changes: ${{ steps.filter-inclusions.outputs.has-prisma-changes }}
+      run-docs: ${{ steps.filter-inclusions.outputs.has-docs-changes == 'true' || (steps.check-if-pr-has-label.outputs.run-e2e == 'true' && steps.filter-exclusions.outputs.has-files-requiring-all-checks == 'true') }}
       commit-sha: ${{ steps.get_sha.outputs.commit-sha }}
       run-e2e: ${{ steps.check-if-pr-has-label.outputs.run-e2e == 'true' }}
       db-cache-hit: ${{ steps.cache-db-check.outputs.cache-hit }}
@@ -208,6 +209,17 @@ jobs:
         id: filter-inclusions
         with:
           filters: |
+            has-docs-changes:
+              - "apps/docs/**"
+              - "bun.lock"
+              - "bunfig.toml"
+              - "package.json"
+              - "patches/**"
+              - ".github/workflows/docs.yml"
+              - ".github/workflows/all-checks.yml"
+              - ".github/workflows/pr.yml"
+              - ".github/actions/bun-install/**"
+              - ".github/actions/bun-playwright-install/**"
             has-api-v2-changes:
               - "apps/api/v2/**"
               - "packages/platform-constants/**"
@@ -365,6 +377,12 @@ jobs:
     uses: ./.github/workflows/production-build-without-database.yml
     secrets: inherit
 
+  docs:
+    name: Docs
+    needs: [prepare]
+    if: ${{ needs.prepare.outputs.run-docs == 'true' }}
+    uses: ./.github/workflows/docs.yml
+
   integration-test:
     name: Tests
     needs: [prepare, build, setup-db]
@@ -428,6 +446,7 @@ jobs:
         build,
         build-api-v2,
         build-atoms,
+        docs,
         setup-db,
         e2e,
         e2e-api-v2,
@@ -452,6 +471,7 @@ jobs:
       - name: Fail if conditional jobs failed
         run: exit 1
         if: |
+          (needs.prepare.outputs.run-docs == 'true' && needs.docs.result != 'success') ||
           (
             needs.prepare.outputs.has-files-requiring-all-checks == 'true' &&
             (
