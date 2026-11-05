@@ -15,6 +15,20 @@ const routes = readFileSync(path.join(root, "../../docs/porting/inventory/routes
     return { route, source, heading, title };
   });
 
+test.beforeEach(async ({ page, baseURL }) => {
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (request.resourceType() !== "image" || new URL(request.url()).origin === baseURL) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+    });
+  });
+});
+
 test("every content route hydrates with original metadata, code blocks and anchors", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
