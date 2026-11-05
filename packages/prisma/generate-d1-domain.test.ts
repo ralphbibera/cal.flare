@@ -1,18 +1,22 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { generateD1Domain } from "./generate-d1-domain.mjs";
+import { generateD1Domain, persistD1Domain } from "./generate-d1-domain.mjs";
 import { migrateD1 } from "./migrate-d1.mjs";
 
 const execute = promisify(execFile);
 const q = (value: string) => `"${value.replaceAll('"', '""')}"`;
 const iso = "2026-11-05T12:34:56.789+00:00";
+const { version } = z
+  .object({ version: z.string() })
+  .parse(createRequire(import.meta.url)("prisma/package.json"));
 let generated: Awaited<ReturnType<typeof generateD1Domain>>;
 let root: string;
 let mf: Miniflare;
@@ -105,9 +109,66 @@ afterAll(async () => {
 });
 
 describe("D1 domain storage", () => {
+  it("preserves reviewed migration bytes across tool upgrades and rejects SQL or provenance drift", async () => {
+    const path = await mkdtemp(join(root, "history-"));
+    const directory = pathToFileURL(`${path}/`);
+    const reviewed = await Promise.all(
+      generated.migrations.map(async ({ name }) => ({
+        name,
+        sql: await readFile(new URL(`./migrations-d1/${name}`, import.meta.url), "utf8"),
+      }))
+    );
+    for (const { name, sql } of reviewed) await writeFile(new URL(name, directory), sql);
+    for (const check of [true, false]) {
+      await persistD1Domain({ migrations: generated.migrations, directory, check });
+      for (const mutate of [
+        (sql: string) =>
+          sql.replace("BETWEEN -2147483648 AND 2147483647", "BETWEEN -2147483648 AND 2147483648"),
+        (sql: string) => sql.replace(`; Prisma ${version}.`, "; Prisma 0.0.0."),
+        (sql: string) => sql.replace(/SHA-256: [a-f0-9]{64}/, `SHA-256: ${"0".repeat(64)}`),
+      ]) {
+        const migrations = generated.migrations.map((migration, index) => ({
+          ...migration,
+          sql: index === 0 ? mutate(migration.sql) : migration.sql,
+        }));
+        await expect(persistD1Domain({ migrations, directory, check })).rejects.toThrow(/D1 domain SQL/);
+      }
+    }
+    for (const { name, sql } of reviewed) expect(await readFile(new URL(name, directory), "utf8")).toBe(sql);
+    await writeFile(
+      new URL(reviewed[0].name, directory),
+      reviewed[0].sql.replace("Prisma 6.16.1", "Prisma 0.0.0")
+    );
+    await expect(persistD1Domain({ migrations: generated.migrations, directory })).rejects.toThrow(
+      /provenance/
+    );
+  });
+
+  it("creates only missing files after all existing migrations pass validation", async () => {
+    const path = await mkdtemp(join(root, "fresh-"));
+    const directory = pathToFileURL(`${path}/`);
+    const last = generated.migrations[generated.migrations.length - 1];
+    await writeFile(new URL(last.name, directory), `${last.sql}-- drift\n`);
+    await expect(persistD1Domain({ migrations: generated.migrations, directory })).rejects.toThrow(
+      /D1 domain SQL/
+    );
+    expect(await readdir(path)).toEqual([last.name]);
+    await writeFile(new URL(last.name, directory), last.sql);
+    await expect(
+      persistD1Domain({ migrations: generated.migrations, directory, check: true })
+    ).rejects.toThrow();
+    await persistD1Domain({ migrations: generated.migrations, directory });
+    await persistD1Domain({ migrations: generated.migrations, directory, check: true });
+    for (const { name, sql } of generated.migrations)
+      expect(await readFile(new URL(name, directory), "utf8")).toBe(sql);
+  });
+
   it("reproduces reviewed SQL and matches every source table, column, FK, and index", async () => {
     for (const { name, sql } of generated.migrations) {
-      expect(sql).toBe(await readFile(new URL(`./migrations-d1/${name}`, import.meta.url), "utf8"));
+      const reviewed = await readFile(new URL(`./migrations-d1/${name}`, import.meta.url), "utf8");
+      expect(reviewed).toContain("; Prisma 6.16.1.\n");
+      expect(sql).toContain(`; Prisma ${version}.\n`);
+      expect(sql.replace(`; Prisma ${version}.\n`, "; Prisma 6.16.1.\n")).toBe(reviewed);
       expect(Buffer.byteLength(sql)).toBeLessThan(100_000);
     }
     const tables = z

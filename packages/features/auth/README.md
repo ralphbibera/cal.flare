@@ -46,7 +46,7 @@ cookie contracts, not Cal login or authenticated application acceptance. It has
 no live-provider, remote database, deployment, or startup-migration behavior.
 
 Dependency graph verification keeps domain Zod 3.25.76, JOSE 4.15.9,
-Prisma/client/adapter 6.16.1, and Kysely 0.28.14. Better Auth/core resolve their
+Prisma/client/adapter 6.16.3, and Kysely 0.28.14. Better Auth/core resolve their
 own Zod 4.6.6, JOSE 6.2.15, and Kysely 0.29.8. The root declares the SDK's
 Kysely 0.29.8 peer explicitly so the hoisted `@better-auth/kysely-adapter`
 resolves its supported version. Existing domain workspaces that imported

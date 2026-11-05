@@ -10,7 +10,7 @@ Selected decisions bind future implementation. Neither source inspection nor pac
 Product builds, authentication flows, provider delivery and deployed behavior require their own execution evidence.
 Cloudflare recommends [vinext for Next.js applications][cf-next] and identifies its beta status. Vinext remains selected.
 
-Exact direct pins below replace floating initializer defaults. Retained dependencies keep their pinned manifests and resolved upstream lockfile versions until the clean target records equivalent frozen Bun resolutions.
+Prefer compatible upstream releases over local dependency patches. The versions below record the tested stack and may change when the consumed contracts and checks pass. Commit the resulting Bun lockfile so installs remain reproducible.
 
 | Responsibility | Selected version and rule |
 | --- | --- |
@@ -21,7 +21,7 @@ Exact direct pins below replace floating initializer defaults. Retained dependen
 | Deployment plan | Cloudflare Workers Paid is required to deploy Cal.flare. Local development uses workerd and local D1. |
 | Cloudflare tools | `@cloudflare/vite-plugin` `2.0.0-beta.v.11`, `cf` `1.0.0-beta.27`. Plugin v2 is under npm `beta`; npm `latest` resolves v1 `1.67.0`. |
 | Cloudflare runtime | Compatibility date `2026-11-04`, `nodejs_compat`. Plugin v2 resolves Miniflare `5.20261103.0-beta`; cf resolves `5.20261101.0-beta`. Generated runtime types plus `@cloudflare/workers-types` `4.20260702.1` satisfy existing D1/Sentry type peers. Lock both tool graphs. |
-| Database | `prisma`, `@prisma/client`, and `@prisma/adapter-d1` all `6.16.1`. Preserve `@calcom/prisma` as domain access boundary. |
+| Database | `prisma`, `@prisma/client`, and `@prisma/adapter-d1` all `6.16.3`. Preserve `@calcom/prisma` as domain access boundary. |
 | Authentication | Self-hosted `better-auth` `1.7.15`; schema CLI package `auth` `1.7.15`. Native D1 binding, no hosted Better Auth service. |
 | Auth primitives | Retain `bcryptjs` `2.4.3`, `otplib` `12.0.1`, and existing encryption and JWT helpers. Better Auth's default password and MFA formats are not selected. |
 | Translation | Retain `i18next` `23.2.3`, `react-i18next` `12.3.1`, original JSON, namespaces, and keys. Replace `next-i18next` `15.4.2` loading boundary. |
@@ -184,7 +184,7 @@ Acceptance compares SSR and hydration in concurrent locales, missing keys/namesp
 ### D1 and Prisma usage
 
 D1 replaces PostgreSQL as the authoritative relational database. Prisma remains the application's normal domain data-access layer.
-Use `prisma`, `@prisma/client` and the official `@prisma/adapter-d1` at the same pinned version, `6.16.1`.
+Use `prisma`, `@prisma/client` and the official `@prisma/adapter-d1` at the same pinned version, `6.16.3`.
 The [official D1 connector documentation](https://www.prisma.io/docs/orm/v6/overview/databases/cloudflare-d1) requires the SQLite provider and D1 adapter.
 Application runtime connects through `PrismaD1(env.DB)`, not a PostgreSQL URL or connection pool.
 
@@ -204,8 +204,8 @@ Preserve existing repository/service placement rather than moving untouched call
 Native SQL must retain the effects of the locked-user, pending-payment, booking-idempotency and undefined-filter guards where those contracts apply.
 Generated client types follow the converted schema; preserve domain-facing values without hand-editing generated output or disguising incompatible filters.
 
-The [exact 6.16.1 Worker adapter](https://github.com/prisma/prisma/blob/6.16.1/packages/adapter-d1/src/d1-worker.ts#L98-L112) has no-op transaction commit/rollback methods.
-Its [transaction implementation](https://github.com/prisma/prisma/blob/6.16.1/packages/adapter-d1/src/d1-worker.ts#L160-L178) warns that implicit and explicit transactions execute as individual queries.
+The [6.16.3 Worker adapter](https://github.com/prisma/prisma/blob/6.16.3/packages/adapter-d1/src/d1-worker.ts#L98-L112) has no-op transaction commit/rollback methods.
+Its [transaction implementation](https://github.com/prisma/prisma/blob/6.16.3/packages/adapter-d1/src/d1-worker.ts#L160-L178) warns that implicit and explicit transactions execute as individual queries.
 Do not rely on `$transaction`, an interactive callback or a nested create to preserve the source's all-or-nothing multi-row behavior.
 D1's native `batch()` is the atomic path. Put required guards and dependent writes inside that batch, not in a separate Prisma call before it.
 Verify failure rollback, generated relationships, defaults, extension-produced values and relevant simultaneous requests for each migrated write boundary.
@@ -219,7 +219,7 @@ Prisma uses `engineType = "client"`, a Workers-compatible generated module, and 
 | --- | --- |
 | `Int` IDs | SQLite integer keys and original autoincrement behavior. Keep existing seed/import IDs, compound keys, public UIDs, and user UUIDs. No universal rekeying. |
 | Money | Original integer amount/fee units plus currency. No float conversion. |
-| `DateTime` | Domain API returns JS `Date`. Prisma D1 `6.16.1` serializes UTC ISO text with milliseconds and `+00:00`. Raw domain SQL and SQL date defaults use that exact representation, including `strftime` defaults rather than mixed `CURRENT_TIMESTAMP` text. REST and provider epoch conversions remain field-specific. |
+| `DateTime` | Domain API returns JS `Date`. Prisma D1 `6.16.3` serializes UTC ISO text with milliseconds and `+00:00`. Raw domain SQL and SQL date defaults use that exact representation, including `strftime` defaults rather than mixed `CURRENT_TIMESTAMP` text. REST and provider epoch conversions remain field-specific. |
 | Auth dates | Better Auth owns serialization in its separate tables. Cal projections convert explicitly; do not mix auth booleans/date formats with domain columns. |
 | JSON/null | Preserve arrays/objects, enum strings, missing values, SQL null, JSON null, and Prisma null sentinels at the existing boundary. |
 | Scalar lists | Convert all nine list fields to JSON columns: six scalar lists and the three enum lists `Webhook.eventTriggers`, `App.categories`, and `AccessCode.scopes`. Rewrite predicates/order with bound SQLite JSON SQL. Preserve domain-facing list types. |
