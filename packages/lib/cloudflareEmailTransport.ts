@@ -4,10 +4,11 @@ import { ErrorWithCode } from "@calcom/lib/errors";
 import type { Transport } from "nodemailer";
 
 type EmailDelivery = (message: { from: string; to: string; raw: Uint8Array }) => Promise<void>;
-const delivery = new AsyncLocalStorage<EmailDelivery>();
+type WaitUntil = (promise: Promise<void>) => void;
+const delivery = new AsyncLocalStorage<{ send: EmailDelivery; waitUntil?: WaitUntil }>();
 
-export function withCloudflareEmail<T>(sender: EmailDelivery, callback: () => T): T {
-  return delivery.run(sender, callback);
+export function withCloudflareEmail<T>(sender: EmailDelivery, callback: () => T, waitUntil?: WaitUntil): T {
+  return delivery.run({ send: sender, waitUntil }, callback);
 }
 
 export const cloudflareEmailTransport: Transport<{ messageId: string }> = {
@@ -16,7 +17,7 @@ export const cloudflareEmailTransport: Transport<{ messageId: string }> = {
   send(mail, callback): void {
     const info = { messageId: mail.message.messageId() };
     const deliver = async (): Promise<void> => {
-      const send = delivery.getStore();
+      const send = delivery.getStore()?.send;
       if (!send) {
         throw new ErrorWithCode(
           ErrorCode.InternalServerError,
@@ -34,7 +35,7 @@ export const cloudflareEmailTransport: Transport<{ messageId: string }> = {
       const failure = results.find((result) => result.status === "rejected");
       if (failure?.status === "rejected") throw failure.reason;
     };
-    void deliver().then(
+    const task = deliver().then(
       () => callback(null, info),
       (error: unknown) =>
         callback(
@@ -44,5 +45,7 @@ export const cloudflareEmailTransport: Transport<{ messageId: string }> = {
           info
         )
     );
+    // MIME building can outlive the response before the native sender is reached.
+    delivery.getStore()?.waitUntil?.(task);
   },
 };

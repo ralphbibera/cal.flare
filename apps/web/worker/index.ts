@@ -43,7 +43,8 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
           )
         );
       },
-      () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+      () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
+      (promise) => ctx.waitUntil(promise)
     );
   },
 });

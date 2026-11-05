@@ -1,11 +1,16 @@
 import process from "node:process";
 import { isENVDev } from "@calcom/lib/env";
 import type { Transport } from "nodemailer";
+import type SendmailTransport from "nodemailer/lib/sendmail-transport";
 import type SMTPConnection from "nodemailer/lib/smtp-connection";
 import { cloudflareEmailTransport } from "./cloudflareEmailTransport";
 import { getAdditionalEmailHeaders } from "./getAdditionalEmailHeaders";
 
-function detectTransport(): Transport<{ messageId: string }> | SMTPConnection.Options | string {
+function detectTransport():
+  | Transport<{ messageId: string }>
+  | SendmailTransport.Options
+  | SMTPConnection.Options
+  | string {
   if (process.env.RESEND_API_KEY) {
     const transport = {
       host: "smtp.resend.com",
@@ -47,7 +52,11 @@ function detectTransport(): Transport<{ messageId: string }> | SMTPConnection.Op
     return transport;
   }
 
-  return cloudflareEmailTransport;
+  if (typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers") {
+    return cloudflareEmailTransport;
+  }
+
+  return { sendmail: true, newline: "unix", path: "/usr/sbin/sendmail" };
 }
 
 export const serverConfig = {

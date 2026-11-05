@@ -35,12 +35,25 @@ beforeEach(() => {
     vi.stubEnv(name, "");
   }
   bindings.EMAIL = { send };
+  vi.stubGlobal("navigator", { userAgent: "Cloudflare-Workers" });
   send.mockReset().mockResolvedValue(undefined);
 });
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("mail transport", () => {
+  it.each([
+    undefined,
+    { userAgent: "Node.js/24" },
+  ])("retains sendmail outside Workers (%j)", async (navigator) => {
+    vi.stubGlobal("navigator", navigator);
+    const { serverConfig } = await import("./serverConfig");
+    expect(serverConfig.transport).toEqual({ sendmail: true, newline: "unix", path: "/usr/sbin/sendmail" });
+  });
+
   it("defaults to Cloudflare and preserves MIME content and envelope recipients without exposing Bcc", async () => {
     const payloads: string[] = [];
     send.mockImplementation(async (message) => {
@@ -122,11 +135,24 @@ describe("mail transport", () => {
 
   it("attempts every envelope recipient before reporting a partial delivery failure", async () => {
     const failure = new Error("Recipient rejected");
+    const pending = Promise.withResolvers<void>();
     send.mockRejectedValueOnce(failure);
-    await expect((await configuredMailer()).sendMail({ ...mail, cc: "copy@example.net" })).rejects.toBe(
-      failure
+    send.mockReturnValueOnce(pending.promise);
+    let settled = false;
+    const result = (await configuredMailer()).sendMail({ ...mail, cc: "copy@example.net" }).then(
+      () => {
+        settled = true;
+      },
+      (error: unknown) => {
+        settled = true;
+        return error;
+      }
     );
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
     expect(send.mock.calls.map(([message]) => message.to)).toEqual(["guest@example.net", "copy@example.net"]);
+    expect(settled).toBe(false);
+    pending.resolve();
+    expect(await result).toBe(failure);
   });
 
   it.each([
