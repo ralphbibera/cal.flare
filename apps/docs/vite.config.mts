@@ -97,8 +97,12 @@ export async function importPage(segments = []) {
       }
       return { code, map: null };
     },
-    handleHotUpdate() {
+    hotUpdate({ file, type }) {
+      if (!file.startsWith(path.join(root, "content") + path.sep)) return;
       compiled.clear();
+      if (type === "update") return;
+      const manifest = this.environment.moduleGraph.getModuleById(manifestId);
+      if (manifest) return [manifest];
     },
   };
 }
@@ -106,8 +110,14 @@ export async function importPage(segments = []) {
 export default defineConfig({
   envPrefix: [],
   environments: {
-    rsc: { build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } } },
-    ssr: { build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } } },
+    rsc: {
+      optimizeDeps: { exclude: ["zod", "react-compiler-runtime"] },
+      build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } },
+    },
+    ssr: {
+      optimizeDeps: { exclude: ["zod", "react-compiler-runtime"] },
+      build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } },
+    },
   },
   define: {
     "process.env.NEXTRA_DEFAULT_LOCALE": JSON.stringify(""),
