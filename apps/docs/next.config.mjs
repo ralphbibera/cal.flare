@@ -1,7 +1,4 @@
-import nextra from "nextra";
-
-const withNextra = nextra({});
-
-export default withNextra({
+export default {
   reactStrictMode: true,
-});
+  images: { unoptimized: true },
+};
