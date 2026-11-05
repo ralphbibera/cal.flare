@@ -3,7 +3,10 @@ import { betterAuth } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { getMigrations } from "better-auth/db/migration";
+import { z } from "zod";
 import { createBetterAuth } from "../../better-auth";
+import { browserSession } from "../../cal-session";
+import { createCalSessionStore } from "../../cal-session-store";
 
 // Library-only fixture: never mounted by the application, never evidence of Cal login policy.
 export default {
@@ -16,6 +19,7 @@ export default {
       NEXTAUTH_COOKIE_DOMAIN: url.hostname === "calflare.test" ? ".calflare.test" : undefined,
     };
     const core = createBetterAuth(config);
+    const sessions = createCalSessionStore(env);
     if (url.pathname === "/schema") {
       const migrations = await getMigrations(createBetterAuth({ ...config, DB: env.SCHEMA }).options);
       return new Response(await migrations.compileMigrations());
@@ -34,6 +38,54 @@ export default {
         {
           id: "library-session-fixture",
           endpoints: {
+            calIssue: createAuthEndpoint(
+              "/fixture-cal/issue",
+              {
+                method: "POST",
+                body: z.object({ sessionTimeout: z.number().optional() }),
+              },
+              async (ctx) => {
+                await sessions.issue(ctx, {
+                  claims: {
+                    id: 123,
+                    email: "library@calflare.test",
+                    name: "Cal user",
+                    role: "INACTIVE_ADMIN",
+                    inactiveAdminReason: "both",
+                    locale: "de",
+                  },
+                  profile: { profileId: null, upId: "usr-123" },
+                  emailVerified: false,
+                  sessionTimeout: ctx.body.sessionTimeout,
+                });
+                return ctx.json({ url: "/" });
+              }
+            ),
+            calRead: createAuthEndpoint("/fixture-cal/read", { method: "GET" }, async (ctx) => {
+              const stored = await sessions.read(ctx);
+              return ctx.json(
+                stored
+                  ? {
+                      browser: browserSession(stored.claims, stored.profile),
+                      expiresAt: stored.session.expiresAt,
+                    }
+                  : null
+              );
+            }),
+            calRenew: createAuthEndpoint("/fixture-cal/renew", { method: "POST" }, async (ctx) => {
+              const stored = await sessions.read(ctx);
+              if (!stored) return ctx.json(null);
+              const renewed = await sessions.renew(ctx, {
+                claims: { ...stored.claims, locale: "ar" },
+                profile: stored.profile,
+                sessionTimeout: 5,
+              });
+              return ctx.json(renewed ? browserSession(renewed.claims, renewed.profile) : null);
+            }),
+            calRevoke: createAuthEndpoint("/fixture-cal/revoke", { method: "POST" }, async (ctx) => {
+              await sessions.revoke(ctx);
+              return ctx.json({ url: "/" });
+            }),
             fixture: createAuthEndpoint("/fixture-session", { method: "POST" }, async (ctx) => {
               const user = await ctx.context.internalAdapter.createUser(
                 {
