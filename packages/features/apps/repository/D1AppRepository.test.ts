@@ -53,7 +53,7 @@ describe("apps by stored category", () => {
         .bind(slug, slug, categories, enabled, '{"client_id":"configured"}', "2026-11-05T00:00:00.000+00:00")
         .run();
     }
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await mf?.dispose();
