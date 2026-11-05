@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
+import { prismaWasmPlugin } from "../../prisma/tooling/vite-wasm-plugin.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,6 +28,7 @@ export default defineConfig({
     target: "node18",
     platform: "node",
     ssr: true,
+    ssrEmitAssets: true,
     lib: {
       entry: {
         index: resolve(__dirname, "./index.ts"),
@@ -205,7 +207,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react(), dts()],
+  plugins: [react(), prismaWasmPlugin(), dts()],
   resolve: {
     conditions: ["node", "import", "require", "default"],
     alias: {

@@ -3,6 +3,7 @@ import process from "node:process";
 import react from "@vitejs/plugin-react";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
+import { prismaWasmPlugin } from "./packages/prisma/tooling/vite-wasm-plugin.mjs";
 import projects from "./vitest.workspace";
 
 const env = loadEnv("", process.cwd(), "");
@@ -16,7 +17,7 @@ for (const [key, value] of Object.entries(env)) {
 process.env.INTEGRATION_TEST_MODE = "true";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), prismaWasmPlugin()],
   resolve: {
     alias: [
       {
