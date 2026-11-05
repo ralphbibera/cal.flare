@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const i18nJson = require("../../i18n.json");
 const config = require("./next-i18next.config");
+const localesDir = path.resolve(__dirname, "./locales");
 
 describe("@calcom/i18n/next-i18next.config", () => {
   it("exports i18n with defaultLocale and locales", () => {
@@ -21,10 +22,8 @@ describe("@calcom/i18n/next-i18next.config", () => {
     expect(config.i18n.locales.length).toBe(expectedLocales.length);
   });
 
-  it("has localePath pointing to existing locales directory", () => {
-    expect(config.localePath).toBeDefined();
-    expect(typeof config.localePath).toBe("string");
-    expect(fs.existsSync(config.localePath)).toBe(true);
+  it("carries no filesystem or next-i18next loading options into Worker and browser bundles", () => {
+    expect(Object.keys(config).sort()).toEqual(["fallbackLng", "i18n"]);
   });
 
   it("has fallbackLng configured", () => {
@@ -34,7 +33,6 @@ describe("@calcom/i18n/next-i18next.config", () => {
   });
 
   it("every locale in config has a corresponding locale directory with common.json", () => {
-    const localesDir = config.localePath;
     for (const locale of config.i18n.locales) {
       const localeDir = path.join(localesDir, locale);
       const commonJson = path.join(localeDir, "common.json");
@@ -44,7 +42,7 @@ describe("@calcom/i18n/next-i18next.config", () => {
   });
 
   it("english common.json is valid JSON with translation keys", () => {
-    const enPath = path.join(config.localePath, "en", "common.json");
+    const enPath = path.join(localesDir, "en", "common.json");
     const enTranslations = JSON.parse(fs.readFileSync(enPath, "utf-8"));
     expect(typeof enTranslations).toBe("object");
     expect(Object.keys(enTranslations).length).toBeGreaterThan(0);
@@ -52,10 +50,10 @@ describe("@calcom/i18n/next-i18next.config", () => {
 
   it("Indonesian translations preserve interpolation and rich-text tokens", () => {
     const enTranslations = JSON.parse(
-      fs.readFileSync(path.join(config.localePath, "en", "common.json"), "utf-8")
+      fs.readFileSync(path.join(localesDir, "en", "common.json"), "utf-8")
     );
     const idTranslations = JSON.parse(
-      fs.readFileSync(path.join(config.localePath, "id", "common.json"), "utf-8")
+      fs.readFileSync(path.join(localesDir, "id", "common.json"), "utf-8")
     );
     const tokenPattern = /\{\{[^}]+\}\}|<\/?\d+>|\$t\([^)]*\)/g;
     const tokens = (value: string): string[] => (value.match(tokenPattern) ?? []).sort();
