@@ -1,7 +1,7 @@
-import { Footer, Layout, Navbar } from "nextra-theme-docs";
-import { Head } from "nextra/components";
-import { getPageMap } from "nextra/page-map";
+import { getPageMap } from "virtual:docs";
 import localFont from "next/font/local";
+import { Head } from "nextra/components";
+import { Footer, Layout, Navbar } from "nextra-theme-docs";
 import "nextra-theme-docs/style.css";
 import "./logo.css";
 import "./fonts.css";
@@ -51,8 +51,8 @@ const navbar: React.ReactElement = (
 const footer: React.ReactElement = (
   <Footer>
     <small>
-      Cal.diy is the open source community edition of Cal.com. Cal.diy® and Cal®
-      are a registered trademark by Cal.com, Inc. All rights reserved.
+      Cal.diy is the open source community edition of Cal.com. Cal.diy® and Cal® are a registered trademark by
+      Cal.com, Inc. All rights reserved.
     </small>
   </Footer>
 );
@@ -62,26 +62,20 @@ export const metadata: { title: string; description: string } = {
   description: "Cal.flare self-hosting documentation",
 };
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
       dir="ltr"
       suppressHydrationWarning
-      className={`${calSans.variable} ${calSansUI.variable}`}
-    >
+      className={`${calSans.variable} ${calSansUI.variable}`}>
       <Head />
       <body>
         <Layout
           navbar={navbar}
           pageMap={await getPageMap()}
           docsRepositoryBase="https://github.com/calcom/cal.diy/tree/main/apps/docs"
-          footer={footer}
-        >
+          footer={footer}>
           {children}
         </Layout>
       </body>
