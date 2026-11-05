@@ -10,6 +10,7 @@ import prisma from "@calcom/prisma";
 import { IdentityProvider, UserPermissionRole } from "@calcom/prisma/enums";
 import { checkIfUserBelongsToActiveTeam } from "./checkIfUserBelongsToActiveTeam";
 import { ErrorCode } from "./ErrorCode";
+import type { CredentialPolicy } from "./request-context";
 import { verifyPassword } from "./verifyPassword";
 
 type UserWithProfiles = NonNullable<
@@ -38,11 +39,20 @@ const log = logger.getSubLogger({ prefix: ["next-auth-options"] });
 export async function authorizeCredentials(
   credentials: Record<"email" | "password" | "totpCode" | "backupCode", string> | undefined
 ): Promise<AuthorizedCredentialsUser> {
+  return authorizeCredentialsForRequest(credentials);
+}
+
+export async function authorizeCredentialsForRequest(
+  credentials: Parameters<typeof authorizeCredentials>[0],
+  policy?: CredentialPolicy
+): Promise<AuthorizedCredentialsUser> {
   log.debug("CredentialsProvider:credentials:authorize");
   if (!credentials) {
     console.error(`For some reason credentials are missing`);
     throw new Error(ErrorCode.InternalServerError);
   }
+
+  const encryptionKey = policy ? policy.encryptionKey : process.env.CALENDSO_ENCRYPTION_KEY;
 
   const userRepo = new UserRepository(prisma);
   const user = await userRepo.findByEmailAndIncludeProfilesAndPassword({
@@ -58,9 +68,15 @@ export async function authorizeCredentials(
     throw new Error(ErrorCode.UserAccountLocked);
   }
 
-  await checkRateLimitAndThrowError({
-    identifier: hashEmail(user.email),
-  });
+  if (policy?.rateLimit === "enabled") {
+    // Enabled limiting needs the Cloudflare boundary before this unit can replace legacy auth.
+    throw new Error(ErrorCode.InternalServerError);
+  }
+  if (!policy) {
+    await checkRateLimitAndThrowError({
+      identifier: hashEmail(user.email),
+    });
+  }
 
   // Users without a password must use their identity provider (Google/SAML) to login
   if (!user.password?.hash) {
@@ -74,14 +90,14 @@ export async function authorizeCredentials(
   }
 
   if (user.twoFactorEnabled && credentials.backupCode) {
-    if (!process.env.CALENDSO_ENCRYPTION_KEY) {
+    if (!encryptionKey) {
       console.error("Missing encryption key; cannot proceed with backup code login.");
       throw new Error(ErrorCode.InternalServerError);
     }
 
     if (!user.backupCodes) throw new Error(ErrorCode.MissingBackupCodes);
 
-    const backupCodes = JSON.parse(symmetricDecrypt(user.backupCodes, process.env.CALENDSO_ENCRYPTION_KEY));
+    const backupCodes = JSON.parse(symmetricDecrypt(user.backupCodes, encryptionKey));
 
     // check if user-supplied code matches one
     const index = backupCodes.indexOf(credentials.backupCode.replaceAll("-", ""));
@@ -94,7 +110,7 @@ export async function authorizeCredentials(
         id: user.id,
       },
       data: {
-        backupCodes: symmetricEncrypt(JSON.stringify(backupCodes), process.env.CALENDSO_ENCRYPTION_KEY),
+        backupCodes: symmetricEncrypt(JSON.stringify(backupCodes), encryptionKey),
       },
     });
   } else if (user.twoFactorEnabled) {
@@ -107,12 +123,12 @@ export async function authorizeCredentials(
       throw new Error(ErrorCode.InternalServerError);
     }
 
-    if (!process.env.CALENDSO_ENCRYPTION_KEY) {
+    if (!encryptionKey) {
       console.error(`"Missing encryption key; cannot proceed with two factor login."`);
       throw new Error(ErrorCode.InternalServerError);
     }
 
-    const secret = symmetricDecrypt(user.twoFactorSecret, process.env.CALENDSO_ENCRYPTION_KEY);
+    const secret = symmetricDecrypt(user.twoFactorSecret, encryptionKey);
     if (secret.length !== 32) {
       console.error(
         `Two factor secret decryption failed. Expected key with length 32 but got ${secret.length}`
@@ -138,7 +154,7 @@ export async function authorizeCredentials(
     // User's identity provider is not "CAL"
     if (user.identityProvider !== IdentityProvider.CAL) return role;
 
-    if (process.env.NEXT_PUBLIC_IS_E2E) {
+    if (policy ? policy.isE2E : process.env.NEXT_PUBLIC_IS_E2E) {
       console.warn("E2E testing is enabled, skipping password and 2FA requirements for Admin");
       return role;
     }
@@ -146,7 +162,7 @@ export async function authorizeCredentials(
     // User's password is valid and two-factor authentication is enabled
     if (isPasswordValid(credentials.password, false, true) && user.twoFactorEnabled) return role;
     // Code is running in a development environment
-    if (isENVDev) return role;
+    if (policy ? policy.isDevelopment : isENVDev) return role;
     // By this point it is an ADMIN without valid security conditions
     return "INACTIVE_ADMIN";
   };

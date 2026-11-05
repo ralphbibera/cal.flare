@@ -1,10 +1,12 @@
 import { EmailMessage } from "cloudflare:email";
+import process from "node:process";
 import manifest from "virtual:calflare-static-assets";
 import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-context";
 import type { JobMessage } from "@calcom/features/tasker/queue/context";
 import { withJobQueue } from "@calcom/features/tasker/queue/context";
 import { dispatchJobBatch } from "@calcom/features/tasker/queue/internal-dispatch";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
+import { WEBAPP_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import { withD1Database } from "@calcom/prisma/d1";
@@ -51,8 +53,21 @@ function serve(
     },
     () =>
       withD1Database(env, () =>
-        withAuthRequestEnvironment({ NEXTAUTH_SECRET: env.NEXTAUTH_SECRET }, () =>
-          withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+        withAuthRequestEnvironment(
+          {
+            DB: env.DB,
+            NEXTAUTH_SECRET: env.NEXTAUTH_SECRET,
+            baseURL: process.env.NEXTAUTH_URL || WEBAPP_URL,
+            webappURL: WEBAPP_URL,
+            NEXTAUTH_COOKIE_DOMAIN: process.env.NEXTAUTH_COOKIE_DOMAIN,
+            credentialPolicy: {
+              encryptionKey: process.env.CALENDSO_ENCRYPTION_KEY,
+              isDevelopment: process.env.NODE_ENV === "development",
+              isE2E: Boolean(process.env.NEXT_PUBLIC_IS_E2E),
+              rateLimit: process.env.UNKEY_ROOT_KEY ? "enabled" : "disabled",
+            },
+          },
+          () => withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
         )
       ),
     (promise) => ctx.waitUntil(promise)
