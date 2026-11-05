@@ -1,46 +1,8 @@
-import { createContainsInsensitiveMatcher } from "@calcom/lib/postgres-ilike";
+import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
 import { getD1Database } from "@calcom/prisma/d1";
 import { z } from "zod";
-
-const SEARCH_SCAN_BATCH_SIZE = 100;
-
-type KeysetPage = { after?: number; take: number };
-
-// SQLite only folds ASCII, so searches filter rows in memory before the page is cut, walking one event
-// type's rows in key order to keep cursors stable. Returns up to limit + 1 rows for the hasMore check.
-async function findSearchedRows<Row>({
-  search,
-  cursor,
-  limit,
-  fetchRows,
-  getKey,
-  getSearchValues,
-}: {
-  search?: string;
-  cursor?: number;
-  limit: number;
-  fetchRows: (page: KeysetPage) => Promise<Row[]>;
-  getKey: (row: Row) => number;
-  getSearchValues: (row: Row) => Array<string | null | undefined>;
-}): Promise<Row[]> {
-  if (!search) return fetchRows({ after: cursor, take: limit + 1 });
-
-  const matches = createContainsInsensitiveMatcher(search);
-  const take = Math.max(limit + 1, SEARCH_SCAN_BATCH_SIZE);
-  const matched: Row[] = [];
-  let after = cursor;
-  while (matched.length <= limit) {
-    const rows = await fetchRows({ after, take });
-    for (const row of rows) {
-      if (getSearchValues(row).some((value) => matches(value))) matched.push(row);
-    }
-    if (rows.length < take) break;
-    after = getKey(rows[rows.length - 1]);
-  }
-  return matched.slice(0, limit + 1);
-}
 
 const booleanSchema = z.union([z.literal(0), z.literal(1)]).transform(Boolean);
 const conferencingPredicate = `EXISTS (SELECT 1 FROM json_each(a."categories") WHERE value IN ('conferencing', 'video'))`;
