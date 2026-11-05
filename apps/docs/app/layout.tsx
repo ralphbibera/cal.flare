@@ -31,14 +31,14 @@ const navbar: React.ReactElement = (
       <>
         <img
           src="/cal-docs-logo.svg"
-          alt="Cal.diy Docs"
+          alt="Cal.flare Docs"
           height={26}
           className="logo-light"
           style={{ height: 26 }}
         />
         <img
           src="/cal-docs-logo-white.svg"
-          alt="Cal.diy Docs"
+          alt="Cal.flare Docs"
           height={26}
           className="logo-dark"
           style={{ height: 26 }}
@@ -58,8 +58,8 @@ const footer: React.ReactElement = (
 );
 
 export const metadata: { title: string; description: string } = {
-  title: "Cal.diy Docs",
-  description: "Cal.diy self-hosting documentation",
+  title: "Cal.flare Docs",
+  description: "Cal.flare self-hosting documentation",
 };
 
 export default async function RootLayout({
