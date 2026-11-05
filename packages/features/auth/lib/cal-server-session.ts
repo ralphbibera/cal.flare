@@ -30,13 +30,15 @@ export async function projectCalServerSession({
   });
   if (!userFromDb) return null;
   const upId = profile.upId || `usr-${userFromDb.id}`;
-  const user = await new UserRepository(prisma).enrichUserWithTheProfile({ user: userFromDb, upId });
-  const impersonatedBy = claims.impersonatedBy?.id
-    ? await prisma.user.findUnique({
-        where: { id: claims.impersonatedBy.id },
-        select: { id: true, uuid: true, role: true },
-      })
-    : null;
+  const [user, impersonatedBy] = await Promise.all([
+    new UserRepository(prisma).enrichUserWithTheProfile({ user: userFromDb, upId }),
+    claims.impersonatedBy?.id
+      ? prisma.user.findUnique({
+          where: { id: claims.impersonatedBy.id },
+          select: { id: true, uuid: true, role: true },
+        })
+      : null,
+  ]);
   return {
     hasValidLicense: true,
     expires: expiresAt.toISOString(),
