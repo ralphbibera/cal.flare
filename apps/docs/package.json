@@ -3,20 +3,32 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next --turbopack",
-    "build": "next build && pagefind --site .next/server/app --output-path public/_pagefind",
-    "start": "next start"
+    "dev": "vite dev",
+    "build": "vite build && pagefind --site dist/server/prerendered-routes --output-path public/_pagefind && mkdir -p .cloudflare/output/v0/workers/default/assets/_pagefind && cp -R public/_pagefind/. .cloudflare/output/v0/workers/default/assets/_pagefind/",
+    "start": "vite preview",
+    "type-check": "tsc --noEmit --strict",
+    "type-check:ci": "tsc --noEmit --strict",
+    "lint": "biome lint ."
   },
   "dependencies": {
     "next": "16.4.3",
-    "nextra": "^4.2.0",
-    "nextra-theme-docs": "^4.2.0",
-    "pagefind": "^1.5.2",
+    "nextra": "4.6.1",
+    "nextra-theme-docs": "4.6.1",
+    "pagefind": "1.5.2",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "react-server-dom-webpack": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0",
-    "typescript": "^5.0.0"
-  }
+    "typescript": "5.9.3",
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.11",
+    "@vinext/cloudflare": "1.3.2",
+    "@vitejs/plugin-react": "6.2.1",
+    "@vitejs/plugin-rsc": "0.5.38",
+    "cf": "1.0.0-beta.27",
+    "vinext": "1.4.2",
+    "vite": "8.3.5"
+  },
+  "type": "module"
 }
