@@ -9,6 +9,7 @@ import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
+import { withRuntimeState } from "@calcom/lib/runtimeStateContext";
 import { withD1Database } from "@calcom/prisma/d1";
 import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
@@ -67,7 +68,10 @@ function serve(
               rateLimit: process.env.UNKEY_ROOT_KEY ? "enabled" : "disabled",
             },
           },
-          () => withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+          () =>
+            withRuntimeState(env, () =>
+              withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+            )
         )
       ),
     (promise) => ctx.waitUntil(promise)
