@@ -1,12 +1,12 @@
 import type { UserFromSession } from "@calcom/features/auth/lib/userFromSessionUtils";
 import { getAvailabilityFromSchedule } from "@calcom/lib/availability";
-import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { timeZoneSchema } from "@calcom/lib/dayjs/timeZone.schema";
 import { hasEditPermissionForUserID } from "@calcom/lib/hasEditPermissionForUser";
 import { HttpError } from "@calcom/lib/http-error";
 import { transformScheduleToAvailabilityForAtom } from "@calcom/lib/schedules/transformers/for-atom";
 import type { PrismaClient } from "@calcom/prisma";
 import { z } from "zod";
+import { D1ScheduleReplacementRepository } from "../repositories/D1ScheduleReplacementRepository";
 import { ScheduleRepository } from "../repositories/ScheduleRepository";
 
 export const ZUpdateInputSchema = z.object({
@@ -112,48 +112,21 @@ export class ScheduleService {
       };
     }
 
-    const storedSchedule = await this.prisma.schedule.update({
-      where: {
-        id: input.scheduleId,
-      },
-      data: {
-        timeZone: input.timeZone,
-        name: input.name,
-        availability: {
-          deleteMany: {
-            scheduleId: {
-              equals: input.scheduleId,
-            },
-          },
-          createMany: {
-            data: [
-              ...availability,
-              ...(input.dateOverrides || []).map((override) => ({
-                days: [],
-                date: override.start,
-                startTime: override.start,
-                endTime: override.end,
-              })),
-            ],
-          },
-        },
-      },
-      select: {
-        id: true,
-        userId: true,
-        name: true,
-        availability: true,
-        timeZone: true,
-        eventType: {
-          select: {
-            id: true,
-            eventName: true,
-          },
-        },
-      },
+    const schedule = await D1ScheduleReplacementRepository.replace({
+      scheduleId: input.scheduleId,
+      timeZone: input.timeZone,
+      name: input.name,
+      availability: [
+        ...availability,
+        ...(input.dateOverrides || []).map((override) => ({
+          days: [],
+          date: override.start,
+          startTime: override.start,
+          endTime: override.end,
+        })),
+      ],
     });
 
-    const schedule = parseScheduleAvailability(storedSchedule);
     const userAvailability = transformScheduleToAvailabilityForAtom(schedule);
 
     return {
