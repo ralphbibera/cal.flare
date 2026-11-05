@@ -9,6 +9,6 @@ export default defineConfig({
   webServer: {
     command: "bun run start --host 127.0.0.1 --port 4317",
     url: "http://127.0.0.1:4317",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
   },
 });
