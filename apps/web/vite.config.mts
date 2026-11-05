@@ -167,7 +167,9 @@ function prismaClient(): Plugin {
       const browser = this.environment.name === "client" || this.environment.name === "ssr";
       return fileURLToPath(
         new URL(
-          browser ? "../../packages/prisma/generated/prisma/browser.ts" : "../../packages/prisma/client/index.ts",
+          browser
+            ? "../../packages/prisma/generated/prisma/browser.ts"
+            : "../../packages/prisma/client/index.ts",
           import.meta.url
         )
       );
