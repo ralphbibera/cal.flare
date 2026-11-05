@@ -71,7 +71,13 @@ export function createCalCredentialsAuth(config: AuthConfig) {
     if (target.startsWith("/")) url = `${origin}${target}`;
     else {
       try {
-        if (new URL(target).hostname === new URL(config.webappURL).hostname) url = target;
+        const parsed = new URL(target);
+        if (
+          (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+          parsed.hostname === new URL(config.webappURL).hostname
+        ) {
+          url = target;
+        }
       } catch {
         url = origin;
       }
