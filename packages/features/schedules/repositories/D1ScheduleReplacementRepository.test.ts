@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import type { User } from "@calcom/prisma/client";
+import { Prisma } from "@calcom/prisma/client";
 import { withD1Database } from "@calcom/prisma/d1";
 import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { Miniflare } from "miniflare";
@@ -155,8 +156,12 @@ describe("schedule replacement on D1", () => {
   ])("rejects a missing Schedule without zero-row success (%j)", async ({ availability }) => {
     const before = await rows();
     await expect(replace({ ...input, scheduleId: 999, availability })).rejects.toMatchObject({
-      code: ErrorCode.NotFound,
+      code: "P2025",
+      meta: { modelName: "Schedule" },
     });
+    await expect(replace({ ...input, scheduleId: 999, availability })).rejects.toBeInstanceOf(
+      Prisma.PrismaClientKnownRequestError
+    );
     expect(await rows()).toEqual(before);
     expect(await db.prepare('SELECT "id" FROM "Schedule" WHERE "id" = 999').first()).toBeNull();
   });
