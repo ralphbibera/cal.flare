@@ -64,6 +64,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.prepare('DELETE FROM "AuthUser"').run();
   await db.prepare('DELETE FROM "AuthVerification"').run();
+  await db.prepare("DELETE FROM users WHERE id=124").run();
+  await db.prepare("UPDATE users SET email='library@calflare.test' WHERE id=123").run();
 });
 
 async function issue(origin = "https://calflare.test") {
@@ -78,6 +80,12 @@ async function issue(origin = "https://calflare.test") {
 }
 const lookup = (cookie: string) =>
   mf.dispatchFetch("https://calflare.test/api/auth/get-session", { headers: { cookie } });
+const issueIdentity = (identity: { id: number; email: string }) =>
+  mf.dispatchFetch("https://calflare.test/api/auth/fixture-cal/issue", {
+    method: "POST",
+    headers: { origin: "https://calflare.test", "content-type": "application/json" },
+    body: JSON.stringify(identity),
+  });
 
 describe("Better Auth native D1 foundation (library-only)", () => {
   const cal = (action: string, cookie = "", sessionTimeout?: number) =>
@@ -86,6 +94,85 @@ describe("Better Auth native D1 foundation (library-only)", () => {
       headers: { cookie, origin: "https://calflare.test", "content-type": "application/json" },
       ...(action === "read" ? {} : { body: JSON.stringify({ sessionTimeout }) }),
     });
+
+  it("reconciles a reused domain email without replacing the previous owner's mapping or session", async () => {
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    const priorMapping = await db.prepare('SELECT id FROM "AuthUser" WHERE calUserId=123').first();
+    const priorSessions = (await db.prepare('SELECT id,userId FROM "AuthSession"').all()).results;
+    await db.prepare("UPDATE users SET email='changed@calflare.test' WHERE id=123").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','library@calflare.test')")
+      .run();
+    expect((await issueIdentity({ id: 124, email: "library@calflare.test" })).status).toBe(200);
+    expect(await db.prepare('SELECT id FROM "AuthUser" WHERE calUserId=123').first()).toEqual(priorMapping);
+    expect((await db.prepare('SELECT id,userId FROM "AuthSession"').all()).results).toEqual(
+      expect.arrayContaining(priorSessions)
+    );
+    expect(
+      (await db.prepare('SELECT calUserId,email FROM "AuthUser" ORDER BY calUserId').all()).results
+    ).toEqual([
+      { calUserId: 123, email: "changed@calflare.test" },
+      { calUserId: 124, email: "library@calflare.test" },
+    ]);
+  });
+
+  it("reconciles swapped domain emails while preserving both numeric mappings", async () => {
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','second@calflare.test')")
+      .run();
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    await issueIdentity({ id: 124, email: "second@calflare.test" });
+    const mappings = (await db.prepare('SELECT id,calUserId FROM "AuthUser" ORDER BY calUserId').all())
+      .results;
+    await db.batch([
+      db.prepare("UPDATE users SET email='temporary@calflare.test' WHERE id=123"),
+      db.prepare("UPDATE users SET email='library@calflare.test' WHERE id=124"),
+      db.prepare("UPDATE users SET email='second@calflare.test' WHERE id=123"),
+    ]);
+    const responses = await Promise.all([
+      issueIdentity({ id: 124, email: "library@calflare.test" }),
+      issueIdentity({ id: 123, email: "second@calflare.test" }),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(
+      (await db.prepare('SELECT id,calUserId FROM "AuthUser" ORDER BY calUserId').all()).results
+    ).toEqual(mappings);
+    expect((await db.prepare('SELECT email FROM "AuthUser" ORDER BY calUserId').all()).results).toEqual([
+      { email: "second@calflare.test" },
+      { email: "library@calflare.test" },
+    ]);
+  });
+
+  it("rolls email reconciliation back when the guarded mapping insert fails", async () => {
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    await db.prepare("UPDATE users SET email='changed@calflare.test' WHERE id=123").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','library@calflare.test')")
+      .run();
+    await db
+      .prepare(`CREATE TRIGGER reject_mapping BEFORE INSERT ON "AuthUser"
+        WHEN NEW.calUserId=124 BEGIN SELECT RAISE(ABORT,'mapping fixture failure'); END`)
+      .run();
+    try {
+      expect((await issueIdentity({ id: 124, email: "library@calflare.test" })).status).toBe(500);
+      expect((await db.prepare('SELECT calUserId,email FROM "AuthUser"').all()).results).toEqual([
+        { calUserId: 123, email: "library@calflare.test" },
+      ]);
+    } finally {
+      await db.exec("DROP TRIGGER reject_mapping");
+    }
+  });
+
+  it("does not reconcile stale emails for an identity that no longer matches its domain row", async () => {
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    await db.prepare("UPDATE users SET email='changed@calflare.test' WHERE id=123").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','other@calflare.test')")
+      .run();
+    const before = (await db.prepare('SELECT * FROM "AuthUser"').all()).results;
+    expect((await issueIdentity({ id: 124, email: "library@calflare.test" })).status).toBe(500);
+    expect((await db.prepare('SELECT * FROM "AuthUser"').all()).results).toEqual(before);
+  });
 
   it("issues a Cal snapshot with effective validity separate from browser expiry", async () => {
     const issued = await cal("issue", "", 2);
