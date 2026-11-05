@@ -38,6 +38,10 @@ runs:
           ${{ github.workspace }}/node_modules/playwright
         key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
 
+    - name: Restore dependencies for a Playwright cache miss
+      if: ${{ inputs.skip-install-if-cache-hit == 'true' && steps.playwright-cache-check.outputs.cache-hit != 'true' }}
+      uses: ./.github/actions/bun-install
+
     # In default mode: run if playwright-cache missed
     # In skip mode: run if playwright-cache-check missed (but cache restore step was also skipped)
     - name: Bun playwright install
