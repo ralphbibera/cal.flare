@@ -4,6 +4,7 @@ import { DEFAULT_SCHEDULE, getAvailabilityFromSchedule } from "@calcom/lib/avail
 import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import { buildNonDelegationCredentials } from "@calcom/lib/delegationCredential";
 import logger from "@calcom/lib/logger";
+import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { withSelectedCalendars } from "@calcom/lib/server/withSelectedCalendars";
 import type { PrismaClient } from "@calcom/prisma";
@@ -438,27 +439,27 @@ export class UserRepository {
     cursor?: number | null;
     limit?: number | null;
   }) {
-    const where: Record<string, unknown> = {
-      id: cursor ? { in: ids, gt: cursor } : { in: ids },
-    };
+    const findMatches = (scanLimit: number | undefined, lockedWhere: Prisma.UserWhereInput = {}) =>
+      findSearchedRows({
+        search: search ?? undefined,
+        cursor: cursor ?? undefined,
+        limit: scanLimit,
+        getKey: (user) => user.id,
+        getSearchValues: (user) => [user.name, user.email],
+        fetchRows: ({ after, take }: KeysetPage) =>
+          this.prismaClient.user.findMany({
+            where: { id: after ? { in: ids, gt: after } : { in: ids }, ...lockedWhere },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+            orderBy: { id: "asc" },
+            take,
+          }),
+      });
 
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { email: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    const users = await this.prismaClient.user.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
-      orderBy: { id: "asc" },
-      ...(limit ? { take: limit + 1 } : {}),
-    });
+    const users = await findMatches(limit || undefined);
 
     if (!limit) {
       return { users, nextCursor: undefined, total: users.length };
@@ -471,16 +472,10 @@ export class UserRepository {
     // Only count on the first page to avoid an extra query on every scroll
     let total: number | undefined;
     if (!cursor) {
-      const countWhere: Record<string, unknown> = {
-        id: { in: ids },
-      };
-      if (search) {
-        countWhere.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-        ];
-      }
-      total = await this.prismaClient.user.count({ where: countWhere });
+      // The locked-user extension does not cover count(), so totals have always included locked users.
+      total = search
+        ? (await findMatches(undefined, { OR: [{ locked: false }, { locked: true }] })).length
+        : await this.prismaClient.user.count({ where: { id: { in: ids } } });
     }
 
     return { users: items, nextCursor, total };
