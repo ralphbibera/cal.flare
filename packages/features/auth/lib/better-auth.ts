@@ -7,6 +7,7 @@ type AuthRequestConfig = D1Environment & {
   baseURL: string;
   NEXTAUTH_SECRET: string;
   NEXTAUTH_COOKIE_DOMAIN?: string;
+  webappURL?: string;
 };
 
 // Compose inside the owned request boundary. This core is not an application login handler.
@@ -15,11 +16,12 @@ export function createBetterAuth({
   baseURL,
   NEXTAUTH_SECRET,
   NEXTAUTH_COOKIE_DOMAIN,
+  webappURL,
 }: AuthRequestConfig) {
   if (!NEXTAUTH_SECRET?.trim()) {
     throw new ErrorWithCode(ErrorCode.InternalServerError, "NEXTAUTH_SECRET is required for auth");
   }
-  const secure = new URL(baseURL).protocol === "https:";
+  const secure = (webappURL ?? baseURL).startsWith("https://");
   return betterAuth({
     database: DB,
     baseURL,

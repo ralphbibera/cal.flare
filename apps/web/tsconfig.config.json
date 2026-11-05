@@ -6,6 +6,8 @@
     "types": ["node", "@cloudflare/workers-types"]
   },
   "include": [
+    "../../packages/types/business-days-plugin.d.ts",
+    "../../packages/types/window.d.ts",
     "vite.config.mts",
     "cloudflare.config.ts",
     "worker/**/*.ts",
