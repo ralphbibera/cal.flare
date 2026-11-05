@@ -2,9 +2,8 @@
 // Learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_DIRECT_URL")
+  provider = "sqlite"
+  url = "file:unused.db"
 }
 
 generator client {
@@ -12,7 +11,8 @@ generator client {
   previewFeatures     = ["views"]
   output              = "./generated/prisma"
   engineType          = "client"
-  moduleFormat        = "cjs"
+  runtime             = "workerd"
+  moduleFormat        = "esm"
   importFileExtension = ""
 }
 
@@ -70,7 +70,7 @@ model Host {
   weightAdjustment Int?
   schedule         Schedule?     @relation(fields: [scheduleId], references: [id])
   scheduleId       Int?
-  createdAt        DateTime      @default(now())
+  createdAt        DateTime      @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   group            HostGroup?    @relation(fields: [groupId], references: [id])
   groupId          String?
   memberId         Int?
@@ -90,7 +90,7 @@ model HostGroup {
   hosts       Host[]
   eventType   EventType? @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
   eventTypeId Int?
-  createdAt   DateTime   @default(now())
+  createdAt   DateTime   @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt   DateTime   @updatedAt
 
   @@index([name])
@@ -108,7 +108,7 @@ model HostLocation {
   link         String?
   address      String?
   phoneNumber  String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime    @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt    DateTime    @updatedAt
 
   @@unique([userId, eventTypeId])
@@ -128,7 +128,7 @@ model CalVideoSettings {
   disableTranscriptionForGuests        Boolean  @default(false)
   disableTranscriptionForOrganizer     Boolean  @default(false)
   requireEmailForGuests                Boolean  @default(false)
-  createdAt                            DateTime @default(now())
+  createdAt                            DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt                            DateTime @updatedAt
 }
 
@@ -138,7 +138,7 @@ model VideoCallGuest {
   email      String
   name       String
   joinedAt   DateTime?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime  @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt  DateTime  @updatedAt
 
   @@unique([bookingUid, email])
@@ -250,7 +250,8 @@ model EventType {
   instantMeetingExpiryTimeOffsetInSeconds  Int                    @default(90)
   instantMeetingScheduleId                 Int?
   instantMeetingSchedule                   Schedule?              @relation("InstantMeetingSchedule", fields: [instantMeetingScheduleId], references: [id])
-  instantMeetingParameters                 String[]
+  /// @calflare.list String
+  instantMeetingParameters                 Json?
   assignAllTeamMembers                     Boolean                @default(false)
   // It is applicable only when assignAllTeamMembers is true and it filters out all the team members using rrSegmentQueryValue
   assignRRMembersUsingSegment              Boolean                @default(false)
@@ -287,7 +288,7 @@ model EventType {
   requiresCancellationReason    CancellationReasonRequirement? @default(MANDATORY_HOST_ONLY)
   enablePerHostLocations        Boolean                        @default(false)
 
-  createdAt DateTime? @default(now())
+  createdAt DateTime? @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime? @updatedAt
 
   // @@partial_index([instantMeetingScheduleId])
@@ -361,7 +362,7 @@ model DestinationCalendar {
   eventTypeId            Int?                  @unique
   credentialId           Int?
   credential             Credential?           @relation(fields: [credentialId], references: [id], onDelete: Cascade)
-  createdAt              DateTime?             @default(now())
+  createdAt              DateTime?             @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt              DateTime?             @updatedAt
   delegationCredential   DelegationCredential? @relation(fields: [delegationCredentialId], references: [id], onDelete: Cascade)
   delegationCredentialId String?
@@ -400,7 +401,7 @@ model TravelSchedule {
 // It holds Personal Profiles of a User plus it has email, password and other core things..
 model User {
   id                  Int                  @id @default(autoincrement())
-  uuid                String               @unique @default(uuid()) @db.Uuid
+  uuid                String               @unique @default(uuid())
   username            String?
   name                String?
   /// @zod.import(["import { emailSchema } from '../../zod-utils'"]).custom.use(emailSchema)
@@ -417,7 +418,7 @@ model User {
   // TODO: should be renamed since it only affects the booking page
   theme               String?
   appTheme            String?
-  createdDate         DateTime             @default(now()) @map(name: "created")
+  createdDate         DateTime             @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))")) @map(name: "created")
   trialEndsAt         DateTime?
   lastActiveAt        DateTime?
   eventTypes          EventType[]          @relation("user_eventtype")
@@ -542,7 +543,7 @@ model Profile {
   username       String
   eventTypes     EventType[]
   movedFromUser  User?       @relation("moved_to_profile")
-  createdAt      DateTime    @default(now())
+  createdAt      DateTime    @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt      DateTime    @updatedAt
 
   // A user can have multiple profiles in different organizations
@@ -573,7 +574,7 @@ model Team {
   hideBookATeamMember    Boolean                 @default(false)
   members                Membership[]
   eventTypes             EventType[]
-  createdAt              DateTime                @default(now())
+  createdAt              DateTime                @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   /// @zod.import(["import { teamMetadataSchema } from '../../zod-utils'"]).custom.use(teamMetadataSchema)
   metadata               Json?
   theme                  String?
@@ -668,7 +669,7 @@ model CreditPurchaseLog {
   creditBalanceId String
   creditBalance   CreditBalance @relation(fields: [creditBalanceId], references: [id], onDelete: Cascade)
   credits         Int
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime      @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 }
 
 enum CreditUsageType {
@@ -752,7 +753,7 @@ model Membership {
   team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   AttributeToUser AttributeToUser[]
-  createdAt       DateTime?         @default(now())
+  createdAt       DateTime?         @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt       DateTime?         @updatedAt
   Host            Host[]
 
@@ -770,7 +771,7 @@ model VerificationToken {
   token            String          @unique
   expires          DateTime
   expiresInDays    Int?
-  createdAt        DateTime        @default(now())
+  createdAt        DateTime        @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt        DateTime        @updatedAt
   teamId           Int?
   team             Team?           @relation(fields: [teamId], references: [id])
@@ -792,7 +793,7 @@ model InstantMeetingToken {
   bookingId Int?     @unique
   booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   @@index([token])
@@ -870,7 +871,7 @@ model Booking {
   endTime                DateTime
   attendees              Attendee[]
   location               String?
-  createdAt              DateTime                   @default(now())
+  createdAt              DateTime                   @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt              DateTime?                  @updatedAt
   status                 BookingStatus              @default(ACCEPTED)
   paid                   Boolean                    @default(false)
@@ -888,7 +889,8 @@ model Booking {
   fromReschedule         String?
   recurringEventId       String?
   smsReminderNumber      String?
-  scheduledJobs          String[] // scheduledJobs is deprecated, please use scheduledTriggers instead
+  /// @calflare.list String
+  scheduledJobs          Json? // scheduledJobs is deprecated, please use scheduledTriggers instead
   seatsReferences        BookingSeat[]
   /// @zod.import(["import { bookingMetadataSchema } from '../../zod-utils'"]).custom.use(bookingMetadataSchema)
   metadata               Json?
@@ -963,10 +965,11 @@ model Availability {
   userId      Int?
   eventType   EventType? @relation(fields: [eventTypeId], references: [id])
   eventTypeId Int?
-  days        Int[]
-  startTime   DateTime   @db.Time
-  endTime     DateTime   @db.Time
-  date        DateTime?  @db.Date
+  /// @calflare.list Int
+  days        Json?
+  startTime   DateTime
+  endTime     DateTime
+  date        DateTime?
   Schedule    Schedule?  @relation(fields: [scheduleId], references: [id])
   scheduleId  Int?
 
@@ -983,7 +986,7 @@ model SelectedCalendar {
   externalId      String
   credential      Credential? @relation(fields: [credentialId], references: [id], onDelete: Cascade)
   credentialId    Int?
-  createdAt       DateTime?   @default(now())
+  createdAt       DateTime?   @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt       DateTime?   @updatedAt
   // Used to identify a watched calendar channel in Google Calendar
   // @deprecated use channelId instead
@@ -1006,11 +1009,11 @@ model SelectedCalendar {
   channelKind        String?
   channelResourceId  String?
   channelResourceUri String?
-  channelExpiration  DateTime? @db.Timestamp(3)
+  channelExpiration  DateTime?
 
   // Used to calendar cache and sync
-  syncSubscribedAt         DateTime? @db.Timestamp(3)
-  syncSubscribedErrorAt    DateTime? @db.Timestamp(3)
+  syncSubscribedAt         DateTime?
+  syncSubscribedErrorAt    DateTime?
   syncSubscribedErrorCount Int       @default(0)
   syncToken                String?
   syncedAt                 DateTime?
@@ -1071,7 +1074,7 @@ model EventTypeCustomInput {
 
 model ResetPasswordRequest {
   id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
   email     String
   expires   DateTime
@@ -1086,7 +1089,7 @@ model ReminderMail {
   referenceId    Int
   reminderType   ReminderType
   elapsedMinutes Int
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime     @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   @@index([referenceId])
   @@index([reminderType])
@@ -1148,9 +1151,10 @@ model Webhook {
   /// @zod.string.url()
   subscriberUrl         String
   payloadTemplate       String?
-  createdAt             DateTime                   @default(now())
+  createdAt             DateTime                   @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   active                Boolean                    @default(true)
-  eventTriggers         WebhookTriggerEvents[]
+  /// @calflare.list WebhookTriggerEvents
+  eventTriggers         Json?
   user                  User?                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   team                  Team?                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   eventType             EventType?                 @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
@@ -1174,7 +1178,7 @@ model ApiKey {
   userId     Int
   teamId     Int?
   note       String?
-  createdAt  DateTime    @default(now())
+  createdAt  DateTime    @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   expiresAt  DateTime?
   lastUsedAt DateTime?
   hashedKey  String      @unique()
@@ -1194,7 +1198,7 @@ model RateLimit {
   ttl           Int
   limit         Int
   blockDuration Int
-  createdAt     DateTime @default(now())
+  createdAt     DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt     DateTime @updatedAt
 
   apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
@@ -1221,12 +1225,12 @@ model Account {
   provider          String
   providerAccountId String
   providerEmail     String?
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1268,8 +1272,9 @@ model App {
   // Needed API Keys
   keys        Json?
   // One or multiple categories to which this app belongs
-  categories  AppCategories[]
-  createdAt   DateTime        @default(now())
+  /// @calflare.list AppCategories
+  categories  Json?
+  createdAt   DateTime        @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt   DateTime        @updatedAt
   credentials Credential[]
   payments    Payment[]
@@ -1282,7 +1287,7 @@ model App {
 
 model Feedback {
   id      Int      @id @default(autoincrement())
-  date    DateTime @default(now())
+  date    DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   userId  Int
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   rating  String
@@ -1317,7 +1322,7 @@ model WebhookScheduledTriggers {
   payload       String
   startAfter    DateTime
   retryCount    Int       @default(0)
-  createdAt     DateTime? @default(now())
+  createdAt     DateTime? @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   appId         String?
   webhookId     String?
   webhook       Webhook?  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
@@ -1378,8 +1383,8 @@ model Feature {
   // If the flag is considered stale
   stale       Boolean?       @default(false)
   lastUsedAt  DateTime?
-  createdAt   DateTime?      @default(now())
-  updatedAt   DateTime?      @default(now()) @updatedAt
+  createdAt   DateTime?      @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
+  updatedAt   DateTime?      @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))")) @updatedAt
   updatedBy   Int?
   users       UserFeatures[]
   teams       TeamFeatures[]
@@ -1394,7 +1399,7 @@ model UserFeatures {
   feature    Feature  @relation(fields: [featureId], references: [slug], onDelete: Cascade)
   featureId  String
   enabled    Boolean
-  assignedAt DateTime @default(now())
+  assignedAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   assignedBy String
   updatedAt  DateTime @updatedAt
 
@@ -1408,7 +1413,7 @@ model TeamFeatures {
   feature    Feature  @relation(fields: [featureId], references: [slug], onDelete: Cascade)
   featureId  String
   enabled    Boolean
-  assignedAt DateTime @default(now())
+  assignedAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   assignedBy String
   updatedAt  DateTime @updatedAt
 
@@ -1473,7 +1478,7 @@ model OAuthClient {
   status          OAuthClientStatus @default(APPROVED)
   userId          Int?
   user            User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt       DateTime          @default(now())
+  createdAt       DateTime          @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   @@index([userId])
 }
@@ -1484,7 +1489,8 @@ model AccessCode {
   clientId            String?
   client              OAuthClient?  @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
   expiresAt           DateTime
-  scopes              AccessScope[]
+  /// @calflare.list AccessScope
+  scopes              Json?
   userId              Int?
   user                User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   teamId              Int?
@@ -1600,7 +1606,7 @@ model CalendarCache {
   value        Json
   expiresAt    DateTime
   // Provide an initial value for legacy rows and future raw inserts
-  updatedAt    DateTime    @default(now()) @updatedAt
+  updatedAt    DateTime    @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))")) @updatedAt
   credentialId Int
   userId       Int?
   credential   Credential? @relation(fields: [credentialId], references: [id], onDelete: Cascade)
@@ -1627,7 +1633,7 @@ model TempOrgRedirect {
   // It doesn't have any query params
   toUrl     String
   enabled   Boolean      @default(true)
-  createdAt DateTime     @default(now())
+  createdAt DateTime     @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime     @updatedAt
 
   @@unique([from, type, fromOrgId])
@@ -1663,7 +1669,7 @@ model OutOfOfficeEntry {
   reasonId         Int?
   reason           OutOfOfficeReason? @relation(fields: [reasonId], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   @@index([uuid])
@@ -1688,9 +1694,10 @@ model UserHolidaySettings {
   userId      Int      @unique
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   countryCode String?
-  disabledIds String[]
+  /// @calflare.list String
+  disabledIds Json?
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 }
 
@@ -1704,7 +1711,7 @@ model HolidayCache {
   date        DateTime
   year        Int
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   @@unique([countryCode, eventId])
@@ -1720,7 +1727,8 @@ model PlatformOAuthClient {
   permissions    Int
   users          User[]
   logo           String?
-  redirectUris   String[]
+  /// @calflare.list String
+  redirectUris   Json?
   organizationId Int
   organization   Team     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teams          Team[]   @relation("CreatedByOAuthClient")
@@ -1737,7 +1745,7 @@ model PlatformOAuthClient {
   areDefaultEventTypesEnabled  Boolean @default(true)
   areCalendarEventsEnabled     Boolean @default(true)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 }
 
 model PlatformAuthorizationToken {
@@ -1749,7 +1757,7 @@ model PlatformAuthorizationToken {
   platformOAuthClientId String
   userId                Int
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   @@unique([userId, platformOAuthClientId])
 }
@@ -1758,7 +1766,7 @@ model AccessToken {
   id Int @id @default(autoincrement())
 
   secret    String   @unique
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   expiresAt DateTime
 
   owner  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1772,7 +1780,7 @@ model RefreshToken {
   id Int @id @default(autoincrement())
 
   secret    String   @unique
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   expiresAt DateTime
 
   owner  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1824,10 +1832,10 @@ model SecondaryEmail {
 // Needed to store tasks that need to be processed by a background worker or Tasker
 model Task {
   id                  String    @id @unique @default(uuid())
-  createdAt           DateTime  @default(now())
+  createdAt           DateTime  @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt           DateTime  @updatedAt
   // The time at which the task should be executed
-  scheduledAt         DateTime  @default(now())
+  scheduledAt         DateTime  @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   // The time at which the task was successfully executed
   succeededAt         DateTime?
   // The task type to be executed. Left it as a freeform string to avoid more migrations for now. Will be enforced at type level.
@@ -1863,7 +1871,7 @@ model ManagedOrganization {
   managerOrganizationId Int
   managerOrganization   Team @relation("ManagerOrganization", fields: [managerOrganizationId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   @@unique([managerOrganizationId, managedOrganizationId])
   @@index([managerOrganizationId])
@@ -1908,7 +1916,8 @@ model AttributeOption {
   // You could think of a person having the group option to actually have all the options in the contains list.
   // We are not using relation here because it would be a many to many relation because a group option can contain many non-group options and a non-group option can be contained in many group options
   // Such a relation would require its own table to be managed and we don't need it for now.
-  contains      String[]
+  /// @calflare.list String
+  contains      Json?
   assignedUsers AttributeToUser[]
 }
 
@@ -1929,7 +1938,7 @@ model Attribute {
 
   usersCanEditRelation Boolean @default(false)
 
-  createdAt                  DateTime                    @default(now())
+  createdAt                  DateTime                    @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt                  DateTime                    @updatedAt
   options                    AttributeOption[]
   isWeightsEnabled           Boolean                     @default(false)
@@ -1955,7 +1964,7 @@ model AttributeToUser {
   weight Int?
 
   // We don't intentionally delete assignments on deletion of a user/directory sync
-  createdAt        DateTime   @default(now())
+  createdAt        DateTime   @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   createdById      Int?
   createdBy        User?      @relation("createdBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdByDSyncId String?
@@ -1979,7 +1988,7 @@ enum AssignmentReasonEnum {
 
 model AssignmentReason {
   id           Int                  @id @unique @default(autoincrement())
-  createdAt    DateTime             @default(now())
+  createdAt    DateTime             @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   bookingId    Int
   booking      Booking              @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   reasonEnum   AssignmentReasonEnum
@@ -2011,7 +2020,7 @@ model DelegationCredential {
   selectedCalendars   SelectedCalendar[]
   destinationCalendar DestinationCalendar[]
   bookingReferences   BookingReference[]
-  createdAt           DateTime              @default(now())
+  createdAt           DateTime              @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt           DateTime              @updatedAt
   credentials         Credential[]
 
@@ -2031,7 +2040,7 @@ model WorkspacePlatform {
   description              String
   /// @zod.import(["import { serviceAccountKeySchema } from '../../zod-utils'"]).custom.use(serviceAccountKeySchema)
   defaultServiceAccountKey Json
-  createdAt                DateTime               @default(now())
+  createdAt                DateTime               @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt                DateTime               @updatedAt
   enabled                  Boolean                @default(false)
   delegationCredentials    DelegationCredential[]
@@ -2046,8 +2055,8 @@ model EventTypeTranslation {
   field          EventTypeAutoTranslatedField
   sourceLocale   String
   targetLocale   String
-  translatedText String                       @db.Text
-  createdAt      DateTime                     @default(now())
+  translatedText String
+  createdAt      DateTime                     @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   createdBy      Int
   updatedAt      DateTime                     @updatedAt
   updatedBy      Int?
@@ -2077,7 +2086,7 @@ enum WatchlistSource {
 }
 
 model Watchlist {
-  id             String          @id @default(uuid()) @db.Uuid
+  id             String          @id @default(uuid())
   type           WatchlistType
   value          String
   description    String?
@@ -2085,7 +2094,7 @@ model Watchlist {
   organizationId Int?
   action         WatchlistAction @default(REPORT)
   source         WatchlistSource @default(MANUAL)
-  lastUpdatedAt  DateTime        @default(now())
+  lastUpdatedAt  DateTime        @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   bookingReports       BookingReport[]
   globalBookingReports BookingReport[]  @relation("GlobalBlocklist")
@@ -2096,28 +2105,28 @@ model Watchlist {
 }
 
 model WatchlistAudit {
-  id          String        @id @default(uuid(7)) @db.Uuid
+  id          String        @id @default(uuid(7))
   type        WatchlistType
   value       String
   description String?
 
   action WatchlistAction @default(REPORT)
 
-  changedAt       DateTime @default(now())
+  changedAt       DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   changedByUserId Int?
 
-  watchlistId String?    @db.Uuid
+  watchlistId String?
   watchlist   Watchlist? @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
 
   @@index([watchlistId, changedAt])
 }
 
 model WatchlistEventAudit {
-  id          String          @id @default(uuid(7)) @db.Uuid
-  watchlistId String          @db.Uuid
+  id          String          @id @default(uuid(7))
+  watchlistId String
   eventTypeId Int
   actionTaken WatchlistAction
-  timestamp   DateTime        @default(now())
+  timestamp   DateTime        @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 }
 
 enum BookingReportReason {
@@ -2139,7 +2148,7 @@ enum SystemReportStatus {
 }
 
 model BookingReport {
-  id             String              @id @default(uuid()) @db.Uuid
+  id             String              @id @default(uuid())
   bookingUid     String              @unique
   booking        Booking             @relation(fields: [bookingUid], references: [uid], onDelete: Cascade)
   bookerEmail    String
@@ -2148,13 +2157,13 @@ model BookingReport {
   reason         BookingReportReason
   description    String?
   cancelled      Boolean             @default(false)
-  createdAt      DateTime            @default(now())
+  createdAt      DateTime            @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt      DateTime            @updatedAt
   status         BookingReportStatus @default(PENDING)
   systemStatus   SystemReportStatus  @default(PENDING)
 
-  watchlistId       String? @db.Uuid
-  globalWatchlistId String? @db.Uuid
+  watchlistId       String?
+  globalWatchlistId String?
 
   reportedBy      User?      @relation("ReportedBy", fields: [reportedById], references: [id], onDelete: SetNull)
   organization    Team?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -2178,7 +2187,7 @@ enum WrongAssignmentReportStatus {
 }
 
 model WrongAssignmentReport {
-  id              String                      @id @default(uuid()) @db.Uuid
+  id              String                      @id @default(uuid())
   bookingUid      String                      @unique
   booking         Booking                     @relation(fields: [bookingUid], references: [uid], onDelete: Cascade)
   reportedById    Int?
@@ -2191,7 +2200,7 @@ model WrongAssignmentReport {
   reviewedById    Int?
   reviewedBy      User?                       @relation("WrongAssignmentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt      DateTime?
-  createdAt       DateTime                    @default(now())
+  createdAt       DateTime                    @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt       DateTime                    @updatedAt
 
   @@index([reportedById])
@@ -2219,7 +2228,7 @@ model OrganizationOnboarding {
   // User who started the onboarding. It is different from orgOwnerEmail in case Cal.diy admin is doing the onboarding for someone else.
   createdBy   User     @relation("CreatedOrganizationOnboardings", fields: [createdById], references: [id], onDelete: Cascade)
   createdById Int
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   // We keep the email only here and don't need to connect it with user because on User deletion, we don't delete the entry here.
   // It is unique because an email can be the owner of only one organization at a time.
@@ -2275,7 +2284,7 @@ model InternalNotePreset {
   team               Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   teamId             Int
 
-  createdAt           DateTime              @default(now())
+  createdAt           DateTime              @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   BookingInternalNote BookingInternalNote[]
 
   @@unique([teamId, name])
@@ -2299,8 +2308,8 @@ model FilterSegment {
   columnVisibility Json?
   columnSizing     Json?
   perPage          Int
-  searchTerm       String?                       @db.Text
-  createdAt        DateTime                      @default(now())
+  searchTerm       String?
+  createdAt        DateTime                      @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt        DateTime                      @updatedAt
   // Creator of the segment
   user             User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2322,7 +2331,7 @@ model UserFilterSegmentPreference {
   tableIdentifier String
   segmentId       Int?
   systemSegmentId String?
-  createdAt       DateTime       @default(now())
+  createdAt       DateTime       @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt       DateTime       @updatedAt
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   segment         FilterSegment? @relation(fields: [segmentId], references: [id], onDelete: Cascade)
@@ -2345,7 +2354,7 @@ model BookingInternalNote {
   createdBy   User @relation(fields: [createdById], references: [id])
   createdById Int
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   @@unique([bookingId, notePresetId])
   @@index([bookingId])
@@ -2365,7 +2374,7 @@ model Role {
   team        Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   permissions RolePermission[]
   memberships Membership[]
-  createdAt   DateTime         @default(now())
+  createdAt   DateTime         @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt   DateTime         @updatedAt
   type        RoleType         @default(CUSTOM)
 
@@ -2379,7 +2388,7 @@ model RolePermission {
   role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   resource  String
   action    String
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   @@unique([roleId, resource, action])
   @@index([roleId])
@@ -2445,7 +2454,7 @@ enum AuditActorType {
 }
 
 model AuditActor {
-  id   String         @id @default(uuid(7)) @db.Uuid
+  id   String         @id @default(uuid(7))
   type AuditActorType
 
   // References for different actor types (soft references, no FK constraints)
@@ -2453,7 +2462,7 @@ model AuditActor {
   // - When a User, Attendee, or Credential is deleted, their AuditActor record persists with these IDs intact
   // - This maintains immutable audit history even after source records are removed
   // - For APP actors: when credential is deleted, name/email fields are populated to preserve app identity
-  userUuid     String? @db.Uuid // For USER type - references User.uuid without FK constraint
+  userUuid     String? // For USER type - references User.uuid without FK constraint
   attendeeId   Int? // For ATTENDEE type - references Attendee.id without FK constraint
   credentialId Int? // For APP type - references Credential.id without FK constraint
 
@@ -2467,7 +2476,7 @@ model AuditActor {
   phone String?
   name  String?
 
-  createdAt     DateTime       @default(now())
+  createdAt     DateTime       @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   bookingAudits BookingAudit[]
 
   // TODO: Add pseudonymizedAt and related fields when we anonymize the data on deletion
@@ -2483,7 +2492,7 @@ model AuditActor {
 }
 
 model BookingAudit {
-  id         String @id @default(uuid(7)) @db.Uuid
+  id         String @id @default(uuid(7))
   // bookingUid is stored as a plain string (not a foreign key relation) to preserve the audit trail
   // even after the booking is deleted. This is intentional for audit log integrity:
   // - Audit logs are immutable historical records that should persist independently
@@ -2494,7 +2503,7 @@ model BookingAudit {
 
   // Actor who performed the action (USER, GUEST, or SYSTEM)
   // Stored in AuditActor table to maintain audit trail even after user deletion
-  actorId String     @db.Uuid
+  actorId String
   // Restrict onDelete to prevent deletion of audit actor if there are any booking audits associated with it
   actor   AuditActor @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
@@ -2506,7 +2515,7 @@ model BookingAudit {
   timestamp DateTime
 
   // Database record timestamps
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   source BookingAuditSource
@@ -2558,7 +2567,7 @@ model Agent {
   outboundEventTypeId Int?
 
   enabled   Boolean  @default(true)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   inboundPhoneNumbers  CalAiPhoneNumber[] @relation("InboundAgent")
@@ -2585,7 +2594,7 @@ model CalAiPhoneNumber {
   // Provider-specific phone number ID (e.g., Retell phone number ID)
   providerPhoneNumberId String? @unique
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   stripeCustomerId     String?
@@ -2629,7 +2638,7 @@ model TeamBilling {
   highWaterMark            Int?
   highWaterMarkPeriodStart DateTime?
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 }
 
@@ -2658,7 +2667,7 @@ model OrganizationBilling {
   highWaterMark            Int?
   highWaterMarkPeriodStart DateTime?
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 }
 
@@ -2672,7 +2681,7 @@ model SeatChangeLog {
   userId      Int?
   triggeredBy Int?
 
-  changeDate DateTime @default(now())
+  changeDate DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   monthKey   String
 
   // Idempotency key to prevent duplicate seat change logs from race conditions
@@ -2682,7 +2691,7 @@ model SeatChangeLog {
   proration              MonthlyProration? @relation(fields: [processedInProrationId], references: [id])
 
   metadata  Json?
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
 
   teamBillingId         String?
   teamBilling           TeamBilling?         @relation(fields: [teamBillingId], references: [id])
@@ -2739,7 +2748,7 @@ model MonthlyProration {
   seatChanges SeatChangeLog[]
 
   metadata  Json?
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   teamBillingId         String?
@@ -2787,7 +2796,7 @@ model CalendarCacheEvent {
   recurringEventId  String?
   originalStartTime DateTime?
 
-  createdAt         DateTime  @default(now())
+  createdAt         DateTime  @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt         DateTime  @updatedAt
   externalCreatedAt DateTime?
   externalUpdatedAt DateTime?
@@ -2814,7 +2823,7 @@ model IntegrationAttributeSync {
   attributeSyncRule AttributeSyncRule?
   syncFieldMappings AttributeSyncFieldMapping[]
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
@@ -2829,7 +2838,7 @@ model AttributeSyncRule {
 
   rule Json
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 }
 
@@ -2843,7 +2852,7 @@ model AttributeSyncFieldMapping {
   integrationAttributeSyncId String
   integrationAttributeSync   IntegrationAttributeSync @relation(fields: [integrationAttributeSyncId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"))
   updatedAt DateTime @updatedAt
 
   @@unique([integrationAttributeSyncId, attributeId])
