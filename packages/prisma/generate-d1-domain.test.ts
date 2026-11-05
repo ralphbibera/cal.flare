@@ -1,14 +1,16 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { getDMMF } from "@prisma/internals";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { generateD1Domain, persistD1Domain } from "./generate-d1-domain.mjs";
+import { domainSQLBody, generateD1Domain, getLogicalLists, persistD1Domain } from "./generate-d1-domain.mjs";
 import { migrateD1 } from "./migrate-d1.mjs";
 
 const execute = promisify(execFile);
@@ -17,6 +19,7 @@ const iso = "2026-11-05T12:34:56.789+00:00";
 const { version } = z
   .object({ version: z.string() })
   .parse(createRequire(import.meta.url)("prisma/package.json"));
+let postgres: Awaited<ReturnType<typeof generateD1Domain>>;
 let generated: Awaited<ReturnType<typeof generateD1Domain>>;
 let root: string;
 let mf: Miniflare;
@@ -25,7 +28,8 @@ let oracle: typeof db;
 let migrationCount: number;
 
 beforeAll(async () => {
-  generated = await generateD1Domain();
+  postgres = await generateD1Domain();
+  generated = await generateD1Domain({ source: postgres.candidate });
   root = await mkdtemp(join(tmpdir(), "calflare-domain-test-"));
   const persistTo = join(root, "state");
   const { stdout } = await execute("bun", [
@@ -164,11 +168,29 @@ describe("D1 domain storage", () => {
   });
 
   it("reproduces reviewed SQL and matches every source table, column, FK, and index", async () => {
+    const reviewedHashes = {
+      "0001_holiday_cache.sql": "e7348a99ae03b4cfb3151c3270a2292dfae13c1a5726d03cd25e2877d32206e3",
+      "0002_domain_tables.sql": "47cc828bd1eedbb6466fa3354f151aabd69c38ae0a6261166cf298cc9d91cbf9",
+      "0003_domain_tables.sql": "c0f192039ed17de1424ec9fb2f902b7f458e639090ce14b25c295568137a7a11",
+      "0004_auth.sql": "7139daefe8968179b248959210cc97fe30a9a829ca65278b3fc758b9778b9a04",
+    };
+    for (const [name, hash] of Object.entries(reviewedHashes))
+      expect(
+        createHash("sha256")
+          .update(await readFile(new URL(`./migrations-d1/${name}`, import.meta.url)))
+          .digest("hex")
+      ).toBe(hash);
     for (const { name, sql } of generated.migrations) {
-      const reviewed = await readFile(new URL(`./migrations-d1/${name}`, import.meta.url), "utf8");
-      expect(reviewed).toContain("; Prisma 6.16.1.\n");
+      const historical = await readFile(new URL(`./migrations-d1/${name}`, import.meta.url), "utf8");
+      expect(historical).toContain("; Prisma 6.16.1.\n");
       expect(sql).toContain(`; Prisma ${version}.\n`);
-      expect(sql.replace(`; Prisma ${version}.\n`, "; Prisma 6.16.1.\n")).toBe(reviewed);
+      expect(sql).toContain(
+        `SHA-256: ${generated.migrations.find((item) => item.name === name)?.sourceHash}`
+      );
+      expect(domainSQLBody(postgres.migrations.find((migration) => migration.name === name)?.sql ?? "")).toBe(
+        domainSQLBody(historical)
+      );
+      expect(domainSQLBody(sql)).toBe(domainSQLBody(historical));
       expect(Buffer.byteLength(sql)).toBeLessThan(100_000);
     }
     const tables = z
@@ -232,21 +254,21 @@ describe("D1 domain storage", () => {
 
   it("round trips all nine typed arrays, rejecting malformed storage on insert and update", async () => {
     expect(generated.listFields).toHaveLength(9);
-    for (const { model, field } of generated.listFields) {
+    for (const { model, field, elementType } of generated.listFields) {
       const table = q(model.dbName ?? model.name);
       const column = q(field.dbName ?? field.name);
       const values =
-        field.type === "Int"
+        elementType === "Int"
           ? [0, -1, 2147483647]
-          : (generated.enums.get(field.type) ?? ["é/日本語", "", "duplicate", "duplicate"]);
+          : (generated.enums.get(elementType) ?? ["é/日本語", "", "duplicate", "duplicate"]);
       for (const value of [JSON.stringify(values), "[]", null]) {
         await db.prepare(`UPDATE ${table} SET ${column}=?`).bind(value).run();
         expect(await db.prepare(`SELECT ${column} AS value FROM ${table}`).first("value")).toBe(value);
       }
-      const invalidElement = field.type === "Int" ? "[1.5]" : "[1]";
+      const invalidElement = elementType === "Int" ? "[1.5]" : "[1]";
       const invalid = ["{", "{}", '"text"', "null", "[null]", "[[]]", invalidElement];
-      if (field.kind === "enum") invalid.push('["unknown"]');
-      if (field.type === "Int") invalid.push("[2147483648]");
+      if (generated.enums.has(elementType)) invalid.push('["unknown"]');
+      if (elementType === "Int") invalid.push("[2147483648]");
       for (const value of invalid) {
         await expect(db.prepare(`UPDATE ${table} SET ${column}=?`).bind(value).run()).rejects.toThrow(/list/);
         await expect(
@@ -281,7 +303,9 @@ describe("D1 domain storage", () => {
 
   it("retains raw JSON scalars, JSON null and SQL null without imposing object shapes", async () => {
     for (const model of generated.models) {
-      for (const field of model.fields.filter((field) => field.type === "Json")) {
+      for (const field of model.fields.filter(
+        (field) => field.type === "Json" && !generated.listFields.some((list) => list.field === field)
+      )) {
         const table = q(model.dbName ?? model.name);
         const column = q(field.dbName ?? field.name);
         const original = await db.prepare(`SELECT ${column} AS value FROM ${table}`).first("value");
@@ -350,5 +374,178 @@ describe("D1 domain storage", () => {
       startTime: "1970-01-01T09:30:00.000+00:00",
       date: "2026-11-05T00:00:00.000+00:00",
     });
+  });
+});
+
+describe("D1 list metadata and historical provenance", () => {
+  it("keeps all original migration bytes and complete physical SQL constraints", async () => {
+    const hashes = [
+      "e7348a99ae03b4cfb3151c3270a2292dfae13c1a5726d03cd25e2877d32206e3",
+      "47cc828bd1eedbb6466fa3354f151aabd69c38ae0a6261166cf298cc9d91cbf9",
+      "c0f192039ed17de1424ec9fb2f902b7f458e639090ce14b25c295568137a7a11",
+      "7139daefe8968179b248959210cc97fe30a9a829ca65278b3fc758b9778b9a04",
+    ];
+    const names = (await readdir(new URL("./migrations-d1/", import.meta.url)))
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
+    expect(
+      await Promise.all(
+        names.map(async (name) =>
+          createHash("sha256")
+            .update(await readFile(new URL(`./migrations-d1/${name}`, import.meta.url)))
+            .digest("hex")
+        )
+      )
+    ).toEqual(hashes);
+    const sql = generated.migrations.map(({ sql }) => sql).join("\n");
+    expect(sql.match(/CREATE TRIGGER /g)).toHaveLength(18);
+    expect(sql.match(/FOREIGN KEY /g)).toHaveLength(179);
+    expect(generated.oracle.match(/DEFAULT \(strftime/g)).toHaveLength(72);
+    expect(generated.oracle.match(/CREATE UNIQUE INDEX /g)).toHaveLength(107);
+    expect(generated.oracle.match(/CREATE INDEX /g)).toHaveLength(183);
+    expect(
+      generated.models.map((model) => [
+        model.name,
+        model.dbName,
+        model.fields.map((field) => [
+          field.name,
+          field.dbName,
+          field.relationName,
+          field.relationFromFields,
+          field.relationToFields,
+        ]),
+      ])
+    ).toEqual(
+      postgres.models.map((model) => [
+        model.name,
+        model.dbName,
+        model.fields.map((field) => [
+          field.name,
+          field.dbName,
+          field.relationName,
+          field.relationFromFields,
+          field.relationToFields,
+        ]),
+      ])
+    );
+    expect(
+      generated.listFields.map(({ model, field, elementType }) => [model.name, field.name, elementType])
+    ).toEqual(
+      postgres.listFields.map(({ model, field, elementType }) => [model.name, field.name, elementType])
+    );
+    for (const { field } of generated.listFields)
+      expect(field).toMatchObject({
+        type: "Json",
+        kind: "scalar",
+        isRequired: false,
+        isList: false,
+        hasDefaultValue: false,
+      });
+    await persistD1Domain({ migrations: postgres.migrations, check: true });
+    await persistD1Domain({ migrations: generated.migrations, check: true });
+  });
+
+  it.each([
+    ["dropped", ""],
+    ["wrong element", "/// @calflare.list String"],
+  ])(
+    "rejects %s list contracts against reviewed history",
+    async (_name, annotation) => {
+      const weakened = await generateD1Domain({
+        source: postgres.candidate.replace("/// @calflare.list Int", annotation),
+      });
+      await expect(persistD1Domain({ migrations: weakened.migrations, check: true })).rejects.toThrow(
+        /append a reviewed migration/
+      );
+    },
+    30_000
+  );
+
+  it("preserves historical SHA on generation while rejecting SQL or version drift before writing", async () => {
+    const directoryPath = await mkdtemp(join(root, "history-"));
+    const directory = pathToFileURL(`${directoryPath}/`);
+    await persistD1Domain({ migrations: postgres.migrations, directory });
+    await persistD1Domain({ migrations: generated.migrations, directory });
+    for (const { name, sql } of postgres.migrations)
+      expect(await readFile(new URL(name, directory), "utf8")).toBe(sql);
+    for (const check of [true, false]) {
+      const mutations = [
+        (sql: string) =>
+          sql.replace("BETWEEN -2147483648 AND 2147483647", "BETWEEN -2147483648 AND 2147483648"),
+        (sql: string) => sql.replace(`Prisma ${version}`, "Prisma 0.0.0"),
+        (sql: string) => sql.replace(/SHA-256: [a-f0-9]{64}/, "SHA-256: invalid"),
+      ];
+      for (const mutate of mutations) {
+        const migrations = generated.migrations.map((migration, index) => ({
+          ...migration,
+          sql: index === 0 ? mutate(migration.sql) : migration.sql,
+        }));
+        await expect(persistD1Domain({ migrations, directory, check })).rejects.toThrow(/D1 domain SQL/);
+      }
+    }
+    for (const { name, sql } of postgres.migrations)
+      expect(await readFile(new URL(name, directory), "utf8")).toBe(sql);
+  });
+
+  const metadata = async (field: string, provider = "sqlite") => {
+    const { datamodel } = await getDMMF({
+      datamodel: `
+      datasource db {
+        provider = "${provider}"
+        url = "file:unused.db"
+      }
+      enum Element {
+        VALUE @map("persisted-value")
+      }
+      model Fixture {
+        id Int @id
+        ${field}
+      }
+    `,
+    });
+    return getLogicalLists(
+      datamodel.models,
+      new Map(
+        datamodel.enums.map((item) => [item.name, item.values.map((value) => value.dbName ?? value.name)])
+      )
+    );
+  };
+
+  it("uses canonical enum persisted values without falsifying Json metadata", async () => {
+    const lists = await metadata('/// @calflare.list Element\nvalues Json? @map("mapped_values")');
+    expect(lists[0]).toMatchObject({
+      elementType: "Element",
+      field: { type: "Json", kind: "scalar", dbName: "mapped_values" },
+    });
+    const quoted = "@db.Text @default(now())";
+    const documentation = "/// DateTime @db.Timestamp(3) @default(now())";
+    const mapped = await generateD1Domain({
+      source: postgres.candidate
+        .replace("BOOKING_CREATED\n", 'BOOKING_CREATED @map("booking-created")\n')
+        .replace('"Europe/London"', JSON.stringify(quoted))
+        .replace("/// @calflare.list Int", `${documentation}\n  /// @calflare.list Int`),
+    });
+    expect(mapped.candidate).toContain(JSON.stringify(quoted));
+    expect(mapped.candidate).toContain(documentation);
+    expect(mapped.enums.get("WebhookTriggerEvents")).toContain("booking-created");
+    expect(mapped.migrations.map(({ sql }) => sql).join("\n")).toContain("value NOT IN ('booking-created'");
+  }, 30_000);
+
+  it.each([
+    "/// @calflare.list MissingEnum\nvalues Json?",
+    "/// @calflare.list Boolean\nvalues Json?",
+    "/// @calflare.list Int[]\nvalues Json?",
+    "/// @calflare.list Int\n/// @calflare.list String\nvalues Json?",
+    "/// @calflare.list Int\nvalues String?",
+    "/// @calflare.list Int\nvalues Json",
+    '/// @calflare.list Int\nvalues Json? @default("[]")',
+  ])("rejects invalid or conflicting annotation %s", async (field) => {
+    await expect(metadata(field)).rejects.toThrow(/list (metadata|element type)/);
+  });
+
+  it("rejects annotations conflicting with actual scalar lists", async () => {
+    await expect(metadata("/// @calflare.list Int\nvalues String[]", "postgresql")).rejects.toThrow(
+      /Invalid list metadata/
+    );
   });
 });

@@ -32,17 +32,51 @@ function outsideLiterals(source: string, rewrite: (text: string) => string) {
   return result + rewrite(source.slice(end));
 }
 
-async function generateD1Domain() {
-  const source = await readFile(schemaUrl, "utf8");
+type Model = Awaited<ReturnType<typeof getDMMF>>["datamodel"]["models"][number];
+
+function getLogicalLists(models: readonly Model[], enums: ReadonlyMap<string, string[]>) {
+  return models.flatMap((model) =>
+    model.fields.flatMap((field) => {
+      const annotations = (field.documentation ?? "")
+        .split("\n")
+        .filter((line) => line.includes("@calflare.list"));
+      const annotation = annotations[0]?.trim().match(/^@calflare\.list (\w+)$/)?.[1];
+      const scalarList = field.isList && field.kind !== "object";
+      if (
+        annotations.length &&
+        (annotations.length !== 1 ||
+          !annotation ||
+          field.type !== "Json" ||
+          field.isList ||
+          field.isRequired ||
+          field.hasDefaultValue)
+      )
+        throw new ErrorWithCode(
+          ErrorCode.BadRequest,
+          `Invalid list metadata for ${model.name}.${field.name}: expected nullable Json without a default and one @calflare.list annotation`
+        );
+      const elementType = annotation ?? (scalarList ? field.type : undefined);
+      if (!elementType) return [];
+      if (elementType !== "Int" && elementType !== "String" && !enums.has(elementType))
+        throw new ErrorWithCode(
+          ErrorCode.BadRequest,
+          `Unknown list element type ${elementType} for ${model.name}.${field.name}`
+        );
+      return [{ model, field, elementType }];
+    })
+  );
+}
+
+async function generateD1Domain({ source }: { source?: string } = {}) {
+  source ??= await readFile(schemaUrl, "utf8");
   const metadata = (await getDMMF({ datamodel: source })).datamodel;
   const modelNames = new Set([...source.matchAll(/^model (\w+) \{/gm)].map((match) => match[1]));
   const models = metadata.models.filter((model) => modelNames.has(model.name));
   const enums = new Map(
     metadata.enums.map((item) => [item.name, item.values.map((v) => v.dbName ?? v.name)])
   );
-  const listFields = models.flatMap((model) =>
-    model.fields.filter((field) => field.isList && field.kind !== "object").map((field) => ({ model, field }))
-  );
+  const listFields = getLogicalLists(models, enums);
+  const listColumns = new Set(listFields.map(({ field }) => field));
   const header =
     'datasource db {\n  provider = "sqlite"\n  url = "file:unused.db"\n}\ngenerator client {\n  provider = "prisma-client"\n  previewFeatures = ["views"]\n}\n';
   let currentModel = "";
@@ -56,7 +90,7 @@ async function generateD1Domain() {
       const fieldName = /^\s+(\w+)\s+/.exec(line)?.[1];
       const field = model?.fields.find((item) => item.name === fieldName);
       if (!field) return line;
-      return outsideLiterals(line, (text) => {
+      const rewritten = outsideLiterals(line, (text) => {
         let result = text.replace(/\s+@db\.\w+(?:\([^)]*\))?/g, "");
         // PG scalar-list columns are nullable with no SQL default, despite required client arrays.
         if (field.isList && field.kind !== "object")
@@ -66,6 +100,9 @@ async function generateD1Domain() {
         }
         return result;
       });
+      return field.isList && field.kind !== "object"
+        ? `${/^\s*/.exec(line)?.[0]}/// @calflare.list ${field.type}\n${rewritten}`
+        : rewritten;
     })
     .join("\n");
   const candidate = `${header}${body}`;
@@ -100,7 +137,7 @@ async function generateD1Domain() {
         if (!field) return line;
         // SQLite's JSONB declaration has NUMERIC affinity and coerces raw JSON number text.
         if (field.type === "Json" || field.isList) line = line.replace(/^( {4}"[^"]+" )JSONB\b/, "$1TEXT");
-        if (field.isList) return line;
+        if (listColumns.has(field)) return line;
         const column = quote(field.dbName ?? field.name);
         const values = enums.get(field.type);
         let check = values ? `${column} IN (${values.map(literal).join(", ")})` : undefined;
@@ -114,14 +151,14 @@ async function generateD1Domain() {
       })
       .join("\n");
     const triggers = listFields
-      .flatMap(({ model, field }) => {
+      .flatMap(({ model, field, elementType }) => {
         const tableName = model.dbName ?? model.name;
         const column = quote(field.dbName ?? field.name);
         const value = `NEW.${column}`;
-        const values = enums.get(field.type);
+        const values = enums.get(elementType);
         const invalid = values
           ? `type <> 'text' OR value NOT IN (${values.map(literal).join(", ")})`
-          : field.type === "Int"
+          : elementType === "Int"
             ? "type <> 'integer' OR value NOT BETWEEN -2147483648 AND 2147483647"
             : "type <> 'text'";
         return ["INSERT", "UPDATE"].map(
@@ -150,6 +187,7 @@ END;`
     const migrations = chunks.map((chunk, index) => ({
       name: `${String(index + 2).padStart(4, "0")}_domain_tables.sql`,
       sql: provenance + chunk.trimEnd() + "\n",
+      sourceHash: hash,
     }));
     return {
       migrations,
@@ -164,14 +202,21 @@ END;`
   }
 }
 
-function domainSQLBody(sql: string, versions: readonly string[]): string {
+function domainSQLBody(
+  sql: string,
+  versions: readonly string[] = ["6.16.1", prismaPackage.version],
+  sourceHash?: string
+): string {
   const header =
-    /^-- Generated by bun run --cwd packages\/prisma generate-d1-domain\. Do not edit\.\n-- Source schema SHA-256: [a-f0-9]{64}; Prisma ([\d.]+)\.\n/;
-  const version = header.exec(sql)?.[1];
-  if (!version || !versions.includes(version))
+    /^-- Generated by bun run --cwd packages\/prisma generate-d1-domain\. Do not edit\.\n-- Source schema SHA-256: ([a-f0-9]{64}); Prisma ([\d.]+)\.\n/;
+  const provenance = header.exec(sql);
+  if (!provenance || !versions.includes(provenance[2]) || (sourceHash && provenance[1] !== sourceHash))
     throw new ErrorWithCode(ErrorCode.BadRequest, "Invalid D1 domain SQL provenance");
-  // Tool upgrades may reproduce the same SQL without changing its original migration history.
-  return sql.replace(/^(-- Source schema SHA-256: [a-f0-9]{64}; Prisma )[\d.]+\.$/m, "$1<version>.");
+  // Applied provenance stays intact when truthful source/tool changes reproduce every SQL byte.
+  return sql.replace(
+    /^(-- Source schema SHA-256: )[a-f0-9]{64}(; Prisma )[\d.]+\.$/m,
+    "$1<historical>$2<version>."
+  );
 }
 
 async function persistD1Domain({
@@ -185,7 +230,7 @@ async function persistD1Domain({
 }): Promise<void> {
   const missing: { url: URL; sql: string }[] = [];
   for (const migration of migrations) {
-    const generated = domainSQLBody(migration.sql, [prismaPackage.version]);
+    const generated = domainSQLBody(migration.sql, [prismaPackage.version], migration.sourceHash);
     const url = new URL(migration.name, directory);
     let existing: string;
     try {
@@ -212,4 +257,4 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   await persistD1Domain({ migrations, check: values.check });
 }
 
-export { generateD1Domain, persistD1Domain };
+export { domainSQLBody, generateD1Domain, getLogicalLists, persistD1Domain };
