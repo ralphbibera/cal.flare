@@ -1,6 +1,7 @@
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
-import type { Availability, Prisma } from "@calcom/prisma/client";
+import type { Availability } from "@calcom/prisma/client";
+import { Prisma } from "@calcom/prisma/client";
 import { getD1Database } from "@calcom/prisma/d1";
 import { z } from "zod";
 
@@ -90,17 +91,17 @@ export class D1ScheduleReplacementRepository {
       results = await db.batch(statements);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      let code = ErrorCode.InternalServerError;
-      if (message.includes("NOT NULL constraint failed: Schedule.userId")) code = ErrorCode.NotFound;
-      else if (/constraint failed|invalid list|expected list array/i.test(message))
-        code = ErrorCode.BadRequest;
-      throw Object.assign(
-        new ErrorWithCode(
-          code,
-          code === ErrorCode.NotFound ? "Schedule not found" : "Unable to replace schedule"
-        ),
-        { cause }
-      );
+      if (message.includes("NOT NULL constraint failed: Schedule.userId")) {
+        throw new Prisma.PrismaClientKnownRequestError(message, {
+          code: "P2025",
+          clientVersion: Prisma.prismaVersion.client,
+          meta: { modelName: "Schedule" },
+        });
+      }
+      const code = /constraint failed|invalid list|expected list array/i.test(message)
+        ? ErrorCode.BadRequest
+        : ErrorCode.InternalServerError;
+      throw Object.assign(new ErrorWithCode(code, "Unable to replace schedule"), { cause });
     }
     const [schedule, availability, eventType] = results.slice(-3);
     return {
