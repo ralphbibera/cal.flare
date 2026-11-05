@@ -75,6 +75,12 @@ const testIcsStringContains = ({
 };
 
 describe("generateIcsString", () => {
+  test.each([undefined, ""])("retains the booking UID when iCalUID is %s", (iCalUID) => {
+    const event = buildCalendarEvent({ iCalUID, uid: "booking-uid-1" });
+    const value = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+    expect(getEventProperty(value, "uid").value).toBe("booking-uid-1");
+  });
+
   test.each([undefined, ""])("generates a UID when both event IDs are %s", (id) => {
     const event = buildCalendarEvent({ iCalUID: id, uid: id });
     const first = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
