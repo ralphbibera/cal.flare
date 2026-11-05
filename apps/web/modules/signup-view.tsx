@@ -828,12 +828,12 @@ export default function Signup({
               </>
             )}
             <div className="hidden rounded-tl-2xl rounded-br-none rounded-bl-2xl border border-default border-r-0 border-dashed bg-black/3 lg:block lg:py-[6px] lg:pl-[6px] dark:bg-white/5">
-              <img className="block dark:hidden" src="/mock-event-type-list.svg" alt="Cal.diy Booking Page" />
+              <img className="block dark:hidden" src="/mock-event-type-list.svg" alt="Cal.flare Booking Page" />
               {/* eslint-disable @next/next/no-img-element */}
               <img
                 className="hidden dark:block"
                 src="/mock-event-type-list-dark.svg"
-                alt="Cal.diy Booking Page"
+                alt="Cal.flare Booking Page"
               />
             </div>
             <div className="mt-8 mr-12 hidden h-full w-full grid-cols-3 gap-4 overflow-hidden lg:grid">

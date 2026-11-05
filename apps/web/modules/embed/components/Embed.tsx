@@ -686,7 +686,7 @@ const EmailEmbedPreview = ({
             }}>
             <span>{t("powered_by")}</span>{" "}
             <b style={{ color: "black" }}>
-              <span> {APP_NAME}</span>
+              <span> Cal.flare</span>
             </b>
           </div>
         </div>

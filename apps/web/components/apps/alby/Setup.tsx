@@ -5,7 +5,6 @@ import { useState, useCallback, useEffect } from "react";
 import { Toaster } from "sonner";
 
 import AppNotInstalledMessage from "@calcom/app-store/_components/AppNotInstalledMessage";
-import { APP_NAME } from "@calcom/lib/constants";
 import { albyCredentialKeysSchema } from "@calcom/app-store/alby/lib/albyCredentialKeysSchema";
 import type { IAlbySetupProps } from "@calcom/app-store/alby/pages/setup/_getServerSideProps";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
@@ -103,7 +102,7 @@ function AlbySetupPage(props: IAlbySetupProps) {
     const webhookEndpoint = await client.createWebhookEndpoint({
       filter_types: ["invoice.incoming.settled"],
       url: `${process.env.NEXT_PUBLIC_WEBAPP_URL}/api/integrations/alby/webhook`,
-      description: APP_NAME,
+      description: "Cal.flare",
     });
 
     saveKeysMutation.mutate({
