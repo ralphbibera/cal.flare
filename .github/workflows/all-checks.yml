@@ -44,6 +44,10 @@ jobs:
     uses: ./.github/workflows/production-build-without-database.yml
     secrets: inherit
 
+  docs:
+    name: Docs
+    uses: ./.github/workflows/docs.yml
+
   integration-test:
     name: Tests
     needs: [lint, build, build-api-v2]
@@ -75,7 +79,7 @@ jobs:
     secrets: inherit
 
   required:
-    needs: [lint, type-check, unit-test, api-v2-unit-test, integration-test, build, build-api-v2, e2e, e2e-embed, e2e-embed-react, e2e-app-store]
+    needs: [lint, type-check, unit-test, api-v2-unit-test, integration-test, build, build-api-v2, docs, e2e, e2e-embed, e2e-embed-react, e2e-app-store]
     if: always()
     runs-on: ubuntu-latest
     steps:
