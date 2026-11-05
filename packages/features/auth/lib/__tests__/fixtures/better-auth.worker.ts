@@ -42,13 +42,17 @@ export default {
               "/fixture-cal/issue",
               {
                 method: "POST",
-                body: z.object({ sessionTimeout: z.number().optional() }),
+                body: z.object({
+                  sessionTimeout: z.number().optional(),
+                  id: z.number().int().positive().default(123),
+                  email: z.string().default("library@calflare.test"),
+                }),
               },
               async (ctx) => {
                 await sessions.issue(ctx, {
                   claims: {
-                    id: 123,
-                    email: "library@calflare.test",
+                    id: ctx.body.id,
+                    email: ctx.body.email,
                     name: "Cal user",
                     role: "INACTIVE_ADMIN",
                     inactiveAdminReason: "both",
