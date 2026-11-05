@@ -22,6 +22,7 @@ export default defineConfig({
     },
     env: {
       ...cache.env,
+      NEXTAUTH_SECRET: bindings.secret(),
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
       API_V2: bindings.worker({ worker: "calflare-api-v2" }),
