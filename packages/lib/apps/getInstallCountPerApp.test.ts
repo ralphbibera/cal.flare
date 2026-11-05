@@ -40,7 +40,7 @@ describe("installed app counts", () => {
       ],
     });
     db = await mf.getD1Database("DB");
-  }, 120_000);
+  }, 30_000);
 
   afterAll(async () => {
     await mf?.dispose();

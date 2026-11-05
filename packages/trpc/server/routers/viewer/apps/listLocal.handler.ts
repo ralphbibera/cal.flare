@@ -1,9 +1,8 @@
 import { appKeysSchemas } from "@calcom/app-store/apps.keys-schemas.generated";
 import { getLocalAppMetadata } from "@calcom/app-store/utils";
+import { D1AppRepository } from "@calcom/features/apps/repository/D1AppRepository";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { AppCategories } from "@calcom/prisma/enums";
-
 import type { TrpcSessionUser } from "../../../types";
 import type { TListLocalInputSchema } from "./listLocal.schema";
 
@@ -15,24 +14,11 @@ type ListLocalOptions = {
   input: TListLocalInputSchema;
 };
 
-export const listLocalHandler = async ({ ctx, input }: ListLocalOptions) => {
-  const { prisma } = ctx;
+export const listLocalHandler = async ({ input }: ListLocalOptions) => {
   const category = input.category;
   const localApps = getLocalAppMetadata();
 
-  const dbApps = await prisma.app.findMany({
-    where: {
-      categories: {
-        has: AppCategories[category as keyof typeof AppCategories],
-      },
-    },
-    select: {
-      slug: true,
-      keys: true,
-      enabled: true,
-      dirName: true,
-    },
-  });
+  const dbApps = await D1AppRepository.findLocalByCategory(category);
 
   return localApps.flatMap((app) => {
     // Filter applications that does not belong to the current requested category.

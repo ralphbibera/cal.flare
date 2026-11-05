@@ -1,4 +1,5 @@
 import { SUCCESS_STATUS, X_CAL_SECRET_KEY } from "@calcom/platform-constants";
+import { parseOAuthRedirectUris } from "@calcom/platform-libraries";
 import {
   BadRequestException,
   Body,
@@ -60,7 +61,7 @@ export class OAuthFlowController {
       throw new BadRequestException(`OAuth client with ID '${clientId}' not found`);
     }
 
-    if (!isOriginAllowed(body.redirectUri, oauthClient.redirectUris)) {
+    if (!isOriginAllowed(body.redirectUri, parseOAuthRedirectUris(oauthClient.redirectUris))) {
       throw new BadRequestException("Invalid 'redirect_uri' value.");
     }
 

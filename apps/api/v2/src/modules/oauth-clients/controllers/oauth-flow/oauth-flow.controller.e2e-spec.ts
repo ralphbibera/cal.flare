@@ -1,4 +1,5 @@
 import { X_CAL_SECRET_KEY } from "@calcom/platform-constants";
+import { parseOAuthRedirectUris } from "@calcom/platform-libraries";
 import type { PlatformOAuthClient, Team, User } from "@calcom/prisma/client";
 import { INestApplication } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
@@ -131,7 +132,7 @@ describe("OAuthFlow Endpoints", () => {
     describe("Authorize Endpoint", () => {
       it("POST /oauth/:clientId/authorize", async () => {
         const body: OAuthAuthorizeInput = {
-          redirectUri: oAuthClient.redirectUris[0],
+          redirectUri: parseOAuthRedirectUris(oAuthClient.redirectUris)[0],
         };
 
         const REDIRECT_STATUS = 302;
