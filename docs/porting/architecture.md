@@ -23,6 +23,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | Cloudflare tools | `@cloudflare/vite-plugin` `2.0.0-beta.v.11`, `cf` `1.0.0-beta.27`. Plugin v2 is under npm `beta`; npm `latest` resolves v1 `1.67.0`. |
 | Cloudflare runtime | Compatibility date `2026-11-04`, `nodejs_compat`. Plugin v2 resolves Miniflare `5.20261103.0-beta`; cf resolves `5.20261101.0-beta`. Generated runtime types plus `@cloudflare/workers-types` `4.20260702.1` satisfy existing D1/Sentry type peers. Lock both tool graphs. |
 | Database | `prisma`, `@prisma/client`, and `@prisma/adapter-d1` all `6.16.3`. Preserve `@calcom/prisma` as domain access boundary. |
+| Calendar serialization | `ics` `3.12.1` initializes defaults during event creation and needs no local package patch. Omit absent UIDs to retain generation. Verify decoded calendar fields; upstream uses quoted participant parameters and fresh per-event timestamps. |
 | Authentication | Self-hosted `better-auth` `1.7.15`; schema CLI package `auth` `1.7.15`. Native D1 binding, no hosted Better Auth service. |
 | Auth primitives | Retain `bcryptjs` `2.4.3`, `otplib` `12.0.1`, and existing encryption and JWT helpers. Better Auth's default password and MFA formats are not selected. |
 | Translation | Retain `i18next` `23.2.3`, `react-i18next` `12.3.1`, original JSON, namespaces, and keys. Replace `next-i18next` `15.4.2` loading boundary. |

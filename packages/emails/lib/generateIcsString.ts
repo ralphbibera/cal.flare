@@ -1,14 +1,12 @@
-import type { TFunction } from "i18next";
-import type { DateArray, ParticipationRole, EventStatus, ParticipationStatus } from "ics";
-import { createEvent } from "ics";
-import { RRule } from "rrule";
-
-import { getRichDescription } from "@calcom/lib/CalEventParser";
-import { getVideoCallUrlFromCalEvent } from "@calcom/lib/CalEventParser";
+import { getRichDescription, getVideoCallUrlFromCalEvent } from "@calcom/lib/CalEventParser";
 import { ORGANIZER_EMAIL_EXEMPT_DOMAINS } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import type { CalendarEvent, Person } from "@calcom/types/Calendar";
+import type { TFunction } from "i18next";
+import type { DateArray, EventStatus, ParticipationRole, ParticipationStatus } from "ics";
+import { createEvent } from "ics";
+import { RRule } from "rrule";
 
 export enum BookingAction {
   Create = "create",
@@ -72,8 +70,9 @@ const generateIcsString = ({
     .filter((domain) => domain.trim() !== "")
     .some((domain) => event.organizer.email.toLowerCase().endsWith(domain.toLowerCase()));
 
+  const uid = event.iCalUID || event.uid;
   const icsEvent = createEvent({
-    uid: event.iCalUID || event.uid!,
+    ...(uid ? { uid } : {}),
     sequence: event.iCalSequence || 0,
     start: toICalDateArray(event.startTime),
     end: toICalDateArray(event.endTime),
@@ -120,7 +119,7 @@ const generateIcsString = ({
     }
     throw icsEvent.error;
   }
-  return icsEvent.value;
+  return icsEvent.value ?? undefined;
 };
 
 export default generateIcsString;
