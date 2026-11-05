@@ -2,6 +2,7 @@ import { getLocalAppMetadata } from "@calcom/app-store/utils";
 import { sendDisabledAppEmail } from "@calcom/emails/integration-email-service";
 import { getTranslation } from "@calcom/i18n/server";
 import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
+import { toSqliteJsonPath } from "@calcom/lib/server/toSqliteJsonPath";
 import type { PrismaClient } from "@calcom/prisma";
 import { AppCategories } from "@calcom/prisma/enums";
 import { TRPCError } from "@trpc/server";
@@ -101,7 +102,7 @@ export const toggleHandler = async ({ input, ctx }: ToggleOptions) => {
       const eventTypesWithApp = await prisma.eventType.findMany({
         where: {
           metadata: {
-            path: ["apps", app.slug as string, "enabled"],
+            path: toSqliteJsonPath(["apps", app.slug, "enabled"]),
             equals: true,
           },
         },
