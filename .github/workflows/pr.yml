@@ -211,6 +211,7 @@ jobs:
           filters: |
             has-docs-changes:
               - "apps/docs/**"
+              - "docs/porting/inventory/routes.tsv"
               - "bun.lock"
               - "bunfig.toml"
               - "package.json"
