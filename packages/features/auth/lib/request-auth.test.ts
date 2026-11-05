@@ -1,0 +1,344 @@
+import { cp, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { symmetricDecrypt, symmetricEncrypt } from "@calcom/lib/crypto";
+import prisma from "@calcom/prisma";
+import { hash } from "bcryptjs";
+import { Miniflare } from "miniflare";
+import { authenticator } from "otplib";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
+import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
+import type { authorizeCredentials } from "./authorizeCredentials";
+import { authorizeCredentialsForRequest } from "./authorizeCredentials";
+import { getServerCsrfToken } from "./getServerCsrfToken";
+import { createCalRequestAuth } from "./request-auth";
+import type { AuthRequestConfiguration } from "./request-context";
+import { getAuthRequestConfiguration, withAuthRequestEnvironment } from "./request-context";
+
+const origin = "https://calflare.test";
+const password = "Synthetic-Password-123!";
+const totpSecret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const keys = ["1".repeat(32), "2".repeat(32)];
+const runtimes: Miniflare[] = [];
+const databases: Awaited<ReturnType<Miniflare["getD1Database"]>>[] = [];
+let root: string;
+let passwordHash: string;
+let weakPasswordHash: string;
+
+function config(index = 0, overrides: Partial<AuthRequestConfiguration> = {}): AuthRequestConfiguration {
+  return {
+    DB: databases[index],
+    baseURL: origin,
+    webappURL: origin,
+    NEXTAUTH_SECRET: `synthetic-signing-secret-${index}-${"x".repeat(32)}`,
+    credentialPolicy: {
+      encryptionKey: keys[index],
+      isDevelopment: false,
+      isE2E: false,
+      rateLimit: "disabled",
+    },
+    ...overrides,
+  };
+}
+
+beforeAll(async () => {
+  root = await mkdtemp(join(tmpdir(), "calflare-request-auth-"));
+  const first = join(root, "first");
+  const second = join(root, "second");
+  await migrateD1({ persistTo: first });
+  await cp(first, second, { recursive: true });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  for (const state of [first, second]) {
+    const runtime = new Miniflare({
+      cf: false,
+      enableDevRegistry: false,
+      telemetry: { enabled: false },
+      resourcePersistencePath: join(state, "v3"),
+      workers: [
+        {
+          config: {
+            name: worker.name,
+            compatibilityDate: worker.compatibilityDate,
+            compatibilityFlags: worker.compatibilityFlags,
+            env: { DB: worker.env.DB },
+            manifest: {
+              mainModule: "worker.js",
+              modules: {
+                "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+              },
+            },
+          },
+        },
+      ],
+    });
+    runtimes.push(runtime);
+    databases.push(await runtime.getD1Database("DB"));
+  }
+  [passwordHash, weakPasswordHash] = await Promise.all([hash(password, 12), hash("weak", 12)]);
+}, 120_000);
+
+beforeEach(async () => {
+  for (const [index, db] of databases.entries()) {
+    await db.prepare('DELETE FROM "AuthUser"').run();
+    await db.prepare("DELETE FROM users").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email,username,name,metadata) VALUES(123,?,?,?,?,?)")
+      .bind(`request-user-${index}`, "owner@calflare.test", "owner", `Owner ${index}`, '{"sessionTimeout":2}')
+      .run();
+    await db.prepare('INSERT INTO "UserPassword"(userId,hash) VALUES(123,?)').bind(passwordHash).run();
+  }
+});
+
+afterAll(async () => {
+  for (const runtime of runtimes) await runtime.dispose();
+  if (root) await rm(root, { recursive: true, force: true });
+});
+
+type Auth = ReturnType<typeof createCalRequestAuth>;
+const credentials = (extra: Partial<NonNullable<Parameters<typeof authorizeCredentials>[0]>> = {}) => ({
+  email: "owner@calflare.test",
+  password,
+  totpCode: "",
+  backupCode: "",
+  ...extra,
+});
+const authorize = (settings = config(), extra: Parameters<typeof credentials>[0] = {}) =>
+  withAuthRequestEnvironment(settings, () =>
+    authorizeCredentialsForRequest(credentials(extra), settings.credentialPolicy)
+  );
+
+function request(auth: Auth, path: string, cookie = "", body?: object | URLSearchParams) {
+  return auth.handler(
+    new Request(`${origin}/api/auth/${path}`, {
+      method: body ? "POST" : "GET",
+      headers: {
+        cookie,
+        ...(body
+          ? {
+              origin,
+              "content-type":
+                body instanceof URLSearchParams ? "application/x-www-form-urlencoded" : "application/json",
+            }
+          : {}),
+      },
+      ...(body ? { body: body instanceof URLSearchParams ? body : JSON.stringify(body) } : {}),
+    })
+  );
+}
+const cookies = (response: Response) =>
+  response.headers
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .join("; ");
+async function csrf(auth: Auth) {
+  const response = await request(auth, "csrf");
+  expect(response.status).toBe(200);
+  return { cookie: cookies(response), ...z.object({ csrfToken: z.string() }).parse(await response.json()) };
+}
+async function enableMfa(index = 0) {
+  await databases[index]
+    .prepare("UPDATE users SET twoFactorEnabled=1,twoFactorSecret=?,backupCodes=? WHERE id=123")
+    .bind(symmetricEncrypt(totpSecret, keys[index]), symmetricEncrypt('["12345678","87654321"]', keys[index]))
+    .run();
+}
+
+describe("request auth composition with real credential policy and migrated D1", () => {
+  it.each([
+    "form",
+    "json",
+  ])("authorizes %s credentials, signs a session, and binds server reads and revocation", async (transport) => {
+    const auth = createCalRequestAuth(config());
+    const state = await csrf(auth);
+    const body = { ...credentials(), csrfToken: state.csrfToken, callbackUrl: "/bookings", json: "true" };
+    const response = await request(
+      auth,
+      "callback/credentials",
+      state.cookie,
+      transport === "form" ? new URLSearchParams(body) : body
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url: `${origin}/bookings` });
+    expect(cookies(response)).toMatch(/__Secure-next-auth.session-token=.+/);
+    const cookie = `${state.cookie}; ${cookies(response)}`;
+    expect(await (await request(auth, "session", cookie)).json()).toMatchObject({
+      user: { id: 123, name: "Owner 0", role: "USER" },
+    });
+    expect(await auth.api.getServerSession({ headers: new Headers({ cookie }) })).toMatchObject({
+      user: { id: 123, uuid: "request-user-0" },
+    });
+    const forbidden = await request(auth, "session", cookie, {
+      csrfToken: state.csrfToken,
+      data: { upId: "usr-999" },
+    });
+    expect(forbidden.status).toBe(403);
+    await request(auth, "signout", cookie, { csrfToken: state.csrfToken, json: "true" });
+    expect(await auth.api.getSessionClaims({ headers: new Headers({ cookie }) })).toBeNull();
+  });
+
+  it("preserves lookup, limiter and password rejection order", async () => {
+    const settings = config();
+    const enabled = config(0, { credentialPolicy: { ...settings.credentialPolicy, rateLimit: "enabled" } });
+    await expect(authorize(enabled, { email: "missing@calflare.test" })).rejects.toThrow(
+      "incorrect-email-password"
+    );
+    await databases[0].prepare("UPDATE users SET locked=1 WHERE id=123").run();
+    await expect(authorize(enabled)).rejects.toThrow("incorrect-email-password");
+    await databases[0].prepare("UPDATE users SET locked=0 WHERE id=123").run();
+    await expect(authorize(enabled, { password: "incorrect" })).rejects.toThrow("internal-server-error");
+    await enableMfa();
+    await expect(authorize(settings, { password: "incorrect", backupCode: "incorrect" })).rejects.toThrow(
+      "incorrect-email-password"
+    );
+    await databases[0].prepare('DELETE FROM "UserPassword" WHERE userId=123').run();
+    await expect(authorize(settings)).rejects.toThrow("incorrect-email-password");
+    expect((await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
+  });
+
+  it("retains encrypted TOTP and backup-code errors and consumes the matching backup code", async () => {
+    await enableMfa();
+    await expect(authorize()).rejects.toThrow("second-factor-required");
+    await expect(authorize(config(), { totpCode: "invalid" })).rejects.toThrow("incorrect-two-factor-code");
+    expect((await authorize(config(), { totpCode: authenticator.generate(totpSecret) })).id).toBe(123);
+    await expect(authorize(config(), { backupCode: "invalid" })).rejects.toThrow("incorrect-backup-code");
+    expect((await authorize(config(), { backupCode: "1234-5678", totpCode: "invalid" })).id).toBe(123);
+    const stored = await databases[0]
+      .prepare("SELECT backupCodes FROM users WHERE id=123")
+      .first<{ backupCodes: string }>();
+    expect(stored).not.toBeNull();
+    expect(JSON.parse(symmetricDecrypt(stored!.backupCodes, keys[0]))).toEqual([null, "87654321"]);
+    await expect(authorize(config(), { backupCode: "12345678" })).rejects.toThrow("incorrect-backup-code");
+    await databases[0].prepare("UPDATE users SET backupCodes=NULL WHERE id=123").run();
+    await expect(authorize(config(), { backupCode: "87654321" })).rejects.toThrow("missing-backup-codes");
+    const settings = config();
+    const missingKey = config(0, {
+      credentialPolicy: { ...settings.credentialPolicy, encryptionKey: undefined },
+    });
+    await expect(authorize(missingKey, { backupCode: "87654321" })).rejects.toThrow("internal-server-error");
+    await expect(authorize(missingKey, { totpCode: "123456" })).rejects.toThrow("internal-server-error");
+    await databases[0]
+      .prepare("UPDATE users SET twoFactorSecret=? WHERE id=123")
+      .bind(symmetricEncrypt("short", keys[0]))
+      .run();
+    await expect(authorize(config(), { totpCode: "123456" })).rejects.toThrow("internal-server-error");
+    await databases[0].prepare("UPDATE users SET twoFactorSecret=NULL WHERE id=123").run();
+    await expect(authorize(config(), { totpCode: "123456" })).rejects.toThrow("internal-server-error");
+  });
+
+  it("fails closed for unsupported enabled limiting without issuing a session", async () => {
+    const settings = config();
+    const auth = createCalRequestAuth(
+      config(0, { credentialPolicy: { ...settings.credentialPolicy, rateLimit: "enabled" } })
+    );
+    const state = await csrf(auth);
+    const response = await request(auth, "callback/credentials", state.cookie, {
+      ...credentials(),
+      csrfToken: state.csrfToken,
+      json: "true",
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ url: `${origin}/api/auth/error?error=internal-server-error` });
+    expect((await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
+  });
+
+  it("preserves inactive-admin reasons and request-scoped development and E2E exceptions", async () => {
+    await databases[0].prepare("UPDATE users SET role='ADMIN' WHERE id=123").run();
+    expect(await authorize()).toMatchObject({ role: "INACTIVE_ADMIN", inactiveAdminReason: "2fa" });
+    await databases[0]
+      .prepare('UPDATE "UserPassword" SET hash=? WHERE userId=123')
+      .bind(weakPasswordHash)
+      .run();
+    expect(await authorize(config(), { password: "weak" })).toMatchObject({
+      role: "INACTIVE_ADMIN",
+      inactiveAdminReason: "both",
+    });
+    await enableMfa();
+    expect(
+      await authorize(config(), { password: "weak", totpCode: authenticator.generate(totpSecret) })
+    ).toMatchObject({ role: "INACTIVE_ADMIN", inactiveAdminReason: "password" });
+    for (const exception of ["isDevelopment", "isE2E"]) {
+      const settings = config();
+      const exempt = config(0, { credentialPolicy: { ...settings.credentialPolicy, [exception]: true } });
+      expect(
+        (await authorize(exempt, { password: "weak", totpCode: authenticator.generate(totpSecret) })).role
+      ).toBe("ADMIN");
+    }
+    await databases[0].prepare('UPDATE "UserPassword" SET hash=? WHERE userId=123').bind(passwordHash).run();
+    expect((await authorize(config(), { totpCode: authenticator.generate(totpSecret) })).role).toBe("ADMIN");
+    await databases[0]
+      .prepare("UPDATE users SET identityProvider='GOOGLE',twoFactorEnabled=0 WHERE id=123")
+      .run();
+    expect((await authorize()).role).toBe("ADMIN");
+  });
+
+  it("isolates overlapping databases, MFA keys and signing secrets without leaking request context", async () => {
+    await Promise.all([enableMfa(0), enableMfa(1)]);
+    const settings = [config(0), config(1)];
+    const auths = settings.map(createCalRequestAuth);
+    const signedIn = await Promise.all(
+      auths.map(async (auth) => {
+        const state = await csrf(auth);
+        const response = await request(auth, "callback/credentials", state.cookie, {
+          ...credentials({ backupCode: "12345678" }),
+          csrfToken: state.csrfToken,
+          json: "true",
+        });
+        expect(response.status).toBe(200);
+        return `${state.cookie}; ${cookies(response)}`;
+      })
+    );
+    for (const [index, auth] of auths.entries()) {
+      expect(
+        await auth.api.getServerSession({ headers: new Headers({ cookie: signedIn[index] }) })
+      ).toMatchObject({ user: { name: `Owner ${index}` } });
+      expect(
+        await auth.api.getSessionClaims({ headers: new Headers({ cookie: signedIn[1 - index] }) })
+      ).toBeNull();
+    }
+    const wrongSigner = createCalRequestAuth(config(0, { NEXTAUTH_SECRET: settings[1].NEXTAUTH_SECRET }));
+    expect(
+      await wrongSigner.api.getSessionClaims({ headers: new Headers({ cookie: signedIn[0] }) })
+    ).toBeNull();
+    expect(getAuthRequestConfiguration()).toBeUndefined();
+    expect(() => prisma.user.findMany()).toThrow("D1 request binding is required");
+  });
+
+  it.each([
+    "http://calflare.test",
+    origin,
+  ])("uses configured URL and %s cookie policy consistently with SSR CSRF", async (webappURL) => {
+    const settings = config(0, { webappURL, NEXTAUTH_COOKIE_DOMAIN: ".calflare.test" });
+    const auth = createCalRequestAuth(settings);
+    const state = await csrf(auth);
+    const prefix = webappURL.startsWith("https://") ? "__Secure-" : "";
+    const name = `${prefix}next-auth.csrf-token`;
+    const value = state.cookie
+      .split("; ")
+      .find((part) => part.startsWith(`${name}=`))
+      ?.slice(name.length + 1);
+    expect(value).toBeDefined();
+    expect(
+      await withAuthRequestEnvironment(settings, () =>
+        getServerCsrfToken({ cookies: { [name]: decodeURIComponent(value!) } })
+      )
+    ).toBe(state.csrfToken);
+    const response = await request(auth, "callback/credentials", state.cookie, {
+      ...credentials(),
+      csrfToken: state.csrfToken,
+      json: "true",
+    });
+    expect(response.status).toBe(200);
+    const sessionCookie = response.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith(`${prefix}next-auth.session-token=`));
+    expect(sessionCookie).toContain("Domain=.calflare.test");
+    expect(sessionCookie).toContain(prefix ? "SameSite=None" : "SameSite=Lax");
+    expect(sessionCookie?.includes("; Secure")).toBe(Boolean(prefix));
+    const providers = await auth.handler(
+      new Request(`${origin}/api/auth/providers`, { headers: { host: "untrusted.test" } })
+    );
+    expect(await providers.json()).toMatchObject({
+      credentials: { callbackUrl: `${origin}/api/auth/callback/credentials` },
+    });
+  });
+});
