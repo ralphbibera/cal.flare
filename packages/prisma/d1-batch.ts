@@ -64,6 +64,16 @@ export const d1Json = z
   .transform((value): unknown => JSON.parse(value))
   .pipe(JsonValueSchema);
 
+// Prisma generates `@default(uuid(7))` in its client, so native inserts supply the same time-ordered ids.
+export function generateUuidV7(now = Date.now()): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  for (let index = 0; index < 6; index++) bytes[index] = Math.floor(now / 2 ** (8 * (5 - index))) % 256;
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // SQLite only raises from triggers, so a guard aborts its batch through an invalid JSON path that carries
 // the failure; a zero-row write alone commits. A record failure maps to P2025, a message to a plain Error.
 export function requireD1Record(
