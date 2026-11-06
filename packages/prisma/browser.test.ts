@@ -30,7 +30,7 @@ describe("generated Prisma browser namespace", () => {
 describe("generated Prisma server namespace", () => {
   it("retains the client, error classes and query helpers", async () => {
     const { Prisma, PrismaClient } = await import("./client");
-    const runtime = await import("@prisma/client/runtime/client");
+    const runtime = await import("@prisma/client/runtime/wasm-compiler-edge");
     expect(PrismaClient).toBeTypeOf("function");
     expect(Prisma.PrismaClientKnownRequestError).toBe(runtime.PrismaClientKnownRequestError);
     expect(Prisma.sql).toBe(runtime.sqltag);
