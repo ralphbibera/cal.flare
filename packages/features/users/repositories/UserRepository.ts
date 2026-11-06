@@ -3,20 +3,80 @@ import { getTranslation } from "@calcom/i18n/server";
 import { DEFAULT_SCHEDULE, getAvailabilityFromSchedule } from "@calcom/lib/availability";
 import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import { buildNonDelegationCredentials } from "@calcom/lib/delegationCredential";
+import { findMatchingKeysetRows } from "@calcom/lib/keyset-scan";
 import logger from "@calcom/lib/logger";
+import {
+  createIlikeMatcher,
+  findSearchedRows,
+  type KeysetPage,
+  toSqliteContainsPrefilter,
+} from "@calcom/lib/postgres-ilike";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { withSelectedCalendars } from "@calcom/lib/server/withSelectedCalendars";
 import type { PrismaClient } from "@calcom/prisma";
 import { availabilityUserSelect } from "@calcom/prisma";
 import type { DestinationCalendar, SelectedCalendar, User as UserType } from "@calcom/prisma/client";
 import { Prisma } from "@calcom/prisma/client";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks, getD1Database } from "@calcom/prisma/d1";
+import {
+  d1Boolean,
+  d1DateTime,
+  d1Json,
+  requireD1Record,
+  runD1Batch,
+  toD1DateTime,
+} from "@calcom/prisma/d1-batch";
 import type { CreationSource, IdentityProvider } from "@calcom/prisma/enums";
 import { BookingStatus, MembershipRole } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import { userSelect as prismaUserSelect } from "@calcom/prisma/selects/user";
+import { UserSchema } from "@calcom/prisma/zod/modelSchema/UserSchema";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { UpId, UserProfile } from "@calcom/types/UserProfile";
-import type { z } from "zod";
+import { z } from "zod";
+
+// Prisma reads the `created` column as `createdDate`; the rest of a SQLite user row needs value decoding.
+const userColumns = '*, "created" AS "createdDate"';
+const userRow = UserSchema.extend({
+  uuid: z.string(),
+  email: z.string(),
+  emailVerified: d1DateTime.nullable(),
+  createdDate: d1DateTime,
+  trialEndsAt: d1DateTime.nullable(),
+  lastActiveAt: d1DateTime.nullable(),
+  metadata: d1Json.nullable(),
+  hideBranding: d1Boolean,
+  completedOnboarding: d1Boolean,
+  twoFactorEnabled: d1Boolean,
+  allowDynamicBooking: d1Boolean.nullable(),
+  allowSEOIndexing: d1Boolean.nullable(),
+  receiveMonthlyDigestEmail: d1Boolean.nullable(),
+  requiresBookerEmailVerification: d1Boolean.nullable(),
+  verified: d1Boolean.nullable(),
+  locked: d1Boolean,
+  isPlatformManaged: d1Boolean,
+  smsLockReviewedByAdmin: d1Boolean,
+  autoOptInFeatures: d1Boolean,
+  creationSource: z.string().toUpperCase().pipe(UserSchema.shape.creationSource.unwrap()).nullable(),
+}) satisfies z.ZodType<UserType, z.ZodTypeDef, unknown>;
+
+const adminUserColumns = [
+  "name",
+  "email",
+  "username",
+  "bio",
+  "timeZone",
+  "weekStart",
+  "theme",
+  "defaultScheduleId",
+  "locale",
+  "timeFormat",
+  "allowDynamicBooking",
+  "identityProvider",
+  "role",
+  "avatarUrl",
+] as const;
+type AdminUserUpdate = Partial<Pick<UserType, (typeof adminUserColumns)[number]>>;
 
 const whereClauseForOrgWithSlugOrRequestedSlug = (..._args: unknown[]) => ({});
 const getParsedTeam = <T>(team: T): T => team;
@@ -292,41 +352,52 @@ export class UserRepository {
   }
 
   private async findVerifiedUsersByEmailsRaw(emails: string[]) {
-    const emailListSql = Prisma.join(emails.map((e) => Prisma.sql`${e}`));
-    return this.prismaClient.$queryRaw<
-      Array<{
-        id: number;
-        email: string;
-        matchedEmail: string;
-        requiresBookerEmailVerification: boolean;
-      }>
-    >(Prisma.sql`
-      SELECT
-        u."id",
-        u."email",
-        u."email" AS "matchedEmail",
-        u."requiresBookerEmailVerification"
-      FROM
-        "public"."users" AS u
-      WHERE
-        u."email" IN (${emailListSql})
-        AND u."emailVerified" IS NOT NULL
-        AND u."locked" = FALSE
-      UNION
-      SELECT
-        u."id",
-        u."email",
-        t0."email" AS "matchedEmail",
-        u."requiresBookerEmailVerification"
-      FROM
-        "public"."users" AS u
-      INNER JOIN "public"."SecondaryEmail" AS t0
-        ON t0."userId" = u."id"
-      WHERE
-        t0."email" IN (${emailListSql})
-        AND t0."emailVerified" IS NOT NULL
-        AND u."locked" = FALSE
-    `);
+    // The UNION binds the email list twice, so each chunk takes half the usual in-list size.
+    const rows = await findManyInChunks(
+      emails,
+      (chunk) => {
+        const emailListSql = Prisma.join(chunk);
+        return this.prismaClient.$queryRaw<
+          Array<{
+            id: number;
+            email: string;
+            matchedEmail: string;
+            requiresBookerEmailVerification: 0 | 1;
+          }>
+        >(Prisma.sql`
+          SELECT
+            u."id",
+            u."email",
+            u."email" AS "matchedEmail",
+            u."requiresBookerEmailVerification"
+          FROM
+            "users" AS u
+          WHERE
+            u."email" IN (${emailListSql})
+            AND u."emailVerified" IS NOT NULL
+            AND u."locked" = FALSE
+          UNION
+          SELECT
+            u."id",
+            u."email",
+            t0."email" AS "matchedEmail",
+            u."requiresBookerEmailVerification"
+          FROM
+            "users" AS u
+          INNER JOIN "SecondaryEmail" AS t0
+            ON t0."userId" = u."id"
+          WHERE
+            t0."email" IN (${emailListSql})
+            AND t0."emailVerified" IS NOT NULL
+            AND u."locked" = FALSE
+        `);
+      },
+      D1_IN_LIST_CHUNK_SIZE / 2
+    );
+    return rows.map((row) => ({
+      ...row,
+      requiresBookerEmailVerification: row.requiresBookerEmailVerification === 1,
+    }));
   }
 
   async findByEmailAndIncludeProfilesAndPassword({ email }: { email: string }) {
@@ -438,27 +509,27 @@ export class UserRepository {
     cursor?: number | null;
     limit?: number | null;
   }) {
-    const where: Record<string, unknown> = {
-      id: cursor ? { in: ids, gt: cursor } : { in: ids },
-    };
+    const findMatches = (scanLimit: number | undefined, lockedWhere: Prisma.UserWhereInput = {}) =>
+      findSearchedRows({
+        search: search ?? undefined,
+        cursor: cursor ?? undefined,
+        limit: scanLimit,
+        getKey: (user) => user.id,
+        getSearchValues: (user) => [user.name, user.email],
+        fetchRows: ({ after, take }: KeysetPage) =>
+          this.prismaClient.user.findMany({
+            where: { id: after ? { in: ids, gt: after } : { in: ids }, ...lockedWhere },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+            orderBy: { id: "asc" },
+            take,
+          }),
+      });
 
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { email: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    const users = await this.prismaClient.user.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
-      orderBy: { id: "asc" },
-      ...(limit ? { take: limit + 1 } : {}),
-    });
+    const users = await findMatches(limit || undefined);
 
     if (!limit) {
       return { users, nextCursor: undefined, total: users.length };
@@ -471,16 +542,10 @@ export class UserRepository {
     // Only count on the first page to avoid an extra query on every scroll
     let total: number | undefined;
     if (!cursor) {
-      const countWhere: Record<string, unknown> = {
-        id: { in: ids },
-      };
-      if (search) {
-        countWhere.OR = [
-          { name: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-        ];
-      }
-      total = await this.prismaClient.user.count({ where: countWhere });
+      // The locked-user extension does not cover count(), so totals have always included locked users.
+      total = search
+        ? (await findMatches(undefined, { OR: [{ locked: false }, { locked: true }] })).length
+        : await this.prismaClient.user.count({ where: { id: { in: ids } } });
     }
 
     return { users: items, nextCursor, total };
@@ -557,36 +622,158 @@ export class UserRepository {
     oldPrimaryEmail,
     oldPrimaryEmailVerified,
     newPrimaryEmail,
-    userUpdateData,
   }: {
     userId: number;
     secondaryEmailId: number;
     oldPrimaryEmail: string;
     oldPrimaryEmailVerified: Date | null;
     newPrimaryEmail: string;
-    userUpdateData?: Prisma.UserUpdateInput;
-  }) {
-    const [, updatedUser] = await this.prismaClient.$transaction([
-      this.prismaClient.secondaryEmail.update({
-        where: {
-          id: secondaryEmailId,
-          userId: userId,
-        },
-        data: {
-          email: oldPrimaryEmail,
-          emailVerified: oldPrimaryEmailVerified,
-        },
-      }),
-      this.prismaClient.user.update({
-        where: { id: userId },
-        data: {
-          ...userUpdateData,
-          email: newPrimaryEmail,
-        },
-      }),
-    ]);
+  }): Promise<UserType> {
+    const db = getD1Database();
+    const results = await runD1Batch(
+      db,
+      [
+        requireD1Record(
+          db,
+          { modelName: "SecondaryEmail", operation: "an update" },
+          'SELECT 1 FROM "SecondaryEmail" WHERE "id" = ? AND "userId" = ?',
+          secondaryEmailId,
+          userId
+        ),
+        db
+          .prepare(
+            'UPDATE "SecondaryEmail" SET "email" = ?, "emailVerified" = ? WHERE "id" = ? AND "userId" = ?'
+          )
+          .bind(
+            oldPrimaryEmail,
+            oldPrimaryEmailVerified && toD1DateTime(oldPrimaryEmailVerified),
+            secondaryEmailId,
+            userId
+          ),
+        requireD1Record(
+          db,
+          { modelName: "User", operation: "an update" },
+          'SELECT 1 FROM "users" WHERE "id" = ?',
+          userId
+        ),
+        db.prepare('UPDATE "users" SET "email" = ? WHERE "id" = ?').bind(newPrimaryEmail, userId),
+        db.prepare(`SELECT ${userColumns} FROM "users" WHERE "id" = ?`).bind(userId),
+      ],
+      { modelName: "User" }
+    );
+    return userRow.parse(results[4].results[0]);
+  }
 
-    return updatedUser;
+  async updateSecondaryEmails({
+    userId,
+    emails,
+  }: {
+    userId: number;
+    emails: { id: number; email: string; emailVerified: Date | null }[];
+  }): Promise<void> {
+    if (emails.length === 0) return;
+    const db = getD1Database();
+    await runD1Batch(
+      db,
+      emails.flatMap(({ id, email, emailVerified }) => [
+        requireD1Record(
+          db,
+          { modelName: "SecondaryEmail", operation: "an update" },
+          'SELECT 1 FROM "SecondaryEmail" WHERE "id" = ? AND "userId" = ?',
+          id,
+          userId
+        ),
+        db
+          .prepare(
+            'UPDATE "SecondaryEmail" SET "email" = ?, "emailVerified" = ? WHERE "id" = ? AND "userId" = ?'
+          )
+          .bind(email, emailVerified && toD1DateTime(emailVerified), id, userId),
+      ]),
+      { modelName: "SecondaryEmail" }
+    );
+  }
+
+  async updateWithProfileUsername({
+    id,
+    data,
+    profileUsername,
+  }: {
+    id: number;
+    data: AdminUserUpdate;
+    profileUsername?:
+      | {
+          scope: "movedProfile";
+          profileId: number;
+          username: string;
+          redirect?: { from: string; toUrl: string; missingOrgSlugError: string };
+        }
+      | { scope: "allProfiles"; username: string };
+  }): Promise<UserType> {
+    const db = getD1Database();
+    const now = toD1DateTime(new Date());
+    const columns = adminUserColumns.filter((column) => data[column] !== undefined);
+    const statements = [
+      requireD1Record(
+        db,
+        { modelName: "User", operation: "an update" },
+        'SELECT 1 FROM "users" WHERE "id" = ?',
+        id
+      ),
+    ];
+    if (columns.length > 0) {
+      const values = columns.map((column) => {
+        const value = data[column];
+        return typeof value === "boolean" ? Number(value) : value;
+      });
+      statements.push(
+        db
+          .prepare(
+            `UPDATE "users" SET ${columns.map((column) => `"${column}" = ?`).join(", ")} WHERE "id" = ?`
+          )
+          .bind(...values, id)
+      );
+    }
+    const selection = statements.length;
+    statements.push(db.prepare(`SELECT ${userColumns} FROM "users" WHERE "id" = ?`).bind(id));
+    if (profileUsername?.scope === "movedProfile") {
+      const { profileId, username, redirect } = profileUsername;
+      statements.push(
+        requireD1Record(
+          db,
+          { modelName: "Profile", operation: "an update" },
+          'SELECT 1 FROM "Profile" WHERE "id" = ?',
+          profileId
+        ),
+        db
+          .prepare('UPDATE "Profile" SET "username" = ?, "updatedAt" = ? WHERE "id" = ?')
+          .bind(username, now, profileId)
+      );
+      if (redirect) {
+        statements.push(
+          requireD1Record(
+            db,
+            { message: redirect.missingOrgSlugError },
+            `SELECT 1 FROM "Profile" p JOIN "Team" t ON t."id" = p."organizationId"
+            WHERE p."id" = ? AND COALESCE(t."slug", '') <> ''`,
+            profileId
+          ),
+          db
+            .prepare(
+              'UPDATE "TempOrgRedirect" SET "toUrl" = ?, "updatedAt" = ? WHERE "type" = ? AND "from" = ?'
+            )
+            .bind(redirect.toUrl, now, "user", redirect.from)
+        );
+      }
+    }
+    if (profileUsername?.scope === "allProfiles") {
+      statements.push(
+        db
+          .prepare('UPDATE "Profile" SET "username" = ?, "updatedAt" = ? WHERE "userId" = ?')
+          .bind(profileUsername.username, now, id)
+      );
+    }
+    const results = await runD1Batch(db, statements, { modelName: "User" });
+    return userRow.parse(results[selection].results[0]);
   }
 
   async enrichUserWithTheProfile<T extends { username: string | null; id: number }>({
@@ -1333,42 +1520,45 @@ export class UserRepository {
   }
 
   async findUsersWithLastBooking({ userIds, eventTypeId }: { userIds: number[]; eventTypeId: number }) {
-    return this.prismaClient.user.findMany({
-      where: {
-        id: {
-          in: userIds,
-        },
-      },
-      select: {
-        id: true,
-        bookings: {
-          select: {
-            createdAt: true,
+    // Chunking also bounds the parent ids Prisma binds for the nested `take`.
+    return findManyInChunks(userIds, (chunk) =>
+      this.prismaClient.user.findMany({
+        where: {
+          id: {
+            in: chunk,
           },
-          where: {
-            eventTypeId,
-            status: BookingStatus.ACCEPTED,
-            attendees: {
-              some: {
-                noShow: false,
-              },
+        },
+        select: {
+          id: true,
+          bookings: {
+            select: {
+              createdAt: true,
             },
-            OR: [
-              {
-                noShowHost: false,
+            where: {
+              eventTypeId,
+              status: BookingStatus.ACCEPTED,
+              attendees: {
+                some: {
+                  noShow: false,
+                },
               },
-              {
-                noShowHost: null,
-              },
-            ],
+              OR: [
+                {
+                  noShowHost: false,
+                },
+                {
+                  noShowHost: null,
+                },
+              ],
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
           },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
         },
-      },
-    });
+      })
+    );
   }
 
   async findUserWithHideBranding({ userId }: { userId: number }) {
@@ -1600,55 +1790,90 @@ export class UserRepository {
     const bothLockedAndUnlockedWhere: Prisma.UserWhereInput = {
       OR: [{ locked: false }, { locked: true }],
     };
+    const select = {
+      id: true,
+      locked: true,
+      email: true,
+      username: true,
+      name: true,
+      timeZone: true,
+      role: true,
+      profiles: {
+        select: {
+          username: true,
+        },
+      },
+    } satisfies Prisma.UserSelect;
     const trimmedSearchTerm = searchTerm?.trim();
-    const searchFilters: Prisma.UserWhereInput = trimmedSearchTerm
-      ? {
-          AND: [
-            // To bypass the excludeLockedUsersExtension
-            bothLockedAndUnlockedWhere,
-            {
-              OR: [
-                { email: { contains: trimmedSearchTerm, mode: "insensitive" } },
-                { username: { contains: trimmedSearchTerm, mode: "insensitive" } },
+    const hasLimit = limit !== undefined && limit !== null;
+
+    if (trimmedSearchTerm) {
+      const pattern = `%${trimmedSearchTerm}%`;
+      const matches = createIlikeMatcher(pattern);
+      const contains = toSqliteContainsPrefilter(pattern);
+      // SQLite LIKE folds only ASCII, so SQL narrows every user to candidates and ILIKE is confirmed here.
+      // The total counts every match, so the whole candidate set is read.
+      const matchedUsers = await findMatchingKeysetRows({
+        fetchRows: ({ after, take }: KeysetPage) =>
+          this.prismaClient.user.findMany({
+            where: {
+              AND: [
+                // To bypass the excludeLockedUsersExtension
+                bothLockedAndUnlockedWhere,
                 {
-                  profiles: {
-                    some: {
-                      username: { contains: trimmedSearchTerm, mode: "insensitive" },
-                    },
-                  },
+                  OR: [
+                    { email: { contains } },
+                    { username: { contains } },
+                    { profiles: { some: { username: { contains } } } },
+                  ],
                 },
               ],
+              ...(after && { id: { gt: after } }),
             },
-          ],
-        }
-      : // To bypass the excludeLockedUsersExtension
-        bothLockedAndUnlockedWhere;
+            select,
+            orderBy: { id: "asc" },
+            take,
+          }),
+        getKey: (user) => user.id,
+        matches: (user) =>
+          matches(user.email) ||
+          matches(user.username) ||
+          user.profiles.some((profile) => matches(profile.username)),
+      });
+      // As with skip: 1 on a cursor read, the first match at or after the cursor is dropped even when the cursor
+      // user does not match, and a deleted cursor user ends the list.
+      let afterCursor = matchedUsers;
+      if (cursor) {
+        const cursorExists =
+          matchedUsers.some((user) => user.id === cursor) ||
+          (await this.prismaClient.user.count({ where: { id: cursor } })) > 0;
+        afterCursor = cursorExists ? matchedUsers.filter((user) => user.id >= cursor).slice(1) : [];
+      }
 
-    const hasLimit = limit !== undefined && limit !== null;
+      if (!hasLimit) {
+        return { users: afterCursor, nextCursor: undefined, total: afterCursor.length };
+      }
+      const hasMore = afterCursor.length > limit;
+      const items = afterCursor.slice(0, limit);
+      return {
+        users: items,
+        nextCursor: hasMore ? items[items.length - 1].id : undefined,
+        total: matchedUsers.length,
+      };
+    }
+
     const take = hasLimit ? limit + 1 : undefined; // +1 lets us detect "has more" for the cursor
 
     const users = await this.prismaClient.user.findMany({
       cursor: cursor ? { id: cursor } : undefined,
       skip: cursor ? 1 : 0,
       ...(take !== undefined ? { take } : {}),
-      where: searchFilters,
+      // To bypass the excludeLockedUsersExtension
+      where: bothLockedAndUnlockedWhere,
       orderBy: {
         id: "asc",
       },
-      select: {
-        id: true,
-        locked: true,
-        email: true,
-        username: true,
-        name: true,
-        timeZone: true,
-        role: true,
-        profiles: {
-          select: {
-            username: true,
-          },
-        },
-      },
+      select,
     });
 
     if (!hasLimit) {
@@ -1656,7 +1881,7 @@ export class UserRepository {
     }
 
     const total = await this.prismaClient.user.count({
-      where: searchFilters,
+      where: bothLockedAndUnlockedWhere,
     });
     const hasMore = users.length > limit;
     const items = hasMore ? users.slice(0, limit) : users;

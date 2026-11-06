@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@calcom/prisma";
+import { findManyInChunks } from "@calcom/prisma/d1";
 
 export class PrismaOOORepository {
   constructor(private prismaClient: PrismaClient) {}
@@ -12,74 +13,76 @@ export class PrismaOOORepository {
     endTimeDate: Date;
     allUserIds: number[];
   }) {
-    return this.prismaClient.outOfOfficeEntry.findMany({
-      where: {
-        userId: {
-          in: allUserIds,
-        },
-        OR: [
-          // outside of range
-          // (start <= 'dateTo' AND end >= 'dateFrom')
-          {
-            start: {
-              lte: endTimeDate,
-            },
-            end: {
-              gte: startTimeDate,
-            },
+    return findManyInChunks(allUserIds, (userIds) =>
+      this.prismaClient.outOfOfficeEntry.findMany({
+        where: {
+          userId: {
+            in: userIds,
           },
-          // start is between dateFrom and dateTo but end is outside of range
-          // (start <= 'dateTo' AND end >= 'dateTo')
-          {
-            start: {
-              lte: endTimeDate,
+          OR: [
+            // outside of range
+            // (start <= 'dateTo' AND end >= 'dateFrom')
+            {
+              start: {
+                lte: endTimeDate,
+              },
+              end: {
+                gte: startTimeDate,
+              },
             },
+            // start is between dateFrom and dateTo but end is outside of range
+            // (start <= 'dateTo' AND end >= 'dateTo')
+            {
+              start: {
+                lte: endTimeDate,
+              },
 
-            end: {
-              gte: endTimeDate,
+              end: {
+                gte: endTimeDate,
+              },
             },
-          },
-          // end is between dateFrom and dateTo but start is outside of range
-          // (start <= 'dateFrom' OR end <= 'dateTo')
-          {
-            start: {
-              lte: startTimeDate,
-            },
+            // end is between dateFrom and dateTo but start is outside of range
+            // (start <= 'dateFrom' OR end <= 'dateTo')
+            {
+              start: {
+                lte: startTimeDate,
+              },
 
-            end: {
-              lte: endTimeDate,
+              end: {
+                lte: endTimeDate,
+              },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          start: true,
+          end: true,
+          notes: true,
+          showNotePublicly: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
             },
           },
-        ],
-      },
-      select: {
-        id: true,
-        start: true,
-        end: true,
-        notes: true,
-        showNotePublicly: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
+          toUser: {
+            select: {
+              id: true,
+              username: true,
+              name: true,
+            },
+          },
+          reason: {
+            select: {
+              id: true,
+              emoji: true,
+              reason: true,
+            },
           },
         },
-        toUser: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-          },
-        },
-        reason: {
-          select: {
-            id: true,
-            emoji: true,
-            reason: true,
-          },
-        },
-      },
-    });
+      })
+    );
   }
 
   async findUserOOODays({ userId, dateTo, dateFrom }: { userId: number; dateTo: string; dateFrom: string }) {
@@ -160,23 +163,25 @@ export class PrismaOOORepository {
     startDate: Date;
     endDate: Date;
   }) {
-    return this.prismaClient.outOfOfficeEntry.findMany({
-      where: {
-        userId: {
-          in: userIds,
+    return findManyInChunks(userIds, (chunk) =>
+      this.prismaClient.outOfOfficeEntry.findMany({
+        where: {
+          userId: {
+            in: chunk,
+          },
+          start: {
+            lte: endDate,
+          },
+          end: {
+            gte: startDate,
+          },
         },
-        start: {
-          lte: endDate,
+        select: {
+          start: true,
+          end: true,
+          userId: true,
         },
-        end: {
-          gte: startDate,
-        },
-      },
-      select: {
-        start: true,
-        end: true,
-        userId: true,
-      },
-    });
+      })
+    );
   }
 }

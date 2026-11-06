@@ -3,11 +3,12 @@ import { sendChangeOfEmailVerification } from "@calcom/features/auth/lib/verifyE
 import { FeaturesRepository } from "@calcom/features/flags/features.repository";
 import { checkUsername } from "@calcom/features/profile/lib/checkUsername";
 import { ScheduleRepository } from "@calcom/features/schedules/repositories/ScheduleRepository";
+import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
+import { getTranslation } from "@calcom/i18n/server";
 import hasKeyInMetadata from "@calcom/lib/hasKeyInMetadata";
 import { HttpError } from "@calcom/lib/http-error";
 import logger from "@calcom/lib/logger";
 import { uploadAvatar } from "@calcom/lib/server/avatar";
-import { getTranslation } from "@calcom/i18n/server";
 import { resizeBase64Image } from "@calcom/lib/server/resizeBase64Image";
 import slugify from "@calcom/lib/slugify";
 import { validateBookerLayouts } from "@calcom/lib/validateBookerLayouts";
@@ -24,7 +25,9 @@ import { type TUpdateProfileInputSchema, updateUserMetadataAllowedKeys } from ".
 const getBillingProviderService = async (..._args: unknown[]) => ({
   createCustomer: async (..._a: unknown[]) => null,
   getCustomer: async (..._a: unknown[]) => null,
-  getSubscriptions: async (..._a: unknown[]): Promise<{ items: { data: { price: { id: string } }[] }; status: string }[]> => [],
+  getSubscriptions: async (
+    ..._a: unknown[]
+  ): Promise<{ items: { data: { price: { id: string } }[] }; status: string }[]> => [],
   updateCustomer: async (..._a: unknown[]) => null,
 });
 const updateNewTeamMemberEventTypes = async (..._args: unknown[]) => {};
@@ -366,7 +369,7 @@ export const updateProfileHandler = async ({ ctx, input }: UpdateProfileOptions)
 
       const keyedSecondaryEmailsFromDB = keyBy(secondaryEmailsFromDB, "id");
 
-      const recordsToModifyQueue = modifiedRecords.map((updated) => {
+      const updatedRecords = modifiedRecords.map((updated) => {
         let emailVerified = keyedSecondaryEmailsFromDB[updated.id].emailVerified;
         if (secondaryEmail?.id === updated.id) {
           emailVerified = primaryEmailVerified;
@@ -374,19 +377,13 @@ export const updateProfileHandler = async ({ ctx, input }: UpdateProfileOptions)
           emailVerified = null;
         }
 
-        return prisma.secondaryEmail.update({
-          where: {
-            id: updated.id,
-            userId: updatedUser.id,
-          },
-          data: {
-            email: updated.email,
-            emailVerified,
-          },
-        });
+        return { id: updated.id, email: updated.email, emailVerified };
       });
 
-      await prisma.$transaction(recordsToModifyQueue);
+      await new UserRepository(prisma).updateSecondaryEmails({
+        userId: updatedUser.id,
+        emails: updatedRecords,
+      });
     }
   }
 
