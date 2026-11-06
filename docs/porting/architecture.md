@@ -6,6 +6,7 @@ This reference binds the non-enterprise Cal.diy port at `e8afecd163cd3a0a3ff279b
 ## Evidence and stack
 
 Observed facts below come from pinned source, official documentation, or registry metadata checked on 2026-11-04.
+Email Sending availability and pricing were checked against Cloudflare documentation on 2026-11-05.
 Selected decisions bind future implementation. Neither source inspection nor package availability proves whole-product compatibility.
 Product builds, authentication flows, provider delivery and deployed behavior require their own execution evidence.
 Cloudflare recommends [vinext for Next.js applications][cf-next] and identifies its beta status. Vinext remains selected.
@@ -33,7 +34,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | Source async runner | `@trigger.dev/sdk` `4.5.4` is observed upstream, not selected for hosting. Its consumed jobs move to D1/Queues/DO scheduling; no Trigger-hosted or Node worker remains. |
 | RPC | Retain tRPC packages, including `@trpc/next`, at `11.0.0-next-beta.222`; TanStack Query `5.17.19`, SuperJSON `1.9.1`, Zod `3.25.76`. |
 | Docs | Source Next range is `^15.5.28`; target uses vinext and the React/Next peer pins above. Retain Nextra and `nextra-theme-docs` `4.6.1`, `@mdx-js/mdx` `3.1.1`, Pagefind `1.5.2`. Replace only Nextra's webpack loading boundary with a vinext build integration. |
-| Delivery and errors | Retain Nodemailer `7.0.12`, Handlebars `4.7.10`, OG `@vercel/og` `0.6.3`. Select `@sentry/cloudflare` and browser `@sentry/react` both `10.75.2`. |
+| Delivery and errors | Default to Cloudflare Email Sending through the native Workers binding on Workers Paid. Retain Resend/configured SMTP, Nodemailer `7.0.12`, Handlebars `4.7.10`, OG `@vercel/og` `0.6.3`. Select `@sentry/cloudflare` and browser `@sentry/react` both `10.75.2`. |
 | Checks | Retain Biome `2.3.10`, TypeScript `5.9.3`, Playwright `1.57.0`, Vitest `4.1.8`, and inherited test ownership. Select `@testing-library/react` `16.3.3` and `@testing-library/dom` `10.4.2` for React 19. |
 
 [Vinext metadata][npm-vinext], [Cloudflare adapter metadata][npm-cf-adapter], [plugin v2 metadata][npm-vite-cf], [cf metadata][npm-cf], and [Node release index][node-index] establish framework and engine pins.
@@ -278,9 +279,16 @@ Preserve Google refresh/watch flows, Microsoft Graph and expiry units, CalDAV di
 Web Stripe `9.16.0` and v2 Stripe `15.4.0` remain separate source versions. Browser SDKs remain client-only.
 Mail keeps original templates, copy, locale, attachments, ICS, headers, kill switch, and swallowed-failure behavior.
 The new baseline sends notifications despite all integration results failing in [regular booking][pin-booking-mail] and [confirmation][pin-confirm-mail], subject to existing mail/dry-run/seated-reschedule gates. Preserve `appsStatus` failure/error/warning aggregation; do not restore the old suppression branch.
-[Transport selection][pin-mail] remains Resend SMTP, `EMAIL_SERVER`, configured host, then local sendmail. Select public TLS/STARTTLS SMTP on Workers, preserving that selection order.
-[Workers TCP][cf-tcp] provides TLS/STARTTLS sockets but blocks port 25 and restricted destinations. It does not certify Nodemailer. Probe its socket path and adapt only that transport if needed.
-Local sendmail has no Workers executable and is an explicit configuration blocker. Real inbox/provider effects remain separately authorized external acceptance.
+Default outbound delivery to [Cloudflare Email Sending][cf-email] through the native `EMAIL` Workers binding, declared with `bindings.sendEmail()` in the existing `cloudflare.config.ts` deployment source of truth.
+Email Sending is beta and requires Workers Paid plus a sending domain onboarded through Cloudflare DNS before sending to arbitrary recipients. Email Routing alone does not provide that outbound capability.
+[Workers Paid includes 3,000 outbound emails per account per billing month, then $0.35 per 1,000 additional emails][cf-email-pricing]; daily sending limits and sender-domain verification still apply.
+Retain [source transport configuration][pin-mail] as explicit alternatives: a configured `RESEND_API_KEY` selects Resend SMTP, then `EMAIL_SERVER`, then `EMAIL_SERVER_HOST`. With none configured, select Cloudflare Email Sending.
+Retain Nodemailer for configured SMTP and MIME generation where required. A missing Cloudflare binding, invalid domain, quota rejection, or delivery error must follow the existing caller-visible error and task retry contracts; do not silently switch providers after a send attempt.
+The Worker entry supplies request-scoped delivery to the shared Nodemailer transport. Binding access stays in the Worker, and MIME generation stays at the existing mail boundary.
+[Workers TCP][cf-tcp] provides TLS/STARTTLS sockets but blocks port 25 and restricted destinations. It does not certify Nodemailer. Probe retained SMTP socket paths and adapt only that transport if needed.
+Preserve templates, locale, subject, sender display name/address, Reply-To, recipients, headers, HTML/text alternatives, calendar MIME parts and attachments, notification suppression, and source failure behavior at the existing email boundary.
+The [Cloudflare binding accepts structured messages and raw MIME][cf-email-api]. Verify invitation, update and cancellation calendar semantics, sender-domain restrictions, and both Cloudflare and explicitly configured Resend/SMTP paths before claiming delivery compatibility.
+Local sendmail has no Workers executable and is an explicit configuration blocker, not a production fallback. Real inbox/provider effects remain separately authorized external acceptance.
 Cloudflare-only hosting/storage does not remove original third-party calendar, payment, mail, SMS, or analytics APIs. Private-network-only integrations need a supported Cloudflare path or a recorded compatibility blocker.
 
 ## v2, docs, configuration, and checks
@@ -334,6 +342,9 @@ Specification completeness, local behavior, live provider delivery, and deployed
 [d1-batch]: https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
 [queues-delivery]: https://developers.cloudflare.com/queues/reference/delivery-guarantees/
 [cf-tcp]: https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/
+[cf-email]: https://developers.cloudflare.com/email-service/get-started/send-emails/
+[cf-email-api]: https://developers.cloudflare.com/email-service/api/send-emails/workers-api/
+[cf-email-pricing]: https://developers.cloudflare.com/email-service/platform/pricing/
 [pin-web]: https://github.com/calcom/cal.diy/blob/e8afecd163cd3a0a3ff279bd4721aa7f073c4685/apps/web/package.json
 [pin-layout]: https://github.com/calcom/cal.diy/blob/e8afecd163cd3a0a3ff279bd4721aa7f073c4685/apps/web/app/layout.tsx#L1-L24
 [pin-rewrites]: https://github.com/calcom/cal.diy/blob/e8afecd163cd3a0a3ff279bd4721aa7f073c4685/apps/web/next.config.ts#L260-L369
