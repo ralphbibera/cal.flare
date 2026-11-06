@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 
 let root: string;
@@ -16,7 +17,7 @@ const migration = new URL("../../../prisma/migrations-d1/0004_auth.sql", import.
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "calflare-auth-test-"));
   const persistTo = join(root, "state");
-  expect(await migrateD1({ persistTo })).toMatchObject({ applied: 4, total: 4 });
+  expect(await migrateD1({ persistTo })).toMatchObject({ applied: 6, total: 6 });
   const bundled = await build({
     entryPoints: [fileURLToPath(new URL("better-auth.worker.ts", fixture))],
     bundle: true,
@@ -63,6 +64,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.prepare('DELETE FROM "AuthUser"').run();
   await db.prepare('DELETE FROM "AuthVerification"').run();
+  await db.prepare("DELETE FROM users WHERE id=124").run();
+  await db.prepare("UPDATE users SET email='library@calflare.test' WHERE id=123").run();
 });
 
 async function issue(origin = "https://calflare.test") {
@@ -77,8 +80,168 @@ async function issue(origin = "https://calflare.test") {
 }
 const lookup = (cookie: string) =>
   mf.dispatchFetch("https://calflare.test/api/auth/get-session", { headers: { cookie } });
+const issueIdentity = (identity: { id: number; email: string }) =>
+  mf.dispatchFetch("https://calflare.test/api/auth/fixture-cal/issue", {
+    method: "POST",
+    headers: { origin: "https://calflare.test", "content-type": "application/json" },
+    body: JSON.stringify(identity),
+  });
 
 describe("Better Auth native D1 foundation (library-only)", () => {
+  const cal = (action: string, cookie = "", sessionTimeout?: number) =>
+    mf.dispatchFetch(`https://calflare.test/api/auth/fixture-cal/${action}`, {
+      method: action === "read" ? "GET" : "POST",
+      headers: { cookie, origin: "https://calflare.test", "content-type": "application/json" },
+      ...(action === "read" ? {} : { body: JSON.stringify({ sessionTimeout }) }),
+    });
+
+  it("reconciles a reused domain email without replacing the previous owner's mapping or session", async () => {
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    const priorMapping = await db.prepare('SELECT id FROM "AuthUser" WHERE calUserId=123').first();
+    const priorSessions = (await db.prepare('SELECT id,userId FROM "AuthSession"').all()).results;
+    await db.prepare("UPDATE users SET email='changed@calflare.test' WHERE id=123").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','library@calflare.test')")
+      .run();
+    expect((await issueIdentity({ id: 124, email: "library@calflare.test" })).status).toBe(200);
+    expect(await db.prepare('SELECT id FROM "AuthUser" WHERE calUserId=123').first()).toEqual(priorMapping);
+    expect((await db.prepare('SELECT id,userId FROM "AuthSession"').all()).results).toEqual(
+      expect.arrayContaining(priorSessions)
+    );
+    expect(
+      (await db.prepare('SELECT calUserId,email FROM "AuthUser" ORDER BY calUserId').all()).results
+    ).toEqual([
+      { calUserId: 123, email: "changed@calflare.test" },
+      { calUserId: 124, email: "library@calflare.test" },
+    ]);
+  });
+
+  it("reconciles swapped domain emails while preserving both numeric mappings", async () => {
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','second@calflare.test')")
+      .run();
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    await issueIdentity({ id: 124, email: "second@calflare.test" });
+    const mappings = (await db.prepare('SELECT id,calUserId FROM "AuthUser" ORDER BY calUserId').all())
+      .results;
+    await db.batch([
+      db.prepare("UPDATE users SET email='temporary@calflare.test' WHERE id=123"),
+      db.prepare("UPDATE users SET email='library@calflare.test' WHERE id=124"),
+      db.prepare("UPDATE users SET email='second@calflare.test' WHERE id=123"),
+    ]);
+    const responses = await Promise.all([
+      issueIdentity({ id: 124, email: "library@calflare.test" }),
+      issueIdentity({ id: 123, email: "second@calflare.test" }),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(
+      (await db.prepare('SELECT id,calUserId FROM "AuthUser" ORDER BY calUserId').all()).results
+    ).toEqual(mappings);
+    expect((await db.prepare('SELECT email FROM "AuthUser" ORDER BY calUserId').all()).results).toEqual([
+      { email: "second@calflare.test" },
+      { email: "library@calflare.test" },
+    ]);
+  });
+
+  it("rolls email reconciliation back when the guarded mapping insert fails", async () => {
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    await db.prepare("UPDATE users SET email='changed@calflare.test' WHERE id=123").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','library@calflare.test')")
+      .run();
+    await db
+      .prepare(`CREATE TRIGGER reject_mapping BEFORE INSERT ON "AuthUser"
+        WHEN NEW.calUserId=124 BEGIN SELECT RAISE(ABORT,'mapping fixture failure'); END`)
+      .run();
+    try {
+      expect((await issueIdentity({ id: 124, email: "library@calflare.test" })).status).toBe(500);
+      expect((await db.prepare('SELECT calUserId,email FROM "AuthUser"').all()).results).toEqual([
+        { calUserId: 123, email: "library@calflare.test" },
+      ]);
+    } finally {
+      await db.exec("DROP TRIGGER reject_mapping");
+    }
+  });
+
+  it("does not reconcile stale emails for an identity that no longer matches its domain row", async () => {
+    await issueIdentity({ id: 123, email: "library@calflare.test" });
+    await db.prepare("UPDATE users SET email='changed@calflare.test' WHERE id=123").run();
+    await db
+      .prepare("INSERT INTO users(id,uuid,email) VALUES(124,'second-user','other@calflare.test')")
+      .run();
+    const before = (await db.prepare('SELECT * FROM "AuthUser"').all()).results;
+    expect((await issueIdentity({ id: 124, email: "library@calflare.test" })).status).toBe(500);
+    expect((await db.prepare('SELECT * FROM "AuthUser"').all()).results).toEqual(before);
+  });
+
+  it("issues a Cal snapshot with effective validity separate from browser expiry", async () => {
+    const issued = await cal("issue", "", 2);
+    expect(issued.status).toBe(200);
+    const cookie = (issued.headers.get("set-cookie") ?? "").split(";")[0];
+    expect(cookie).toMatch(/^__Secure-next-auth.session-token=/);
+    expect(issued.headers.get("set-cookie")).toContain("Max-Age=2592000");
+    const response = await cal("read", cookie);
+    const session = z
+      .object({
+        expiresAt: z.string(),
+        browser: z.object({ expires: z.string() }).passthrough(),
+      })
+      .passthrough()
+      .parse(await response.json());
+    expect(session).toMatchObject({
+      browser: {
+        hasValidLicense: false,
+        profileId: null,
+        upId: "usr-123",
+        user: { id: 123, role: "INACTIVE_ADMIN", inactiveAdminReason: "both", locale: "de" },
+      },
+    });
+    expect(new Date(session.expiresAt).getTime() - Date.now()).toBeGreaterThan(110_000);
+    expect(new Date(session.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(120_000);
+    expect(new Date(session.browser.expires).getTime() - Date.now()).toBeGreaterThan(29 * 86400_000);
+    expect(JSON.stringify(session)).not.toMatch(/calUserId|userId|token|password|twoFactorSecret/);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("keeps lookup read-only and explicitly renews, updates, expires and revokes sessions", async () => {
+    const issued = await cal("issue", "", 2);
+    const cookie = (issued.headers.get("set-cookie") ?? "").split(";")[0];
+    const before = (await db.prepare('SELECT * FROM "AuthSession"').all()).results;
+    await cal("read", cookie);
+    expect((await db.prepare('SELECT * FROM "AuthSession"').all()).results).toEqual(before);
+    const renewed = await cal("renew", cookie);
+    expect(renewed.headers.get("set-cookie")).toContain("Max-Age=2592000");
+    expect(await renewed.json()).toMatchObject({ user: { id: 123, locale: "ar", role: "INACTIVE_ADMIN" } });
+    const validity = await db.prepare('SELECT expiresAt FROM "AuthSession"').first<{ expiresAt: string }>();
+    expect(new Date(validity!.expiresAt).getTime() - Date.now()).toBeGreaterThan(290_000);
+    await db.prepare('UPDATE "AuthSession" SET expiresAt=?').bind("2020-01-01T00:00:00.000Z").run();
+    expect(await (await cal("read", cookie)).json()).toBeNull();
+    expect(await (await cal("renew", cookie)).json()).toBeNull();
+    const signedIn = await cal("issue");
+    const nextCookie = (signedIn.headers.get("set-cookie") ?? "").split(";")[0];
+    const signedOut = await cal("revoke", nextCookie);
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(await (await cal("read", nextCookie)).json()).toBeNull();
+  });
+
+  it("uses one opaque mapping across logins and prevents locked or missing Cal users from acquiring sessions", async () => {
+    expect((await cal("issue")).status).toBe(200);
+    const first = (await db.prepare('SELECT id,calUserId FROM "AuthUser"').all()).results;
+    expect((await cal("issue")).status).toBe(200);
+    expect((await db.prepare('SELECT id,calUserId FROM "AuthUser"').all()).results).toEqual(first);
+    await db.prepare("UPDATE users SET locked=1 WHERE id=123").run();
+    const count = (await db.prepare('SELECT id FROM "AuthSession"').all()).results.length;
+    expect((await cal("issue")).status).toBe(500);
+    expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toHaveLength(count);
+    await db.prepare("UPDATE users SET locked=0 WHERE id=123").run();
+    await db.prepare("DELETE FROM users WHERE id=123").run();
+    expect((await cal("issue")).status).toBe(500);
+    expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
+    await db
+      .prepare("INSERT INTO users (id,uuid,email) VALUES (123,'synthetic-auth-user','library@calflare.test')")
+      .run();
+  });
+
   it("reproduces exact SDK schema with only the reviewed numeric domain FK", async () => {
     const response = await mf.dispatchFetch("https://calflare.test/schema");
     expect(response.status).toBe(200);

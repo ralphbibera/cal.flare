@@ -38,6 +38,8 @@ const targetSchema = z.object({
 
 type Query = { sql: string; params?: string[] };
 
+const QUERY_TIMEOUT_MS = 120_000;
+
 async function migrateD1({
   persistTo = join(webRoot, ".cloudflare/state"),
   migrationsDirectory = fileURLToPath(new URL("./migrations-d1/", import.meta.url)),
@@ -75,8 +77,11 @@ async function migrateD1({
         [cf, "d1", "raw", binding.id, "--local", "--persist-to", persistence, "--batch", `@${batchPath}`],
         {
           cwd: temporary,
-          env: { ...process.env, CI: "true", CLOUDFLARE_SEND_METRICS: "false" },
+          env: Object.assign({}, process.env, { CI: "true", CLOUDFLARE_SEND_METRICS: "false" }),
           maxBuffer: 16 * 1024 * 1024,
+          // A stalled CLI would otherwise hang the caller until its own much longer timeout.
+          timeout: QUERY_TIMEOUT_MS,
+          killSignal: "SIGKILL",
         }
       );
       return resultSchema.parse(JSON.parse(stdout));

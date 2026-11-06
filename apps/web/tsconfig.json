@@ -40,6 +40,7 @@
     "cloudflare.config.ts",
     "worker",
     "scripts/bundle-analysis.ts",
-    "scripts/static-assets.ts"
+    "scripts/static-assets.ts",
+    "**/*.d1.test.ts"
   ]
 }

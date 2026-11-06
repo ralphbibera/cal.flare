@@ -6,12 +6,16 @@
     "types": ["node", "@cloudflare/workers-types"]
   },
   "include": [
+    "../../packages/types/business-days-plugin.d.ts",
+    "../../packages/types/window.d.ts",
     "vite.config.mts",
     "cloudflare.config.ts",
     "worker/**/*.ts",
     "scripts/bundle-analysis.ts",
     "scripts/static-assets.ts",
-    ".cloudflare/types/**/*.d.ts"
+    ".cloudflare/types/**/*.d.ts",
+    "**/*.d1.test.ts",
+    "../../packages/types/window.d.ts"
   ],
   "exclude": ["**/node_modules/**"]
 }

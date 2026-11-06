@@ -1,5 +1,13 @@
+import type { KeysetPage } from "@calcom/lib/keyset-scan";
+import { findMatchingKeysetRows } from "@calcom/lib/keyset-scan";
+import { createContainsInsensitiveMatcher } from "@calcom/lib/postgres-ilike";
 import type { PrismaClient } from "@calcom/prisma";
+import type { Prisma } from "@calcom/prisma/client";
+import { getD1Database } from "@calcom/prisma/d1";
+import { d1Boolean, d1DateTime, generateUuidV7, runD1Batch } from "@calcom/prisma/d1-batch";
 import { WatchlistAction, WatchlistSource } from "@calcom/prisma/enums";
+import { WatchlistSchema } from "@calcom/prisma/zod/modelSchema/WatchlistSchema";
+import { z } from "zod";
 import type {
   CheckWatchlistInput,
   CreateWatchlistInput,
@@ -9,38 +17,118 @@ import type {
   WatchlistEntry,
 } from "./IWatchlistRepository";
 
+// A to-many relation with a nested `take` exceeds D1's 100 bind limit from 99 parent rows.
+const SEARCH_SCAN_BATCH_SIZE = 50;
+
+const entrySelect = {
+  id: true,
+  type: true,
+  value: true,
+  action: true,
+  description: true,
+  organizationId: true,
+  isGlobal: true,
+  source: true,
+  lastUpdatedAt: true,
+  audits: {
+    take: 1,
+    orderBy: {
+      changedAt: "desc",
+    },
+    select: {
+      changedByUserId: true,
+    },
+  },
+} as const;
+
+const watchlistRow = WatchlistSchema.extend({
+  id: z.string(),
+  isGlobal: d1Boolean,
+  lastUpdatedAt: d1DateTime,
+});
+
+type AuditedEntry = Pick<WatchlistAuditEntry, "type" | "value" | "action"> & {
+  watchlistId: string;
+  description?: string | null;
+};
+
+// One JSON-bound statement keeps a bulk audit within D1's bound parameter limit.
+function auditInsert(db: ReturnType<typeof getD1Database>, entries: AuditedEntry[], changedByUserId: number) {
+  return db
+    .prepare(
+      `INSERT INTO "WatchlistAudit" ("id", "watchlistId", "type", "value", "description", "action", "changedByUserId")
+      SELECT value ->> 'id', value ->> 'watchlistId', value ->> 'type', value ->> 'value', value ->> 'description',
+        value ->> 'action', ? FROM json_each(?)`
+    )
+    .bind(
+      changedByUserId,
+      JSON.stringify(
+        entries.map((entry) => ({
+          id: generateUuidV7(),
+          watchlistId: entry.watchlistId,
+          type: entry.type,
+          value: entry.value,
+          description: entry.description ?? null,
+          action: entry.action,
+        }))
+      )
+    );
+}
+
 export class WatchlistRepository implements IWatchlistRepository {
   constructor(private readonly prismaClient: PrismaClient) {}
 
-  async createEntry(params: CreateWatchlistInput): Promise<WatchlistEntry> {
-    const watchlist = await this.prismaClient.$transaction(async (tx) => {
-      const created = await tx.watchlist.create({
-        data: {
-          type: params.type,
-          value: params.value,
-          organizationId: params.organizationId,
-          action: params.action,
-          description: params.description,
-          source: WatchlistSource.MANUAL,
-          isGlobal: params.isGlobal ?? false,
-        },
-      });
-
-      await tx.watchlistAudit.create({
-        data: {
-          watchlistId: created.id,
-          type: params.type,
-          value: params.value,
-          description: params.description,
-          action: params.action,
-          changedByUserId: params.userId,
-        },
-      });
-
-      return created;
+  // SQLite only folds ASCII, so a search matches in memory within the scoped rows before the page is cut.
+  private async findSearchedEntries(
+    where: Prisma.WatchlistWhereInput,
+    searchTerm: string,
+    limit: number,
+    offset: number
+  ) {
+    const matches = createContainsInsensitiveMatcher(searchTerm);
+    const matched = await findMatchingKeysetRows({
+      take: SEARCH_SCAN_BATCH_SIZE,
+      getKey: (entry) => entry.id,
+      matches: (entry) => matches(entry.value),
+      fetchRows: ({ after, take }: KeysetPage<string>) =>
+        this.prismaClient.watchlist.findMany({
+          where: { ...where, ...(after && { id: { gt: after } }) },
+          take,
+          orderBy: { id: "asc" },
+          select: entrySelect,
+        }),
     });
+    matched.sort((a, b) => b.lastUpdatedAt.getTime() - a.lastUpdatedAt.getTime() || (a.id < b.id ? -1 : 1));
+    return [matched.slice(offset, offset + limit), matched.length] as const;
+  }
 
-    return watchlist;
+  async createEntry(params: CreateWatchlistInput): Promise<WatchlistEntry> {
+    const db = getD1Database();
+    const id = crypto.randomUUID();
+    const results = await runD1Batch(
+      db,
+      [
+        db
+          .prepare(
+            `INSERT INTO "Watchlist" ("id", "type", "value", "organizationId", "action", "description", "source", "isGlobal")
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            id,
+            params.type,
+            params.value,
+            params.organizationId,
+            params.action,
+            params.description ?? null,
+            WatchlistSource.MANUAL,
+            Number(params.isGlobal ?? false)
+          ),
+        auditInsert(db, [{ ...params, watchlistId: id }], params.userId),
+        db.prepare('SELECT * FROM "Watchlist" WHERE "id" = ?').bind(id),
+      ],
+      { modelName: "Watchlist" }
+    );
+    return watchlistRow.parse(results[2].results[0]);
   }
 
   async createEntryIfNotExists(params: CreateWatchlistInput): Promise<WatchlistEntry> {
@@ -97,12 +185,6 @@ export class WatchlistRepository implements IWatchlistRepository {
     const where = {
       organizationId: params.organizationId,
       isGlobal: params.isGlobal,
-      ...(params.searchTerm && {
-        value: {
-          contains: params.searchTerm,
-          mode: "insensitive" as const,
-        },
-      }),
       ...(params.filters?.type && {
         type: params.filters.type,
       }),
@@ -111,37 +193,20 @@ export class WatchlistRepository implements IWatchlistRepository {
       }),
     };
 
-    const [entries, totalRowCount] = await Promise.all([
-      this.prismaClient.watchlist.findMany({
-        where,
-        take: params.limit,
-        skip: params.offset,
-        orderBy: {
-          lastUpdatedAt: "desc",
-        },
-        select: {
-          id: true,
-          type: true,
-          value: true,
-          action: true,
-          description: true,
-          organizationId: true,
-          isGlobal: true,
-          source: true,
-          lastUpdatedAt: true,
-          audits: {
-            take: 1,
+    const [entries, totalRowCount] = await (params.searchTerm
+      ? this.findSearchedEntries(where, params.searchTerm, params.limit, params.offset)
+      : Promise.all([
+          this.prismaClient.watchlist.findMany({
+            where,
+            take: params.limit,
+            skip: params.offset,
             orderBy: {
-              changedAt: "desc",
+              lastUpdatedAt: "desc",
             },
-            select: {
-              changedByUserId: true,
-            },
-          },
-        },
-      }),
-      this.prismaClient.watchlist.count({ where }),
-    ]);
+            select: entrySelect,
+          }),
+          this.prismaClient.watchlist.count({ where }),
+        ]));
 
     const rows = entries.map((entry) => ({
       ...entry,
@@ -271,22 +336,15 @@ export class WatchlistRepository implements IWatchlistRepository {
       throw new Error("Watchlist entry not found");
     }
 
-    await this.prismaClient.$transaction(async (tx) => {
-      await tx.watchlistAudit.create({
-        data: {
-          watchlistId: id,
-          type: existing.type,
-          value: existing.value,
-          description: existing.description,
-          action: existing.action,
-          changedByUserId: userId,
-        },
-      });
-
-      await tx.watchlist.delete({
-        where: { id },
-      });
-    });
+    const db = getD1Database();
+    await runD1Batch(
+      db,
+      [
+        auditInsert(db, [{ ...existing, watchlistId: id }], userId),
+        db.prepare('DELETE FROM "Watchlist" WHERE "id" = ?').bind(id),
+      ],
+      { modelName: "Watchlist" }
+    );
   }
 
   async bulkDeleteEntries(params: { ids: string[]; userId: number }): Promise<{ deleted: number }> {
@@ -305,22 +363,21 @@ export class WatchlistRepository implements IWatchlistRepository {
       return { deleted: 0 };
     }
 
-    await this.prismaClient.$transaction(async (tx) => {
-      await tx.watchlistAudit.createMany({
-        data: entries.map((entry) => ({
-          watchlistId: entry.id,
-          type: entry.type,
-          value: entry.value,
-          description: entry.description,
-          action: entry.action,
-          changedByUserId: params.userId,
-        })),
-      });
-
-      await tx.watchlist.deleteMany({
-        where: { id: { in: entries.map((e) => e.id) } },
-      });
-    });
+    const db = getD1Database();
+    await runD1Batch(
+      db,
+      [
+        auditInsert(
+          db,
+          entries.map((entry) => ({ ...entry, watchlistId: entry.id })),
+          params.userId
+        ),
+        db
+          .prepare('DELETE FROM "Watchlist" WHERE "id" IN (SELECT value FROM json_each(?))')
+          .bind(JSON.stringify(entries.map((entry) => entry.id))),
+      ],
+      { modelName: "Watchlist" }
+    );
 
     return { deleted: entries.length };
   }
@@ -367,12 +424,6 @@ export class WatchlistRepository implements IWatchlistRepository {
         { organizationId: params.organizationId, isGlobal: false },
         { isGlobal: true, organizationId: null },
       ],
-      ...(params.searchTerm && {
-        value: {
-          contains: params.searchTerm,
-          mode: "insensitive" as const,
-        },
-      }),
       ...(params.filters?.type && {
         type: params.filters.type,
       }),
@@ -381,37 +432,20 @@ export class WatchlistRepository implements IWatchlistRepository {
       }),
     };
 
-    const [entries, totalRowCount] = await Promise.all([
-      this.prismaClient.watchlist.findMany({
-        where,
-        take: params.limit,
-        skip: params.offset,
-        orderBy: {
-          lastUpdatedAt: "desc",
-        },
-        select: {
-          id: true,
-          type: true,
-          value: true,
-          action: true,
-          description: true,
-          organizationId: true,
-          isGlobal: true,
-          source: true,
-          lastUpdatedAt: true,
-          audits: {
-            take: 1,
+    const [entries, totalRowCount] = await (params.searchTerm
+      ? this.findSearchedEntries(where, params.searchTerm, params.limit, params.offset)
+      : Promise.all([
+          this.prismaClient.watchlist.findMany({
+            where,
+            take: params.limit,
+            skip: params.offset,
             orderBy: {
-              changedAt: "desc",
+              lastUpdatedAt: "desc",
             },
-            select: {
-              changedByUserId: true,
-            },
-          },
-        },
-      }),
-      this.prismaClient.watchlist.count({ where }),
-    ]);
+            select: entrySelect,
+          }),
+          this.prismaClient.watchlist.count({ where }),
+        ]));
 
     const rows = entries.map((entry) => ({
       ...entry,

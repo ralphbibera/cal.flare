@@ -99,6 +99,36 @@ describe("host locations and conferencing credentials", () => {
           `INSERT INTO "HostLocation" ("id", "userId", "eventTypeId", "type", "credentialId", "link", "updatedAt") VALUES ('location', 2, 1, 'video', 2, 'https://meeting.invalid/', ?)`
         )
         .bind("2026-11-05T00:00:00.000+00:00"),
+      ...[
+        [10, "İlker", "first@example.invalid"],
+        [11, "Unrelated", "İ@example.invalid"],
+        [12, "ILKER", "third@example.invalid"],
+        [13, "ılgaz", "dotless@example.invalid"],
+        [14, "Σofia", "sigma@example.invalid"],
+        [15, null, "ilker-null-name@example.invalid"],
+        [16, "100%_real", "wild@example.invalid"],
+      ].map(([id, name, email]) =>
+        db
+          .prepare('INSERT INTO "users" ("id", "uuid", "email", "name") VALUES (?, ?, ?, ?)')
+          .bind(id, `search-user-${id}`, email, name)
+      ),
+      db.prepare(
+        `INSERT INTO "EventType" ("id", "title", "slug", "length") VALUES (10, 'Search', 'search', 30)`
+      ),
+      ...[10, 11, 12, 13, 14, 15, 16].map((userId) =>
+        db.prepare('INSERT INTO "Host" ("userId", "eventTypeId") VALUES (?, 10)').bind(userId)
+      ),
+      db.prepare(`INSERT INTO "Host" ("userId", "eventTypeId") VALUES (10, 2)`),
+      ...[10, 11, 12, 13, 14, 15].map((userId) =>
+        db
+          .prepare(
+            'INSERT INTO "EventType" ("id", "title", "slug", "length", "parentId", "userId") VALUES (?, ?, ?, 30, 10, ?)'
+          )
+          .bind(100 + userId, `Child ${userId}`, `child-${userId}`, userId)
+      ),
+      db.prepare(
+        `INSERT INTO "EventType" ("id", "title", "slug", "length", "parentId") VALUES (120, 'Ownerless', 'ownerless', 30, 10)`
+      ),
     ]);
   }, 30_000);
 
@@ -196,5 +226,84 @@ describe("host locations and conferencing credentials", () => {
       { userId: 3, user: { credentials: [{ id: 4, type: "video", appId: "video" }] } },
       { userId: 4, user: { credentials: [] } },
     ]);
+  });
+
+  describe("case-insensitive host search", () => {
+    const inD1 = <T>(callback: () => Promise<T>) => withD1Database({ DB: db }, callback);
+
+    it("folds Unicode as PostgreSQL did across name and email, scoped to the event type", async () => {
+      const result = await inD1(() =>
+        repository.findHostsPaginatedIncludeUserForAssignment({ eventTypeId: 10, search: "i" })
+      );
+      expect(result.items.map((host) => host.userId)).toEqual([10, 11, 12, 13, 14, 15, 16]);
+
+      const dotted = await inD1(() =>
+        repository.findHostsPaginatedIncludeUserForAssignment({ eventTypeId: 10, search: "İLKER" })
+      );
+      expect(dotted.items.map((host) => host.userId)).toEqual([10, 12, 15]);
+
+      const dotless = await inD1(() =>
+        repository.findHostsPaginatedIncludeUserForAssignment({ eventTypeId: 10, search: "ı" })
+      );
+      expect(dotless.items.map((host) => host.userId)).toEqual([13]);
+    });
+
+    it("keeps wildcard characters in a search as PostgreSQL pattern syntax", async () => {
+      const result = await inD1(() =>
+        repository.findHostsPaginatedIncludeUserForAssignment({ eventTypeId: 10, search: "1%_R" })
+      );
+      expect(result.items.map((host) => host.userId)).toEqual([16]);
+    });
+
+    it("filters before paging and resumes from the cursor without skipping matches", async () => {
+      const first = await inD1(() =>
+        repository.findHostsPaginatedIncludeUser({ eventTypeId: 10, search: "ilker", limit: 2 })
+      );
+      expect(first.items.map((host) => host.userId)).toEqual([10, 12]);
+      expect(first).toMatchObject({ hasMore: true, nextCursor: 12 });
+
+      const second = await inD1(() =>
+        repository.findHostsPaginatedIncludeUser({
+          eventTypeId: 10,
+          search: "ilker",
+          limit: 2,
+          cursor: first.nextCursor,
+        })
+      );
+      expect(second.items.map((host) => host.userId)).toEqual([15]);
+      expect(second).toMatchObject({ hasMore: false, nextCursor: undefined });
+    });
+
+    it("matches availability hosts by email without returning the email", async () => {
+      const { items } = await inD1(() =>
+        repository.findHostsPaginatedIncludeUser({ eventTypeId: 10, search: "SIGMA@" })
+      );
+      expect(items.map((host) => host.userId)).toEqual([14]);
+      expect(items[0].user).toEqual({ name: "Σofia", avatarUrl: null, timeZone: expect.any(String) });
+    });
+
+    it("stays within the member filter while searching", async () => {
+      const { items } = await inD1(() =>
+        repository.findHostsPaginatedIncludeUserForAssignment({
+          eventTypeId: 10,
+          search: "ilker",
+          memberUserIds: [12, 13],
+        })
+      );
+      expect(items.map((host) => host.userId)).toEqual([12]);
+    });
+
+    it("searches child owners, ignoring children without an owner", async () => {
+      const first = await inD1(() =>
+        repository.findChildrenForAssignmentPaginated({ eventTypeId: 10, search: "ilker", limit: 1 })
+      );
+      expect(first.items.map((child) => child.id)).toEqual([110]);
+      expect(first).toMatchObject({ hasMore: true, nextCursor: 110 });
+
+      const all = await inD1(() =>
+        repository.findChildrenForAssignmentPaginated({ eventTypeId: 10, search: "%" })
+      );
+      expect(all.items.map((child) => child.id)).toEqual([110, 111, 112, 113, 114, 115]);
+    });
   });
 });

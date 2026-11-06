@@ -12,6 +12,7 @@ import {
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import logger from "@calcom/lib/logger";
+import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { eventTypeSelect, parseInstantMeetingParameters } from "@calcom/lib/server/eventTypeSelect";
 import type { PrismaClient } from "@calcom/prisma";
@@ -23,6 +24,21 @@ import { EventTypeMetaDataSchema, rrSegmentQueryValueSchema } from "@calcom/pris
 import type { Ensure } from "@calcom/types/utils";
 
 const log = logger.getSubLogger({ prefix: ["repository/eventType"] });
+
+// D1 allows 100 bound parameters per statement, and Prisma does not split an id list combined with other filters.
+const ID_LIST_CHUNK_SIZE = 50;
+
+async function findRowsInIdOrder<Row extends { id: number }>(
+  ids: number[],
+  fetchChunk: (chunk: number[]) => Promise<Row[]>
+): Promise<Row[]> {
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += ID_LIST_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + ID_LIST_CHUNK_SIZE));
+  }
+  const rowsById = new Map((await Promise.all(chunks.map(fetchChunk))).flat().map((row) => [row.id, row]));
+  return ids.flatMap((id) => rowsById.get(id) ?? []);
+}
 
 const hashedLinkSelect = {
   select: {
@@ -179,11 +195,13 @@ export class EventTypeRepository implements IEventTypesRepository {
       where = {},
       cursor: cursorId,
       limit,
+      titleSearch,
     }: {
       orderBy?: Prisma.EventTypeOrderByWithRelationInput[];
       where?: Prisma.EventTypeWhereInput;
       cursor?: number | null;
       limit?: number | null;
+      titleSearch?: string;
     } = {}
   ) {
     if (!upId) return [];
@@ -238,20 +256,21 @@ export class EventTypeRepository implements IEventTypesRepository {
       })
     );
 
-    const cursor = cursorId ? { id: cursorId } : undefined;
-    const take = limit ? limit + 1 : undefined; // We take +1 as it'll be used for the next cursor
+    const findPage = (scopedWhere: Prisma.EventTypeWhereInput) =>
+      this.findTitleSearchedPage({
+        where: scopedWhere,
+        orderBy,
+        cursor: cursorId,
+        limit,
+        titleSearch,
+        fetchPage: (pageArgs) => this.prismaClient.eventType.findMany({ ...pageArgs, select, orderBy }),
+      });
 
     if (!profileId) {
       // Lookup is by userId
-      const eventTypes = await this.prismaClient.eventType.findMany({
-        where: {
-          userId: lookupTarget.id,
-          ...where,
-        },
-        select,
-        cursor,
-        take,
-        orderBy,
+      const eventTypes = await findPage({
+        userId: lookupTarget.id,
+        ...where,
       });
       return eventTypes.map((eventType) => ({
         ...parseInstantMeetingParameters(eventType),
@@ -263,64 +282,99 @@ export class EventTypeRepository implements IEventTypesRepository {
     if (profile?.movedFromUser) {
       // Because the user has been moved to this profile, we need to get all user events except those that belong to some other profile
       // This is because those event-types that are created after moving to profile would have profileId but existing event-types would have profileId set to null
-      const eventTypes = await this.prismaClient.eventType.findMany({
-        where: {
-          OR: [
-            // Existing events
-            {
-              userId: profile.movedFromUser.id,
-              profileId: null,
+      const eventTypes = await findPage({
+        OR: [
+          // Existing events
+          {
+            userId: profile.movedFromUser.id,
+            profileId: null,
+          },
+          // New events
+          {
+            profileId,
+          },
+          // Fetch children event-types by userId because profileId is wrong
+          {
+            userId,
+            parentId: {
+              not: null,
             },
-            // New events
-            {
-              profileId,
-            },
-            // Fetch children event-types by userId because profileId is wrong
-            {
-              userId,
-              parentId: {
-                not: null,
-              },
-            },
-          ],
-          ...where,
-        },
-        select,
-        cursor,
-        take,
-        orderBy,
+          },
+        ],
+        ...where,
       });
       return eventTypes.map((eventType) => ({
         ...parseInstantMeetingParameters(eventType),
         children: eventType.children.map(parseInstantMeetingParameters),
       }));
     } else {
-      const eventTypes = await this.prismaClient.eventType.findMany({
-        where: {
-          OR: [
-            {
-              profileId,
+      const eventTypes = await findPage({
+        OR: [
+          {
+            profileId,
+          },
+          // Fetch children event-types by userId because profileId is wrong
+          {
+            userId: userId,
+            parentId: {
+              not: null,
             },
-            // Fetch children event-types by userId because profileId is wrong
-            {
-              userId: userId,
-              parentId: {
-                not: null,
-              },
-            },
-          ],
-          ...where,
-        },
-        select,
-        cursor,
-        take,
-        orderBy,
+          },
+        ],
+        ...where,
       });
       return eventTypes.map((eventType) => ({
         ...parseInstantMeetingParameters(eventType),
         children: eventType.children.map(parseInstantMeetingParameters),
       }));
     }
+  }
+
+  // SQLite only folds ASCII, so a title search first finds the page's ids from the scoped titles alone. Reading
+  // the caller's heavy select afterwards keeps relations of non-matching rows out of the scan.
+  private async findTitleSearchedPage<Row extends { id: number }>({
+    where,
+    orderBy,
+    cursor,
+    limit,
+    titleSearch,
+    fetchPage,
+  }: {
+    where: Prisma.EventTypeWhereInput;
+    orderBy?: Prisma.EventTypeOrderByWithRelationInput[];
+    cursor?: number | null;
+    limit?: number | null;
+    titleSearch?: string;
+    fetchPage: (args: Pick<Prisma.EventTypeFindManyArgs, "where" | "cursor" | "take">) => Promise<Row[]>;
+  }): Promise<Row[]> {
+    if (!titleSearch) {
+      return fetchPage({
+        where,
+        cursor: cursor ? { id: cursor } : undefined,
+        take: limit ? limit + 1 : undefined, // We take +1 as it'll be used for the next cursor
+      });
+    }
+
+    const matched = await findSearchedRows({
+      search: titleSearch,
+      cursor: cursor ?? undefined,
+      limit: limit || undefined,
+      getKey: (eventType) => eventType.id,
+      getSearchValues: (eventType) => [eventType.title],
+      fetchRows: ({ after, take }: KeysetPage) =>
+        this.prismaClient.eventType.findMany({
+          where,
+          select: { id: true, title: true },
+          orderBy,
+          take,
+          // The caller's cursor row belongs to its page, as nextCursor is the row that did not fit the last one.
+          ...(after && { cursor: { id: after }, skip: after === cursor ? 0 : 1 }),
+        }),
+    });
+    return findRowsInIdOrder(
+      matched.map(({ id }) => id),
+      (ids) => fetchPage({ where: { ...where, id: { in: ids } } })
+    );
   }
 
   async findAllByUpIdWithMinimalData(
@@ -446,6 +500,7 @@ export class EventTypeRepository implements IEventTypesRepository {
     cursor,
     orderBy,
     where = {},
+    titleSearch,
   }: {
     teamId: number;
     parentId?: number | null;
@@ -454,6 +509,7 @@ export class EventTypeRepository implements IEventTypesRepository {
     cursor?: number | null;
     orderBy?: Prisma.EventTypeOrderByWithRelationInput[];
     where?: Prisma.EventTypeWhereInput;
+    titleSearch?: string;
   }) {
     const userSelect = {
       name: true,
@@ -523,15 +579,16 @@ export class EventTypeRepository implements IEventTypesRepository {
 
     if (!teamMembership) throw new ErrorWithCode(ErrorCode.Unauthorized, "User is not a member of this team");
 
-    const eventTypes = await this.prismaClient.eventType.findMany({
+    const eventTypes = await this.findTitleSearchedPage({
       where: {
         teamId,
         ...where,
       },
-      select,
-      cursor: cursor ? { id: cursor } : undefined,
-      take: limit ? limit + 1 : undefined, // We take +1 as itll be used for the next cursor
       orderBy,
+      cursor,
+      limit,
+      titleSearch,
+      fetchPage: (pageArgs) => this.prismaClient.eventType.findMany({ ...pageArgs, select, orderBy }),
     });
     return eventTypes.map((eventType) => ({
       ...parseInstantMeetingParameters(eventType),
@@ -1674,41 +1731,64 @@ export class EventTypeRepository implements IEventTypesRepository {
     const eventTypeWhere = {
       parentId: parentEventTypeId,
       ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
-      ...(searchTerm
-        ? {
-            owner: {
-              OR: [
-                { name: { contains: searchTerm, mode: "insensitive" as const } },
-                { email: { contains: searchTerm, mode: "insensitive" as const } },
-              ],
-            },
-          }
-        : {}),
     };
 
-    // Extract query to preserve type inference
-    const rowsQuery = this.prismaClient.eventType.findMany({
-      where: eventTypeWhere,
-      select: {
-        id: true,
-        userId: true,
-        owner: {
-          select: {
-            ...userSelectWithSelectedCalendars,
-            credentials: {
-              select: credentialForCalendarServiceSelect,
+    // totalCount covers every match, so a search reads all of the parent's children before cutting the page.
+    const matchedIds = searchTerm
+      ? (
+          await findSearchedRows({
+            search: searchTerm,
+            getKey: (child) => child.id,
+            getSearchValues: (child) => [child.owner?.name, child.owner?.email],
+            fetchRows: ({ after, take }: KeysetPage) =>
+              this.prismaClient.eventType.findMany({
+                where: { ...eventTypeWhere, ...(after && { id: { gt: after } }) },
+                select: { id: true, owner: { select: { name: true, email: true } } },
+                take,
+                orderBy: { id: "asc" },
+              }),
+          })
+        ).map(({ id }) => id)
+      : null;
+    // Like skip: 1 on a cursor read, this drops the first match at or after the cursor even when the cursor row
+    // itself does not match.
+    const pageIds = matchedIds
+      ?.filter((id) => !cursor || id >= cursor)
+      .slice(cursor ? 1 : 0, (cursor ? 1 : 0) + limit + 1);
+
+    const fetchRows = (args: Pick<Prisma.EventTypeFindManyArgs, "where" | "take" | "skip" | "cursor">) =>
+      this.prismaClient.eventType.findMany({
+        ...args,
+        select: {
+          id: true,
+          userId: true,
+          owner: {
+            select: {
+              ...userSelectWithSelectedCalendars,
+              credentials: {
+                select: credentialForCalendarServiceSelect,
+              },
             },
           },
         },
-      },
-      take: limit + 1, // over-fetch for nextCursor
-      ...(cursor && { skip: 1, cursor: { id: cursor } }),
-      orderBy: { id: "asc" }, // deterministic pagination
-    });
+        orderBy: { id: "asc" }, // deterministic pagination
+      });
 
     const [totalCount, rows] = await Promise.all([
-      this.prismaClient.eventType.count({ where: eventTypeWhere }),
-      rowsQuery,
+      matchedIds?.length ?? this.prismaClient.eventType.count({ where: eventTypeWhere }),
+      pageIds
+        ? findRowsInIdOrder(pageIds, (ids) =>
+            // Prisma returns nothing when the cursor row is gone, so the cursor stays on the id-bound read.
+            fetchRows({
+              where: { ...eventTypeWhere, id: { in: ids } },
+              ...(cursor && { cursor: { id: cursor } }),
+            })
+          )
+        : fetchRows({
+            where: eventTypeWhere,
+            take: limit + 1, // over-fetch for nextCursor
+            ...(cursor && { skip: 1, cursor: { id: cursor } }),
+          }),
     ]);
 
     const hasMore = rows.length > limit;

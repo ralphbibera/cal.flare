@@ -1,4 +1,5 @@
 import process from "node:process";
+import { getServerCsrfToken } from "@calcom/features/auth/lib/getServerCsrfToken";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import { WEBSITE_URL } from "@calcom/lib/constants";
 import { getSafeRedirectUrl } from "@calcom/lib/getSafeRedirectUrl";
@@ -6,7 +7,6 @@ import prisma from "@calcom/prisma";
 import { IS_GOOGLE_LOGIN_ENABLED } from "@server/lib/constants";
 import { jwtVerify } from "jose";
 import type { GetServerSidePropsContext } from "next";
-import { getCsrfToken } from "next-auth/react";
 
 export async function getServerSideProps(context: GetServerSidePropsContext) {
   const { req, query } = context;
@@ -86,7 +86,7 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
   }
   return {
     props: {
-      csrfToken: await getCsrfToken(context),
+      csrfToken: await getServerCsrfToken(context.req),
       isGoogleLoginEnabled: IS_GOOGLE_LOGIN_ENABLED,
       isOutlookLoginEnabled: false,
       totpEmail,

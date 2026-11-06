@@ -14,6 +14,7 @@
     "db-nuke": "docker compose down --volumes --remove-orphans || docker-compose down --volumes --remove-orphans",
     "db-reset": "run-s db-nuke db-setup",
     "db-seed": "bun run prisma db seed",
+    "db-seed:d1": "bun --preload ./tooling/bun-wasm-loader.mjs seed-d1.mts",
     "db-setup": "run-s db-up db-deploy db-seed",
     "db-studio": "bun run prisma studio",
     "db-up": "docker compose up -d || docker-compose up -d",

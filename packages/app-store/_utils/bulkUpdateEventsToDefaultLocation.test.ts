@@ -1,8 +1,15 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
-
 import type { PrismaClient } from "@calcom/prisma";
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { bulkUpdateEventsToDefaultLocation } from "./bulkUpdateEventsToDefaultLocation";
+
+const updateEventTypes = vi.hoisted(() => vi.fn());
+
+vi.mock("@calcom/prisma/d1", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@calcom/prisma/d1")>()),
+  getD1Database: () => ({
+    prepare: () => ({ bind: (...bindings: unknown[]) => ({ run: () => updateEventTypes(...bindings) }) }),
+  }),
+}));
 
 vi.mock("../utils", () => ({
   getAppFromSlug: vi.fn((slug: string) => {
@@ -36,7 +43,6 @@ type MockPrisma = {
   };
   eventType: {
     findMany: ReturnType<typeof vi.fn>;
-    updateMany: ReturnType<typeof vi.fn>;
   };
 };
 
@@ -46,7 +52,6 @@ const createMockPrisma = (): MockPrisma => ({
   },
   eventType: {
     findMany: vi.fn(),
-    updateMany: vi.fn(),
   },
 });
 
@@ -112,7 +117,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
 
     mockPrisma.credential.findFirst.mockResolvedValue(credential);
     mockPrisma.eventType.findMany.mockResolvedValue(eventTypes);
-    mockPrisma.eventType.updateMany.mockResolvedValue({ count: 2 });
+    updateEventTypes.mockResolvedValue({ meta: { changes: 2 } });
 
     const result = await bulkUpdateEventsToDefaultLocation({
       eventTypeIds: [1, 2],
@@ -121,23 +126,13 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
     });
 
     expect(result.count).toBe(2);
-    expect(mockPrisma.eventType.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: {
-          in: [1, 2],
-        },
-        userId: 1,
-      },
-      data: {
-        locations: [
-          {
-            type: "integrations:google:meet",
-            link: "https://meet.google.com",
-            credentialId: 100,
-          },
-        ],
-      },
-    });
+    expect(updateEventTypes).toHaveBeenCalledWith(
+      JSON.stringify([
+        { type: "integrations:google:meet", link: "https://meet.google.com", credentialId: 100 },
+      ]),
+      JSON.stringify([1, 2]),
+      1
+    );
   });
 
   it("should filter out child managed event types with locked locations", async () => {
@@ -159,8 +154,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
         parentId: 100,
         metadata: {
           managedEventConfig: {
-            unlockedFields: {
-            },
+            unlockedFields: {},
           },
         },
       },
@@ -179,7 +173,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
 
     mockPrisma.credential.findFirst.mockResolvedValue(credential);
     mockPrisma.eventType.findMany.mockResolvedValue(eventTypes);
-    mockPrisma.eventType.updateMany.mockResolvedValue({ count: 2 });
+    updateEventTypes.mockResolvedValue({ meta: { changes: 2 } });
 
     const result = await bulkUpdateEventsToDefaultLocation({
       eventTypeIds: [1, 2, 3],
@@ -188,23 +182,11 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
     });
 
     expect(result.count).toBe(2);
-    expect(mockPrisma.eventType.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: {
-          in: [1, 3],
-        },
-        userId: 1,
-      },
-      data: {
-        locations: [
-          {
-            type: "integrations:zoom",
-            link: "https://zoom.us",
-            credentialId: 200,
-          },
-        ],
-      },
-    });
+    expect(updateEventTypes).toHaveBeenCalledWith(
+      JSON.stringify([{ type: "integrations:zoom", link: "https://zoom.us", credentialId: 200 }]),
+      JSON.stringify([1, 3]),
+      1
+    );
   });
 
   it("should return count 0 when all event types have locked locations", async () => {
@@ -225,8 +207,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
         parentId: 100,
         metadata: {
           managedEventConfig: {
-            unlockedFields: {
-            },
+            unlockedFields: {},
           },
         },
       },
@@ -253,7 +234,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
     });
 
     expect(result.count).toBe(0);
-    expect(mockPrisma.eventType.updateMany).not.toHaveBeenCalled();
+    expect(updateEventTypes).not.toHaveBeenCalled();
   });
 
   it("should work without credential when credential is not found", async () => {
@@ -271,7 +252,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
 
     mockPrisma.credential.findFirst.mockResolvedValue(null);
     mockPrisma.eventType.findMany.mockResolvedValue(eventTypes);
-    mockPrisma.eventType.updateMany.mockResolvedValue({ count: 1 });
+    updateEventTypes.mockResolvedValue({ meta: { changes: 1 } });
 
     const result = await bulkUpdateEventsToDefaultLocation({
       eventTypeIds: [1],
@@ -280,23 +261,11 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
     });
 
     expect(result.count).toBe(1);
-    expect(mockPrisma.eventType.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: {
-          in: [1],
-        },
-        userId: 1,
-      },
-      data: {
-        locations: [
-          {
-            type: "integrations:google:meet",
-            link: "https://meet.google.com",
-            credentialId: undefined,
-          },
-        ],
-      },
-    });
+    expect(updateEventTypes).toHaveBeenCalledWith(
+      JSON.stringify([{ type: "integrations:google:meet", link: "https://meet.google.com" }]),
+      JSON.stringify([1]),
+      1
+    );
   });
 
   it("should only query event types belonging to the user", async () => {
@@ -315,7 +284,7 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
 
     mockPrisma.credential.findFirst.mockResolvedValue(credential);
     mockPrisma.eventType.findMany.mockResolvedValue(eventTypes);
-    mockPrisma.eventType.updateMany.mockResolvedValue({ count: 1 });
+    updateEventTypes.mockResolvedValue({ meta: { changes: 1 } });
 
     await bulkUpdateEventsToDefaultLocation({
       eventTypeIds: [10, 11, 12],
@@ -337,12 +306,6 @@ describe("bulkUpdateEventsToDefaultLocation", () => {
       },
     });
 
-    expect(mockPrisma.eventType.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          userId: 5,
-        }),
-      })
-    );
+    expect(updateEventTypes).toHaveBeenCalledWith(expect.any(String), JSON.stringify([10]), 5);
   });
 });

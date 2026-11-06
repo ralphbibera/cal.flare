@@ -67,6 +67,7 @@ describe("apps by stored category", () => {
       { slug: "disabled", dirName: "disabled", keys: { client_id: "configured" }, enabled: false },
     ]);
     expect(await withD1Database({ DB: db }, () => D1AppRepository.findLocalByCategory("video"))).toEqual([
+      { slug: "daily-video", dirName: "dailyvideo", keys: null, enabled: true },
       { slug: "both", dirName: "both", keys: { client_id: "configured" }, enabled: true },
     ]);
   });
