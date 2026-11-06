@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { isCalSignedSessionToken, readSessionToken } from "./cal-session-cookie";
 import { createCalRequestAuth } from "./request-auth";
 import type { AuthRequestConfiguration } from "./request-context";
 import { getAuthRequestConfiguration } from "./request-context";
@@ -77,12 +78,24 @@ async function writeResponse(response: Response, res: NextApiResponse): Promise<
   else res.end();
 }
 
+const LEGACY_SESSION_ACTIONS: ReadonlySet<string> = new Set(["session", "signout"]);
+
+// A next-auth JWE session stays on NextAuth until it expires, so signed-in users are not shown as signed out
+// in the browser while the server, which reads both formats, still sees them.
+async function holdsLegacySession(req: NextApiRequest): Promise<boolean> {
+  const action = [req.query?.nextauth].flat().join("/");
+  if (!LEGACY_SESSION_ACTIONS.has(action)) return false;
+  const token = await readSessionToken(req);
+  return token !== null && !isCalSignedSessionToken(token);
+}
+
 /**
  * Adapts the Pages Router's request/response pair to the Cal auth fetch handler.
  * Returns false when no request-bound Cal configuration exists so the caller keeps NextAuth.
  */
 export async function handleCalAuth(req: NextApiRequest, res: NextApiResponse): Promise<boolean> {
   if (!routesToCalAuth(req.query?.nextauth)) return false;
+  if (await holdsLegacySession(req)) return false;
   const config = getAuthRequestConfiguration();
   if (!config) return false;
   const response = await createCalRequestAuth(config).handler(toRequest(req, config));
