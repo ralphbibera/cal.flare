@@ -1,16 +1,18 @@
+import { enqueueJob, hasJobQueue } from "@calcom/features/tasker/queue/JobQueue";
 import type { ITaskerDependencies } from "@calcom/lib/tasker/types";
-import type { TriggerOptions } from "@trigger.dev/sdk";
+import { ensureDefaultCalendarsJob } from "./trigger/ensure-default-calendars";
 import type { ICalendarsTasker } from "./types";
 
 export class CalendarsTriggerTasker implements ICalendarsTasker {
   constructor(public readonly dependencies: ITaskerDependencies) {}
 
+  isConfigured(): boolean {
+    return hasJobQueue();
+  }
+
   async ensureDefaultCalendars(
-    payload: Parameters<ICalendarsTasker["ensureDefaultCalendars"]>[0],
-    options?: TriggerOptions
+    payload: Parameters<ICalendarsTasker["ensureDefaultCalendars"]>[0]
   ): Promise<{ runId: string }> {
-    const { ensureDefaultCalendars } = await import("./trigger/ensure-default-calendars");
-    const handle = await ensureDefaultCalendars.trigger(payload, options);
-    return { runId: handle.id };
+    return enqueueJob(ensureDefaultCalendarsJob, payload);
   }
 }
