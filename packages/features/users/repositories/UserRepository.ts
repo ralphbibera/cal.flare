@@ -646,6 +646,35 @@ export class UserRepository {
     return userRow.parse(results[4].results[0]);
   }
 
+  async updateSecondaryEmails({
+    userId,
+    emails,
+  }: {
+    userId: number;
+    emails: { id: number; email: string; emailVerified: Date | null }[];
+  }): Promise<void> {
+    if (emails.length === 0) return;
+    const db = getD1Database();
+    await runD1Batch(
+      db,
+      emails.flatMap(({ id, email, emailVerified }) => [
+        requireD1Record(
+          db,
+          { modelName: "SecondaryEmail", operation: "an update" },
+          'SELECT 1 FROM "SecondaryEmail" WHERE "id" = ? AND "userId" = ?',
+          id,
+          userId
+        ),
+        db
+          .prepare(
+            'UPDATE "SecondaryEmail" SET "email" = ?, "emailVerified" = ? WHERE "id" = ? AND "userId" = ?'
+          )
+          .bind(email, emailVerified && toD1DateTime(emailVerified), id, userId),
+      ]),
+      { modelName: "SecondaryEmail" }
+    );
+  }
+
   async enrichUserWithTheProfile<T extends { username: string | null; id: number }>({
     user,
     upId,
