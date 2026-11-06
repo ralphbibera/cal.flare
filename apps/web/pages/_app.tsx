@@ -36,7 +36,9 @@ MyApp.getInitialProps = async ({ ctx }: { ctx: NextPageContext }) => {
 
   let newLocale = "en";
 
-  if (req) {
+  // The SSR flag is replaced at build time, so the client bundle drops this branch and never reaches the
+  // server session readers (and the D1 Prisma client) that getLocale imports.
+  if (import.meta.env.SSR && req) {
     const { getLocale } = await import("@calcom/features/auth/lib/getLocale");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     newLocale = await getLocale(req as IncomingMessage & { cookies: Record<string, any> });
