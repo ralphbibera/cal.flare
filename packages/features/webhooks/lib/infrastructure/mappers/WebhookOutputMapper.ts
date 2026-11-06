@@ -1,6 +1,6 @@
-import type { TimeUnit, WebhookTriggerEvents } from "@calcom/prisma/enums";
-
+import type { TimeUnit } from "@calcom/prisma/enums";
 import type { Webhook, WebhookSubscriber } from "../../dto/types";
+import { parseWebhookEventTriggers } from "../../eventTriggers";
 import { parseWebhookVersion } from "../../interface/IWebhookRepository";
 
 /**
@@ -13,7 +13,7 @@ type PrismaWebhookFull = {
   appId: string | null;
   secret: string | null;
   active: boolean;
-  eventTriggers: WebhookTriggerEvents[];
+  eventTriggers: unknown;
   eventTypeId: number | null;
   teamId: number | null;
   userId: number | null;
@@ -34,7 +34,7 @@ type PrismaWebhookMinimal = {
   payloadTemplate: string | null;
   appId: string | null;
   secret: string | null;
-  eventTriggers: WebhookTriggerEvents[];
+  eventTriggers: unknown;
   time: number | null;
   timeUnit: TimeUnit | null;
   version: string;
@@ -52,7 +52,7 @@ export class WebhookOutputMapper {
       appId: prismaWebhook.appId,
       secret: prismaWebhook.secret,
       active: prismaWebhook.active,
-      eventTriggers: prismaWebhook.eventTriggers,
+      eventTriggers: parseWebhookEventTriggers(prismaWebhook).eventTriggers,
       eventTypeId: prismaWebhook.eventTypeId,
       teamId: prismaWebhook.teamId,
       userId: prismaWebhook.userId,
@@ -79,7 +79,7 @@ export class WebhookOutputMapper {
       payloadTemplate: prismaWebhook.payloadTemplate,
       appId: prismaWebhook.appId,
       secret: prismaWebhook.secret,
-      eventTriggers: prismaWebhook.eventTriggers,
+      eventTriggers: parseWebhookEventTriggers(prismaWebhook).eventTriggers,
       time: prismaWebhook.time ?? undefined,
       timeUnit: prismaWebhook.timeUnit ?? undefined,
       version: parseWebhookVersion(prismaWebhook.version),
@@ -109,7 +109,7 @@ export class WebhookOutputMapper {
   static toSubscriberPartial(prismaWebhook: {
     id: string;
     subscriberUrl: string;
-    eventTriggers: string[];
+    eventTriggers: unknown;
     version: string;
     payloadTemplate?: string | null;
     appId?: string | null;
@@ -123,8 +123,7 @@ export class WebhookOutputMapper {
       payloadTemplate: prismaWebhook.payloadTemplate ?? null,
       appId: prismaWebhook.appId ?? null,
       secret: prismaWebhook.secret ?? null,
-      // Enums are just strings at runtime - Prisma validates them
-      eventTriggers: prismaWebhook.eventTriggers as unknown as WebhookSubscriber["eventTriggers"],
+      eventTriggers: parseWebhookEventTriggers(prismaWebhook).eventTriggers,
       time: prismaWebhook.time ?? undefined,
       timeUnit: prismaWebhook.timeUnit as unknown as WebhookSubscriber["timeUnit"],
       version: parseWebhookVersion(prismaWebhook.version),

@@ -3,6 +3,7 @@ import { MembershipRepository } from "@calcom/features/membership/repositories/M
 import { LookupTarget, ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import type { UserWithLegacySelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
+import { parseWebhookEventTriggers } from "@calcom/features/webhooks/lib/eventTriggers";
 import {
   parseAvailability,
   parseScheduleAvailability,
@@ -12,7 +13,7 @@ import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
-import { eventTypeSelect } from "@calcom/lib/server/eventTypeSelect";
+import { eventTypeSelect, parseInstantMeetingParameters } from "@calcom/lib/server/eventTypeSelect";
 import type { PrismaClient } from "@calcom/prisma";
 import { availabilityUserSelect, userSelect as userSelectWithSelectedCalendars } from "@calcom/prisma";
 import type { Prisma, EventType as PrismaEventType } from "@calcom/prisma/client";
@@ -242,7 +243,7 @@ export class EventTypeRepository implements IEventTypesRepository {
 
     if (!profileId) {
       // Lookup is by userId
-      return await this.prismaClient.eventType.findMany({
+      const eventTypes = await this.prismaClient.eventType.findMany({
         where: {
           userId: lookupTarget.id,
           ...where,
@@ -252,13 +253,17 @@ export class EventTypeRepository implements IEventTypesRepository {
         take,
         orderBy,
       });
+      return eventTypes.map((eventType) => ({
+        ...parseInstantMeetingParameters(eventType),
+        children: eventType.children.map(parseInstantMeetingParameters),
+      }));
     }
 
     const profile = await ProfileRepository.findById(profileId);
     if (profile?.movedFromUser) {
       // Because the user has been moved to this profile, we need to get all user events except those that belong to some other profile
       // This is because those event-types that are created after moving to profile would have profileId but existing event-types would have profileId set to null
-      return await this.prismaClient.eventType.findMany({
+      const eventTypes = await this.prismaClient.eventType.findMany({
         where: {
           OR: [
             // Existing events
@@ -285,8 +290,12 @@ export class EventTypeRepository implements IEventTypesRepository {
         take,
         orderBy,
       });
+      return eventTypes.map((eventType) => ({
+        ...parseInstantMeetingParameters(eventType),
+        children: eventType.children.map(parseInstantMeetingParameters),
+      }));
     } else {
-      return await this.prismaClient.eventType.findMany({
+      const eventTypes = await this.prismaClient.eventType.findMany({
         where: {
           OR: [
             {
@@ -307,6 +316,10 @@ export class EventTypeRepository implements IEventTypesRepository {
         take,
         orderBy,
       });
+      return eventTypes.map((eventType) => ({
+        ...parseInstantMeetingParameters(eventType),
+        children: eventType.children.map(parseInstantMeetingParameters),
+      }));
     }
   }
 
@@ -354,7 +367,7 @@ export class EventTypeRepository implements IEventTypesRepository {
 
     if (!profileId) {
       // Lookup is by userId
-      return await this.prismaClient.eventType.findMany({
+      const eventTypes = await this.prismaClient.eventType.findMany({
         where: {
           userId: lookupTarget.id,
           ...where,
@@ -364,13 +377,14 @@ export class EventTypeRepository implements IEventTypesRepository {
         take,
         orderBy,
       });
+      return eventTypes.map(parseInstantMeetingParameters);
     }
 
     const profile = await ProfileRepository.findById(profileId);
     if (profile?.movedFromUser) {
       // Because the user has been moved to this profile, we need to get all user events except those that belong to some other profile
       // This is because those event-types that are created after moving to profile would have profileId but existing event-types would have profileId set to null
-      return await this.prismaClient.eventType.findMany({
+      const eventTypes = await this.prismaClient.eventType.findMany({
         where: {
           OR: [
             // Existing events
@@ -397,8 +411,9 @@ export class EventTypeRepository implements IEventTypesRepository {
         take,
         orderBy,
       });
+      return eventTypes.map(parseInstantMeetingParameters);
     } else {
-      return await this.prismaClient.eventType.findMany({
+      const eventTypes = await this.prismaClient.eventType.findMany({
         where: {
           OR: [
             {
@@ -419,6 +434,7 @@ export class EventTypeRepository implements IEventTypesRepository {
         take,
         orderBy,
       });
+      return eventTypes.map(parseInstantMeetingParameters);
     }
   }
 
@@ -507,7 +523,7 @@ export class EventTypeRepository implements IEventTypesRepository {
 
     if (!teamMembership) throw new ErrorWithCode(ErrorCode.Unauthorized, "User is not a member of this team");
 
-    return await this.prismaClient.eventType.findMany({
+    const eventTypes = await this.prismaClient.eventType.findMany({
       where: {
         teamId,
         ...where,
@@ -517,6 +533,10 @@ export class EventTypeRepository implements IEventTypesRepository {
       take: limit ? limit + 1 : undefined, // We take +1 as itll be used for the next cursor
       orderBy,
     });
+    return eventTypes.map((eventType) => ({
+      ...parseInstantMeetingParameters(eventType),
+      children: eventType.children.map(parseInstantMeetingParameters),
+    }));
   }
 
   async findAllByUserId({ userId }: { userId: number }) {
@@ -798,7 +818,7 @@ export class EventTypeRepository implements IEventTypesRepository {
     // This is more efficient than using a complex join with team.members in the query
     const userTeamIds = await MembershipRepository.findUserTeamIds({ userId });
 
-    return await this.prismaClient.eventType.findFirst({
+    const eventType = await this.prismaClient.eventType.findFirst({
       where: {
         AND: [
           {
@@ -825,6 +845,12 @@ export class EventTypeRepository implements IEventTypesRepository {
       },
       select: CompleteEventTypeSelect,
     });
+    return eventType
+      ? {
+          ...parseInstantMeetingParameters(eventType),
+          webhooks: eventType.webhooks.map(parseWebhookEventTriggers),
+        }
+      : null;
   }
 
   async findByIdForOrgAdmin({ id, organizationId }: { id: number; organizationId: number }) {
@@ -1082,7 +1108,7 @@ export class EventTypeRepository implements IEventTypesRepository {
       AND: [{ teamId: { not: null } }, { team: { parentId: organizationId } }],
     };
 
-    return await this.prismaClient.eventType.findFirst({
+    const eventType = await this.prismaClient.eventType.findFirst({
       where: {
         AND: [
           { id },
@@ -1093,6 +1119,12 @@ export class EventTypeRepository implements IEventTypesRepository {
       },
       select: CompleteEventTypeSelect,
     });
+    return eventType
+      ? {
+          ...parseInstantMeetingParameters(eventType),
+          webhooks: eventType.webhooks.map(parseWebhookEventTriggers),
+        }
+      : null;
   }
 
   async findByIdMinimal({ id }: { id: number }) {

@@ -1,4 +1,17 @@
 import type { Prisma } from "@calcom/prisma/client";
+import { z } from "zod";
+
+const instantMeetingParametersSchema = z.array(z.string());
+
+export function parseInstantMeetingParameters<T extends { instantMeetingParameters: unknown }>(eventType: T) {
+  const { instantMeetingParameters, ...rest } = eventType;
+  return {
+    ...rest,
+    instantMeetingParameters: instantMeetingParametersSchema.parse(
+      instantMeetingParameters === null ? [] : instantMeetingParameters
+    ),
+  };
+}
 
 export const eventTypeSelect = {
   id: true,

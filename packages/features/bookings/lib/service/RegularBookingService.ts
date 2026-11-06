@@ -27,6 +27,8 @@ import type { CheckBookingAndDurationLimitsService } from "@calcom/features/book
 import { handlePayment } from "@calcom/features/bookings/lib/handlePayment";
 import { handleWebhookTrigger } from "@calcom/features/bookings/lib/handleWebhookTrigger";
 import { isEventTypeLoggingEnabled } from "@calcom/features/bookings/lib/isEventTypeLoggingEnabled";
+import { D1PaymentCredentialRepository } from "@calcom/features/bookings/lib/payment/D1PaymentCredentialRepository";
+import { parseBookingScheduledJobs } from "@calcom/features/bookings/lib/scheduledJobs";
 import type { BookingEmailAndSmsTasker } from "@calcom/features/bookings/lib/tasker/BookingEmailAndSmsTasker";
 import type { BuiltCalendarEvent } from "@calcom/features/CalendarEventBuilder";
 import { CalendarEventBuilder } from "@calcom/features/CalendarEventBuilder";
@@ -698,7 +700,7 @@ async function handler(
       const firstPayment = shouldShowPaymentForm ? existingBooking.payment[0] : undefined;
 
       const bookingResponse = {
-        ...existingBooking,
+        ...parseBookingScheduledJobs(existingBooking),
         user: {
           ...existingBooking.user,
           email: null,
@@ -2258,25 +2260,9 @@ async function handler(
   if (bookingRequiresPayment) {
     tracingLogger.debug(`Booking ${organizerUser.username} requires payment`);
     // Load credentials.app.categories
-    const credentialPaymentAppCategories = await deps.prismaClient.credential.findMany({
-      where: {
-        ...(paymentAppData.credentialId ? { id: paymentAppData.credentialId } : { userId: organizerUser.id }),
-        app: {
-          categories: {
-            hasSome: ["payment"],
-          },
-        },
-      },
-      select: {
-        key: true,
-        appId: true,
-        app: {
-          select: {
-            categories: true,
-            dirName: true,
-          },
-        },
-      },
+    const credentialPaymentAppCategories = await D1PaymentCredentialRepository.findForBooking({
+      credentialId: paymentAppData.credentialId,
+      userId: organizerUser.id,
     });
     const eventTypePaymentAppCredential = credentialPaymentAppCategories.find((credential) => {
       return credential.appId === paymentAppData.appId;

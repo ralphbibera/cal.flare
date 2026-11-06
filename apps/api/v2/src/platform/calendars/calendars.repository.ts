@@ -1,7 +1,8 @@
+import { parseAppCategories } from "@calcom/platform-libraries";
+import type { Prisma } from "@calcom/prisma/client";
+import { Injectable } from "@nestjs/common";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "@/modules/prisma/prisma-write.service";
-import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@calcom/prisma/client";
 
 const credentialForCalendarRepositorySelect = {
   id: true,
@@ -20,10 +21,13 @@ const credentialForCalendarRepositorySelect = {
 
 @Injectable()
 export class CalendarsRepository {
-  constructor(private readonly dbRead: PrismaReadService, private readonly dbWrite: PrismaWriteService) {}
+  constructor(
+    private readonly dbRead: PrismaReadService,
+    private readonly dbWrite: PrismaWriteService
+  ) {}
 
   async getCalendarCredentials(credentialId: number, userId: number) {
-    return await this.dbRead.prisma.credential.findFirst({
+    const credential = await this.dbRead.prisma.credential.findFirst({
       where: {
         id: credentialId,
         userId,
@@ -39,6 +43,8 @@ export class CalendarsRepository {
         },
       },
     });
+    if (!credential) return null;
+    return { ...credential, app: credential.app ? parseAppCategories(credential.app) : null };
   }
 
   async deleteCredentials(credentialId: number) {

@@ -1,8 +1,8 @@
-import { Injectable } from "@nestjs/common";
-
-import { PERMISSIONS, PERMISSION_MAP } from "@calcom/platform-constants";
+import { PERMISSION_MAP, PERMISSIONS } from "@calcom/platform-constants";
+import { parseOAuthRedirectUris } from "@calcom/platform-libraries";
 import type { PlatformOAuthClientDto } from "@calcom/platform-types";
 import type { PlatformOAuthClient } from "@calcom/prisma/client";
+import { Injectable } from "@nestjs/common";
 
 @Injectable()
 export class OAuthClientsOutputService {
@@ -17,7 +17,7 @@ export class OAuthClientsOutputService {
       secret: client.secret,
       permissions: this.transformOAuthClientPermissions(client.permissions),
       logo: client.logo,
-      redirectUris: client.redirectUris,
+      redirectUris: parseOAuthRedirectUris(client.redirectUris),
       organizationId: client.organizationId,
       createdAt: client.createdAt,
       bookingRedirectUri: client.bookingRedirectUri ?? undefined,

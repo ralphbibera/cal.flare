@@ -3,6 +3,7 @@ import { sendScheduledSeatsEmailsAndSMS } from "@calcom/emails/email-manager";
 import EventManager from "@calcom/features/bookings/lib/EventManager";
 import { refreshCredentials } from "@calcom/features/bookings/lib/getAllCredentialsForUsersOnEvent/refreshCredentials";
 import { handlePayment } from "@calcom/features/bookings/lib/handlePayment";
+import { D1PaymentCredentialRepository } from "@calcom/features/bookings/lib/payment/D1PaymentCredentialRepository";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { HttpError } from "@calcom/lib/http-error";
 import prisma from "@calcom/prisma";
@@ -129,25 +130,9 @@ const createNewSeat = async (
   const foundBooking = await findBookingQuery(seatedBooking.id);
 
   if (!Number.isNaN(paymentAppData.price) && paymentAppData.price > 0 && !!seatedBooking) {
-    const credentialPaymentAppCategories = await prisma.credential.findMany({
-      where: {
-        ...(paymentAppData.credentialId ? { id: paymentAppData.credentialId } : { userId: organizerUser.id }),
-        app: {
-          categories: {
-            hasSome: ["payment"],
-          },
-        },
-      },
-      select: {
-        key: true,
-        appId: true,
-        app: {
-          select: {
-            categories: true,
-            dirName: true,
-          },
-        },
-      },
+    const credentialPaymentAppCategories = await D1PaymentCredentialRepository.findForBooking({
+      credentialId: paymentAppData.credentialId,
+      userId: organizerUser.id,
     });
 
     const eventTypePaymentAppCredential = credentialPaymentAppCategories.find((credential) => {

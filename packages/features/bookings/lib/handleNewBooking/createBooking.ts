@@ -1,4 +1,5 @@
 import dayjs from "@calcom/dayjs";
+import { parseBookingScheduledJobs } from "@calcom/features/bookings/lib/scheduledJobs";
 import { isPrismaObjOrUndefined } from "@calcom/lib/isPrismaObj";
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import prisma from "@calcom/prisma";
@@ -8,6 +9,7 @@ import { BookingStatus } from "@calcom/prisma/enums";
 import type { CalendarEvent } from "@calcom/types/Calendar";
 import type short from "short-uuid";
 import type { TgetBookingDataSchema } from "../getBookingDataSchema";
+import { type BookingPersistenceInput, createBookingInD1 } from "./createBookingInD1";
 import type { AwaitedBookingData, EventTypeId } from "./getBookingData";
 import type { NewBookingEventType } from "./getEventTypesFromDB";
 import type { LoadedUsers } from "./loadUsers";
@@ -100,29 +102,11 @@ async function saveBooking(
   organizerUser: CreateBookingParams["eventType"]["organizerUser"]
 ) {
   const { newBookingData, originalBookingUpdateDataForCancellation } = bookingAndAssociatedData;
-  const createBookingObj = {
-    include: {
-      user: {
-        select: {
-          uuid: true,
-          email: true,
-          name: true,
-          timeZone: true,
-          username: true,
-          isPlatformManaged: true,
-        },
-      },
-      attendees: true,
-      payment: true,
-      references: true,
-    },
-    data: newBookingData,
-  };
 
   if (originalRescheduledBooking?.paid && originalRescheduledBooking?.payment) {
     const bookingPayment = originalRescheduledBooking.payment.find((payment) => payment.success);
     if (bookingPayment) {
-      createBookingObj.data.payment = { connect: { id: bookingPayment.id } };
+      newBookingData.payment = { connect: { id: bookingPayment.id } };
     }
   }
 
@@ -136,15 +120,11 @@ async function saveBooking(
     });
   }
 
-  return prisma.$transaction(async (tx) => {
-    if (originalBookingUpdateDataForCancellation) {
-      await tx.booking.update(originalBookingUpdateDataForCancellation);
-    }
-
-    const booking = await tx.booking.create(createBookingObj);
-
-    return { ...booking, userUuid: booking.user?.uuid ?? null };
+  const booking = await createBookingInD1({
+    data: newBookingData,
+    cancellation: originalBookingUpdateDataForCancellation,
   });
+  return { ...parseBookingScheduledJobs(booking), userUuid: booking.user?.uuid ?? null };
 }
 
 function getEventTypeRel(eventTypeId: EventTypeId) {
@@ -180,7 +160,7 @@ function buildNewBookingData(params: CreateBookingParams) {
 
   const attendeesData = getAttendeesData(evt);
   const eventTypeRel = getEventTypeRel(eventType.id);
-  const newBookingData: Prisma.BookingCreateInput = {
+  const newBookingData: BookingPersistenceInput["data"] = {
     uid,
     userPrimaryEmail: evt.organizer.email,
     responses: input.responses === null || evt.seatsPerTimeSlot ? Prisma.JsonNull : input.responses,
@@ -223,7 +203,7 @@ function buildNewBookingData(params: CreateBookingParams) {
     newBookingData.recurringEventId = reqBody.recurringEventId;
   }
 
-  let originalBookingUpdateDataForCancellation: Prisma.BookingUpdateArgs | undefined;
+  let originalBookingUpdateDataForCancellation: BookingPersistenceInput["cancellation"];
 
   if (originalRescheduledBooking) {
     newBookingData.metadata = {
