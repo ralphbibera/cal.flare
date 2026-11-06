@@ -1,7 +1,8 @@
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Booking, Prisma } from "@calcom/prisma/client";
-import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks, getD1Database } from "@calcom/prisma/d1";
+import { toD1DateTime } from "@calcom/prisma/d1-batch";
 import { BookingStatus, RRTimestampBasis } from "@calcom/prisma/enums";
 import { bookingDetailsSelect, bookingMinimalSelect } from "@calcom/prisma/selects/booking";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
@@ -1566,6 +1567,17 @@ export class BookingRepository implements IBookingRepository {
       where: where,
       data,
     });
+  }
+
+  // One statement keeps the series rejection atomic, and json_each keeps a long series within D1's bind limit.
+  // An absent reason leaves the column as it was, as Prisma does for an undefined field.
+  async rejectByUids({ uids, rejectionReason }: { uids: string[]; rejectionReason?: string }) {
+    const result = await getD1Database()
+      .prepare(`UPDATE "Booking" SET "status" = 'rejected', "rejectionReason" = COALESCE(?, "rejectionReason"), "updatedAt" = ?
+        WHERE "uid" IN (SELECT value FROM json_each(?))`)
+      .bind(rejectionReason ?? null, toD1DateTime(new Date()), JSON.stringify(uids))
+      .run();
+    return { count: result.meta.changes };
   }
 
   async update({ where, data }: { where: BookingWhereUniqueInput; data: BookingUpdateData }) {
