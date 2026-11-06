@@ -18,6 +18,7 @@ import { eventTypeSelect, parseInstantMeetingParameters } from "@calcom/lib/serv
 import type { PrismaClient } from "@calcom/prisma";
 import { availabilityUserSelect, userSelect as userSelectWithSelectedCalendars } from "@calcom/prisma";
 import type { Prisma, EventType as PrismaEventType } from "@calcom/prisma/client";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
 import { MembershipRole } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import { EventTypeMetaDataSchema, rrSegmentQueryValueSchema } from "@calcom/prisma/zod-utils";
@@ -1933,33 +1934,52 @@ export class EventTypeRepository implements IEventTypesRepository {
         childrenTeamIds = childTeams.map((team) => team.id);
       }
 
-      const eventTypeResult = await this.prismaClient.eventType.findMany({
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          teamId: true,
-          userId: true,
-          team: {
-            select: {
-              name: true,
-            },
+      const eventTypeSelect = {
+        id: true,
+        slug: true,
+        title: true,
+        teamId: true,
+        userId: true,
+        team: {
+          select: {
+            name: true,
           },
         },
-        where: {
-          OR: [
-            {
-              teamId: {
-                in: [user.organizationId, ...childrenTeamIds],
+      } satisfies Prisma.EventTypeSelect;
+
+      const teamIds = Array.from(new Set([user.organizationId, ...childrenTeamIds]));
+      const eventTypeResult =
+        teamIds.length <= D1_IN_LIST_CHUNK_SIZE
+          ? await this.prismaClient.eventType.findMany({
+              select: eventTypeSelect,
+              where: {
+                OR: [
+                  {
+                    teamId: {
+                      in: teamIds,
+                    },
+                  },
+                  {
+                    userId: user.id,
+                    teamId: null,
+                  },
+                ],
               },
-            },
-            {
-              userId: user.id,
-              teamId: null,
-            },
-          ],
-        },
-      });
+            })
+          : (
+              await Promise.all([
+                findManyInChunks(teamIds, (chunk) =>
+                  this.prismaClient.eventType.findMany({
+                    select: eventTypeSelect,
+                    where: { teamId: { in: chunk } },
+                  })
+                ),
+                this.prismaClient.eventType.findMany({
+                  select: eventTypeSelect,
+                  where: { userId: user.id, teamId: null },
+                }),
+              ])
+            ).flat();
 
       return eventTypeResult;
     }
