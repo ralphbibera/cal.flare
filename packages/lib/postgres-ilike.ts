@@ -4,11 +4,16 @@ import { POSTGRES_LOWERCASE_RANGES } from "./postgres-lowercase-ranges";
 const MAX_ASCII = 0x7f;
 const lowercaseByCodePoint = new Map<number, number>();
 const asciiFoldedFromNonAscii = new Set<number>();
+const nonAsciiUppercaseByLowercase = new Map<number, string[]>();
 for (const [first, last, step, delta] of POSTGRES_LOWERCASE_RANGES) {
   for (let codePoint = first; codePoint <= last; codePoint += step) {
     const lowercase = codePoint + delta;
     lowercaseByCodePoint.set(codePoint, lowercase);
-    if (codePoint > MAX_ASCII && lowercase <= MAX_ASCII) asciiFoldedFromNonAscii.add(lowercase);
+    if (codePoint <= MAX_ASCII) continue;
+    if (lowercase <= MAX_ASCII) asciiFoldedFromNonAscii.add(lowercase);
+    const uppercase = nonAsciiUppercaseByLowercase.get(lowercase) ?? [];
+    uppercase.push(String.fromCodePoint(codePoint));
+    nonAsciiUppercaseByLowercase.set(lowercase, uppercase);
   }
 }
 
@@ -111,6 +116,54 @@ export function toSqliteContainsPrefilter(pattern: string): string {
     } else prefilter += String.fromCodePoint(token);
   }
   return prefilter.replace(/^%+|%+$/g, "");
+}
+
+export type SqliteIlike = {
+  /** For `LIKE pattern ESCAPE '\'`. */
+  pattern: string;
+  /** Apply as nested `replace(value, from, to)` before LIKE compares the value. */
+  folds: ReadonlyArray<readonly [from: string, to: string]>;
+};
+
+// Every pattern character is a lower() fixed point, so replacing each non-ASCII character that folds onto it
+// leaves SQLite's ASCII-only LIKE folding with exactly PostgreSQL's comparisons, in any replacement order.
+function toSqliteLike(tokens: number[]): SqliteIlike {
+  let pattern = "";
+  const folds: Array<readonly [string, string]> = [];
+  const folded = new Set<number>();
+  for (const token of tokens) {
+    if (token === ANY_MANY) pattern += "%";
+    else if (token === ANY_ONE) pattern += "_";
+    else {
+      const character = String.fromCodePoint(token);
+      pattern +=
+        token === PERCENT || token === UNDERSCORE || token === BACKSLASH ? `\\${character}` : character;
+      if (folded.has(token)) continue;
+      folded.add(token);
+      for (const uppercase of nonAsciiUppercaseByLowercase.get(token) ?? []) {
+        folds.push([uppercase, character]);
+      }
+    }
+  }
+  return { pattern, folds };
+}
+
+/**
+ * Translates a PostgreSQL ILIKE pattern into a SQLite LIKE that matches exactly the same values, for queries
+ * that must filter, count and paginate in SQL rather than confirm candidates with createIlikeMatcher.
+ */
+export function toSqliteIlike(pattern: string): SqliteIlike {
+  return toSqliteLike(compilePattern(pattern));
+}
+
+/**
+ * Translates PostgreSQL's `lower(value) = lowercase` the same way, or returns null when no value can match
+ * because lowercase holds a character lower() never produces.
+ */
+export function toSqliteLowerEquals(lowercase: string): SqliteIlike | null {
+  const tokens = Array.from(lowercase, (character) => character.codePointAt(0) as number);
+  if (tokens.some((codePoint) => lowercaseByCodePoint.has(codePoint))) return null;
+  return toSqliteLike(tokens);
 }
 
 const SEARCH_SCAN_BATCH_SIZE = 100;
