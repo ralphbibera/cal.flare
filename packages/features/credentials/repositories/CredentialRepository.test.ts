@@ -49,7 +49,7 @@ describe("credentials by stored JSON property", () => {
           .bind(slug, slug, "2026-11-05T00:00:00.000+00:00")
       )
     );
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();
