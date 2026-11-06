@@ -1,14 +1,14 @@
-import type { NextResponse } from "next/server";
-
+import process from "node:process";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import slugify from "@calcom/lib/slugify";
 import prisma from "@calcom/prisma";
 import { RedirectType } from "@calcom/prisma/enums";
-
+import type { NextResponse } from "next/server";
 import { IS_PREMIUM_USERNAME_ENABLED } from "../constants";
 import logger from "../logger";
 import notEmpty from "../notEmpty";
+import { toSqliteJsonPath } from "./toSqliteJsonPath";
 
 const log = logger.getSubLogger({ prefix: ["server/username"] });
 const cachedData: Set<string> = new Set();
@@ -127,7 +127,10 @@ const usernameCheck = async (usernameRaw: string, currentOrgDomain?: string | nu
     const organization = await prisma.team.findFirst({
       where: {
         isOrganization: true,
-        OR: [{ slug: currentOrgDomain }, { metadata: { path: ["requestedSlug"], equals: currentOrgDomain } }],
+        OR: [
+          { slug: currentOrgDomain },
+          { metadata: { path: toSqliteJsonPath(["requestedSlug"]), equals: currentOrgDomain } },
+        ],
       },
       select: {
         id: true,

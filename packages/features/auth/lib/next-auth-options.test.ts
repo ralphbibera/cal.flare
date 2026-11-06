@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorCode } from "./ErrorCode";
 
 // Mock dependencies
+// The lookup runs against real D1 in its integration test; here findFirst decides which user exists.
+vi.mock("@calcom/features/auth/lib/findUserIdByInsensitiveField", () => ({
+  findUserIdByInsensitiveField: vi.fn().mockResolvedValue(1),
+}));
 vi.mock("@calcom/prisma", () => ({
   prisma: {
     user: {

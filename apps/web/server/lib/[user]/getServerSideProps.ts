@@ -1,5 +1,6 @@
 import { encode } from "node:querystring";
 import { getUsernameList } from "@calcom/features/eventtypes/lib/defaultEvents";
+import type { EventTypesPublic } from "@calcom/features/eventtypes/lib/getEventTypesPublic";
 import { getEventTypesPublic } from "@calcom/features/eventtypes/lib/getEventTypesPublic";
 import { getBrandingForUser } from "@calcom/features/profile/lib/getBranding";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
@@ -10,14 +11,12 @@ import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { stripMarkdown } from "@calcom/lib/stripMarkdown";
 import { prisma } from "@calcom/prisma";
-import type { EventType, User } from "@calcom/prisma/client";
+import type { User } from "@calcom/prisma/client";
 import { RedirectType } from "@calcom/prisma/enums";
-import type { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import type { UserProfile } from "@calcom/types/UserProfile";
 import { handleOrgRedirect } from "@lib/handleOrgRedirect";
 import type { EmbedProps } from "app/WithEmbedSSR";
 import type { GetServerSideProps } from "next";
-import type { z } from "zod";
 
 const log = logger.getSubLogger({ prefix: ["[[pages/[user]]]"] });
 type UserPageProps = {
@@ -51,27 +50,7 @@ type UserPageProps = {
     name?: string | null;
     teamSlug?: string | null;
   };
-  eventTypes: ({
-    descriptionAsSafeHTML: string;
-    metadata: z.infer<typeof EventTypeMetaDataSchema>;
-  } & Pick<
-    EventType,
-    | "id"
-    | "title"
-    | "slug"
-    | "length"
-    | "hidden"
-    | "lockTimeZoneToggleOnBookingPage"
-    | "lockedTimeZone"
-    | "requiresConfirmation"
-    | "canSendCalVideoTranscriptionEmails"
-    | "requiresBookerEmailVerification"
-    | "price"
-    | "currency"
-    | "recurringEvent"
-    | "seatsPerTimeSlot"
-    | "schedulingType"
-  >)[];
+  eventTypes: EventTypesPublic;
   isOrgSEOIndexable: boolean | undefined;
 } & EmbedProps;
 

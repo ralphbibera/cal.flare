@@ -1,8 +1,7 @@
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-
-import type { ISelectedSlotRepository } from "./ISelectedSlotRepository";
-import type { TimeSlot } from "./ISelectedSlotRepository";
+import { findManyInChunks } from "@calcom/prisma/d1";
+import type { ISelectedSlotRepository, TimeSlot } from "./ISelectedSlotRepository";
 
 export class PrismaSelectedSlotRepository implements ISelectedSlotRepository {
   constructor(private prismaClient: PrismaClient) {}
@@ -58,21 +57,23 @@ export class PrismaSelectedSlotRepository implements ISelectedSlotRepository {
     userIds: number[];
     currentTimeInUtc: string;
   }) {
-    return this.prismaClient.selectedSlots.findMany({
-      where: {
-        userId: { in: userIds },
-        releaseAt: { gt: currentTimeInUtc },
-      },
-      select: {
-        id: true,
-        slotUtcStartDate: true,
-        slotUtcEndDate: true,
-        userId: true,
-        isSeat: true,
-        eventTypeId: true,
-        uid: true,
-      },
-    });
+    return findManyInChunks(userIds, (chunk) =>
+      this.prismaClient.selectedSlots.findMany({
+        where: {
+          userId: { in: chunk },
+          releaseAt: { gt: currentTimeInUtc },
+        },
+        select: {
+          id: true,
+          slotUtcStartDate: true,
+          slotUtcEndDate: true,
+          userId: true,
+          isSeat: true,
+          eventTypeId: true,
+          uid: true,
+        },
+      })
+    );
   }
 
   async deleteManyExpiredSlots({
