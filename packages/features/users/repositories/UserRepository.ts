@@ -60,6 +60,24 @@ const userRow = UserSchema.extend({
   creationSource: z.string().toUpperCase().pipe(UserSchema.shape.creationSource.unwrap()).nullable(),
 }) satisfies z.ZodType<UserType, z.ZodTypeDef, unknown>;
 
+const adminUserColumns = [
+  "name",
+  "email",
+  "username",
+  "bio",
+  "timeZone",
+  "weekStart",
+  "theme",
+  "defaultScheduleId",
+  "locale",
+  "timeFormat",
+  "allowDynamicBooking",
+  "identityProvider",
+  "role",
+  "avatarUrl",
+] as const;
+type AdminUserUpdate = Partial<Pick<UserType, (typeof adminUserColumns)[number]>>;
+
 const whereClauseForOrgWithSlugOrRequestedSlug = (..._args: unknown[]) => ({});
 const getParsedTeam = <T>(team: T): T => team;
 
@@ -673,6 +691,89 @@ export class UserRepository {
       ]),
       { modelName: "SecondaryEmail" }
     );
+  }
+
+  async updateWithProfileUsername({
+    id,
+    data,
+    profileUsername,
+  }: {
+    id: number;
+    data: AdminUserUpdate;
+    profileUsername?:
+      | {
+          scope: "movedProfile";
+          profileId: number;
+          username: string;
+          redirect?: { from: string; toUrl: string; missingOrgSlugError: string };
+        }
+      | { scope: "allProfiles"; username: string };
+  }): Promise<UserType> {
+    const db = getD1Database();
+    const now = toD1DateTime(new Date());
+    const columns = adminUserColumns.filter((column) => data[column] !== undefined);
+    const statements = [
+      requireD1Record(
+        db,
+        { modelName: "User", operation: "an update" },
+        'SELECT 1 FROM "users" WHERE "id" = ?',
+        id
+      ),
+    ];
+    if (columns.length > 0) {
+      const values = columns.map((column) => {
+        const value = data[column];
+        return typeof value === "boolean" ? Number(value) : value;
+      });
+      statements.push(
+        db
+          .prepare(
+            `UPDATE "users" SET ${columns.map((column) => `"${column}" = ?`).join(", ")} WHERE "id" = ?`
+          )
+          .bind(...values, id)
+      );
+    }
+    const selection = statements.length;
+    statements.push(db.prepare(`SELECT ${userColumns} FROM "users" WHERE "id" = ?`).bind(id));
+    if (profileUsername?.scope === "movedProfile") {
+      const { profileId, username, redirect } = profileUsername;
+      statements.push(
+        requireD1Record(
+          db,
+          { modelName: "Profile", operation: "an update" },
+          'SELECT 1 FROM "Profile" WHERE "id" = ?',
+          profileId
+        ),
+        db
+          .prepare('UPDATE "Profile" SET "username" = ?, "updatedAt" = ? WHERE "id" = ?')
+          .bind(username, now, profileId)
+      );
+      if (redirect) {
+        statements.push(
+          requireD1Record(
+            db,
+            { message: redirect.missingOrgSlugError },
+            `SELECT 1 FROM "Profile" p JOIN "Team" t ON t."id" = p."organizationId"
+            WHERE p."id" = ? AND COALESCE(t."slug", '') <> ''`,
+            profileId
+          ),
+          db
+            .prepare(
+              'UPDATE "TempOrgRedirect" SET "toUrl" = ?, "updatedAt" = ? WHERE "type" = ? AND "from" = ?'
+            )
+            .bind(redirect.toUrl, now, "user", redirect.from)
+        );
+      }
+    }
+    if (profileUsername?.scope === "allProfiles") {
+      statements.push(
+        db
+          .prepare('UPDATE "Profile" SET "username" = ?, "updatedAt" = ? WHERE "userId" = ?')
+          .bind(profileUsername.username, now, id)
+      );
+    }
+    const results = await runD1Batch(db, statements, { modelName: "User" });
+    return userRow.parse(results[selection].results[0]);
   }
 
   async enrichUserWithTheProfile<T extends { username: string | null; id: number }>({
