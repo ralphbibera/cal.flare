@@ -1,9 +1,9 @@
+import { i18n } from "@calcom/i18n/next-i18next.config";
 import { parse } from "accept-language-parser";
 import { lookup } from "bcp-47-match";
 import type { GetTokenParams } from "next-auth/jwt";
 import { getToken } from "next-auth/jwt";
-
-import { i18n } from "@calcom/i18n/next-i18next.config";
+import { getCalSessionLocale, isCalSignedSessionToken, readSessionToken } from "./cal-session-cookie";
 
 type ReadonlyHeaders = Awaited<ReturnType<typeof import("next/headers").headers>>;
 type ReadonlyRequestCookies = Awaited<ReturnType<typeof import("next/headers").cookies>>;
@@ -27,11 +27,18 @@ export const getLocale = async (
         headers: ReadonlyHeaders;
       }
 ): Promise<string> => {
-  const token = await getToken({
-    req: req as GetTokenParams["req"],
-  });
+  const sessionRequest = req as GetTokenParams["req"];
+  const rawToken = await readSessionToken(sessionRequest);
 
-  const tokenLocale = token?.["locale"];
+  let tokenLocale: string | null | undefined;
+  if (isCalSignedSessionToken(rawToken)) {
+    tokenLocale = await getCalSessionLocale(rawToken);
+  } else {
+    const token = await getToken({
+      req: sessionRequest,
+    });
+    tokenLocale = token?.["locale"];
+  }
 
   if (tokenLocale) {
     return tokenLocale;
