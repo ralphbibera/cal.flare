@@ -97,6 +97,35 @@ describe("event type title search", () => {
       await db.batch(insertPersonal.slice(index, index + 50));
     }
     await db.prepare(`UPDATE "EventType" SET "profileId" = 1 WHERE "id" = 9`).run();
+
+    const owners: Array<[id: number, name: string | null, email: string]> = [
+      [10, "İlker", "first@example.invalid"],
+      [11, "Unrelated", "İ@example.invalid"],
+      [12, "ILKER", "third@example.invalid"],
+      [13, "ılgaz", "dotless@example.invalid"],
+      [14, "Σofia", "sigma@example.invalid"],
+      [15, null, "ilker-null-name@example.invalid"],
+      [16, "100%_real", "wild@example.invalid"],
+      [17, "ilker excluded", "excluded@example.invalid"],
+    ];
+    await db.batch([
+      db.prepare(
+        `INSERT INTO "EventType" ("id", "title", "slug", "length", "teamId", "schedulingType") VALUES (500, 'Parent', 'parent', 30, 2, 'managed')`
+      ),
+      ...owners.flatMap(([id, name, email]) => [
+        db
+          .prepare('INSERT INTO "users" ("id", "uuid", "email", "name") VALUES (?, ?, ?, ?)')
+          .bind(id, `owner-${id}`, email, name),
+        db
+          .prepare(
+            'INSERT INTO "EventType" ("id", "title", "slug", "length", "parentId", "userId") VALUES (?, ?, ?, 30, 500, ?)'
+          )
+          .bind(500 + id, `Child ${id}`, `child-${id}`, id),
+      ]),
+      db.prepare(
+        `INSERT INTO "EventType" ("id", "title", "slug", "length", "parentId") VALUES (540, 'Ownerless', 'ownerless', 30, 500)`
+      ),
+    ]);
   }, 60_000);
 
   afterAll(async () => {
@@ -175,6 +204,54 @@ describe("event type title search", () => {
 
     it("still rejects users outside the team", async () => {
       await expect(team(2, "ilker")).rejects.toThrow("not a member");
+    });
+  });
+
+  describe("listChildEventTypes", () => {
+    const list = (input: Partial<Parameters<EventTypeRepository["listChildEventTypes"]>[0]>) =>
+      inD1(() => repository.listChildEventTypes({ parentEventTypeId: 500, limit: 10, ...input }));
+    const childIds = async (input: Parameters<typeof list>[0]) => ids((await list(input)).items);
+
+    it("folds Unicode across owner name and email, ignoring ownerless children", async () => {
+      const dotted = await list({ searchTerm: "İLKER" });
+      expect(ids(dotted.items)).toEqual([510, 512, 515, 517]);
+      expect(dotted).toMatchObject({ totalCount: 4, hasMore: false, nextCursor: null });
+      expect(await childIds({ searchTerm: "ı" })).toEqual([513]);
+      expect(await childIds({ searchTerm: "σOFIA" })).toEqual([514]);
+    });
+
+    it("treats wildcards as pattern syntax, so % matches every owned child", async () => {
+      expect(await childIds({ searchTerm: "1%_R" })).toEqual([516]);
+      expect(await childIds({ searchTerm: "%" })).toEqual([510, 511, 512, 513, 514, 515, 516, 517]);
+    });
+
+    it("excludes the given owner from matches and the count", async () => {
+      const result = await list({ searchTerm: "ilker", excludeUserId: 17 });
+      expect(ids(result.items)).toEqual([510, 512, 515]);
+      expect(result.totalCount).toBe(3);
+    });
+
+    it("pages matches with a total of every match, resuming after the cursor", async () => {
+      const first = await list({ searchTerm: "ilker", limit: 2 });
+      expect(ids(first.items)).toEqual([510, 512]);
+      expect(first).toMatchObject({ totalCount: 4, hasMore: true, nextCursor: 512 });
+
+      const second = await list({ searchTerm: "ilker", limit: 2, cursor: 512 });
+      expect(ids(second.items)).toEqual([515, 517]);
+      expect(second).toMatchObject({ totalCount: 4, hasMore: false, nextCursor: null });
+    });
+
+    it("skips the first match after a cursor that does not match, and finds nothing for a missing one", async () => {
+      expect(await childIds({ searchTerm: "ilker", cursor: 511 })).toEqual([515, 517]);
+      expect(await childIds({ cursor: 505 })).toEqual([]);
+      const missing = await list({ searchTerm: "ilker", cursor: 505 });
+      expect(missing).toMatchObject({ items: [], totalCount: 4 });
+    });
+
+    it("returns the same selection whether or not a search ran", async () => {
+      const [unsearched] = (await list({ limit: 1 })).items;
+      const [searched] = (await list({ searchTerm: "İlker", limit: 1 })).items;
+      expect(searched).toEqual(unsearched);
     });
   });
 });
