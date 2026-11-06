@@ -518,17 +518,34 @@ export class UserRepository {
         limit: scanLimit,
         getKey: (user) => user.id,
         getSearchValues: (user) => [user.name, user.email],
-        fetchRows: ({ after, take }: KeysetPage) =>
-          this.prismaClient.user.findMany({
-            where: { id: after ? { in: ids, gt: after } : { in: ids }, ...lockedWhere },
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-            orderBy: { id: "asc" },
-            take,
-          }),
+        fetchRows: ({ after, take }: KeysetPage) => {
+          const uniqueIds = Array.from(new Set(ids));
+          const fetchPage = (chunk: number[]) =>
+            this.prismaClient.user.findMany({
+              where: { id: after ? { in: chunk, gt: after } : { in: chunk }, ...lockedWhere },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+              orderBy: { id: "asc" },
+              take,
+            });
+          if (uniqueIds.length <= D1_IN_LIST_CHUNK_SIZE) return fetchPage(uniqueIds);
+
+          const chunks: number[][] = [];
+          for (let index = 0; index < uniqueIds.length; index += D1_IN_LIST_CHUNK_SIZE) {
+            chunks.push(uniqueIds.slice(index, index + D1_IN_LIST_CHUNK_SIZE));
+          }
+          // Each chunk yields its own first `take` rows after the cursor; the merged first `take` rows are
+          // exactly the page the single statement returned because `id` is unique.
+          return Promise.all(chunks.map(fetchPage)).then((pages) =>
+            pages
+              .flat()
+              .sort((left, right) => left.id - right.id)
+              .slice(0, take)
+          );
+        },
       });
 
     const users = await findMatches(limit || undefined);
@@ -545,9 +562,20 @@ export class UserRepository {
     let total: number | undefined;
     if (!cursor) {
       // The locked-user extension does not cover count(), so totals have always included locked users.
-      total = search
-        ? (await findMatches(undefined, { OR: [{ locked: false }, { locked: true }] })).length
-        : await this.prismaClient.user.count({ where: { id: { in: ids } } });
+      if (search) {
+        total = (await findMatches(undefined, { OR: [{ locked: false }, { locked: true }] })).length;
+      } else {
+        const uniqueIds = Array.from(new Set(ids));
+        const chunks: number[][] = [];
+        for (let index = 0; index < uniqueIds.length; index += D1_IN_LIST_CHUNK_SIZE) {
+          chunks.push(uniqueIds.slice(index, index + D1_IN_LIST_CHUNK_SIZE));
+        }
+        total = (
+          await Promise.all(
+            chunks.map((chunk) => this.prismaClient.user.count({ where: { id: { in: chunk } } }))
+          )
+        ).reduce((sum, count) => sum + count, 0);
+      }
     }
 
     return { users: items, nextCursor, total };
