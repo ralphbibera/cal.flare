@@ -1,7 +1,7 @@
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Booking, Prisma } from "@calcom/prisma/client";
-import { findManyInChunks } from "@calcom/prisma/d1";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
 import { BookingStatus, RRTimestampBasis } from "@calcom/prisma/enums";
 import { bookingDetailsSelect, bookingMinimalSelect } from "@calcom/prisma/selects/booking";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
@@ -163,6 +163,10 @@ const buildWhereClauseForActiveBookings = ({
         }
     : {}),
 });
+
+// Rows matched through different chunks of a to-many relation filter are found once per chunk.
+const uniqueById = <Row extends { id: number }>(rows: Row[]) =>
+  Array.from(new Map(rows.map((row) => [row.id, row])).values());
 
 const selectStatementToGetBookingForCalEventBuilder = {
   id: true,
@@ -748,7 +752,6 @@ export class BookingRepository implements IBookingRepository {
         })
     );
 
-    // A booking whose attendees fall in different email chunks is found once per chunk.
     const currentBookingsAllUsersQueryTwo = findManyInChunks(
       Array.from(userIdAndEmailMap.values()),
       (emails) =>
@@ -765,7 +768,7 @@ export class BookingRepository implements IBookingRepository {
           },
           select: bookingsSelect,
         })
-    ).then((bookings) => Array.from(new Map(bookings.map((booking) => [booking.id, booking])).values()));
+    ).then(uniqueById);
 
     const currentBookingsAllUsersQueryThree = eventTypeId
       ? this.prismaClient.booking.findMany({
@@ -824,27 +827,31 @@ export class BookingRepository implements IBookingRepository {
     includeNoShowInRRCalculation: boolean;
     rrTimestampBasis: RRTimestampBasis;
   }) {
-    return await this.prismaClient.booking.findMany({
-      where: buildWhereClauseForActiveBookings({
-        eventTypeId,
-        startDate,
-        endDate,
-        users,
-        includeNoShowInRRCalculation,
-        rrTimestampBasis,
-      }),
-      select: {
-        id: true,
-        attendees: true,
-        userId: true,
-        createdAt: true,
-        status: true,
-        startTime: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const bookings = await findManyInChunks(
+      users,
+      (usersChunk) =>
+        this.prismaClient.booking.findMany({
+          where: buildWhereClauseForActiveBookings({
+            eventTypeId,
+            startDate,
+            endDate,
+            users: usersChunk,
+            includeNoShowInRRCalculation,
+            rrTimestampBasis,
+          }),
+          select: {
+            id: true,
+            attendees: true,
+            userId: true,
+            createdAt: true,
+            status: true,
+            startTime: true,
+          },
+        }),
+      // Each user binds both an id and an email.
+      D1_IN_LIST_CHUNK_SIZE / 2
+    );
+    return uniqueById(bookings).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async findBookingByUid({ bookingUid }: { bookingUid: string }) {

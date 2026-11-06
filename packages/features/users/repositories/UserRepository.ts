@@ -17,6 +17,7 @@ import type { PrismaClient } from "@calcom/prisma";
 import { availabilityUserSelect } from "@calcom/prisma";
 import type { DestinationCalendar, SelectedCalendar, User as UserType } from "@calcom/prisma/client";
 import { Prisma } from "@calcom/prisma/client";
+import { findManyInChunks } from "@calcom/prisma/d1";
 import type { CreationSource, IdentityProvider } from "@calcom/prisma/enums";
 import { BookingStatus, MembershipRole } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
@@ -1334,42 +1335,45 @@ export class UserRepository {
   }
 
   async findUsersWithLastBooking({ userIds, eventTypeId }: { userIds: number[]; eventTypeId: number }) {
-    return this.prismaClient.user.findMany({
-      where: {
-        id: {
-          in: userIds,
-        },
-      },
-      select: {
-        id: true,
-        bookings: {
-          select: {
-            createdAt: true,
+    // Chunking also bounds the parent ids Prisma binds for the nested `take`.
+    return findManyInChunks(userIds, (chunk) =>
+      this.prismaClient.user.findMany({
+        where: {
+          id: {
+            in: chunk,
           },
-          where: {
-            eventTypeId,
-            status: BookingStatus.ACCEPTED,
-            attendees: {
-              some: {
-                noShow: false,
-              },
+        },
+        select: {
+          id: true,
+          bookings: {
+            select: {
+              createdAt: true,
             },
-            OR: [
-              {
-                noShowHost: false,
+            where: {
+              eventTypeId,
+              status: BookingStatus.ACCEPTED,
+              attendees: {
+                some: {
+                  noShow: false,
+                },
               },
-              {
-                noShowHost: null,
-              },
-            ],
+              OR: [
+                {
+                  noShowHost: false,
+                },
+                {
+                  noShowHost: null,
+                },
+              ],
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
           },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
         },
-      },
-    });
+      })
+    );
   }
 
   async findUserWithHideBranding({ userId }: { userId: number }) {
