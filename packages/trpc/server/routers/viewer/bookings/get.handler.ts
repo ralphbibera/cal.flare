@@ -10,6 +10,7 @@ import { type SqliteIlike, toSqliteIlike, toSqliteLowerEquals } from "@calcom/li
 import { safeStringify } from "@calcom/lib/safeStringify";
 import type { PrismaClient } from "@calcom/prisma";
 import { Prisma } from "@calcom/prisma/client";
+import { findManyInChunks } from "@calcom/prisma/d1";
 import { BookingStatus, MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
@@ -911,19 +912,24 @@ async function getEventTypeIdsFromTeamIdsFilter(prisma: PrismaClient, teamIds?: 
     return undefined;
   }
 
-  const result = await prisma.$queryRaw<{ id: number }[]>`
+  const result = await findManyInChunks(
+    teamIds,
+    (chunk) => prisma.$queryRaw<{ id: number }[]>`
     SELECT "child"."id"
     FROM "EventType" AS "parent"
     LEFT JOIN "EventType" "child" ON ("parent"."id") = ("child"."parentId")
-    WHERE "parent"."id" IN (SELECT "id" FROM "EventType" WHERE "teamId" IN (${Prisma.join(teamIds)}))
+    WHERE "parent"."id" IN (SELECT "id" FROM "EventType" WHERE "teamId" IN (${Prisma.join(chunk)}))
       AND "child"."id" IS NOT NULL
     UNION
     SELECT "parent"."id"
     FROM "EventType" AS "parent"
-    WHERE "parent"."teamId" IN (${Prisma.join(teamIds)})
-  `;
+    WHERE "parent"."teamId" IN (${Prisma.join(chunk)})
+  `,
+    // Both UNION branches bind the chunk, so the statement may hold at most 49 ids.
+    49
+  );
 
-  return result.map((row) => row.id);
+  return Array.from(new Set(result.map((row) => row.id)));
 }
 
 async function getAttendeeEmailsFromUserIdsFilter(
