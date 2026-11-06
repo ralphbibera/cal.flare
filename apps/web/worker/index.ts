@@ -1,4 +1,8 @@
+import { EmailMessage } from "cloudflare:email";
 import manifest from "virtual:calflare-static-assets";
+import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
+import { ErrorCode } from "@calcom/lib/errorCodes";
+import { ErrorWithCode } from "@calcom/lib/errors";
 import { withD1Database } from "@calcom/prisma/d1";
 import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
@@ -18,7 +22,30 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
     ctx: Parameters<typeof handler.fetch>[2]
   ) {
     if (!env) throw new Error("Worker bindings are required");
-    return withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx));
+    return withCloudflareEmail(
+      async ({ from, to, raw }) => {
+        if (!env.EMAIL) {
+          throw new ErrorWithCode(
+            ErrorCode.InternalServerError,
+            "EMAIL binding is required for email delivery"
+          );
+        }
+        await env.EMAIL.send(
+          new EmailMessage(
+            from,
+            to,
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(raw);
+                controller.close();
+              },
+            })
+          )
+        );
+      },
+      () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
+      (promise) => ctx.waitUntil(promise)
+    );
   },
 });
 
