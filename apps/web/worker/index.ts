@@ -8,9 +8,14 @@ import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
 import type { SentryEnvironment } from "../sentry.server.config";
 import { getSentryOptions } from "../sentry.server.config";
+import type { ScheduleEnvironment } from "./schedules";
+import { dispatchSchedules } from "./schedules";
 import { frameStaticAsset, withStaticAssets } from "./static-assets";
 
-type WorkerEnvironment = SentryEnvironment & NonNullable<Parameters<typeof handler.fetch>[1]> & Env;
+type WorkerEnvironment = SentryEnvironment &
+  NonNullable<Parameters<typeof handler.fetch>[1]> &
+  Env &
+  ScheduleEnvironment;
 
 export * from "vinext/server/fetch-handler";
 
@@ -54,6 +59,9 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
   ) {
     if (!env) throw new Error("Worker bindings are required");
     return serve(request, env, ctx);
+  },
+  scheduled(controller: ScheduledController, env: WorkerEnvironment, ctx: ExecutionContext) {
+    ctx.waitUntil(dispatchSchedules(controller, env, (request) => serve(request, env, ctx)));
   },
 });
 

@@ -1,5 +1,5 @@
 import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
-import { bindings, defineConfig, defineWorker } from "cf/config";
+import { bindings, defineConfig, defineWorker, triggers } from "cf/config";
 
 const cache = await createWorkersResponseStoreSelfContainedConfig({
   worker: "calflare-web",
@@ -20,6 +20,7 @@ export default defineConfig({
       notFoundHandling: "none",
       runWorkerFirst: ["/*", "!/_next/static/*", "!/*/_next/static/*"],
     },
+    triggers: [triggers.scheduled({ schedule: "* * * * *" })],
     env: {
       ...cache.env,
       NEXTAUTH_SECRET: bindings.secret(),
