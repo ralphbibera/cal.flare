@@ -64,6 +64,9 @@ export default defineConfig({
     },
     passWithNoTests: true,
     testTimeout: 500000,
+    // D1 setup hooks boot workerd and apply every migration. Under CI file parallelism
+    // that regularly exceeds the 30s default, so give the hooks the same headroom as tests.
+    hookTimeout: 120000,
   },
 });
 
