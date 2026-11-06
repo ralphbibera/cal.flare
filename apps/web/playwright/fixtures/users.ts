@@ -567,21 +567,19 @@ export const createUsersFixture = (
         }
       }
 
-      // Run clean-up in a single transaction to avoid lock ordering deadlocks
-      await prisma.$transaction(async (tx) => {
-        if (ids.length > 0) {
-          await tx.secondaryEmail.deleteMany({ where: { userId: { in: ids } } });
-          await tx.user.deleteMany({ where: { id: { in: ids } } });
-        }
-
-        if (trackedEmails.length > 0) {
-          await tx.user.deleteMany({ where: { email: { in: trackedEmails } } });
-        }
-
-        if (teamIds.length > 0) {
-          await tx.team.deleteMany({ where: { id: { in: teamIds } } });
-        }
-      });
+      // D1 rejects interactive transactions, so the clean-up runs as one batch transaction.
+      await prisma.$transaction([
+        ...(ids.length > 0
+          ? [
+              prisma.secondaryEmail.deleteMany({ where: { userId: { in: ids } } }),
+              prisma.user.deleteMany({ where: { id: { in: ids } } }),
+            ]
+          : []),
+        ...(trackedEmails.length > 0
+          ? [prisma.user.deleteMany({ where: { email: { in: trackedEmails } } })]
+          : []),
+        ...(teamIds.length > 0 ? [prisma.team.deleteMany({ where: { id: { in: teamIds } } })] : []),
+      ]);
 
       store.users = [];
       store.teams = [];
@@ -632,23 +630,49 @@ const createUserFixture = (user: UserWithIncludes, page: Page) => {
     eventTypes: user.eventTypes,
     self,
     apiLogin: async (navigateToUrl?: string, password?: string) =>
-      apiLogin({ ...(await self()), password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1` }, store.page, navigateToUrl),
+      apiLogin(
+        {
+          ...(await self()),
+          password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1`,
+        },
+        store.page,
+        navigateToUrl
+      ),
     /** Don't forget to close context at the end */
     apiLoginOnNewBrowser: async (browser: Browser, password?: string) => {
       const newContext = await browser.newContext();
       const newPage = await newContext.newPage();
-      await apiLogin({ ...(await self()), password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1` }, newPage);
+      await apiLogin(
+        {
+          ...(await self()),
+          password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1`,
+        },
+        newPage
+      );
       // Don't forget to: newContext.close();
       return [newContext, newPage] as const;
     },
     /**
      * @deprecated use apiLogin instead
      */
-    login: async (password?: string) => login({ ...(await self()), password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1` }, store.page),
+    login: async (password?: string) =>
+      login(
+        {
+          ...(await self()),
+          password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1`,
+        },
+        store.page
+      ),
     loginOnNewBrowser: async (browser: Browser, password?: string) => {
       const newContext = await browser.newContext();
       const newPage = await newContext.newPage();
-      await login({ ...(await self()), password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1` }, newPage);
+      await login(
+        {
+          ...(await self()),
+          password: password ?? `${user.username!.charAt(0).toUpperCase()}${user.username!.slice(1)}1`,
+        },
+        newPage
+      );
       // Don't forget to: newContext.close();
       return [newContext, newPage] as const;
     },
