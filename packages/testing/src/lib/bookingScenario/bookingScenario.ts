@@ -83,6 +83,31 @@ vi.mock("@calcom/features/bookings/lib/handleNewBooking/createBookingInD1", asyn
   };
 });
 
+vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAttendeesInD1", () => ({
+  moveSeatedAttendeesInD1: async ({
+    bookingId,
+    attendeeIdsToMove,
+    attendeeIdsToDelete,
+  }: {
+    bookingId: number;
+    attendeeIdsToMove: number[];
+    attendeeIdsToDelete: number[];
+  }) => {
+    for (const id of attendeeIdsToMove) {
+      await prismock.attendee.update({
+        where: { id },
+        data: {
+          bookingId,
+          bookingSeat: {
+            upsert: { create: { referenceUid: `seat-${id}`, bookingId }, update: { bookingId } },
+          },
+        },
+      });
+    }
+    await prismock.attendee.deleteMany({ where: { id: { in: attendeeIdsToDelete } } });
+  },
+}));
+
 vi.mock("@calcom/app-store/video.adapters.generated", () => ({
   VideoApiAdapterMap: new Proxy(
     {},

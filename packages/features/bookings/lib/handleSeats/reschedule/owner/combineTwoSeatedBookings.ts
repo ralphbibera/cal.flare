@@ -1,17 +1,15 @@
-import { cloneDeep } from "lodash";
-import { uuid } from "short-uuid";
-
 import { sendRescheduledEmailsAndSMS } from "@calcom/emails/email-manager";
 import type EventManager from "@calcom/features/bookings/lib/EventManager";
+import { CalendarEventBuilder } from "@calcom/features/CalendarEventBuilder";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { HttpError } from "@calcom/lib/http-error";
 import prisma from "@calcom/prisma";
 import { BookingStatus } from "@calcom/prisma/enums";
-
-import { CalendarEventBuilder } from "@calcom/features/CalendarEventBuilder";
+import { cloneDeep } from "lodash";
 import { findBookingQuery } from "../../../handleNewBooking/findBookingQuery";
 import type { createLoggerWithEventDetails } from "../../../handleNewBooking/logger";
-import type { SeatedBooking, RescheduleSeatedBookingObject, NewTimeSlotBooking } from "../../types";
+import type { NewTimeSlotBooking, RescheduleSeatedBookingObject, SeatedBooking } from "../../types";
+import { moveSeatedAttendeesInD1 } from "./moveSeatedAttendeesInD1";
 
 const combineTwoSeatedBookings = async (
   rescheduleSeatedBookingObject: RescheduleSeatedBookingObject,
@@ -56,42 +54,11 @@ const combineTwoSeatedBookings = async (
     throw new HttpError({ statusCode: 409, message: ErrorCode.NotEnoughAvailableSeats });
   }
 
-  const moveAttendeeCalls = [];
-  for (const attendeeToMove of attendeesToMove) {
-    moveAttendeeCalls.push(
-      prisma.attendee.update({
-        where: {
-          id: attendeeToMove.id,
-        },
-        data: {
-          bookingId: newTimeSlotBooking.id,
-          bookingSeat: {
-            upsert: {
-              create: {
-                referenceUid: uuid(),
-                bookingId: newTimeSlotBooking.id,
-              },
-              update: {
-                bookingId: newTimeSlotBooking.id,
-              },
-            },
-          },
-        },
-      })
-    );
-  }
-
-  await prisma.$transaction([
-    ...moveAttendeeCalls,
-    // Delete any attendees that are already a part of that new time slot booking
-    prisma.attendee.deleteMany({
-      where: {
-        id: {
-          in: attendeesToDelete,
-        },
-      },
-    }),
-  ]);
+  await moveSeatedAttendeesInD1({
+    bookingId: newTimeSlotBooking.id,
+    attendeeIdsToMove: attendeesToMove.map((attendee) => attendee.id),
+    attendeeIdsToDelete: attendeesToDelete,
+  });
 
   const updatedNewBooking = await prisma.booking.findUnique({
     where: {
