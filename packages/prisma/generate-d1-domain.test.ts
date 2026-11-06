@@ -98,9 +98,10 @@ beforeAll(async () => {
       if (field.type === "Json") return "{}";
       return "fixture";
     });
+    // 0005 seeds OutOfOfficeReason id 1, which the per-model fixture reuses for FK targets.
     return db
       .prepare(
-        `INSERT INTO ${q(model.dbName ?? model.name)} (${fields.map((f) => q(f.dbName ?? f.name)).join(",")}) VALUES (${fields.map(() => "?").join(",")})`
+        `INSERT OR REPLACE INTO ${q(model.dbName ?? model.name)} (${fields.map((f) => q(f.dbName ?? f.name)).join(",")}) VALUES (${fields.map(() => "?").join(",")})`
       )
       .bind(...values);
   });
@@ -384,6 +385,7 @@ describe("D1 list metadata and historical provenance", () => {
       "47cc828bd1eedbb6466fa3354f151aabd69c38ae0a6261166cf298cc9d91cbf9",
       "c0f192039ed17de1424ec9fb2f902b7f458e639090ce14b25c295568137a7a11",
       "7139daefe8968179b248959210cc97fe30a9a829ca65278b3fc758b9778b9a04",
+      "53bf18e310512b7b2915e0bb1b57e7b134335eac926c6e1333a35beaf3affd23",
     ];
     const names = (await readdir(new URL("./migrations-d1/", import.meta.url)))
       .filter((name) => name.endsWith(".sql"))
