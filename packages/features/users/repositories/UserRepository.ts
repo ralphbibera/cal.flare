@@ -17,14 +17,48 @@ import type { PrismaClient } from "@calcom/prisma";
 import { availabilityUserSelect } from "@calcom/prisma";
 import type { DestinationCalendar, SelectedCalendar, User as UserType } from "@calcom/prisma/client";
 import { Prisma } from "@calcom/prisma/client";
-import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks, getD1Database } from "@calcom/prisma/d1";
+import {
+  d1Boolean,
+  d1DateTime,
+  d1Json,
+  requireD1Record,
+  runD1Batch,
+  toD1DateTime,
+} from "@calcom/prisma/d1-batch";
 import type { CreationSource, IdentityProvider } from "@calcom/prisma/enums";
 import { BookingStatus, MembershipRole } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import { userSelect as prismaUserSelect } from "@calcom/prisma/selects/user";
+import { UserSchema } from "@calcom/prisma/zod/modelSchema/UserSchema";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { UpId, UserProfile } from "@calcom/types/UserProfile";
-import type { z } from "zod";
+import { z } from "zod";
+
+// Prisma reads the `created` column as `createdDate`; the rest of a SQLite user row needs value decoding.
+const userColumns = '*, "created" AS "createdDate"';
+const userRow = UserSchema.extend({
+  uuid: z.string(),
+  email: z.string(),
+  emailVerified: d1DateTime.nullable(),
+  createdDate: d1DateTime,
+  trialEndsAt: d1DateTime.nullable(),
+  lastActiveAt: d1DateTime.nullable(),
+  metadata: d1Json.nullable(),
+  hideBranding: d1Boolean,
+  completedOnboarding: d1Boolean,
+  twoFactorEnabled: d1Boolean,
+  allowDynamicBooking: d1Boolean.nullable(),
+  allowSEOIndexing: d1Boolean.nullable(),
+  receiveMonthlyDigestEmail: d1Boolean.nullable(),
+  requiresBookerEmailVerification: d1Boolean.nullable(),
+  verified: d1Boolean.nullable(),
+  locked: d1Boolean,
+  isPlatformManaged: d1Boolean,
+  smsLockReviewedByAdmin: d1Boolean,
+  autoOptInFeatures: d1Boolean,
+  creationSource: z.string().toUpperCase().pipe(UserSchema.shape.creationSource.unwrap()).nullable(),
+}) satisfies z.ZodType<UserType, z.ZodTypeDef, unknown>;
 
 const whereClauseForOrgWithSlugOrRequestedSlug = (..._args: unknown[]) => ({});
 const getParsedTeam = <T>(team: T): T => team;
@@ -570,36 +604,46 @@ export class UserRepository {
     oldPrimaryEmail,
     oldPrimaryEmailVerified,
     newPrimaryEmail,
-    userUpdateData,
   }: {
     userId: number;
     secondaryEmailId: number;
     oldPrimaryEmail: string;
     oldPrimaryEmailVerified: Date | null;
     newPrimaryEmail: string;
-    userUpdateData?: Prisma.UserUpdateInput;
-  }) {
-    const [, updatedUser] = await this.prismaClient.$transaction([
-      this.prismaClient.secondaryEmail.update({
-        where: {
-          id: secondaryEmailId,
-          userId: userId,
-        },
-        data: {
-          email: oldPrimaryEmail,
-          emailVerified: oldPrimaryEmailVerified,
-        },
-      }),
-      this.prismaClient.user.update({
-        where: { id: userId },
-        data: {
-          ...userUpdateData,
-          email: newPrimaryEmail,
-        },
-      }),
-    ]);
-
-    return updatedUser;
+  }): Promise<UserType> {
+    const db = getD1Database();
+    const results = await runD1Batch(
+      db,
+      [
+        requireD1Record(
+          db,
+          { modelName: "SecondaryEmail", operation: "an update" },
+          'SELECT 1 FROM "SecondaryEmail" WHERE "id" = ? AND "userId" = ?',
+          secondaryEmailId,
+          userId
+        ),
+        db
+          .prepare(
+            'UPDATE "SecondaryEmail" SET "email" = ?, "emailVerified" = ? WHERE "id" = ? AND "userId" = ?'
+          )
+          .bind(
+            oldPrimaryEmail,
+            oldPrimaryEmailVerified && toD1DateTime(oldPrimaryEmailVerified),
+            secondaryEmailId,
+            userId
+          ),
+        requireD1Record(
+          db,
+          { modelName: "User", operation: "an update" },
+          'SELECT 1 FROM "users" WHERE "id" = ?',
+          userId
+        ),
+        db.prepare('UPDATE "users" SET "email" = ? WHERE "id" = ?').bind(newPrimaryEmail, userId),
+        db.prepare(`SELECT ${userColumns} FROM "users" WHERE "id" = ?`).bind(userId),
+      ],
+      { modelName: "User" }
+    );
+    return userRow.parse(results[4].results[0]);
   }
 
   async enrichUserWithTheProfile<T extends { username: string | null; id: number }>({
