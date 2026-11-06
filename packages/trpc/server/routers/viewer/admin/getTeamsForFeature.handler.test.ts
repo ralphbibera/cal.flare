@@ -74,7 +74,7 @@ describe("getTeamsForFeature search", () => {
         )
         .bind("2026-11-06T00:00:00.000+00:00"),
     ]);
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();

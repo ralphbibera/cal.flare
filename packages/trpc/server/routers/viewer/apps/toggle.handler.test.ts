@@ -54,7 +54,7 @@ describe("disabling event type apps", () => {
     await db
       .prepare("INSERT INTO users (id, uuid, email) VALUES (1, 'app-owner', 'owner@example.invalid')")
       .run();
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();

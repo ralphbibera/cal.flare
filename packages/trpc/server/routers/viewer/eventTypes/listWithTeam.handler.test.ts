@@ -65,7 +65,7 @@ describe("listWithTeam on D1", () => {
           .bind(id, title, `event-${id}`, 15 * Number(id), userId, teamId)
       ),
     ]);
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();
