@@ -1,19 +1,14 @@
-import { schemaTask, type TaskWithSchema } from "@trigger.dev/sdk";
-import type { z } from "zod";
-
+import { defineQueueJob } from "@calcom/features/tasker/queue/JobQueue";
 import { calendarsTaskConfig } from "./config";
 import { calendarsTaskSchema } from "./schema";
 
 export const ENSURE_DEFAULT_CALENDARS_JOB_ID = "calendars.ensure-default-calendars";
 
-export const ensureDefaultCalendars: TaskWithSchema<
-  typeof ENSURE_DEFAULT_CALENDARS_JOB_ID,
-  typeof calendarsTaskSchema
-> = schemaTask({
+export const ensureDefaultCalendarsJob = defineQueueJob({
   id: ENSURE_DEFAULT_CALENDARS_JOB_ID,
-  ...calendarsTaskConfig,
+  retry: calendarsTaskConfig.retry,
   schema: calendarsTaskSchema,
-  run: async (payload: z.infer<typeof calendarsTaskSchema>) => {
+  run: async (payload) => {
     const { getCalendarsTaskService } = await import(
       "@calcom/features/calendars/di/tasker/CalendarsTaskService.container"
     );
