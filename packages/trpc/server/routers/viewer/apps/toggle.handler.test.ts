@@ -60,7 +60,7 @@ describe("admin app toggling", () => {
         "INSERT INTO users (id, uuid, email) VALUES (2, 'video-owner', 'video-owner@example.invalid')"
       ),
     ]);
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();

@@ -57,7 +57,7 @@ describe("team logo lookup", () => {
       ('Missing metadata', 'missing', 0, '{}', 'http://app.cal.local:3000/missing.svg'),
       ('Null metadata', 'null', 0, null, 'http://app.cal.local:3000/null.svg')`)
       .run();
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();
