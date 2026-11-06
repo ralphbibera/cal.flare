@@ -3,7 +3,8 @@ import type { EventTypeAppsList } from "@calcom/app-store/utils";
 import type { GetUserAvailabilityResult } from "@calcom/features/availability/lib/getUserAvailability";
 import type { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import type { userSelect } from "@calcom/prisma";
-import type { App, Prisma, SelectedCalendar } from "@calcom/prisma/client";
+import type { Prisma, SelectedCalendar } from "@calcom/prisma/client";
+import type { AppCategories } from "@calcom/prisma/enums";
 import type { CredentialForCalendarService } from "@calcom/types/Credential";
 import type { TFunction } from "i18next";
 
@@ -28,7 +29,7 @@ export type Invitee = {
 export interface IEventTypePaymentCredentialType {
   appId: EventTypeAppsList;
   app: {
-    categories: App["categories"];
+    categories: AppCategories[];
     dirName: string;
   };
   key: Prisma.JsonValue;

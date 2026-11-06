@@ -1,6 +1,75 @@
 import type { PrismaClient } from "@calcom/prisma";
-import { AppCategories } from "@calcom/prisma/enums";
-import { safeCredentialSelect } from "@calcom/prisma/selects/credential";
+import type { Prisma } from "@calcom/prisma/client";
+import { getD1Database } from "@calcom/prisma/d1";
+import { z } from "zod";
+
+const booleanSchema = z.union([z.literal(0), z.literal(1)]).transform(Boolean);
+const conferencingPredicate = `EXISTS (SELECT 1 FROM json_each(a."categories") WHERE value IN ('conferencing', 'video'))`;
+const hostLocationColumns = `h."userId", h."isFixed", h."priority", u."name", u."email", u."avatarUrl", u."metadata",
+  CASE WHEN l."id" IS NULL THEN NULL ELSE json_object('id', l."id", 'type', l."type", 'credentialId', l."credentialId",
+    'link', l."link", 'address', l."address", 'phoneNumber', l."phoneNumber") END AS "location",
+  (SELECT json_group_array(json_object('id', c."id", 'type', c."type", 'userId', c."userId", 'teamId', c."teamId",
+    'appId', c."appId", 'invalid', c."invalid", 'delegationCredentialId', c."delegationCredentialId",
+    'user', json_object('email', u."email"))) FROM "Credential" c JOIN "App" a ON a."slug" = c."appId"
+    WHERE c."userId" = h."userId" AND ${conferencingPredicate}) AS "credentials"`;
+const hostLocationJoins = `FROM "Host" h JOIN "users" u ON u."id" = h."userId"
+  LEFT JOIN "HostLocation" l ON l."userId" = h."userId" AND l."eventTypeId" = h."eventTypeId"`;
+const hostLocationSchema = z.object({
+  userId: z.number(),
+  isFixed: booleanSchema,
+  priority: z.number().nullable(),
+  name: z.string().nullable(),
+  email: z.string(),
+  avatarUrl: z.string().nullable(),
+  metadata: z
+    .string()
+    .nullable()
+    .transform((value): Prisma.JsonValue => (value === null ? null : JSON.parse(value))),
+  location: z
+    .string()
+    .nullable()
+    .transform((value) =>
+      value === null
+        ? null
+        : z
+            .object({
+              id: z.string(),
+              type: z.string(),
+              credentialId: z.number().nullable(),
+              link: z.string().nullable(),
+              address: z.string().nullable(),
+              phoneNumber: z.string().nullable(),
+            })
+            .parse(JSON.parse(value))
+    ),
+  credentials: z.string().transform((value) =>
+    z
+      .object({
+        id: z.number(),
+        type: z.string(),
+        userId: z.number().nullable(),
+        teamId: z.number().nullable(),
+        appId: z.string().nullable(),
+        invalid: booleanSchema.nullable(),
+        delegationCredentialId: z.string().nullable(),
+        user: z.object({ email: z.string() }).nullable(),
+      })
+      .array()
+      .parse(JSON.parse(value))
+  ),
+});
+function parseHostsWithLocationOptions(rows: unknown) {
+  return hostLocationSchema
+    .array()
+    .parse(rows)
+    .map(({ userId, isFixed, priority, location, ...user }) => ({
+      userId,
+      isFixed,
+      priority,
+      location,
+      user: { id: userId, ...user },
+    }));
+}
 
 export class HostRepository {
   constructor(private prismaClient: PrismaClient) {}
@@ -41,46 +110,12 @@ export class HostRepository {
   }
 
   async findHostsWithLocationOptions(eventTypeId: number) {
-    return await this.prismaClient.host.findMany({
-      where: {
-        eventTypeId,
-      },
-      select: {
-        userId: true,
-        isFixed: true,
-        priority: true,
-        location: {
-          select: {
-            id: true,
-            type: true,
-            credentialId: true,
-            link: true,
-            address: true,
-            phoneNumber: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            metadata: true,
-            credentials: {
-              where: {
-                app: {
-                  categories: {
-                    hasSome: [AppCategories.conferencing, AppCategories.video],
-                  },
-                },
-              },
-              select: safeCredentialSelect,
-            },
-          },
-        },
-      },
-      orderBy: [{ user: { name: "asc" } }, { priority: "desc" }],
-    });
+    const { results } = await getD1Database()
+      .prepare(`SELECT ${hostLocationColumns} ${hostLocationJoins}
+      WHERE h."eventTypeId" = ? ORDER BY u."name" ASC NULLS LAST, h."priority" DESC NULLS FIRST`)
+      .bind(eventTypeId)
+      .all();
+    return parseHostsWithLocationOptions(results);
   }
 
   async findHostsWithLocationOptionsPaginated({
@@ -92,48 +127,12 @@ export class HostRepository {
     cursor?: number;
     limit?: number;
   }) {
-    const hosts = await this.prismaClient.host.findMany({
-      where: {
-        eventTypeId,
-        ...(cursor && { userId: { gt: cursor } }),
-      },
-      take: limit + 1,
-      select: {
-        userId: true,
-        isFixed: true,
-        priority: true,
-        location: {
-          select: {
-            id: true,
-            type: true,
-            credentialId: true,
-            link: true,
-            address: true,
-            phoneNumber: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            metadata: true,
-            credentials: {
-              where: {
-                app: {
-                  categories: {
-                    hasSome: [AppCategories.conferencing, AppCategories.video],
-                  },
-                },
-              },
-              select: safeCredentialSelect,
-            },
-          },
-        },
-      },
-      orderBy: [{ userId: "asc" }],
-    });
+    const { results } = await getD1Database()
+      .prepare(`SELECT ${hostLocationColumns} ${hostLocationJoins}
+      WHERE h."eventTypeId" = ? AND (? IS NULL OR h."userId" > ?) ORDER BY h."userId" ASC LIMIT ?`)
+      .bind(eventTypeId, cursor || null, cursor || null, limit + 1)
+      .all();
+    const hosts = parseHostsWithLocationOptions(results);
 
     const hasMore = hosts.length > limit;
     const items = hasMore ? hosts.slice(0, limit) : hosts;
@@ -203,13 +202,14 @@ export class HostRepository {
     search?: string;
     memberUserIds?: number[];
   }) {
-    const userIdFilter = memberUserIds !== undefined
-      ? cursor
-        ? { in: memberUserIds, gt: cursor }
-        : { in: memberUserIds }
-      : cursor
-        ? { gt: cursor }
-        : undefined;
+    const userIdFilter =
+      memberUserIds !== undefined
+        ? cursor
+          ? { in: memberUserIds, gt: cursor }
+          : { in: memberUserIds }
+        : cursor
+          ? { gt: cursor }
+          : undefined;
 
     const hosts = await this.prismaClient.host.findMany({
       where: {
@@ -325,29 +325,28 @@ export class HostRepository {
   }
 
   async findHostsWithConferencingCredentials(eventTypeId: number) {
-    return await this.prismaClient.host.findMany({
-      where: { eventTypeId },
-      select: {
-        userId: true,
-        user: {
-          select: {
-            credentials: {
-              where: {
-                app: {
-                  categories: {
-                    hasSome: [AppCategories.conferencing, AppCategories.video],
-                  },
-                },
-              },
-              select: {
-                id: true,
-                type: true,
-                appId: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const { results } = await getD1Database()
+      .prepare(`SELECT h."userId",
+      (SELECT json_group_array(json_object('id', c."id", 'type', c."type", 'appId', c."appId"))
+        FROM "Credential" c JOIN "App" a ON a."slug" = c."appId"
+        WHERE c."userId" = h."userId" AND ${conferencingPredicate}) AS "credentials"
+      FROM "Host" h WHERE h."eventTypeId" = ?`)
+      .bind(eventTypeId)
+      .all();
+    return z
+      .object({
+        userId: z.number(),
+        credentials: z
+          .string()
+          .transform((value) =>
+            z
+              .object({ id: z.number(), type: z.string(), appId: z.string().nullable() })
+              .array()
+              .parse(JSON.parse(value))
+          ),
+      })
+      .array()
+      .parse(results)
+      .map(({ userId, credentials }) => ({ userId, user: { credentials } }));
   }
 }

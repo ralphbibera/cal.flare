@@ -38,9 +38,11 @@ type Option = {
   label: string;
 };
 
-type MembershipEventType = Awaited<
-  ReturnType<typeof MembershipRepository.findAllByUpIdIncludeMinimalEventTypes>
->[number]["team"]["eventTypes"][number];
+type MembershipEventType = NonNullable<
+  Awaited<
+    ReturnType<typeof MembershipRepository.findAllByUpIdIncludeMinimalEventTypes>
+  >[number]["team"]["eventTypes"]
+>[number];
 
 type EventType = Omit<MembershipEventType, "forwardParamsSuccessRedirect"> & {
   children?: { id: number }[];

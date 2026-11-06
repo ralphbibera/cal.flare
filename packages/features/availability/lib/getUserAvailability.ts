@@ -18,6 +18,7 @@ import { stringToDayjsZod } from "@calcom/lib/dayjs";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { getHolidayService } from "@calcom/lib/holidays";
 import { getHolidayEmoji } from "@calcom/lib/holidays/getHolidayEmoji";
+import { parseDisabledHolidayIds } from "@calcom/lib/holidays/parseDisabledHolidayIds";
 import { HttpError } from "@calcom/lib/http-error";
 import { parseBookingLimit } from "@calcom/lib/intervalLimits/isBookingLimits";
 import { parseDurationLimit } from "@calcom/lib/intervalLimits/isDurationLimits";
@@ -846,7 +847,7 @@ export class UserAvailabilityService {
     const holidayService = getHolidayService();
     const holidayDates = await holidayService.getHolidayDatesInRange(
       holidaySettings.countryCode,
-      holidaySettings.disabledIds,
+      parseDisabledHolidayIds(holidaySettings.disabledIds),
       startOfDay,
       endOfDay
     );

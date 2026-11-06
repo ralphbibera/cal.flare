@@ -1,12 +1,13 @@
-import { defaultResponderForAppDir } from "app/api/defaultResponderForAppDir";
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
-
+import process from "node:process";
 import { getAppWithMetadata } from "@calcom/app-store/_appRegistry";
 import { shouldEnableApp } from "@calcom/app-store/_utils/validateAppKeys";
+import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 import logger from "@calcom/lib/logger";
 import { prisma } from "@calcom/prisma";
 import type { AppCategories, Prisma } from "@calcom/prisma/client";
+import { defaultResponderForAppDir } from "app/api/defaultResponderForAppDir";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 const isDryRun = process.env.CRON_ENABLE_APP_SYNC !== "true";
 const log = logger.getSubLogger({
@@ -28,7 +29,8 @@ async function postHandler(request: NextRequest) {
 
   const dbApps = await prisma.app.findMany();
 
-  for await (const dbApp of dbApps) {
+  for await (const storedApp of dbApps) {
+    const dbApp = parseAppCategories(storedApp);
     const app = await getAppWithMetadata(dbApp);
     const updates: Prisma.AppUpdateManyMutationInput = {};
 

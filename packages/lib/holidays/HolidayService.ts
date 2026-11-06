@@ -1,12 +1,12 @@
 import dayjs from "@calcom/dayjs";
 import { HolidayRepository } from "@calcom/features/holidays/repositories/HolidayRepository";
-
+import { CONFLICT_CHECK_MONTHS, GOOGLE_HOLIDAY_CALENDARS } from "./constants";
 import {
-  getHolidayServiceCachingProxy,
   type CachedHoliday,
+  getHolidayServiceCachingProxy,
   type HolidayServiceCachingProxy,
 } from "./HolidayServiceCachingProxy";
-import { CONFLICT_CHECK_MONTHS, GOOGLE_HOLIDAY_CALENDARS } from "./constants";
+import { parseDisabledHolidayIds } from "./parseDisabledHolidayIds";
 import type { Country, Holiday, HolidayWithStatus } from "./types";
 
 export interface ConflictingBooking {
@@ -61,7 +61,10 @@ export class HolidayService {
       return { countryCode: null, holidays: [] };
     }
 
-    const holidays = await this.getHolidaysWithStatus(settings.countryCode, settings.disabledIds);
+    const holidays = await this.getHolidaysWithStatus(
+      settings.countryCode,
+      parseDisabledHolidayIds(settings.disabledIds)
+    );
     return { countryCode: settings.countryCode, holidays };
   }
 
@@ -81,7 +84,10 @@ export class HolidayService {
     });
 
     if (settings.countryCode) {
-      const holidays = await this.getHolidaysWithStatus(settings.countryCode, settings.disabledIds);
+      const holidays = await this.getHolidaysWithStatus(
+        settings.countryCode,
+        parseDisabledHolidayIds(settings.disabledIds)
+      );
       return { countryCode: settings.countryCode, holidays };
     }
 
@@ -188,7 +194,7 @@ export class HolidayService {
       throw new Error("Holiday not found for this country");
     }
 
-    let disabledIds = [...settings.disabledIds];
+    let disabledIds = parseDisabledHolidayIds(settings.disabledIds);
     if (enabled) {
       disabledIds = disabledIds.filter((id) => id !== holidayId);
     } else if (!disabledIds.includes(holidayId)) {

@@ -3,6 +3,7 @@ import { getAllDelegationCredentialsForUser } from "@calcom/app-store/delegation
 import { getAppFromSlug } from "@calcom/app-store/utils";
 import type { UserAdminTeams } from "@calcom/features/users/repositories/UserRepository";
 import getInstallCountPerApp from "@calcom/lib/apps/getInstallCountPerApp";
+import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 import prisma, { safeAppSelect, safeCredentialSelect } from "@calcom/prisma";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { AppFrontendPayload as App } from "@calcom/types/App";
@@ -54,8 +55,7 @@ export async function getAppRegistry() {
     apps.push({
       ...app,
       category: app.category || "other",
-      installed:
-        true /* All apps from DB are considered installed by default. @TODO: Add and filter our by `enabled` property */,
+      installed: true /* All apps from DB are considered installed by default. @TODO: Add and filter our by `enabled` property */,
       installCount: installCountPerApp[dbapp.slug] || 0,
     });
   }
@@ -128,7 +128,7 @@ export async function getAppRegistryWithCredentials(userId: number, userAdminTea
 
     apps.push({
       ...app,
-      categories: dbapp.categories,
+      categories: parseAppCategories(dbapp).categories,
       credentials: allCredentials,
       installed: true,
       installCount: installCountPerApp[dbapp.slug] || 0,
