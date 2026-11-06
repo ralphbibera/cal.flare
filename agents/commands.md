@@ -51,7 +51,7 @@ Use the existing workspace scripts through Bun. Installation and environment set
 ## Database Commands
 
 - `bun run prisma` - Run Prisma CLI commands
-- `bun run db-seed` - Seed isolated local D1 with the retained test fixtures.
+- `bun run --cwd packages/prisma db-seed:d1 --local-only` - Apply D1 migrations, then seed the web Worker's local D1 (`apps/web/.cloudflare/state`) with the retained test fixtures. Re-running adds no rows; `--persist-to <dir>` targets another state directory.
 - `bun run db-deploy` - Apply converted D1 migrations through the ported database script.
 - Inspect local data with the D1 development tools described in the [Cloudflare reference](../docs/cloudflare.md#prepare-d1).
 
