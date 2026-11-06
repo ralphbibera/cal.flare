@@ -17,7 +17,9 @@ import { isPrismaObjOrUndefined } from "@calcom/lib/isPrismaObj";
 import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import { bookingMinimalSelect, prisma } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { AppCategories, BookingStatus } from "@calcom/prisma/enums";
+import { getD1Database } from "@calcom/prisma/d1";
+import { runD1Batch, toD1DateTime } from "@calcom/prisma/d1-batch";
+import { AppCategories } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import type { EventTypeMetadata } from "@calcom/prisma/zod-utils";
 import { EventTypeMetaDataSchema, userMetadata as userMetadataSchema } from "@calcom/prisma/zod-utils";
@@ -197,7 +199,9 @@ const handleDeleteCredential = async ({
           apps,
         });
 
-        await prisma.$transaction(async () => {
+        // D1 rejects interactive transactions, and this callback used the outer client, so it never made
+        // these writes atomic.
+        {
           await prisma.eventType.update({
             where: {
               id: eventType.id,
@@ -291,42 +295,34 @@ const handleDeleteCredential = async ({
           const unpaidBookingsPaymentIds = unpaidBookings.flatMap((booking) =>
             booking.payment.map((payment) => payment.id)
           );
-          await prisma.booking.updateMany({
-            where: {
-              id: {
-                in: unpaidBookingsIds,
-              },
-            },
-            data: {
-              status: BookingStatus.CANCELLED,
-              cancellationReason: "Payment method removed",
-            },
-          });
+          // json_each keeps any number of bookings within D1's bind limit.
+          const db = getD1Database();
+          await db
+            .prepare(`UPDATE "Booking" SET "status" = 'cancelled', "cancellationReason" = ?, "updatedAt" = ?
+              WHERE "id" IN (SELECT value FROM json_each(?))`)
+            .bind("Payment method removed", toD1DateTime(new Date()), JSON.stringify(unpaidBookingsIds))
+            .run();
           for (const paymentId of unpaidBookingsPaymentIds) {
             await deletePayment(paymentId, credential);
           }
-          await prisma.payment.deleteMany({
-            where: {
-              id: {
-                in: unpaidBookingsPaymentIds,
-              },
-            },
-          });
-          await prisma.attendee.deleteMany({
-            where: {
-              bookingId: {
-                in: unpaidBookingsIds,
-              },
-            },
-          });
-          await prisma.bookingReference.updateMany({
-            where: {
-              bookingId: {
-                in: unpaidBookingsIds,
-              },
-            },
-            data: { deleted: true },
-          });
+          // The payment, attendee and reference cleanup commits together or not at all.
+          await runD1Batch(
+            db,
+            [
+              db
+                .prepare(`DELETE FROM "Payment" WHERE "id" IN (SELECT value FROM json_each(?))`)
+                .bind(JSON.stringify(unpaidBookingsPaymentIds)),
+              db
+                .prepare(`DELETE FROM "Attendee" WHERE "bookingId" IN (SELECT value FROM json_each(?))`)
+                .bind(JSON.stringify(unpaidBookingsIds)),
+              db
+                .prepare(
+                  `UPDATE "BookingReference" SET "deleted" = 1 WHERE "bookingId" IN (SELECT value FROM json_each(?))`
+                )
+                .bind(JSON.stringify(unpaidBookingsIds)),
+            ],
+            { modelName: "Booking" }
+          );
           for (const booking of unpaidBookings) {
             const attendeesListPromises = booking.attendees.map(async (attendee) => {
               return {
@@ -388,7 +384,7 @@ const handleDeleteCredential = async ({
               booking?.eventType?.metadata as EventTypeMetadata
             );
           }
-        });
+        }
       }
     } else if (
       appStoreMetadata[credential.app?.slug as keyof typeof appStoreMetadata]?.extendsFeature === "EventType"
