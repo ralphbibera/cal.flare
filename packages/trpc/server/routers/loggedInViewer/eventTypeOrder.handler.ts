@@ -1,8 +1,7 @@
 import { prisma } from "@calcom/prisma";
+import { findManyInChunks } from "@calcom/prisma/d1";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
-
 import { TRPCError } from "@trpc/server";
-
 import type { TEventTypeOrderInputSchema } from "./eventTypeOrder.schema";
 
 type EventTypeOrderOptions = {
@@ -15,37 +14,39 @@ type EventTypeOrderOptions = {
 export const eventTypeOrderHandler = async ({ ctx, input }: EventTypeOrderOptions) => {
   const { user } = ctx;
 
-  const allEventTypes = await prisma.eventType.findMany({
-    select: {
-      id: true,
-    },
-    where: {
-      id: {
-        in: input.ids,
+  const allEventTypes = await findManyInChunks(input.ids, (ids) =>
+    prisma.eventType.findMany({
+      select: {
+        id: true,
       },
-      OR: [
-        {
-          userId: user.id,
+      where: {
+        id: {
+          in: ids,
         },
-        {
-          users: {
-            some: {
-              id: user.id,
-            },
+        OR: [
+          {
+            userId: user.id,
           },
-        },
-        {
-          team: {
-            members: {
+          {
+            users: {
               some: {
-                userId: user.id,
+                id: user.id,
               },
             },
           },
-        },
-      ],
-    },
-  });
+          {
+            team: {
+              members: {
+                some: {
+                  userId: user.id,
+                },
+              },
+            },
+          },
+        ],
+      },
+    })
+  );
   const allEventTypeIds = new Set(allEventTypes.map((type) => type.id));
   if (input.ids.some((id) => !allEventTypeIds.has(id))) {
     throw new TRPCError({
