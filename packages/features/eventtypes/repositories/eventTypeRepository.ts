@@ -1731,41 +1731,64 @@ export class EventTypeRepository implements IEventTypesRepository {
     const eventTypeWhere = {
       parentId: parentEventTypeId,
       ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
-      ...(searchTerm
-        ? {
-            owner: {
-              OR: [
-                { name: { contains: searchTerm, mode: "insensitive" as const } },
-                { email: { contains: searchTerm, mode: "insensitive" as const } },
-              ],
-            },
-          }
-        : {}),
     };
 
-    // Extract query to preserve type inference
-    const rowsQuery = this.prismaClient.eventType.findMany({
-      where: eventTypeWhere,
-      select: {
-        id: true,
-        userId: true,
-        owner: {
-          select: {
-            ...userSelectWithSelectedCalendars,
-            credentials: {
-              select: credentialForCalendarServiceSelect,
+    // totalCount covers every match, so a search reads all of the parent's children before cutting the page.
+    const matchedIds = searchTerm
+      ? (
+          await findSearchedRows({
+            search: searchTerm,
+            getKey: (child) => child.id,
+            getSearchValues: (child) => [child.owner?.name, child.owner?.email],
+            fetchRows: ({ after, take }: KeysetPage) =>
+              this.prismaClient.eventType.findMany({
+                where: { ...eventTypeWhere, ...(after && { id: { gt: after } }) },
+                select: { id: true, owner: { select: { name: true, email: true } } },
+                take,
+                orderBy: { id: "asc" },
+              }),
+          })
+        ).map(({ id }) => id)
+      : null;
+    // Like skip: 1 on a cursor read, this drops the first match at or after the cursor even when the cursor row
+    // itself does not match.
+    const pageIds = matchedIds
+      ?.filter((id) => !cursor || id >= cursor)
+      .slice(cursor ? 1 : 0, (cursor ? 1 : 0) + limit + 1);
+
+    const fetchRows = (args: Pick<Prisma.EventTypeFindManyArgs, "where" | "take" | "skip" | "cursor">) =>
+      this.prismaClient.eventType.findMany({
+        ...args,
+        select: {
+          id: true,
+          userId: true,
+          owner: {
+            select: {
+              ...userSelectWithSelectedCalendars,
+              credentials: {
+                select: credentialForCalendarServiceSelect,
+              },
             },
           },
         },
-      },
-      take: limit + 1, // over-fetch for nextCursor
-      ...(cursor && { skip: 1, cursor: { id: cursor } }),
-      orderBy: { id: "asc" }, // deterministic pagination
-    });
+        orderBy: { id: "asc" }, // deterministic pagination
+      });
 
     const [totalCount, rows] = await Promise.all([
-      this.prismaClient.eventType.count({ where: eventTypeWhere }),
-      rowsQuery,
+      matchedIds?.length ?? this.prismaClient.eventType.count({ where: eventTypeWhere }),
+      pageIds
+        ? findRowsInIdOrder(pageIds, (ids) =>
+            // Prisma returns nothing when the cursor row is gone, so the cursor stays on the id-bound read.
+            fetchRows({
+              where: { ...eventTypeWhere, id: { in: ids } },
+              ...(cursor && { cursor: { id: cursor } }),
+            })
+          )
+        : fetchRows({
+            where: eventTypeWhere,
+            take: limit + 1, // over-fetch for nextCursor
+            ...(cursor && { skip: 1, cursor: { id: cursor } }),
+          }),
     ]);
 
     const hasMore = rows.length > limit;
