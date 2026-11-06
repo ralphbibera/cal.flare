@@ -115,7 +115,7 @@ describe("signup membership writes on D1", () => {
             userId,
             accepted: true,
             role: "MEMBER",
-            customRoleId: null,
+            customRoleId: "member_role",
             createdAt: expect.any(Date),
             updatedAt: expect.any(Date),
           },
