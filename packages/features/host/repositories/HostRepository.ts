@@ -1,7 +1,7 @@
 import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { getD1Database } from "@calcom/prisma/d1";
+import { findManyInChunks, getD1Database } from "@calcom/prisma/d1";
 import { z } from "zod";
 
 const booleanSchema = z.union([z.literal(0), z.literal(1)]).transform(Boolean);
@@ -96,18 +96,20 @@ export class HostRepository {
     userIds: number[];
     startDate: Date;
   }) {
-    return await this.prismaClient.host.findMany({
-      where: {
-        userId: {
-          in: userIds,
+    return findManyInChunks(userIds, (chunk) =>
+      this.prismaClient.host.findMany({
+        where: {
+          userId: {
+            in: chunk,
+          },
+          eventTypeId,
+          isFixed: false,
+          createdAt: {
+            gte: startDate,
+          },
         },
-        eventTypeId,
-        isFixed: false,
-        createdAt: {
-          gte: startDate,
-        },
-      },
-    });
+      })
+    );
   }
 
   async findHostsWithLocationOptions(eventTypeId: number) {
