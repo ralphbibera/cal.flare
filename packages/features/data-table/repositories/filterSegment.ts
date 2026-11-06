@@ -1,13 +1,13 @@
 import type { FilterSegmentOutput, SegmentIdentifier } from "@calcom/features/data-table/lib/types";
 import {
   ZActiveFilters,
-  ZSortingState,
   ZColumnSizing,
   ZColumnVisibility,
+  ZSortingState,
 } from "@calcom/features/data-table/lib/types";
 import { prisma } from "@calcom/prisma";
 import type { UserFilterSegmentPreference } from "@calcom/prisma/client";
-
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
 import type { TCreateFilterSegmentInputSchema, TUpdateFilterSegmentInputSchema } from "./filterSegment.type";
 
 export interface IFilterSegmentRepository {
@@ -61,51 +61,76 @@ export class FilterSegmentRepository implements IFilterSegmentRepository {
       .then((memberships) => memberships.map((m) => m.teamId));
 
     // Fetch both user-scoped and team-scoped segments
-    const segments = await prisma.filterSegment.findMany({
-      where: {
-        tableIdentifier,
-        OR: [
-          // User-scoped segments created by the current user
-          {
-            scope: "USER",
-            userId,
-          },
-          // Team-scoped segments for teams the user belongs to
-          {
-            scope: "TEAM",
-            teamId: {
-              in: userTeamIds,
-            },
-          },
-        ],
-      },
-      select: {
-        id: true,
-        name: true,
-        tableIdentifier: true,
-        scope: true,
-        activeFilters: true,
-        sorting: true,
-        columnVisibility: true,
-        columnSizing: true,
-        perPage: true,
-        searchTerm: true,
-        createdAt: true,
-        updatedAt: true,
-        userId: true,
-        teamId: true,
-        team: {
-          select: {
-            id: true,
-            name: true,
-          },
+    const segmentSelect = {
+      id: true,
+      name: true,
+      tableIdentifier: true,
+      scope: true,
+      activeFilters: true,
+      sorting: true,
+      columnVisibility: true,
+      columnSizing: true,
+      perPage: true,
+      searchTerm: true,
+      createdAt: true,
+      updatedAt: true,
+      userId: true,
+      teamId: true,
+      team: {
+        select: {
+          id: true,
+          name: true,
         },
       },
-      orderBy: [
-        { scope: "desc" }, // USER segments first, then TEAM segments
-        { createdAt: "desc" }, // Newest first within each scope
-      ],
-    });
+    };
+    const segments =
+      userTeamIds.length <= D1_IN_LIST_CHUNK_SIZE
+        ? await prisma.filterSegment.findMany({
+            where: {
+              tableIdentifier,
+              OR: [
+                // User-scoped segments created by the current user
+                {
+                  scope: "USER",
+                  userId,
+                },
+                // Team-scoped segments for teams the user belongs to
+                {
+                  scope: "TEAM",
+                  teamId: {
+                    in: userTeamIds,
+                  },
+                },
+              ],
+            },
+            select: segmentSelect,
+            orderBy: [
+              { scope: "desc" }, // USER segments first, then TEAM segments
+              { createdAt: "desc" }, // Newest first within each scope
+            ],
+          })
+        : await (async () => {
+            const [userSegments, teamSegments] = await Promise.all([
+              prisma.filterSegment.findMany({
+                where: { tableIdentifier, scope: "USER", userId },
+                select: segmentSelect,
+              }),
+              findManyInChunks(userTeamIds, (chunk) =>
+                prisma.filterSegment.findMany({
+                  where: { tableIdentifier, scope: "TEAM", teamId: { in: chunk } },
+                  select: segmentSelect,
+                })
+              ),
+            ]);
+            // Both lists are ordered independently, so re-apply the original scope/createdAt order to the union.
+            return [...userSegments, ...teamSegments].sort((left, right) =>
+              left.scope === right.scope
+                ? right.createdAt.getTime() - left.createdAt.getTime()
+                : left.scope === "USER"
+                  ? -1
+                  : 1
+            );
+          })();
 
     const parsedSegments: FilterSegmentOutput[] = segments.map((segment) => ({
       ...segment,
