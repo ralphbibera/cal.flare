@@ -417,7 +417,7 @@ describe("maximize availability and weights", () => {
         createdAt: new Date("2022-01-25T06:30:00.000Z"),
       }),
       buildBooking({
-        id: 4,
+        id: 5,
         userId: 2,
         createdAt: new Date("2022-01-25T03:30:00.000Z"),
       }),
@@ -535,7 +535,7 @@ describe("maximize availability and weights", () => {
         createdAt: new Date("2022-01-25T06:30:00.000Z"),
       }),
       buildBooking({
-        id: 4,
+        id: 5,
         userId: 2,
         createdAt: new Date("2022-01-25T03:30:00.000Z"),
       }),
@@ -657,7 +657,7 @@ describe("maximize availability and weights", () => {
       }),
       // happened during OOO of userId 1
       buildBooking({
-        id: 4,
+        id: 6,
         userId: 2,
         createdAt: dayjs().subtract(6, "days").toDate(),
       }),
@@ -948,21 +948,9 @@ describe("maximize availability and weights", () => {
         createdAt: allRRHosts[0].createdAt,
       },
     ]);
+    // Every host is available, so each round queries the available hosts' and all hosts' bookings.
     prismaMock.booking.findMany.mockResolvedValueOnce([]);
     prismaMock.booking.findMany.mockResolvedValueOnce([]);
-    prismaMock.booking.findMany.mockResolvedValueOnce([]);
-    prismaMock.booking.findMany.mockResolvedValueOnce([
-      buildBooking({
-        id: 4,
-        userId: 2,
-        createdAt: dayjs(middleOfMonth).subtract(2, "days").toDate(),
-      }),
-      buildBooking({
-        id: 5,
-        userId: 2,
-        createdAt: dayjs(middleOfMonth).subtract(5, "days").toDate(),
-      }),
-    ]);
     await expect(
       luckyUserService.getLuckyUser({
         availableUsers: users,
@@ -976,22 +964,19 @@ describe("maximize availability and weights", () => {
               })
     ).resolves.toStrictEqual(users[1]);
 
-    prismaMock.booking.findMany.mockResolvedValueOnce([]);
-    prismaMock.booking.findMany.mockResolvedValueOnce([]);
-    prismaMock.booking.findMany.mockResolvedValueOnce([]);
     prismaMock.booking.findMany.mockResolvedValueOnce([
-      // Mock 6: All hosts
       buildBooking({
         id: 4,
         userId: 2,
-        createdAt: dayjs(middleOfMonth).add(2, "days").toDate(),
+        createdAt: dayjs(middleOfMonth).subtract(2, "days").toDate(),
       }),
       buildBooking({
         id: 5,
         userId: 2,
-        createdAt: dayjs(middleOfMonth).add(5, "days").toDate(),
+        createdAt: dayjs(middleOfMonth).subtract(5, "days").toDate(),
       }),
     ]);
+    prismaMock.booking.findMany.mockResolvedValueOnce([]);
     await expect(
       luckyUserService.getLuckyUser({
         availableUsers: users,

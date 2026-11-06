@@ -11,6 +11,7 @@ import {
   WEBAPP_URL,
 } from "@calcom/lib/constants";
 import logger from "@calcom/lib/logger";
+import { toSqliteJsonPath } from "@calcom/lib/server/toSqliteJsonPath";
 import { isTrustedInternalUrl, logBlockedSSRFAttempt, validateUrlForSSRF } from "@calcom/lib/ssrfProtection";
 import { buildLegacyRequest } from "@lib/buildLegacyCtx";
 import { defaultResponderForAppDir } from "app/api/defaultResponderForAppDir";
@@ -129,7 +130,7 @@ async function getTeamLogos(subdomain: string, isValidOrgDomain: boolean) {
           OR: [
             {
               metadata: {
-                path: ["isOrganization"],
+                path: toSqliteJsonPath(["isOrganization"]),
                 equals: true,
               },
             },

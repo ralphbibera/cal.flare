@@ -76,7 +76,26 @@ vi.mock("@calcom/prisma", async (importOriginal) => {
 
   const schemaContent = readFileSync("packages/prisma/schema.prisma", "utf-8");
   const dmmf = await getDMMF({ datamodel: schemaContent });
-  const PrismaWithDMMF = { ...Prisma, dmmf };
+  // Prismock treats every dbgenerated default as a UUID, including D1's current-time expression.
+  const models = dmmf.datamodel.models.map((model) => ({
+    ...model,
+    fields: model.fields.map((field) => {
+      const value = field.default;
+      if (
+        field.type === "DateTime" &&
+        value !== null &&
+        typeof value === "object" &&
+        "name" in value &&
+        value.name === "dbgenerated" &&
+        value.args.length === 1 &&
+        value.args[0] === "(strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"
+      ) {
+        return { ...field, default: { name: "now", args: [] } };
+      }
+      return field;
+    }),
+  }));
+  const PrismaWithDMMF = { ...Prisma, dmmf: { ...dmmf, datamodel: { ...dmmf.datamodel, models } } };
 
   const PrismockClientClass = createPrismock(
     PrismaWithDMMF as unknown as typeof Prisma & { dmmf: DMMF.Document }
