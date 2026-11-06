@@ -1,8 +1,24 @@
 import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { findManyInChunks, getD1Database } from "@calcom/prisma/d1";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks, getD1Database } from "@calcom/prisma/d1";
 import { z } from "zod";
+
+// Keeps one ascending keyset page exact when the `in` list is too long for a single D1 statement: each chunk
+// returns its own first `take` hosts, and the merged rows are the same first `take` hosts the whole list returns.
+async function findPageInUserIdOrder<Row extends { userId: number }>(
+  userIds: number[],
+  fetchChunk: (chunk: number[]) => Promise<Row[]>,
+  take: number
+): Promise<Row[]> {
+  const unique = Array.from(new Set(userIds));
+  const chunks: number[][] = [];
+  for (let index = 0; index < unique.length; index += D1_IN_LIST_CHUNK_SIZE) {
+    chunks.push(unique.slice(index, index + D1_IN_LIST_CHUNK_SIZE));
+  }
+  const rows = (await Promise.all(chunks.map(fetchChunk))).flat();
+  return rows.sort((left, right) => left.userId - right.userId).slice(0, take);
+}
 
 const booleanSchema = z.union([z.literal(0), z.literal(1)]).transform(Boolean);
 const conferencingPredicate = `EXISTS (SELECT 1 FROM json_each(a."categories") WHERE value IN ('conferencing', 'video'))`;
@@ -217,38 +233,43 @@ export class HostRepository {
       getKey: (host) => host.userId,
       getSearchValues: (host) => [host.user.name, host.user.email],
       fetchRows: ({ after, take }: KeysetPage) => {
-        const userIdFilter =
-          memberUserIds !== undefined
+        const fetchPage = (memberIds?: number[]) => {
+          const userIdFilter = memberIds
             ? after
-              ? { in: memberUserIds, gt: after }
-              : { in: memberUserIds }
+              ? { in: memberIds, gt: after }
+              : { in: memberIds }
             : after
               ? { gt: after }
               : undefined;
 
-        return this.prismaClient.host.findMany({
-          where: {
-            eventTypeId,
-            ...(userIdFilter && { userId: userIdFilter }),
-          },
-          take,
-          select: {
-            userId: true,
-            isFixed: true,
-            priority: true,
-            weight: true,
-            scheduleId: true,
-            groupId: true,
-            user: {
-              select: {
-                name: true,
-                email: true,
-                avatarUrl: true,
+          return this.prismaClient.host.findMany({
+            where: {
+              eventTypeId,
+              ...(userIdFilter && { userId: userIdFilter }),
+            },
+            take,
+            select: {
+              userId: true,
+              isFixed: true,
+              priority: true,
+              weight: true,
+              scheduleId: true,
+              groupId: true,
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                  avatarUrl: true,
+                },
               },
             },
-          },
-          orderBy: [{ userId: "asc" }],
-        });
+            orderBy: [{ userId: "asc" }],
+          });
+        };
+
+        if (memberUserIds === undefined) return fetchPage();
+
+        return findPageInUserIdOrder(memberUserIds, fetchPage, take);
       },
     });
 
