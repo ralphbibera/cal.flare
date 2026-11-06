@@ -186,7 +186,12 @@ This runs the existing password hashing, profile defaults, verification and admi
 
 ##### Approach 2
 
-Run the ported synthetic seed against isolated local D1. The [upstream seed](scripts/seed.ts) defines the dummy users above.
+Run the ported synthetic seed against local D1. It applies pending D1 migrations first, writes to the web Worker's local state, and adds no rows when run again. The [upstream seed](scripts/seed.ts) defines the dummy users above.
+
+```sh
+bun run --cwd packages/prisma db-seed:d1 --local-only
+```
+
 Do not use development seed accounts for a production installation.
 
 ### E2E-Testing
