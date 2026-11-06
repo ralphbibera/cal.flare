@@ -488,14 +488,16 @@ export class UserRepository {
   }
 
   async findByIds({ ids }: { ids: number[] }) {
-    return this.prismaClient.user.findMany({
-      where: {
-        id: {
-          in: ids,
+    return findManyInChunks(ids, (chunk) =>
+      this.prismaClient.user.findMany({
+        where: {
+          id: {
+            in: chunk,
+          },
         },
-      },
-      select: userSelect,
-    });
+        select: userSelect,
+      })
+    );
   }
 
   async findByIdsWithPagination({
@@ -553,20 +555,22 @@ export class UserRepository {
 
   async findByUuids({ uuids }: { uuids: string[] }) {
     if (uuids.length === 0) return [];
-    return this.prismaClient.user.findMany({
-      where: {
-        uuid: {
-          in: uuids,
+    return findManyInChunks(uuids, (chunk) =>
+      this.prismaClient.user.findMany({
+        where: {
+          uuid: {
+            in: chunk,
+          },
         },
-      },
-      select: {
-        id: true,
-        uuid: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-      },
-    });
+        select: {
+          id: true,
+          uuid: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+        },
+      })
+    );
   }
 
   async findByIdOrThrow({ id }: { id: number }) {
