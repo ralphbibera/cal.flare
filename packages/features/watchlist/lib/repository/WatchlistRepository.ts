@@ -3,7 +3,11 @@ import { findMatchingKeysetRows } from "@calcom/lib/keyset-scan";
 import { createContainsInsensitiveMatcher } from "@calcom/lib/postgres-ilike";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
+import { getD1Database } from "@calcom/prisma/d1";
+import { d1Boolean, d1DateTime, generateUuidV7, runD1Batch } from "@calcom/prisma/d1-batch";
 import { WatchlistAction, WatchlistSource } from "@calcom/prisma/enums";
+import { WatchlistSchema } from "@calcom/prisma/zod/modelSchema/WatchlistSchema";
+import { z } from "zod";
 import type {
   CheckWatchlistInput,
   CreateWatchlistInput,
@@ -37,6 +41,40 @@ const entrySelect = {
   },
 } as const;
 
+const watchlistRow = WatchlistSchema.extend({
+  id: z.string(),
+  isGlobal: d1Boolean,
+  lastUpdatedAt: d1DateTime,
+});
+
+type AuditedEntry = Pick<WatchlistAuditEntry, "type" | "value" | "action"> & {
+  watchlistId: string;
+  description?: string | null;
+};
+
+// One JSON-bound statement keeps a bulk audit within D1's bound parameter limit.
+function auditInsert(db: ReturnType<typeof getD1Database>, entries: AuditedEntry[], changedByUserId: number) {
+  return db
+    .prepare(
+      `INSERT INTO "WatchlistAudit" ("id", "watchlistId", "type", "value", "description", "action", "changedByUserId")
+      SELECT value ->> 'id', value ->> 'watchlistId', value ->> 'type', value ->> 'value', value ->> 'description',
+        value ->> 'action', ? FROM json_each(?)`
+    )
+    .bind(
+      changedByUserId,
+      JSON.stringify(
+        entries.map((entry) => ({
+          id: generateUuidV7(),
+          watchlistId: entry.watchlistId,
+          type: entry.type,
+          value: entry.value,
+          description: entry.description ?? null,
+          action: entry.action,
+        }))
+      )
+    );
+}
+
 export class WatchlistRepository implements IWatchlistRepository {
   constructor(private readonly prismaClient: PrismaClient) {}
 
@@ -65,34 +103,32 @@ export class WatchlistRepository implements IWatchlistRepository {
   }
 
   async createEntry(params: CreateWatchlistInput): Promise<WatchlistEntry> {
-    const watchlist = await this.prismaClient.$transaction(async (tx) => {
-      const created = await tx.watchlist.create({
-        data: {
-          type: params.type,
-          value: params.value,
-          organizationId: params.organizationId,
-          action: params.action,
-          description: params.description,
-          source: WatchlistSource.MANUAL,
-          isGlobal: params.isGlobal ?? false,
-        },
-      });
-
-      await tx.watchlistAudit.create({
-        data: {
-          watchlistId: created.id,
-          type: params.type,
-          value: params.value,
-          description: params.description,
-          action: params.action,
-          changedByUserId: params.userId,
-        },
-      });
-
-      return created;
-    });
-
-    return watchlist;
+    const db = getD1Database();
+    const id = crypto.randomUUID();
+    const results = await runD1Batch(
+      db,
+      [
+        db
+          .prepare(
+            `INSERT INTO "Watchlist" ("id", "type", "value", "organizationId", "action", "description", "source", "isGlobal")
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            id,
+            params.type,
+            params.value,
+            params.organizationId,
+            params.action,
+            params.description ?? null,
+            WatchlistSource.MANUAL,
+            Number(params.isGlobal ?? false)
+          ),
+        auditInsert(db, [{ ...params, watchlistId: id }], params.userId),
+        db.prepare('SELECT * FROM "Watchlist" WHERE "id" = ?').bind(id),
+      ],
+      { modelName: "Watchlist" }
+    );
+    return watchlistRow.parse(results[2].results[0]);
   }
 
   async createEntryIfNotExists(params: CreateWatchlistInput): Promise<WatchlistEntry> {
@@ -300,22 +336,15 @@ export class WatchlistRepository implements IWatchlistRepository {
       throw new Error("Watchlist entry not found");
     }
 
-    await this.prismaClient.$transaction(async (tx) => {
-      await tx.watchlistAudit.create({
-        data: {
-          watchlistId: id,
-          type: existing.type,
-          value: existing.value,
-          description: existing.description,
-          action: existing.action,
-          changedByUserId: userId,
-        },
-      });
-
-      await tx.watchlist.delete({
-        where: { id },
-      });
-    });
+    const db = getD1Database();
+    await runD1Batch(
+      db,
+      [
+        auditInsert(db, [{ ...existing, watchlistId: id }], userId),
+        db.prepare('DELETE FROM "Watchlist" WHERE "id" = ?').bind(id),
+      ],
+      { modelName: "Watchlist" }
+    );
   }
 
   async bulkDeleteEntries(params: { ids: string[]; userId: number }): Promise<{ deleted: number }> {
@@ -334,22 +363,21 @@ export class WatchlistRepository implements IWatchlistRepository {
       return { deleted: 0 };
     }
 
-    await this.prismaClient.$transaction(async (tx) => {
-      await tx.watchlistAudit.createMany({
-        data: entries.map((entry) => ({
-          watchlistId: entry.id,
-          type: entry.type,
-          value: entry.value,
-          description: entry.description,
-          action: entry.action,
-          changedByUserId: params.userId,
-        })),
-      });
-
-      await tx.watchlist.deleteMany({
-        where: { id: { in: entries.map((e) => e.id) } },
-      });
-    });
+    const db = getD1Database();
+    await runD1Batch(
+      db,
+      [
+        auditInsert(
+          db,
+          entries.map((entry) => ({ ...entry, watchlistId: entry.id })),
+          params.userId
+        ),
+        db
+          .prepare('DELETE FROM "Watchlist" WHERE "id" IN (SELECT value FROM json_each(?))')
+          .bind(JSON.stringify(entries.map((entry) => entry.id))),
+      ],
+      { modelName: "Watchlist" }
+    );
 
     return { deleted: entries.length };
   }
