@@ -4,7 +4,6 @@ import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowE
 import logger from "@calcom/lib/logger";
 import type { PrismaClient } from "@calcom/prisma";
 import { prisma } from "@calcom/prisma";
-import type { Prisma } from "@calcom/prisma/client";
 import type { TrpcSessionUser } from "../../../types";
 import type { TGetEventTypesFromGroupSchema } from "./getByViewer.schema";
 import { mapEventType } from "./util";
@@ -52,7 +51,6 @@ export const getEventTypesFromGroup = async ({
     const baseQueryConditions = {
       teamId: null,
       schedulingType: null,
-      ...(searchQuery ? { title: { contains: searchQuery, mode: "insensitive" as Prisma.QueryMode } } : {}),
     };
 
     const [nonChildEventTypes, childEventTypes] = await Promise.all([
@@ -76,6 +74,7 @@ export const getEventTypesFromGroup = async ({
           ],
           limit,
           cursor,
+          titleSearch: searchQuery,
         }
       ),
       eventTypeRepo.findAllByUpId(
@@ -99,6 +98,7 @@ export const getEventTypesFromGroup = async ({
           ],
           limit,
           cursor,
+          titleSearch: searchQuery,
         }
       ),
     ]);
@@ -123,13 +123,13 @@ export const getEventTypesFromGroup = async ({
         userId: ctx.user.id,
         limit,
         cursor,
+        titleSearch: searchQuery,
         where: {
           ...(isFilterSet && !!filters?.schedulingTypes
             ? {
                 schedulingType: { in: filters.schedulingTypes },
               }
             : null),
-          ...(searchQuery ? { title: { contains: searchQuery, mode: "insensitive" } } : {}),
         },
         orderBy: [
           {
