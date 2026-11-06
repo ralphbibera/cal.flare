@@ -7,15 +7,24 @@ import { LRUCache } from "lru-cache";
 import type { GetServerSidePropsContext, NextApiRequest } from "next";
 import type { AuthOptions, Session } from "next-auth";
 import { getToken } from "next-auth/jwt";
+import { getCalServerSession, isCalSignedSessionToken, readSessionToken } from "./cal-session-cookie";
 
 class LicenseKeySingleton {
-  static async getInstance(..._args: unknown[]) { return new LicenseKeySingleton(); }
-  async checkLicense() { return true; }
-  async validateLicenseKey() { return true; }
+  static async getInstance(..._args: unknown[]) {
+    return new LicenseKeySingleton();
+  }
+  async checkLicense() {
+    return true;
+  }
+  async validateLicenseKey() {
+    return true;
+  }
 }
 class DeploymentRepository {
   constructor(_prisma?: unknown) {}
-  async findFirst(..._args: unknown[]) { return null; }
+  async findFirst(..._args: unknown[]) {
+    return null;
+  }
 }
 
 const log = logger.getSubLogger({ prefix: ["getServerSession"] });
@@ -41,6 +50,13 @@ export async function getServerSession(options: {
   authOptions?: AuthOptions;
 }) {
   const { req, authOptions: { secret } = {} } = options;
+
+  const rawToken = await readSessionToken(req);
+
+  if (isCalSignedSessionToken(rawToken)) {
+    log.debug("Getting Cal server session");
+    return getCalServerSession(rawToken);
+  }
 
   const token = await getToken({
     req,
