@@ -68,11 +68,7 @@ export async function authorizeCredentialsForRequest(
     throw new Error(ErrorCode.UserAccountLocked);
   }
 
-  if (policy?.rateLimit === "enabled") {
-    // Enabled limiting needs the Cloudflare boundary before this unit can replace legacy auth.
-    throw new Error(ErrorCode.InternalServerError);
-  }
-  if (!policy) {
+  if (policy?.rateLimit !== "disabled") {
     await checkRateLimitAndThrowError({
       identifier: hashEmail(user.email),
     });
