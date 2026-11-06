@@ -1,8 +1,9 @@
 import type { D1Database, D1PreparedStatement, D1Result } from "@cloudflare/workers-types";
 import { z } from "zod";
 import { Prisma } from "./generated/prisma/client";
+import { JsonValueSchema } from "./zod/inputTypeSchemas/JsonValueSchema";
 
-type RequiredRecord = { modelName: string; operation: "an update" | "a delete" };
+type GuardFailure = { modelName: string; operation: "an update" | "a delete" } | { message: string };
 
 const knownRequestError = (message: string, code: string, meta: Record<string, unknown>) =>
   new Prisma.PrismaClientKnownRequestError(message, {
@@ -13,8 +14,12 @@ const knownRequestError = (message: string, code: string, meta: Record<string, u
 
 // Mirrors the codes and meta Prisma's D1 adapter reports, so callers keep their existing error handling.
 function toPrismaError(error: Error, modelName: string) {
-  const guard = /bad JSON path: 'calflare:(P\d{4}):([^:]+):([^']+)'/.exec(error.message);
-  if (guard) return knownRequestError(error.message, guard[1], { modelName: guard[2], operation: guard[3] });
+  const guard = /bad JSON path: 'calflare:(.*)'/.exec(error.message);
+  if (guard) {
+    const failure: GuardFailure = JSON.parse(guard[1]);
+    if ("message" in failure) return new Error(failure.message);
+    return knownRequestError(error.message, "P2025", failure);
+  }
   const constraint = (kind: string, details: Record<string, unknown>) => ({
     modelName,
     driverAdapterError: {
@@ -54,20 +59,22 @@ export const d1DateTime = z
   .string()
   .datetime({ offset: true })
   .transform((value) => new Date(value));
+export const d1Json = z
+  .string()
+  .transform((value): unknown => JSON.parse(value))
+  .pipe(JsonValueSchema);
 
-// SQLite only raises from triggers, so a guard aborts its batch through an invalid JSON path that names the
-// missing record; a zero-row write alone commits.
+// SQLite only raises from triggers, so a guard aborts its batch through an invalid JSON path that carries
+// the failure; a zero-row write alone commits. A record failure maps to P2025, a message to a plain Error.
 export function requireD1Record(
   db: D1Database,
-  { modelName, operation }: RequiredRecord,
+  failure: GuardFailure,
   existsSql: string,
   ...bindings: unknown[]
 ): D1PreparedStatement {
   return db
-    .prepare(
-      `SELECT CASE WHEN EXISTS (${existsSql}) THEN 1 ELSE json_extract('{}', 'calflare:P2025:${modelName}:${operation}') END`
-    )
-    .bind(...bindings);
+    .prepare(`SELECT CASE WHEN EXISTS (${existsSql}) THEN 1 ELSE json_extract('{}', ?) END`)
+    .bind(...bindings, `calflare:${JSON.stringify(failure)}`);
 }
 
 export async function runD1Batch(
