@@ -6,6 +6,7 @@ import { UserRepository } from "@calcom/features/users/repositories/UserReposito
 import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { prisma } from "@calcom/prisma";
 import { Prisma } from "@calcom/prisma/client";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
 import { TRPCError } from "@trpc/server";
 import type { TrpcSessionUser } from "../../../../types";
 import type { TListTeamAvailaiblityScheme } from "./listTeamAvailability.schema";
@@ -17,36 +18,39 @@ type GetOptions = {
   input: TListTeamAvailaiblityScheme;
 };
 
-async function getTeamMembers({
-  teamId,
-  organizationId,
-  teamIds,
-  cursor,
-  limit,
-  searchString,
-}: {
-  teamId?: number;
-  organizationId: number | null;
-  teamIds?: number[];
-  cursor: number | null | undefined;
-  limit: number;
-  searchString?: string | null;
-}) {
-  const memberships = await prisma.membership.findMany({
-    where: {
-      teamId: {
-        in: teamId ? [teamId] : teamIds,
-      },
-      ...(searchString
-        ? {
-            OR: [
-              { user: { username: { contains: searchString } } },
-              { user: { name: { contains: searchString } } },
-              { user: { email: { contains: searchString } } },
-            ],
-          }
-        : {}),
-    },
+type TeamMember = Awaited<ReturnType<typeof findTeamMemberRows>>[number];
+
+async function findTeamMemberPage(
+  teamIds: number[],
+  fetchChunk: (chunk: number[]) => Promise<TeamMember[]>,
+  take: number
+): Promise<TeamMember[]> {
+  const unique = Array.from(new Set(teamIds));
+  const chunks: number[][] = [];
+  for (let index = 0; index < unique.length; index += D1_IN_LIST_CHUNK_SIZE) {
+    chunks.push(unique.slice(index, index + D1_IN_LIST_CHUNK_SIZE));
+  }
+  const rows = (await Promise.all(chunks.map(fetchChunk))).flat();
+  rows.sort((left, right) => left.user.id - right.user.id || left.id - right.id);
+  // `distinct: ["userId"]` applies per statement, so a user in two requested teams arrives twice here.
+  const distinct: TeamMember[] = [];
+  let previousUserId: number | undefined;
+  for (const row of rows) {
+    if (row.user.id === previousUserId) continue;
+    distinct.push(row);
+    previousUserId = row.user.id;
+    if (distinct.length === take) break;
+  }
+  return distinct;
+}
+
+async function findTeamMemberRows(
+  where: Prisma.MembershipWhereInput,
+  cursor: number | null | undefined,
+  limit: number
+) {
+  return prisma.membership.findMany({
+    where,
     select: {
       id: true,
       role: true,
@@ -68,6 +72,45 @@ async function getTeamMembers({
     orderBy: [{ userId: "asc" }, { id: "asc" }], // Prisma require a unique field for tie breaking duplicate value for pagination
     distinct: ["userId"],
   });
+}
+
+async function getTeamMembers({
+  teamId,
+  organizationId,
+  teamIds,
+  cursor,
+  limit,
+  searchString,
+}: {
+  teamId?: number;
+  organizationId: number | null;
+  teamIds?: number[];
+  cursor: number | null | undefined;
+  limit: number;
+  searchString?: string | null;
+}) {
+  const searchWhere: Prisma.MembershipWhereInput = searchString
+    ? {
+        OR: [
+          { user: { username: { contains: searchString } } },
+          { user: { name: { contains: searchString } } },
+          { user: { email: { contains: searchString } } },
+        ],
+      }
+    : {};
+
+  const memberships =
+    !teamId && teamIds
+      ? await findTeamMemberPage(
+          teamIds,
+          (chunk) => findTeamMemberRows({ teamId: { in: chunk }, ...searchWhere }, cursor, limit),
+          limit + 1
+        )
+      : await findTeamMemberRows(
+          { teamId: { in: teamId ? [teamId] : teamIds }, ...searchWhere },
+          cursor,
+          limit
+        );
 
   const userRepo = new UserRepository(prisma);
   const users = memberships.map((membership) => membership.user);
@@ -171,15 +214,20 @@ async function getInfoForAllTeams({ ctx, input }: GetOptions) {
 
   // Get total team count across all teams the user is in (for pagination)
 
-  const totalTeamMembers = await prisma.$queryRaw<
-    {
-      count: number;
-    }[]
-  >`SELECT COUNT(DISTINCT "userId") AS "count" FROM "Membership" WHERE "teamId" IN (${Prisma.join(teamIds)})`;
+  // A chunked COUNT would count a user twice when they belong to two of the requested teams, so the
+  // distinct ids are unioned here and counted once.
+  const distinctMemberIds = await findManyInChunks(
+    teamIds,
+    (chunk) =>
+      prisma.$queryRaw<{ userId: number }[]>`
+        SELECT DISTINCT "userId" FROM "Membership" WHERE "teamId" IN (${Prisma.join(chunk)})`,
+    D1_IN_LIST_CHUNK_SIZE
+  );
+  const totalTeamMembers = new Set(distinctMemberIds.map(({ userId }) => userId)).size;
 
   return {
     teamMembers,
-    totalTeamMembers: totalTeamMembers[0].count,
+    totalTeamMembers,
   };
 }
 
