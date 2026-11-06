@@ -23,8 +23,8 @@ vi.mock("@calcom/prisma", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@calcom/prisma")>();
   return {
     ...actual,
+    // Spreading the real client would open its request-bound D1 binding outside a request.
     default: {
-      ...actual.default,
       payment: { update: vi.fn() },
       booking: { update: vi.fn() },
       $transaction: vi.fn(),
