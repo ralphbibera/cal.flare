@@ -217,6 +217,8 @@ describe("D1 domain storage", () => {
             .all()
         ).results
       );
+    // Raw-SQL partial indexes from the PostgreSQL history have no schema.prisma form, so the oracle lacks them.
+    const partialIndexes = new Set(["Team_slug_parentId_key_null", "users_username_organizationId_key_null"]);
     const domainNames = new Set(tables.map(({ name }) => name));
     expect(migratedTables.filter(({ name }) => domainNames.has(name))).toEqual(tables);
     for (const { name } of tables) {
@@ -232,7 +234,10 @@ describe("D1 domain storage", () => {
               )
             )
             .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-        expect(normalize((await db.prepare(sql).all()).results), `${name}.${pragma}`).toEqual(
+        const migrated = (await db.prepare(sql).all<{ name?: string }>()).results.filter(
+          (row) => pragma !== "index_list" || !partialIndexes.has(String(row.name))
+        );
+        expect(normalize(migrated), `${name}.${pragma}`).toEqual(
           normalize((await oracle.prepare(sql).all()).results)
         );
       }
@@ -247,6 +252,18 @@ describe("D1 domain storage", () => {
       const sql = `PRAGMA index_xinfo(${q(name)})`;
       expect((await db.prepare(sql).all()).results).toEqual((await oracle.prepare(sql).all()).results);
     }
+    expect(
+      (
+        await db
+          .prepare(
+            `SELECT name, tbl_name, "unique" FROM sqlite_master m JOIN pragma_index_list(m.tbl_name) l USING (name) WHERE m.type = 'index' AND l.partial = 1 ORDER BY name`
+          )
+          .all()
+      ).results
+    ).toEqual([
+      { name: "Team_slug_parentId_key_null", tbl_name: "Team", unique: 1 },
+      { name: "users_username_organizationId_key_null", tbl_name: "users", unique: 1 },
+    ]);
     expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
     expect((await db.prepare("SELECT COUNT(*) AS count FROM _calflare_migrations").first())?.count).toBe(
       migrationCount
@@ -348,8 +365,12 @@ describe("D1 domain storage", () => {
     await expect(
       db.prepare('INSERT INTO users (uuid,email) VALUES ("manual-id","duplicate@example.invalid")').run()
     ).rejects.toThrow(/UNIQUE/);
-    await db.prepare("UPDATE users SET username='shared-null-org' WHERE id IN (100,101)").run();
+    await db.prepare("UPDATE users SET username='shared-null-org' WHERE id=100").run();
+    await expect(
+      db.prepare("UPDATE users SET username='shared-null-org' WHERE id=101").run()
+    ).rejects.toThrow(/UNIQUE/);
     await db.prepare("UPDATE users SET organizationId=1 WHERE id=100").run();
+    await db.prepare("UPDATE users SET username='shared-null-org' WHERE id=101").run();
     await expect(db.prepare("UPDATE users SET organizationId=1 WHERE id=101").run()).rejects.toThrow(
       /UNIQUE/
     );
@@ -386,6 +407,7 @@ describe("D1 list metadata and historical provenance", () => {
       "c0f192039ed17de1424ec9fb2f902b7f458e639090ce14b25c295568137a7a11",
       "7139daefe8968179b248959210cc97fe30a9a829ca65278b3fc758b9778b9a04",
       "53bf18e310512b7b2915e0bb1b57e7b134335eac926c6e1333a35beaf3affd23",
+      "0d7046404b58959d9efc05fd050567a46d33918e143c0210225863887daac47c",
     ];
     const names = (await readdir(new URL("./migrations-d1/", import.meta.url)))
       .filter((name) => name.endsWith(".sql"))
