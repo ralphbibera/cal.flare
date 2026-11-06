@@ -3,8 +3,14 @@ import { getTranslation } from "@calcom/i18n/server";
 import { DEFAULT_SCHEDULE, getAvailabilityFromSchedule } from "@calcom/lib/availability";
 import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import { buildNonDelegationCredentials } from "@calcom/lib/delegationCredential";
+import { findMatchingKeysetRows } from "@calcom/lib/keyset-scan";
 import logger from "@calcom/lib/logger";
-import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
+import {
+  createIlikeMatcher,
+  findSearchedRows,
+  type KeysetPage,
+  toSqliteContainsPrefilter,
+} from "@calcom/lib/postgres-ilike";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { withSelectedCalendars } from "@calcom/lib/server/withSelectedCalendars";
 import type { PrismaClient } from "@calcom/prisma";
@@ -1595,55 +1601,90 @@ export class UserRepository {
     const bothLockedAndUnlockedWhere: Prisma.UserWhereInput = {
       OR: [{ locked: false }, { locked: true }],
     };
+    const select = {
+      id: true,
+      locked: true,
+      email: true,
+      username: true,
+      name: true,
+      timeZone: true,
+      role: true,
+      profiles: {
+        select: {
+          username: true,
+        },
+      },
+    } satisfies Prisma.UserSelect;
     const trimmedSearchTerm = searchTerm?.trim();
-    const searchFilters: Prisma.UserWhereInput = trimmedSearchTerm
-      ? {
-          AND: [
-            // To bypass the excludeLockedUsersExtension
-            bothLockedAndUnlockedWhere,
-            {
-              OR: [
-                { email: { contains: trimmedSearchTerm, mode: "insensitive" } },
-                { username: { contains: trimmedSearchTerm, mode: "insensitive" } },
+    const hasLimit = limit !== undefined && limit !== null;
+
+    if (trimmedSearchTerm) {
+      const pattern = `%${trimmedSearchTerm}%`;
+      const matches = createIlikeMatcher(pattern);
+      const contains = toSqliteContainsPrefilter(pattern);
+      // SQLite LIKE folds only ASCII, so SQL narrows every user to candidates and ILIKE is confirmed here.
+      // The total counts every match, so the whole candidate set is read.
+      const matchedUsers = await findMatchingKeysetRows({
+        fetchRows: ({ after, take }: KeysetPage) =>
+          this.prismaClient.user.findMany({
+            where: {
+              AND: [
+                // To bypass the excludeLockedUsersExtension
+                bothLockedAndUnlockedWhere,
                 {
-                  profiles: {
-                    some: {
-                      username: { contains: trimmedSearchTerm, mode: "insensitive" },
-                    },
-                  },
+                  OR: [
+                    { email: { contains } },
+                    { username: { contains } },
+                    { profiles: { some: { username: { contains } } } },
+                  ],
                 },
               ],
+              ...(after && { id: { gt: after } }),
             },
-          ],
-        }
-      : // To bypass the excludeLockedUsersExtension
-        bothLockedAndUnlockedWhere;
+            select,
+            orderBy: { id: "asc" },
+            take,
+          }),
+        getKey: (user) => user.id,
+        matches: (user) =>
+          matches(user.email) ||
+          matches(user.username) ||
+          user.profiles.some((profile) => matches(profile.username)),
+      });
+      // As with skip: 1 on a cursor read, the first match at or after the cursor is dropped even when the cursor
+      // user does not match, and a deleted cursor user ends the list.
+      let afterCursor = matchedUsers;
+      if (cursor) {
+        const cursorExists =
+          matchedUsers.some((user) => user.id === cursor) ||
+          (await this.prismaClient.user.count({ where: { id: cursor } })) > 0;
+        afterCursor = cursorExists ? matchedUsers.filter((user) => user.id >= cursor).slice(1) : [];
+      }
 
-    const hasLimit = limit !== undefined && limit !== null;
+      if (!hasLimit) {
+        return { users: afterCursor, nextCursor: undefined, total: afterCursor.length };
+      }
+      const hasMore = afterCursor.length > limit;
+      const items = afterCursor.slice(0, limit);
+      return {
+        users: items,
+        nextCursor: hasMore ? items[items.length - 1].id : undefined,
+        total: matchedUsers.length,
+      };
+    }
+
     const take = hasLimit ? limit + 1 : undefined; // +1 lets us detect "has more" for the cursor
 
     const users = await this.prismaClient.user.findMany({
       cursor: cursor ? { id: cursor } : undefined,
       skip: cursor ? 1 : 0,
       ...(take !== undefined ? { take } : {}),
-      where: searchFilters,
+      // To bypass the excludeLockedUsersExtension
+      where: bothLockedAndUnlockedWhere,
       orderBy: {
         id: "asc",
       },
-      select: {
-        id: true,
-        locked: true,
-        email: true,
-        username: true,
-        name: true,
-        timeZone: true,
-        role: true,
-        profiles: {
-          select: {
-            username: true,
-          },
-        },
-      },
+      select,
     });
 
     if (!hasLimit) {
@@ -1651,7 +1692,7 @@ export class UserRepository {
     }
 
     const total = await this.prismaClient.user.count({
-      where: searchFilters,
+      where: bothLockedAndUnlockedWhere,
     });
     const hasMore = users.length > limit;
     const items = hasMore ? users.slice(0, limit) : users;
