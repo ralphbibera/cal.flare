@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@calcom/prisma";
 import type { User } from "@calcom/prisma/client";
+import { findManyInChunks, getD1Database } from "@calcom/prisma/d1";
 import { userMetadata as userMetadataSchema } from "@calcom/prisma/zod-utils";
-
 import type { LocationObject } from "../locations";
 import { getAppFromSlug } from "../utils";
 import { filterEventTypesWhereLocationUpdateIsAllowed } from "./getBulkEventTypes";
@@ -39,19 +39,21 @@ export const bulkUpdateEventsToDefaultLocation = async ({
     },
   });
 
-  const eventTypesToUpdate = await prisma.eventType.findMany({
-    where: {
-      id: {
-        in: eventTypeIds,
+  const eventTypesToUpdate = await findManyInChunks(eventTypeIds, (ids) =>
+    prisma.eventType.findMany({
+      where: {
+        id: {
+          in: ids,
+        },
+        userId: user.id,
       },
-      userId: user.id,
-    },
-    select: {
-      id: true,
-      metadata: true,
-      parentId: true,
-    },
-  });
+      select: {
+        id: true,
+        metadata: true,
+        parentId: true,
+      },
+    })
+  );
 
   const validEventTypeIds = filterEventTypesWhereLocationUpdateIsAllowed(eventTypesToUpdate).map(
     (eventType) => eventType.id
@@ -61,17 +63,15 @@ export const bulkUpdateEventsToDefaultLocation = async ({
     return { count: 0 };
   }
 
-  return await prisma.eventType.updateMany({
-    where: {
-      id: {
-        in: validEventTypeIds,
-      },
-      userId: user.id,
-    },
-    data: {
-      locations: [
-        { type: appType, link: defaultApp.appLink, credentialId: credential?.id },
-      ] as LocationObject[],
-    },
-  });
+  // One statement keeps the update atomic, and json_each keeps any number of event types within D1's bind limit.
+  const locations: LocationObject[] = [
+    { type: appType, link: defaultApp.appLink, credentialId: credential?.id },
+  ];
+  const result = await getD1Database()
+    .prepare(
+      `UPDATE "EventType" SET "locations" = ? WHERE "id" IN (SELECT value FROM json_each(?)) AND "userId" = ?`
+    )
+    .bind(JSON.stringify(locations), JSON.stringify(validEventTypeIds), user.id)
+    .run();
+  return { count: result.meta.changes };
 };
