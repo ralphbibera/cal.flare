@@ -7,6 +7,7 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import { eventTypeSelect, parseInstantMeetingParameters } from "@calcom/lib/server/eventTypeSelect";
 import { availabilityUserSelect, type PrismaTransaction, prisma } from "@calcom/prisma";
 import type { Membership, Prisma, PrismaClient } from "@calcom/prisma/client";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
 import { MembershipRole } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 
@@ -36,6 +37,23 @@ type MembershipDTO = Pick<Membership, MembershipSelectableKeys>;
 type MembershipDTOFromSelect<TSelect extends MembershipPartialSelect> = {
   [K in keyof TSelect & keyof MembershipDTO as TSelect[K] extends true ? K : never]: MembershipDTO[K];
 };
+
+// Keeps one ascending keyset page exact when the `in` list is too long for a single D1 statement: each chunk
+// returns its own first `take` rows, and the merged rows are the same first `take` rows the whole list returns.
+async function findIdPage<Row>(
+  ids: number[],
+  fetchChunk: (chunk: number[]) => Promise<Row[]>,
+  take: number,
+  getKey: (row: Row) => number
+): Promise<Row[]> {
+  const unique = Array.from(new Set(ids));
+  const chunks: number[][] = [];
+  for (let index = 0; index < unique.length; index += D1_IN_LIST_CHUNK_SIZE) {
+    chunks.push(unique.slice(index, index + D1_IN_LIST_CHUNK_SIZE));
+  }
+  const rows = (await Promise.all(chunks.map(fetchChunk))).flat();
+  return rows.sort((left, right) => getKey(left) - getKey(right)).slice(0, take);
+}
 
 const teamParentSelect = {
   id: true,
@@ -155,13 +173,15 @@ export class MembershipRepository {
     userIds: number[];
     teamId: number;
   }) {
-    return prisma.membership.findMany({
-      where: {
-        userId: { in: userIds },
-        accepted: true,
-        teamId,
-      },
-    });
+    return findManyInChunks(userIds, (chunk) =>
+      prisma.membership.findMany({
+        where: {
+          userId: { in: chunk },
+          accepted: true,
+          teamId,
+        },
+      })
+    );
   }
 
   static async createMany(data: IMembership[]) {
@@ -547,14 +567,16 @@ export class MembershipRepository {
     teamIds: number[];
     select?: TSelect;
   }): Promise<MembershipDTOFromSelect<TSelect>[]> {
-    return (await prisma.membership.findMany({
-      where: {
-        teamId: { in: teamIds },
-        accepted: true,
-      },
-      // this is explicit, and typed in TSelect default typings
-      select: select ?? { userId: true },
-    })) as unknown as Promise<MembershipDTOFromSelect<TSelect>[]>;
+    return (await findManyInChunks(teamIds, (chunk) =>
+      prisma.membership.findMany({
+        where: {
+          teamId: { in: chunk },
+          accepted: true,
+        },
+        // this is explicit, and typed in TSelect default typings
+        select: select ?? { userId: true },
+      })
+    )) as unknown as MembershipDTOFromSelect<TSelect>[];
   }
 
   static async findAllAcceptedTeamMemberships(userId: number, where?: Prisma.MembershipWhereInput) {
@@ -678,37 +700,42 @@ export class MembershipRepository {
       getKey: (membership) => membership.user.id,
       getSearchValues: ({ user }) => [user.name, user.email],
       fetchRows: ({ after, take }: KeysetPage) => {
-        const userIdFilter =
-          memberUserIds !== undefined && memberUserIds !== null
+        const fetchPage = (memberIds?: number[]) => {
+          const userIdFilter = memberIds
             ? after
-              ? { in: memberUserIds, gt: after }
-              : { in: memberUserIds }
+              ? { in: memberIds, gt: after }
+              : { in: memberIds }
             : after
               ? { gt: after }
               : undefined;
 
-        return this.prismaClient.membership.findMany({
-          where: {
-            teamId,
-            accepted: true,
-            ...(userIdFilter && { user: { id: userIdFilter } }),
-          },
-          take,
-          orderBy: { user: { id: "asc" } },
-          select: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatarUrl: true,
-                username: true,
-                defaultScheduleId: true,
-              },
+          return this.prismaClient.membership.findMany({
+            where: {
+              teamId,
+              accepted: true,
+              ...(userIdFilter && { user: { id: userIdFilter } }),
             },
-            role: true,
-          },
-        });
+            take,
+            orderBy: { user: { id: "asc" } },
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatarUrl: true,
+                  username: true,
+                  defaultScheduleId: true,
+                },
+              },
+              role: true,
+            },
+          });
+        };
+
+        if (memberUserIds === undefined || memberUserIds === null) return fetchPage();
+
+        return findIdPage(memberUserIds, fetchPage, take, (row) => row.user.id);
       },
     });
 
