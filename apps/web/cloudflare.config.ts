@@ -1,5 +1,5 @@
 import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
-import { bindings, defineConfig, defineWorker } from "cf/config";
+import { bindings, defineConfig, defineWorker, triggers } from "cf/config";
 
 const cache = await createWorkersResponseStoreSelfContainedConfig({
   worker: "calflare-web",
@@ -14,6 +14,10 @@ export default defineConfig({
     compatibilityDate: "2026-11-04",
     compatibilityFlags: ["nodejs_compat"],
     workersDev: false,
+    // One message per invocation keeps the source calendars concurrency limit of 10 until DO admission.
+    triggers: [
+      triggers.queue({ name: "calflare-jobs", maxBatchSize: 1, maxConcurrency: 10, maxRetries: 10 }),
+    ],
     previewUrls: false,
     assets: {
       htmlHandling: "none",
