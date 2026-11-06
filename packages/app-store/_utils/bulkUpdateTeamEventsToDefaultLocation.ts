@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@calcom/prisma";
+import { getD1Database } from "@calcom/prisma/d1";
 import { teamMetadataSchema } from "@calcom/prisma/zod-utils";
-
 import type { LocationObject } from "../locations";
 import { getAppFromSlug } from "../utils";
 
@@ -40,17 +40,15 @@ export const bulkUpdateTeamEventsToDefaultLocation = async ({
     },
   });
 
-  return await prisma.eventType.updateMany({
-    where: {
-      id: {
-        in: eventTypeIds,
-      },
-      teamId,
-    },
-    data: {
-      locations: [
-        { type: appType, link: defaultApp.appLink, credentialId: credential?.id },
-      ] as LocationObject[],
-    },
-  });
+  // One statement keeps the update atomic, and json_each keeps any number of event types within D1's bind limit.
+  const locations: LocationObject[] = [
+    { type: appType, link: defaultApp.appLink, credentialId: credential?.id },
+  ];
+  const result = await getD1Database()
+    .prepare(
+      `UPDATE "EventType" SET "locations" = ? WHERE "id" IN (SELECT value FROM json_each(?)) AND "teamId" = ?`
+    )
+    .bind(JSON.stringify(locations), JSON.stringify(eventTypeIds), teamId)
+    .run();
+  return { count: result.meta.changes };
 };
