@@ -1,6 +1,7 @@
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Booking, Prisma } from "@calcom/prisma/client";
+import { findManyInChunks } from "@calcom/prisma/d1";
 import { BookingStatus, RRTimestampBasis } from "@calcom/prisma/enums";
 import { bookingDetailsSelect, bookingMinimalSelect } from "@calcom/prisma/selects/booking";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
@@ -74,7 +75,6 @@ export type ManagedEventCancellationResult = {
   metadata: Prisma.JsonValue;
   status: BookingStatus;
 };
-
 
 type TeamBookingsParamsBase = {
   user: { id: number; email: string };
@@ -734,29 +734,38 @@ export class BookingRepository implements IBookingRepository {
       }),
     } satisfies Prisma.BookingSelect;
 
-    const currentBookingsAllUsersQueryOne = this.prismaClient.booking.findMany({
-      where: {
-        ...sharedQuery,
-        userId: {
-          in: Array.from(userIdAndEmailMap.keys()),
-        },
-      },
-      select: bookingsSelect,
-    });
-
-    const currentBookingsAllUsersQueryTwo = this.prismaClient.booking.findMany({
-      where: {
-        ...sharedQuery,
-        attendees: {
-          some: {
-            email: {
-              in: Array.from(userIdAndEmailMap.values()),
+    const currentBookingsAllUsersQueryOne = findManyInChunks(
+      Array.from(userIdAndEmailMap.keys()),
+      (userIds) =>
+        this.prismaClient.booking.findMany({
+          where: {
+            ...sharedQuery,
+            userId: {
+              in: userIds,
             },
           },
-        },
-      },
-      select: bookingsSelect,
-    });
+          select: bookingsSelect,
+        })
+    );
+
+    // A booking whose attendees fall in different email chunks is found once per chunk.
+    const currentBookingsAllUsersQueryTwo = findManyInChunks(
+      Array.from(userIdAndEmailMap.values()),
+      (emails) =>
+        this.prismaClient.booking.findMany({
+          where: {
+            ...sharedQuery,
+            attendees: {
+              some: {
+                email: {
+                  in: emails,
+                },
+              },
+            },
+          },
+          select: bookingsSelect,
+        })
+    ).then((bookings) => Array.from(new Map(bookings.map((booking) => [booking.id, booking])).values()));
 
     const currentBookingsAllUsersQueryThree = eventTypeId
       ? this.prismaClient.booking.findMany({
