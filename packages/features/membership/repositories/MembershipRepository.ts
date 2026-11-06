@@ -2,6 +2,7 @@ import { LookupTarget, ProfileRepository } from "@calcom/features/profile/reposi
 import { withSelectedCalendars } from "@calcom/features/users/repositories/UserRepository";
 import { parseUserAvailability } from "@calcom/lib/availability/parseAvailability";
 import logger from "@calcom/lib/logger";
+import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import { eventTypeSelect, parseInstantMeetingParameters } from "@calcom/lib/server/eventTypeSelect";
 import { availabilityUserSelect, type PrismaTransaction, prisma } from "@calcom/prisma";
@@ -670,46 +671,44 @@ export class MembershipRepository {
     limit: number;
     memberUserIds?: number[] | null;
   }) {
-    const where: Record<string, unknown> = {
-      teamId,
-      accepted: true,
-    };
+    const memberships = await findSearchedRows({
+      search: search ?? undefined,
+      cursor: cursor ?? undefined,
+      limit,
+      getKey: (membership) => membership.user.id,
+      getSearchValues: ({ user }) => [user.name, user.email],
+      fetchRows: ({ after, take }: KeysetPage) => {
+        const userIdFilter =
+          memberUserIds !== undefined && memberUserIds !== null
+            ? after
+              ? { in: memberUserIds, gt: after }
+              : { in: memberUserIds }
+            : after
+              ? { gt: after }
+              : undefined;
 
-    const userFilter: Record<string, unknown> = {};
-
-    if (search) {
-      userFilter.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { email: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    if (memberUserIds !== undefined && memberUserIds !== null) {
-      userFilter.id = cursor ? { in: memberUserIds, gt: cursor } : { in: memberUserIds };
-    } else if (cursor) {
-      userFilter.id = { gt: cursor };
-    }
-
-    if (Object.keys(userFilter).length > 0) {
-      where.user = userFilter;
-    }
-
-    const memberships = await this.prismaClient.membership.findMany({
-      where,
-      take: limit + 1,
-      orderBy: { user: { id: "asc" } },
-      select: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-            username: true,
-            defaultScheduleId: true,
+        return this.prismaClient.membership.findMany({
+          where: {
+            teamId,
+            accepted: true,
+            ...(userIdFilter && { user: { id: userIdFilter } }),
           },
-        },
-        role: true,
+          take,
+          orderBy: { user: { id: "asc" } },
+          select: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatarUrl: true,
+                username: true,
+                defaultScheduleId: true,
+              },
+            },
+            role: true,
+          },
+        });
       },
     });
 

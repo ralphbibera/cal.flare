@@ -19,3 +19,21 @@ export function getD1Database(): D1Database {
   if (!db) throw new ErrorWithCode(ErrorCode.InternalServerError, "D1 request binding is required");
   return db;
 }
+
+// Prisma's D1 adapter rejects a statement over 98 bound values instead of splitting a long `in` list,
+// so each chunk leaves room for the query's other parameters.
+export const D1_IN_LIST_CHUNK_SIZE = 50;
+
+export async function findManyInChunks<Value, Row>(
+  values: readonly Value[],
+  findMany: (chunk: Value[]) => Promise<Row[]>,
+  chunkSize = D1_IN_LIST_CHUNK_SIZE
+): Promise<Row[]> {
+  // A value repeated across two chunks would return its rows twice; one `in` list returns them once.
+  const unique = Array.from(new Set(values));
+  const chunks: Value[][] = [];
+  for (let index = 0; index < unique.length; index += chunkSize) {
+    chunks.push(unique.slice(index, index + chunkSize));
+  }
+  return (await Promise.all(chunks.map(findMany))).flat();
+}

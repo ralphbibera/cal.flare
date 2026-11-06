@@ -1,6 +1,7 @@
+import { findSearchedRows, type KeysetPage } from "@calcom/lib/postgres-ilike";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { getD1Database } from "@calcom/prisma/d1";
+import { findManyInChunks, getD1Database } from "@calcom/prisma/d1";
 import { z } from "zod";
 
 const booleanSchema = z.union([z.literal(0), z.literal(1)]).transform(Boolean);
@@ -95,18 +96,20 @@ export class HostRepository {
     userIds: number[];
     startDate: Date;
   }) {
-    return await this.prismaClient.host.findMany({
-      where: {
-        userId: {
-          in: userIds,
+    return findManyInChunks(userIds, (chunk) =>
+      this.prismaClient.host.findMany({
+        where: {
+          userId: {
+            in: chunk,
+          },
+          eventTypeId,
+          isFixed: false,
+          createdAt: {
+            gte: startDate,
+          },
         },
-        eventTypeId,
-        isFixed: false,
-        createdAt: {
-          gte: startDate,
-        },
-      },
-    });
+      })
+    );
   }
 
   async findHostsWithLocationOptions(eventTypeId: number) {
@@ -152,35 +155,40 @@ export class HostRepository {
     limit?: number;
     search?: string;
   }) {
-    const hosts = await this.prismaClient.host.findMany({
-      where: {
-        eventTypeId,
-        ...(cursor && { userId: { gt: cursor } }),
-        ...(search && {
-          OR: [
-            { user: { name: { contains: search, mode: "insensitive" as const } } },
-            { user: { email: { contains: search, mode: "insensitive" as const } } },
-          ],
-        }),
-      },
-      take: limit + 1,
-      select: {
-        userId: true,
-        isFixed: true,
-        priority: true,
-        weight: true,
-        scheduleId: true,
-        groupId: true,
-        user: {
-          select: {
-            name: true,
-            avatarUrl: true,
-            timeZone: true,
+    const rows = await findSearchedRows({
+      search,
+      cursor,
+      limit,
+      getKey: (host) => host.userId,
+      getSearchValues: (host) => [host.user.name, host.user.email],
+      fetchRows: ({ after, take }: KeysetPage) =>
+        this.prismaClient.host.findMany({
+          where: {
+            eventTypeId,
+            ...(after && { userId: { gt: after } }),
           },
-        },
-      },
-      orderBy: [{ userId: "asc" }],
+          take,
+          select: {
+            userId: true,
+            isFixed: true,
+            priority: true,
+            weight: true,
+            scheduleId: true,
+            groupId: true,
+            user: {
+              select: {
+                name: true,
+                email: true,
+                avatarUrl: true,
+                timeZone: true,
+              },
+            },
+          },
+          orderBy: [{ userId: "asc" }],
+        }),
     });
+    // Email is only read to match the search; availability responses never carried it.
+    const hosts = rows.map(({ user: { email: _email, ...user }, ...host }) => ({ ...host, user }));
 
     const hasMore = hosts.length > limit;
     const items = hasMore ? hosts.slice(0, limit) : hosts;
@@ -202,43 +210,46 @@ export class HostRepository {
     search?: string;
     memberUserIds?: number[];
   }) {
-    const userIdFilter =
-      memberUserIds !== undefined
-        ? cursor
-          ? { in: memberUserIds, gt: cursor }
-          : { in: memberUserIds }
-        : cursor
-          ? { gt: cursor }
-          : undefined;
+    const hosts = await findSearchedRows({
+      search,
+      cursor,
+      limit,
+      getKey: (host) => host.userId,
+      getSearchValues: (host) => [host.user.name, host.user.email],
+      fetchRows: ({ after, take }: KeysetPage) => {
+        const userIdFilter =
+          memberUserIds !== undefined
+            ? after
+              ? { in: memberUserIds, gt: after }
+              : { in: memberUserIds }
+            : after
+              ? { gt: after }
+              : undefined;
 
-    const hosts = await this.prismaClient.host.findMany({
-      where: {
-        eventTypeId,
-        ...(userIdFilter && { userId: userIdFilter }),
-        ...(search && {
-          OR: [
-            { user: { name: { contains: search, mode: "insensitive" as const } } },
-            { user: { email: { contains: search, mode: "insensitive" as const } } },
-          ],
-        }),
-      },
-      take: limit + 1,
-      select: {
-        userId: true,
-        isFixed: true,
-        priority: true,
-        weight: true,
-        scheduleId: true,
-        groupId: true,
-        user: {
-          select: {
-            name: true,
-            email: true,
-            avatarUrl: true,
+        return this.prismaClient.host.findMany({
+          where: {
+            eventTypeId,
+            ...(userIdFilter && { userId: userIdFilter }),
           },
-        },
+          take,
+          select: {
+            userId: true,
+            isFixed: true,
+            priority: true,
+            weight: true,
+            scheduleId: true,
+            groupId: true,
+            user: {
+              select: {
+                name: true,
+                email: true,
+                avatarUrl: true,
+              },
+            },
+          },
+          orderBy: [{ userId: "asc" }],
+        });
       },
-      orderBy: [{ userId: "asc" }],
     });
 
     const hasMore = hosts.length > limit;
@@ -288,33 +299,35 @@ export class HostRepository {
     limit?: number;
     search?: string;
   }) {
-    const children = await this.prismaClient.eventType.findMany({
-      where: {
-        parentId: eventTypeId,
-        ...(cursor && { id: { gt: cursor } }),
-        ...(search && {
-          OR: [
-            { owner: { name: { contains: search, mode: "insensitive" as const } } },
-            { owner: { email: { contains: search, mode: "insensitive" as const } } },
-          ],
-        }),
-      },
-      take: limit + 1,
-      select: {
-        id: true,
-        slug: true,
-        hidden: true,
-        owner: {
+    const children = await findSearchedRows({
+      search,
+      cursor,
+      limit,
+      getKey: (child) => child.id,
+      getSearchValues: (child) => [child.owner?.name, child.owner?.email],
+      fetchRows: ({ after, take }: KeysetPage) =>
+        this.prismaClient.eventType.findMany({
+          where: {
+            parentId: eventTypeId,
+            ...(after && { id: { gt: after } }),
+          },
+          take,
           select: {
             id: true,
-            name: true,
-            email: true,
-            username: true,
-            avatarUrl: true,
+            slug: true,
+            hidden: true,
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                username: true,
+                avatarUrl: true,
+              },
+            },
           },
-        },
-      },
-      orderBy: [{ id: "asc" }],
+          orderBy: [{ id: "asc" }],
+        }),
     });
 
     const hasMore = children.length > limit;
