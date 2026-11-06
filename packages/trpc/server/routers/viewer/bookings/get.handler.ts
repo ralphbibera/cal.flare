@@ -1015,25 +1015,27 @@ async function getEventTypeIdsFromEventTypeIdsFilter(prisma: PrismaClient, event
  * @param teamIds Array of team IDs to get members from
  * @returns {Promise<number[]>} UserIDs for members in the specified teams.
  */
-async function getUserIdsFromTeamIds(prisma: PrismaClient, teamIds: number[]): Promise<number[]> {
+export async function getUserIdsFromTeamIds(prisma: PrismaClient, teamIds: number[]): Promise<number[]> {
   if (teamIds.length === 0) {
     return [];
   }
 
-  const users = await prisma.user.findMany({
-    where: {
-      teams: {
-        some: {
-          teamId: {
-            in: teamIds,
+  const users = await findManyInChunks(teamIds, (chunk) =>
+    prisma.user.findMany({
+      where: {
+        teams: {
+          some: {
+            teamId: {
+              in: chunk,
+            },
           },
         },
       },
-    },
-    select: {
-      id: true,
-    },
-  });
+      select: {
+        id: true,
+      },
+    })
+  );
   return Array.from(new Set(users.map((user) => user.id)));
 }
 
