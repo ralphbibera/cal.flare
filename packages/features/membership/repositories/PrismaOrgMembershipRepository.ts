@@ -1,4 +1,5 @@
 import { prisma } from "@calcom/prisma";
+import { findManyInChunks } from "@calcom/prisma/d1";
 import { MembershipRole } from "@calcom/prisma/enums";
 
 export class PrismaOrgMembershipRepository {
@@ -22,40 +23,50 @@ export class PrismaOrgMembershipRepository {
   }
 
   static async isLoggedInUserOrgAdminOfBookingHost(loggedInUserId: number, bookingUserId: number) {
-    const orgIdsWhereLoggedInUserAdmin = await this.getOrgIdsWhereAdmin(loggedInUserId);
+    const orgIdsWhereLoggedInUserAdmin =
+      await PrismaOrgMembershipRepository.getOrgIdsWhereAdmin(loggedInUserId);
 
     if (orgIdsWhereLoggedInUserAdmin.length === 0) {
       return false;
     }
 
-    const bookingUserOrgMembership = await prisma.membership.findFirst({
-      where: {
-        userId: bookingUserId,
-        teamId: {
-          in: orgIdsWhereLoggedInUserAdmin,
-        },
-        team: {
-          parentId: null,
-        },
-      },
-      select: {
-        userId: true,
-      },
-    });
-
-    if (bookingUserOrgMembership) return true;
-
-    const bookingUserOrgTeamMembership = await prisma.membership.findFirst({
-      where: {
-        userId: bookingUserId,
-        team: {
-          parentId: {
-            in: orgIdsWhereLoggedInUserAdmin,
+    const bookingUserOrgMembership = await findManyInChunks(orgIdsWhereLoggedInUserAdmin, (chunk) =>
+      prisma.membership.findMany({
+        where: {
+          userId: bookingUserId,
+          teamId: {
+            in: chunk,
+          },
+          team: {
+            parentId: null,
           },
         },
-      },
-    });
+        select: {
+          userId: true,
+        },
+        take: 1,
+      })
+    );
 
-    return !!bookingUserOrgTeamMembership;
+    if (bookingUserOrgMembership.length > 0) return true;
+
+    const bookingUserOrgTeamMembership = await findManyInChunks(orgIdsWhereLoggedInUserAdmin, (chunk) =>
+      prisma.membership.findMany({
+        where: {
+          userId: bookingUserId,
+          team: {
+            parentId: {
+              in: chunk,
+            },
+          },
+        },
+        select: {
+          userId: true,
+        },
+        take: 1,
+      })
+    );
+
+    return bookingUserOrgTeamMembership.length > 0;
   }
 }
