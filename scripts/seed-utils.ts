@@ -58,9 +58,11 @@ export async function createUserAndEventType({
         : undefined,
   };
 
+  // Re-seeding must not stack another "Working Hours" schedule onto an existing user.
+  const { schedules: _schedules, ...userUpdate } = userData;
   const theUser = await prisma.user.upsert({
     where: { email_username: { email: user.email, username: user.username } },
-    update: userData,
+    update: userUpdate,
     create: userData,
   });
 
