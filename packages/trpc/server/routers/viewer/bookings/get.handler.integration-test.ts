@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import process from "node:process";
 import kysely from "@calcom/kysely";
 import prisma from "@calcom/prisma";
 import type { Booking, EventType, User } from "@calcom/prisma/client";
@@ -683,4 +684,59 @@ describe("getBookings - integration", () => {
       expect(result.bookings[0]).toMatchObject({ report: null, assignmentReasonSortedByCreatedAt: [] });
     }
   );
+
+  d1Test("matches advanced attendee text filters as PostgreSQL ILIKE and lower() do", async () => {
+    const owner = await prisma.user.create({
+      data: { username: `ilike-${timestamp}`, email: `ilike-${timestamp}@example.com`, name: "Owner" },
+    });
+    const startTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const [accented, plain, percent, kelvin] = await Promise.all(
+      [
+        { name: "ÉMILE ZOË", email: "Émile@Example.com" },
+        { name: "Emile Plain", email: "emile@example.com" },
+        { name: "50% off", email: "percent@example.com" },
+        { name: "\u212Aelvin 500", email: "kelvin@example.com" },
+      ].map((attendee, index) =>
+        prisma.booking.create({
+          data: {
+            uid: `ilike-${index}-${timestamp}`,
+            title: "ILIKE",
+            userId: owner.id,
+            status: BookingStatus.ACCEPTED,
+            startTime: new Date(startTime.getTime() + index * 60_000),
+            endTime: new Date(startTime.getTime() + index * 60_000 + 30_000),
+            attendees: { create: { ...attendee, timeZone: "UTC" } },
+          },
+        })
+      )
+    );
+    const filter = async (
+      key: "attendeeName" | "attendeeEmail",
+      operator: "contains" | "notContains" | "startsWith" | "endsWith" | "equals" | "notEquals",
+      operand: string
+    ) => {
+      const result = await getBookings({
+        user: { id: owner.id, email: owner.email, orgId: null },
+        prisma,
+        kysely,
+        bookingListingByStatus: ["upcoming"],
+        filters: { [key]: { type: "t", data: { operator, operand } } },
+        take: 10,
+        skip: 0,
+      });
+      expect(result.totalCount).toBe(result.bookings.length);
+      return result.bookings.map(({ id }) => id);
+    };
+
+    expect(await filter("attendeeName", "contains", "émile")).toEqual([accented.id]);
+    expect(await filter("attendeeName", "notContains", "émile")).toEqual([plain.id, percent.id, kelvin.id]);
+    expect(await filter("attendeeName", "startsWith", "ÉM")).toEqual([accented.id]);
+    expect(await filter("attendeeName", "endsWith", "zoë")).toEqual([accented.id]);
+    expect(await filter("attendeeName", "equals", "émile zoë")).toEqual([accented.id]);
+    expect(await filter("attendeeName", "notEquals", "Émile Zoë")).toEqual([plain.id, percent.id, kelvin.id]);
+    expect(await filter("attendeeName", "contains", "kelvin")).toEqual([kelvin.id]);
+    expect(await filter("attendeeName", "contains", "50\\%")).toEqual([percent.id]);
+    expect(await filter("attendeeName", "contains", "5_0")).toEqual([kelvin.id]);
+    expect(await filter("attendeeEmail", "equals", "ÉMILE@EXAMPLE.COM")).toEqual([accented.id]);
+  });
 });
