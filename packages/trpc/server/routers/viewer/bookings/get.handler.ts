@@ -8,21 +8,27 @@ import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import type { PrismaClient } from "@calcom/prisma";
-import type { Booking } from "@calcom/prisma/client";
 import { Prisma } from "@calcom/prisma/client";
 import { BookingStatus, MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
-import type { Kysely, SelectQueryBuilder } from "kysely";
-import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/postgres";
+import type { Kysely, Selectable, SelectQueryBuilder } from "kysely";
+import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 import type { TrpcSessionUser } from "../../../types";
+import { decodeBookingListRow } from "./bookingListRow";
 import type { TGetInputSchema } from "./get.schema";
 
 class PermissionCheckService {
   constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
+  async checkPermission(..._args: unknown[]) {
+    return true;
+  }
+  async hasPermission(..._args: unknown[]) {
+    return true;
+  }
+  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> {
+    return [];
+  }
 }
 
 type GetOptions = {
@@ -34,6 +40,9 @@ type GetOptions = {
 };
 
 type InputByStatus = "upcoming" | "recurring" | "past" | "cancelled" | "unconfirmed";
+
+// Prisma's D1 adapter and database defaults store UTC timestamps with the +00:00 suffix.
+const toD1Timestamp = (date: Date) => date.toISOString().replace("Z", "+00:00");
 
 const log = logger.getSubLogger({ prefix: ["bookings.get"] });
 
@@ -87,7 +96,7 @@ export const getHandler = async ({ ctx, input }: GetOptions) => {
 type BookingsUnionQuery = SelectQueryBuilder<
   DB,
   "Booking",
-  Pick<Booking, "id" | "createdAt" | "updatedAt" | "startTime" | "endTime">
+  Pick<Selectable<DB["Booking"]>, "id" | "createdAt" | "updatedAt" | "startTime" | "endTime">
 >;
 
 export async function getBookings({
@@ -401,10 +410,18 @@ export async function getBookings({
 
     // 7. Booking Start/End Time Range Filters
     if (filters?.afterStartDate) {
-      fullQuery = fullQuery.where("Booking.startTime", ">=", dayjs.utc(filters.afterStartDate).toDate());
+      fullQuery = fullQuery.where(
+        "Booking.startTime",
+        ">=",
+        toD1Timestamp(dayjs.utc(filters.afterStartDate).toDate())
+      );
     }
     if (filters?.beforeEndDate) {
-      fullQuery = fullQuery.where("Booking.endTime", "<=", dayjs.utc(filters.beforeEndDate).toDate());
+      fullQuery = fullQuery.where(
+        "Booking.endTime",
+        "<=",
+        toD1Timestamp(dayjs.utc(filters.beforeEndDate).toDate())
+      );
     }
 
     return fullQuery;
@@ -421,18 +438,18 @@ export async function getBookings({
     .distinct()
     .selectAll("union_subquery")
     .$if(Boolean(filters?.afterUpdatedDate), (eb) =>
-      eb.where("union_subquery.updatedAt", ">=", dayjs.utc(filters.afterUpdatedDate).toDate())
+      eb.where("union_subquery.updatedAt", ">=", toD1Timestamp(dayjs.utc(filters.afterUpdatedDate).toDate()))
     )
     .$if(Boolean(filters?.beforeUpdatedDate), (eb) =>
-      eb.where("union_subquery.updatedAt", "<=", dayjs.utc(filters.beforeUpdatedDate).toDate())
+      eb.where("union_subquery.updatedAt", "<=", toD1Timestamp(dayjs.utc(filters.beforeUpdatedDate).toDate()))
     )
     .$if(Boolean(filters?.afterCreatedDate), (eb) =>
-      eb.where("union_subquery.createdAt", ">=", dayjs.utc(filters.afterCreatedDate).toDate())
+      eb.where("union_subquery.createdAt", ">=", toD1Timestamp(dayjs.utc(filters.afterCreatedDate).toDate()))
     )
     .$if(Boolean(filters?.beforeCreatedDate), (eb) =>
-      eb.where("union_subquery.createdAt", "<=", dayjs.utc(filters.beforeCreatedDate).toDate())
+      eb.where("union_subquery.createdAt", "<=", toD1Timestamp(dayjs.utc(filters.beforeCreatedDate).toDate()))
     )
-    .orderBy(orderBy.key, orderBy.order)
+    .orderBy(orderBy.key, (ob) => (orderBy.order === "asc" ? ob.asc().nullsLast() : ob.desc().nullsFirst()))
     .limit(take)
     .offset(skip)
     .compile();
@@ -450,7 +467,7 @@ export async function getBookings({
     )?.bookingCount ?? 0
   );
 
-  const plainBookings = !(bookingsFromUnion?.length === 0)
+  const plainBookingRows = !(bookingsFromUnion?.length === 0)
     ? await kysely
         .selectFrom("Booking")
         .where(
@@ -470,13 +487,7 @@ export async function getBookings({
           "Booking.endTime",
           "Booking.metadata",
           "Booking.uid",
-          eb
-            .cast<Prisma.JsonValue>(
-              // Target TypeScript type
-              eb.ref("Booking.responses"), // Source column
-              "jsonb" // Target SQL type
-            )
-            .as("responses"),
+          "Booking.responses",
           "Booking.recurringEventId",
           "Booking.location",
           eb
@@ -580,7 +591,20 @@ export async function getBookings({
           jsonArrayFrom(
             eb
               .selectFrom("BookingReference")
-              .selectAll()
+              .select([
+                "id",
+                "type",
+                "uid",
+                "meetingId",
+                "thirdPartyRecurringEventId",
+                "meetingPassword",
+                "meetingUrl",
+                "bookingId",
+                "externalCalendarId",
+                "deleted",
+                "credentialId",
+                "delegationCredentialId",
+              ])
               .whereRef("BookingReference.bookingId", "=", "Booking.id")
           ).as("references"),
           jsonArrayFrom(
@@ -610,7 +634,10 @@ export async function getBookings({
               .whereRef("Booking.userId", "=", "users.id")
           ).as("user"),
           jsonArrayFrom(
-            eb.selectFrom("Attendee").selectAll().whereRef("Attendee.bookingId", "=", "Booking.id")
+            eb
+              .selectFrom("Attendee")
+              .select(["id", "email", "name", "timeZone", "phoneNumber", "locale", "bookingId", "noShow"])
+              .whereRef("Attendee.bookingId", "=", "Booking.id")
           ).as("attendees"),
           jsonArrayFrom(
             eb
@@ -629,7 +656,7 @@ export async function getBookings({
           jsonArrayFrom(
             eb
               .selectFrom("AssignmentReason")
-              .selectAll()
+              .select(["id", "bookingId", "createdAt", "reasonEnum", "reasonString"])
               .whereRef("AssignmentReason.bookingId", "=", "Booking.id")
               .orderBy("AssignmentReason.createdAt", "asc")
           ).as("assignmentReasonSortedByCreatedAt"),
@@ -646,9 +673,12 @@ export async function getBookings({
               .whereRef("BookingReport.bookingUid", "=", "Booking.uid")
           ).as("report"),
         ])
-        .orderBy(orderBy.key, orderBy.order)
+        .orderBy(orderBy.key, (ob) =>
+          orderBy.order === "asc" ? ob.asc().nullsLast() : ob.desc().nullsFirst()
+        )
         .execute()
     : [];
+  const plainBookings = plainBookingRows.map(decodeBookingListRow);
 
   const [
     recurringInfoBasic,
@@ -881,13 +911,13 @@ async function getEventTypeIdsFromTeamIdsFilter(prisma: PrismaClient, teamIds?: 
 
   const result = await prisma.$queryRaw<{ id: number }[]>`
     SELECT "child"."id"
-    FROM "public"."EventType" AS "parent"
-    LEFT JOIN "public"."EventType" "child" ON ("parent"."id") = ("child"."parentId")
-    WHERE "parent"."id" IN (SELECT "id" FROM "public"."EventType" WHERE "teamId" IN (${Prisma.join(teamIds)}))
+    FROM "EventType" AS "parent"
+    LEFT JOIN "EventType" "child" ON ("parent"."id") = ("child"."parentId")
+    WHERE "parent"."id" IN (SELECT "id" FROM "EventType" WHERE "teamId" IN (${Prisma.join(teamIds)}))
       AND "child"."id" IS NOT NULL
     UNION
     SELECT "parent"."id"
-    FROM "public"."EventType" AS "parent"
+    FROM "EventType" AS "parent"
     WHERE "parent"."teamId" IN (${Prisma.join(teamIds)})
   `;
 
@@ -1006,7 +1036,7 @@ function addStatusesQueryFilters(query: BookingsUnionQuery, statuses: InputBySta
         statuses.map((status) => {
           if (status === "upcoming") {
             return and([
-              eb("Booking.endTime", ">=", new Date()),
+              eb("Booking.endTime", ">=", toD1Timestamp(new Date())),
               or([
                 and([eb("Booking.recurringEventId", "is not", null), eb("Booking.status", "=", "accepted")]),
                 and([
@@ -1019,7 +1049,7 @@ function addStatusesQueryFilters(query: BookingsUnionQuery, statuses: InputBySta
 
           if (status === "recurring") {
             return and([
-              eb("Booking.endTime", ">=", new Date()),
+              eb("Booking.endTime", ">=", toD1Timestamp(new Date())),
               eb("Booking.recurringEventId", "is not", null),
               eb("Booking.status", "not in", ["cancelled", "rejected"]),
             ]);
@@ -1027,7 +1057,7 @@ function addStatusesQueryFilters(query: BookingsUnionQuery, statuses: InputBySta
 
           if (status === "past") {
             return and([
-              eb("Booking.endTime", "<=", new Date()),
+              eb("Booking.endTime", "<=", toD1Timestamp(new Date())),
               eb("Booking.status", "not in", ["cancelled", "rejected"]),
             ]);
           }
@@ -1037,7 +1067,10 @@ function addStatusesQueryFilters(query: BookingsUnionQuery, statuses: InputBySta
           }
 
           if (status === "unconfirmed") {
-            return and([eb("Booking.endTime", ">=", new Date()), eb("Booking.status", "=", "pending")]);
+            return and([
+              eb("Booking.endTime", ">=", toD1Timestamp(new Date())),
+              eb("Booking.status", "=", "pending"),
+            ]);
           }
           return and([]);
         })
@@ -1068,16 +1101,20 @@ function addAdvancedAttendeeWhereClause(
   ) as SelectQueryBuilder<
     DB,
     "Booking" | "Attendee",
-    Pick<Booking, "id" | "createdAt" | "updatedAt" | "startTime" | "endTime">
+    Pick<Selectable<DB["Booking"]>, "id" | "createdAt" | "updatedAt" | "startTime" | "endTime">
   >;
 
   switch (operator) {
     case "endsWith":
-      fullQuery = fullQuery.where(`Attendee.${key}`, "ilike", `%${operand}`);
+      fullQuery = fullQuery.where((eb) =>
+        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "like", `%${operand}`.toLowerCase())
+      );
       break;
 
     case "startsWith":
-      fullQuery = fullQuery.where(`Attendee.${key}`, "ilike", `${operand}%`);
+      fullQuery = fullQuery.where((eb) =>
+        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "like", `${operand}%`.toLowerCase())
+      );
       break;
 
     case "equals":
@@ -1093,11 +1130,15 @@ function addAdvancedAttendeeWhereClause(
       break;
 
     case "contains":
-      fullQuery = fullQuery.where(`Attendee.${key}`, "ilike", `%${operand}%`);
+      fullQuery = fullQuery.where((eb) =>
+        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "like", `%${operand}%`.toLowerCase())
+      );
       break;
 
     case "notContains":
-      fullQuery = fullQuery.where(`Attendee.${key}`, "not ilike", `%${operand}%`);
+      fullQuery = fullQuery.where((eb) =>
+        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "not like", `%${operand}%`.toLowerCase())
+      );
       break;
 
     case "isEmpty":
