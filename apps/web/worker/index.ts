@@ -1,6 +1,8 @@
 import { EmailMessage } from "cloudflare:email";
 import manifest from "virtual:calflare-static-assets";
 import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-context";
+import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
+import { consumeJobBatch, type JobMessage, withJobQueue } from "@calcom/features/tasker/queue/JobQueue";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
@@ -49,7 +51,7 @@ function serve(
     () =>
       withD1Database(env, () =>
         withAuthRequestEnvironment({ NEXTAUTH_SECRET: env.NEXTAUTH_SECRET }, () =>
-          handler.fetch(request, withStaticAssets(env, manifest), ctx)
+          withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
         )
       ),
     (promise) => ctx.waitUntil(promise)
@@ -68,6 +70,11 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
   },
   scheduled(controller: ScheduledController, env: WorkerEnvironment, ctx: ExecutionContext) {
     ctx.waitUntil(dispatchSchedules(controller, env, (request) => serve(request, env, ctx)));
+  },
+  queue(batch: MessageBatch<JobMessage>, env: WorkerEnvironment) {
+    return withD1Database(env, () =>
+      withJobQueue(env, () => consumeJobBatch(batch, [ensureDefaultCalendarsJob]))
+    );
   },
 });
 
