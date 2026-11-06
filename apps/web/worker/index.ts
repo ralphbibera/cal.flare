@@ -14,6 +14,37 @@ type WorkerEnvironment = SentryEnvironment & NonNullable<Parameters<typeof handl
 
 export * from "vinext/server/fetch-handler";
 
+function serve(
+  request: Parameters<typeof handler.fetch>[0],
+  env: WorkerEnvironment,
+  ctx: Parameters<typeof handler.fetch>[2]
+) {
+  return withCloudflareEmail(
+    async ({ from, to, raw }) => {
+      if (!env.EMAIL) {
+        throw new ErrorWithCode(
+          ErrorCode.InternalServerError,
+          "EMAIL binding is required for email delivery"
+        );
+      }
+      await env.EMAIL.send(
+        new EmailMessage(
+          from,
+          to,
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(raw);
+              controller.close();
+            },
+          })
+        )
+      );
+    },
+    () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
+    (promise) => ctx.waitUntil(promise)
+  );
+}
+
 const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env), {
   ...handler,
   fetch(
@@ -22,30 +53,7 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
     ctx: Parameters<typeof handler.fetch>[2]
   ) {
     if (!env) throw new Error("Worker bindings are required");
-    return withCloudflareEmail(
-      async ({ from, to, raw }) => {
-        if (!env.EMAIL) {
-          throw new ErrorWithCode(
-            ErrorCode.InternalServerError,
-            "EMAIL binding is required for email delivery"
-          );
-        }
-        await env.EMAIL.send(
-          new EmailMessage(
-            from,
-            to,
-            new ReadableStream({
-              start(controller) {
-                controller.enqueue(raw);
-                controller.close();
-              },
-            })
-          )
-        );
-      },
-      () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
-      (promise) => ctx.waitUntil(promise)
-    );
+    return serve(request, env, ctx);
   },
 });
 
