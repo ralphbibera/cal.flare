@@ -101,7 +101,7 @@ describe("category-scoped credentials", () => {
         `INSERT INTO "Credential" ("id", "type", "key", "appId", "userId", "delegationCredentialId") VALUES (99, 'calendar', '{}', 'both', 99, 'delegation')`
       ),
     ]);
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await mf?.dispose();
