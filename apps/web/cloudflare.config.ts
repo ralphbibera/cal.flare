@@ -25,6 +25,7 @@ export default defineConfig({
       NEXTAUTH_SECRET: bindings.secret(),
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
+      EMAIL: bindings.sendEmail(),
       API_V2: bindings.worker({ worker: "calflare-api-v2" }),
       JOBS: bindings.queue({ name: "calflare-jobs" }),
       RUNTIME_STATE: bindings.durableObject({ worker: "calflare-api-v2", exportName: "RuntimeState" }),
