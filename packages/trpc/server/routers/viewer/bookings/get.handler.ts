@@ -6,13 +6,15 @@ import kysely from "@calcom/kysely";
 import { parseEventTypeColor } from "@calcom/lib/isEventTypeColor";
 import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import logger from "@calcom/lib/logger";
+import { type SqliteIlike, toSqliteIlike, toSqliteLowerEquals } from "@calcom/lib/postgres-ilike";
 import { safeStringify } from "@calcom/lib/safeStringify";
 import type { PrismaClient } from "@calcom/prisma";
 import { Prisma } from "@calcom/prisma/client";
 import { BookingStatus, MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
-import type { Kysely, Selectable, SelectQueryBuilder } from "kysely";
+import type { Kysely, RawBuilder, Selectable, SelectQueryBuilder, SqlBool } from "kysely";
+import { sql } from "kysely";
 import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/sqlite";
 import type { TrpcSessionUser } from "../../../types";
 import { decodeBookingListRow } from "./bookingListRow";
@@ -1104,41 +1106,34 @@ function addAdvancedAttendeeWhereClause(
     Pick<Selectable<DB["Booking"]>, "id" | "createdAt" | "updatedAt" | "startTime" | "endTime">
   >;
 
+  const column = `Attendee.${key}` as const;
   switch (operator) {
     case "endsWith":
-      fullQuery = fullQuery.where((eb) =>
-        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "like", `%${operand}`.toLowerCase())
-      );
+      fullQuery = fullQuery.where(sqliteLike(column, toSqliteIlike(`%${operand}`)));
       break;
 
     case "startsWith":
-      fullQuery = fullQuery.where((eb) =>
-        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "like", `${operand}%`.toLowerCase())
-      );
+      fullQuery = fullQuery.where(sqliteLike(column, toSqliteIlike(`${operand}%`)));
       break;
 
-    case "equals":
-      fullQuery = fullQuery.where((eb) =>
-        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "=", `${operand.toLowerCase()}`)
-      );
+    case "equals": {
+      const equals = toSqliteLowerEquals(operand.toLowerCase());
+      fullQuery = fullQuery.where(equals ? sqliteLike(column, equals) : sql.lit(false));
       break;
+    }
 
-    case "notEquals":
-      fullQuery = fullQuery.where((eb) =>
-        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "!=", `${operand.toLowerCase()}`)
-      );
+    case "notEquals": {
+      const equals = toSqliteLowerEquals(operand.toLowerCase());
+      if (equals) fullQuery = fullQuery.where(sql<SqlBool>`not (${sqliteLike(column, equals)})`);
       break;
+    }
 
     case "contains":
-      fullQuery = fullQuery.where((eb) =>
-        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "like", `%${operand}%`.toLowerCase())
-      );
+      fullQuery = fullQuery.where(sqliteLike(column, toSqliteIlike(`%${operand}%`)));
       break;
 
     case "notContains":
-      fullQuery = fullQuery.where((eb) =>
-        eb(eb.fn<string>("lower", [`Attendee.${key}`]), "not like", `%${operand}%`.toLowerCase())
-      );
+      fullQuery = fullQuery.where(sql<SqlBool>`not (${sqliteLike(column, toSqliteIlike(`%${operand}%`))})`);
       break;
 
     case "isEmpty":
@@ -1154,6 +1149,16 @@ function addAdvancedAttendeeWhereClause(
   }
 
   return fullQuery;
+}
+
+// PostgreSQL ran these filters as ILIKE and lower() =, but SQLite's LIKE and lower() fold only ASCII. The folds
+// are letters from the lowercase table, inlined so each filter binds only its pattern under D1's parameter limit.
+function sqliteLike(column: `Attendee.${"name" | "email"}`, { pattern, folds }: SqliteIlike) {
+  const value = folds.reduce<RawBuilder<string>>(
+    (folded, [from, to]) => sql`replace(${folded}, ${sql.lit(from)}, ${sql.lit(to)})`,
+    sql.ref<string>(column)
+  );
+  return sql<SqlBool>`${value} like ${pattern} escape '\\'`;
 }
 
 function getOrderBy(
