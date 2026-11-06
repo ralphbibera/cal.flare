@@ -1,6 +1,7 @@
 import { withReporting } from "@calcom/lib/sentryWrapper";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Booking, Prisma } from "@calcom/prisma/client";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks } from "@calcom/prisma/d1";
 import { BookingStatus, RRTimestampBasis } from "@calcom/prisma/enums";
 import { bookingDetailsSelect, bookingMinimalSelect } from "@calcom/prisma/selects/booking";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
@@ -74,7 +75,6 @@ export type ManagedEventCancellationResult = {
   metadata: Prisma.JsonValue;
   status: BookingStatus;
 };
-
 
 type TeamBookingsParamsBase = {
   user: { id: number; email: string };
@@ -163,6 +163,10 @@ const buildWhereClauseForActiveBookings = ({
         }
     : {}),
 });
+
+// Rows matched through different chunks of a to-many relation filter are found once per chunk.
+const uniqueById = <Row extends { id: number }>(rows: Row[]) =>
+  Array.from(new Map(rows.map((row) => [row.id, row])).values());
 
 const selectStatementToGetBookingForCalEventBuilder = {
   id: true,
@@ -734,29 +738,37 @@ export class BookingRepository implements IBookingRepository {
       }),
     } satisfies Prisma.BookingSelect;
 
-    const currentBookingsAllUsersQueryOne = this.prismaClient.booking.findMany({
-      where: {
-        ...sharedQuery,
-        userId: {
-          in: Array.from(userIdAndEmailMap.keys()),
-        },
-      },
-      select: bookingsSelect,
-    });
-
-    const currentBookingsAllUsersQueryTwo = this.prismaClient.booking.findMany({
-      where: {
-        ...sharedQuery,
-        attendees: {
-          some: {
-            email: {
-              in: Array.from(userIdAndEmailMap.values()),
+    const currentBookingsAllUsersQueryOne = findManyInChunks(
+      Array.from(userIdAndEmailMap.keys()),
+      (userIds) =>
+        this.prismaClient.booking.findMany({
+          where: {
+            ...sharedQuery,
+            userId: {
+              in: userIds,
             },
           },
-        },
-      },
-      select: bookingsSelect,
-    });
+          select: bookingsSelect,
+        })
+    );
+
+    const currentBookingsAllUsersQueryTwo = findManyInChunks(
+      Array.from(userIdAndEmailMap.values()),
+      (emails) =>
+        this.prismaClient.booking.findMany({
+          where: {
+            ...sharedQuery,
+            attendees: {
+              some: {
+                email: {
+                  in: emails,
+                },
+              },
+            },
+          },
+          select: bookingsSelect,
+        })
+    ).then(uniqueById);
 
     const currentBookingsAllUsersQueryThree = eventTypeId
       ? this.prismaClient.booking.findMany({
@@ -815,27 +827,31 @@ export class BookingRepository implements IBookingRepository {
     includeNoShowInRRCalculation: boolean;
     rrTimestampBasis: RRTimestampBasis;
   }) {
-    return await this.prismaClient.booking.findMany({
-      where: buildWhereClauseForActiveBookings({
-        eventTypeId,
-        startDate,
-        endDate,
-        users,
-        includeNoShowInRRCalculation,
-        rrTimestampBasis,
-      }),
-      select: {
-        id: true,
-        attendees: true,
-        userId: true,
-        createdAt: true,
-        status: true,
-        startTime: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const bookings = await findManyInChunks(
+      users,
+      (usersChunk) =>
+        this.prismaClient.booking.findMany({
+          where: buildWhereClauseForActiveBookings({
+            eventTypeId,
+            startDate,
+            endDate,
+            users: usersChunk,
+            includeNoShowInRRCalculation,
+            rrTimestampBasis,
+          }),
+          select: {
+            id: true,
+            attendees: true,
+            userId: true,
+            createdAt: true,
+            status: true,
+            startTime: true,
+          },
+        }),
+      // Each user binds both an id and an email.
+      D1_IN_LIST_CHUNK_SIZE / 2
+    );
+    return uniqueById(bookings).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async findBookingByUid({ bookingUid }: { bookingUid: string }) {
@@ -1433,7 +1449,7 @@ export class BookingRepository implements IBookingRepository {
 
     if (rescheduleUid) {
       [totalBookingTime] = await this.prismaClient.$queryRaw<[{ totalMinutes: number | null }]>`
-      SELECT SUM(EXTRACT(EPOCH FROM ("endTime" - "startTime")) / 60) as "totalMinutes"
+      SELECT SUM(ROUND((julianday("endTime") - julianday("startTime")) * 86400000)) / 60000.0 as "totalMinutes"
       FROM "Booking"
       WHERE "status" = 'accepted'
         AND "eventTypeId" = ${eventId}
@@ -1443,7 +1459,7 @@ export class BookingRepository implements IBookingRepository {
     `;
     } else {
       [totalBookingTime] = await this.prismaClient.$queryRaw<[{ totalMinutes: number | null }]>`
-      SELECT SUM(EXTRACT(EPOCH FROM ("endTime" - "startTime")) / 60) as "totalMinutes"
+      SELECT SUM(ROUND((julianday("endTime") - julianday("startTime")) * 86400000)) / 60000.0 as "totalMinutes"
       FROM "Booking"
       WHERE "status" = 'accepted'
         AND "eventTypeId" = ${eventId}
@@ -1452,10 +1468,8 @@ export class BookingRepository implements IBookingRepository {
     `;
     }
 
-    // PostgreSQL 16+ returns `numeric` type from EXTRACT(EPOCH FROM ...) instead of `double precision`.
-    // Prisma maps `numeric` to a JavaScript Decimal object, which causes string concatenation
-    // instead of numeric addition when used with the `+` operator (e.g., Decimal(30) + 30 = "3030").
-    // Explicitly convert to a plain number to ensure correct arithmetic in all callers.
+    // julianday carries float error below a millisecond, so durations are summed as whole
+    // milliseconds to match the exact fractional minutes PostgreSQL's EXTRACT(EPOCH) produced.
     return Number(totalBookingTime.totalMinutes ?? 0);
   }
 

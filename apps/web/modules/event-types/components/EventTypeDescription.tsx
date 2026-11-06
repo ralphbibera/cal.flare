@@ -2,6 +2,7 @@ import { useMemo } from "react";
 
 import { getPaymentAppData } from "@calcom/app-store/_utils/payments/getPaymentAppData";
 import { eventTypeMetaDataSchemaWithTypedApps } from "@calcom/app-store/zod-utils";
+import type { EventTypesPublic } from "@calcom/features/eventtypes/lib/getEventTypesPublic";
 import { Price } from "@calcom/features/bookings/components/event-meta/Price";
 import { PriceIcon } from "@calcom/web/modules/bookings/components/event-meta/PriceIcon";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
@@ -16,10 +17,14 @@ import { Badge } from "@calcom/ui/components/badge";
 export type EventTypeDescriptionProps = {
   eventType: Pick<
     EventType,
-    | Exclude<keyof typeof baseEventTypeSelect, "recurringEvent" | "description">
+    | Exclude<
+        keyof typeof baseEventTypeSelect,
+        "recurringEvent" | "description" | "schedulingType" | "seatsPerTimeSlot"
+      >
     | "metadata"
-    | "seatsPerTimeSlot"
   > & {
+    schedulingType: EventType["schedulingType"] | EventTypesPublic[number]["schedulingType"];
+    seatsPerTimeSlot?: EventType["seatsPerTimeSlot"];
     descriptionAsSafeHTML?: string | null;
     recurringEvent: Prisma.JsonValue;
   };

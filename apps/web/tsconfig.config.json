@@ -11,7 +11,9 @@
     "worker/**/*.ts",
     "scripts/bundle-analysis.ts",
     "scripts/static-assets.ts",
-    ".cloudflare/types/**/*.d.ts"
+    ".cloudflare/types/**/*.d.ts",
+    "**/*.d1.test.ts",
+    "../../packages/types/window.d.ts"
   ],
   "exclude": ["**/node_modules/**"]
 }
