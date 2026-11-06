@@ -1,4 +1,6 @@
 import manifest from "virtual:calflare-static-assets";
+import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
+import { consumeJobBatch, type JobMessage, withJobQueue } from "@calcom/features/tasker/queue/JobQueue";
 import { withD1Database } from "@calcom/prisma/d1";
 import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
@@ -18,7 +20,14 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
     ctx: Parameters<typeof handler.fetch>[2]
   ) {
     if (!env) throw new Error("Worker bindings are required");
-    return withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx));
+    return withD1Database(env, () =>
+      withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+    );
+  },
+  queue(batch: MessageBatch<JobMessage>, env: WorkerEnvironment) {
+    return withD1Database(env, () =>
+      withJobQueue(env, () => consumeJobBatch(batch, [ensureDefaultCalendarsJob]))
+    );
   },
 });
 
