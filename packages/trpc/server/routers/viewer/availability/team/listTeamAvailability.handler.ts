@@ -175,7 +175,7 @@ async function getInfoForAllTeams({ ctx, input }: GetOptions) {
     {
       count: number;
     }[]
-  >`SELECT COUNT(DISTINCT "userId")::integer from "Membership" WHERE "teamId" IN (${Prisma.join(teamIds)})`;
+  >`SELECT COUNT(DISTINCT "userId") AS "count" FROM "Membership" WHERE "teamId" IN (${Prisma.join(teamIds)})`;
 
   return {
     teamMembers,
