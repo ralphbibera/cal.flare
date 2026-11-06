@@ -53,7 +53,7 @@ export default defineConfig({
       dynamicRequireRoot: "../../../apps/web",
       dynamicRequireTargets: ["next-i18next.config.js"],
       ignoreDynamicRequires: true,
-      include: ["../../prisma/client/**"],
+      include: ["../../prisma/client/**", "../../i18n/next-i18next.config.js", "../../../i18n.json"],
     },
     rollupOptions: {
       external: [

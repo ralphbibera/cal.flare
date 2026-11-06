@@ -1,6 +1,8 @@
-import { i18n } from "@calcom/i18n/next-i18next.config";
+import i18nConfig from "@calcom/i18n/next-i18next.config";
 import { lookup } from "bcp-47-match";
 import { z } from "zod";
+
+const { i18n } = i18nConfig;
 
 export const i18nInputSchema = z.object({
   locale: z

@@ -2,7 +2,9 @@ import parser from "accept-language-parser";
 import type { GetServerSidePropsContext, NextApiRequest } from "next";
 
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
-import { i18n } from "@calcom/i18n/next-i18next.config";
+import i18nConfig from "@calcom/i18n/next-i18next.config";
+
+const { i18n } = i18nConfig;
 
 type Maybe<T> = T | null | undefined;
 
