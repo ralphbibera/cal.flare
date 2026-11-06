@@ -32,8 +32,10 @@ import {
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
 import process from "node:process";
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
+import { D1PaymentCredentialRepository } from "@calcom/features/bookings/lib/payment/D1PaymentCredentialRepository";
 import { createWatchlistEntry } from "@calcom/features/watchlist/lib/testUtils";
 import { getTranslation } from "@calcom/i18n/server";
+import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 import { WEBAPP_URL, WEBSITE_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import type { HttpError } from "@calcom/lib/http-error";
@@ -63,7 +65,7 @@ import type { CalendarEvent } from "@calcom/types/Calendar";
 import type { Request, Response } from "express";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type Stripe from "stripe";
-import { describe, expect } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
 import { handleConfirmation } from "../../handleConfirmation";
 import { getNewBookingHandler } from "./getNewBookingHandler";
 
@@ -103,6 +105,28 @@ const timeout = process.env.CI ? 5000 : 20000;
 
 describe("handleNewBooking", () => {
   setupAndTeardown();
+
+  beforeEach(() => {
+    vi.spyOn(D1PaymentCredentialRepository, "findForBooking").mockImplementation(
+      async ({ credentialId, userId }) => {
+        const credentials = await prismaMock.credential.findMany({
+          where: {
+            ...(credentialId ? { id: credentialId } : { userId }),
+          },
+          select: {
+            key: true,
+            appId: true,
+            app: { select: { categories: true, dirName: true } },
+          },
+        });
+        return credentials.flatMap((credential) => {
+          if (!credential.app || credential.appId === null) return [];
+          const app = parseAppCategories(credential.app);
+          return app.categories.includes("payment") ? [{ ...credential, app, appId: credential.appId }] : [];
+        });
+      }
+    );
+  });
 
   describe("Fresh/New Booking:", () => {
     testWithAndWithoutOrg(
@@ -3171,7 +3195,7 @@ describe("handleNewBooking", () => {
             webhooks: [
               {
                 userId: organizer.id,
-                eventTriggers: ["BOOKING_CREATED"],
+                eventTriggers: ["BOOKING_CREATED", "BOOKING_PAYMENT_INITIATED"],
                 subscriberUrl: "http://my-webhook.example.com",
                 active: true,
                 eventTypeId: 1,
@@ -3318,7 +3342,7 @@ describe("handleNewBooking", () => {
             webhooks: [
               {
                 userId: organizer.id,
-                eventTriggers: ["BOOKING_CREATED"],
+                eventTriggers: ["BOOKING_CREATED", "BOOKING_PAYMENT_INITIATED"],
                 subscriberUrl,
                 active: true,
                 eventTypeId: 1,

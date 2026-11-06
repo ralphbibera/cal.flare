@@ -1,14 +1,13 @@
+import { getD1Database } from "@calcom/prisma/d1";
 import { unstable_cache } from "next/cache";
 import { z } from "zod";
 
-import prisma from "@calcom/prisma";
-
 const computeInstallCountsFromDB = async (): Promise<Record<string, number>> => {
-  const mostPopularApps = z.array(z.object({ appId: z.string(), installCount: z.number() })).parse(
-    await prisma.$queryRaw`
+  const { results } = await getD1Database()
+    .prepare(`
     SELECT
       c."appId",
-      COUNT(*)::integer AS "installCount"
+      COUNT(*) AS "installCount"
     FROM
       "Credential" c
     WHERE
@@ -17,15 +16,13 @@ const computeInstallCountsFromDB = async (): Promise<Record<string, number>> => 
       c."appId"
     ORDER BY
       "installCount" DESC
-    `
-  );
-  return mostPopularApps.reduce(
-    (acc, { appId, installCount }) => {
-      acc[appId] = installCount;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+    `)
+    .all();
+  const mostPopularApps = z.array(z.object({ appId: z.string(), installCount: z.number() })).parse(results);
+  return mostPopularApps.reduce<Record<string, number>>((acc, { appId, installCount }) => {
+    acc[appId] = installCount;
+    return acc;
+  }, {});
 };
 
 const getInstallCountPerApp = async (): Promise<Record<string, number>> => {

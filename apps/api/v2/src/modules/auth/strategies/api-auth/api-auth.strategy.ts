@@ -1,4 +1,12 @@
-import { sha256Hash, isApiKey, stripApiKey } from "@/lib/api-key";
+import { INVALID_ACCESS_TOKEN, X_CAL_CLIENT_ID, X_CAL_SECRET_KEY } from "@calcom/platform-constants";
+import { parseOAuthRedirectUris } from "@calcom/platform-libraries";
+import { Injectable, InternalServerErrorException, Logger, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { PassportStrategy } from "@nestjs/passport";
+import type { Request } from "express";
+import { getToken } from "next-auth/jwt";
+import type { AllowedAuthMethod } from "../../decorators/api-auth-guard-only-allow.decorator";
+import { isApiKey, sha256Hash, stripApiKey } from "@/lib/api-key";
 import { AuthMethods } from "@/lib/enums/auth-methods";
 import { isOriginAllowed } from "@/lib/is-origin-allowed/is-origin-allowed";
 import { BaseStrategy } from "@/lib/passport/strategies/types";
@@ -9,17 +17,7 @@ import { OAuthFlowService } from "@/modules/oauth-clients/services/oauth-flow.se
 import { TokensRepository } from "@/modules/tokens/tokens.repository";
 import { TokensService } from "@/modules/tokens/tokens.service";
 import { UsersService } from "@/modules/users/services/users.service";
-import { UserWithProfile, UsersRepository } from "@/modules/users/users.repository";
-import { Injectable, InternalServerErrorException, UnauthorizedException } from "@nestjs/common";
-import { Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { PassportStrategy } from "@nestjs/passport";
-import type { Request } from "express";
-import { getToken } from "next-auth/jwt";
-
-import { INVALID_ACCESS_TOKEN, X_CAL_CLIENT_ID, X_CAL_SECRET_KEY } from "@calcom/platform-constants";
-
-import type { AllowedAuthMethod } from "../../decorators/api-auth-guard-only-allow.decorator";
+import { UsersRepository, UserWithProfile } from "@/modules/users/users.repository";
 
 export type ApiAuthGuardUser = UserWithProfile & { isSystemAdmin: boolean };
 export type ApiAuthGuardRequest = Request & {
@@ -271,7 +269,7 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
       );
     }
 
-    if (origin && !isOriginAllowed(origin, client.redirectUris)) {
+    if (origin && !isOriginAllowed(origin, parseOAuthRedirectUris(client.redirectUris))) {
       throw new UnauthorizedException(
         `ApiAuthStrategy - access token - Invalid request origin - please open https://app.cal.com/settings/platform and add the origin '${origin}' to the 'Redirect uris' of your OAuth client with ID '${client.id}'`
       );

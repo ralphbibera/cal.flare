@@ -1,10 +1,7 @@
 import prismaMock from "@calcom/testing/lib/__mocks__/prismaMock";
-
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
 import { TRPCError } from "@trpc/server";
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { duplicateHandler } from "./duplicate.handler";
 
 vi.mock("@calcom/prisma", () => ({
@@ -23,7 +20,7 @@ describe("duplicateHandler", () => {
     length: 30,
     teamId: null,
   };
-  const eventType = { id: 123, userId: 1, teamId: null, users: [{ id: 1 }] };
+  const eventType = { id: 123, userId: 1, teamId: null, users: [{ id: 1 }], instantMeetingParameters: [] };
 
   beforeEach(() => {
     vi.resetAllMocks();

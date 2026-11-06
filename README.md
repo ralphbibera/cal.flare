@@ -25,9 +25,9 @@
 
 <p align="center">
    <a href="https://github.com/ralphbibera/cal.flare/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
-   <a href="https://github.com/ralphbibera/cal.flare/stargazers"><img src="https://img.shields.io/github/stars/calcom/cal.diy" alt="Github Stars"></a>
-   <a href="https://github.com/ralphbibera/cal.flare/pulse"><img src="https://img.shields.io/github/commit-activity/m/calcom/cal.diy" alt="Commits-per-month"></a>
-   <a href="https://github.com/ralphbibera/cal.flare/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22"><img src="https://img.shields.io/badge/Help%20Wanted-Contribute-blue"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/stargazers"><img src="https://img.shields.io/github/stars/ralphbibera/cal.flare" alt="Github Stars"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/pulse"><img src="https://img.shields.io/github/commit-activity/m/ralphbibera/cal.flare" alt="Commits-per-month"></a>
+   <a href="https://github.com/ralphbibera/cal.flare/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22"><img src="https://img.shields.io/badge/Help%20Wanted-Contribute-blue"></a>
    <a href="https://contributor-covenant.org/version/1/4/code-of-conduct/"><img src="https://img.shields.io/badge/Contributor%20Covenant-1.4-purple" /></a>
 </p>
 
@@ -35,7 +35,7 @@
 
 ## About Cal.flare
 
-<img width="100%" alt="booking-screen" src="https://github.com/ralphbibera/cal.flare/assets/8019099/407e727e-ff19-4ca4-bcae-049dca05cf02">
+<img width="100%" alt="booking-screen" src="https://github.com/calcom/cal.diy/assets/8019099/407e727e-ff19-4ca4-bcae-049dca05cf02">
 
 **Cal.flare** ports the community-driven, fully open-source [Cal.diy](https://github.com/calcom/cal.diy) scheduling platform to Cloudflare Workers and D1. Cal.diy is based on [Cal.com](https://cal.com), with its enterprise/commercial code removed.
 
@@ -502,14 +502,14 @@ Even small improvements matter — thank you for helping us grow!
 
 ### Good First Issues
 
-We have a list of [help wanted](https://github.com/ralphbibera/cal.flare/issues?q=is:issue+is:open+label:%22%F0%9F%99%8B%F0%9F%8F%BB%E2%80%8D%E2%99%82%EF%B8%8Fhelp+wanted%22) that contain small features and bugs which have a relatively limited scope. This is a great place to get started, gain experience, and get familiar with our contribution process.
+We have a list of [help wanted](https://github.com/ralphbibera/cal.flare/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) that contain small features and bugs which have a relatively limited scope. This is a great place to get started, gain experience, and get familiar with our contribution process.
 
 <!-- CONTRIBUTORS -->
 
 ### Contributors
 
 <a href="https://github.com/ralphbibera/cal.flare/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=calcom/cal.diy" />
+  <img src="https://contrib.rocks/image?repo=ralphbibera/cal.flare" />
 </a>
 
 <!-- TRANSLATIONS -->

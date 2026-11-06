@@ -14,8 +14,10 @@ export { slugify } from "@calcom/lib/slugify";
 export { slugifyLenient } from "@calcom/lib/slugify-lenient";
 export { getBookingForReschedule };
 
+export { parseBookingScheduledJobs } from "@calcom/features/bookings/lib/scheduledJobs";
 export { getWebhookProducer } from "@calcom/features/di/webhooks/containers/webhook";
 export { getUsernameList } from "@calcom/features/eventtypes/lib/defaultEvents";
+export { parseWebhookEventTriggers } from "@calcom/features/webhooks/lib/eventTriggers";
 export {
   DEFAULT_WEBHOOK_VERSION,
   WebhookVersion,
@@ -213,4 +215,6 @@ export async function verifyPhoneNumber(
   throw new Error("Phone verification is not available in community edition");
 }
 
+export { parseOAuthRedirectUris } from "@calcom/features/oauth/utils/redirectUris";
+export { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
 export { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
