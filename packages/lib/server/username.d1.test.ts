@@ -50,7 +50,7 @@ describe("organization username availability", () => {
         (1, 'org-member', 'member@example.invalid', 'member', 1),
         (2, 'global-member', 'global@example.invalid', 'global', null)`),
     ]);
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();

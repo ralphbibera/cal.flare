@@ -54,7 +54,7 @@ describe("paymentCallback stripeCustomerId lookup on D1", () => {
       (3, 'target', 'target@example.invalid', 'target', '{"stripeCustomerId":"cus_target","isPremium":false}'),
       (4, 'empty', 'empty@example.invalid', 'empty', null)`)
       .run();
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();

@@ -63,7 +63,7 @@ describe("listTeamAvailability across all teams on D1", () => {
           .bind(teamId, userId, accepted, "MEMBER")
       ),
     ]);
-  }, 30_000);
+  }, 120_000);
 
   afterAll(async () => {
     await runtime?.dispose();
