@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import classNames from "classnames";
-import { signIn } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import React from "react";
 import { Controller, FormProvider, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -90,9 +90,7 @@ export const AdminUser = (props: {
       },
     });
     if (response.status === 200) {
-      await signIn("credentials", {
-        redirect: false,
-        callbackUrl: "/",
+      await authClient.signIn.calCredentials({
         email: data.email_address.toLowerCase(),
         password: data.password,
       });

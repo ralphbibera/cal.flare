@@ -22,7 +22,8 @@ import { useEvent, useScheduleForEvent } from "@calcom/web/modules/schedules/hoo
 import { useNonEmptyScheduleDays } from "@calcom/web/modules/schedules/hooks/useNonEmptyScheduleDays";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getProviders, signIn, useSession } from "next-auth/react";
+import { getProviders } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useCallback, useEffect, useMemo } from "react";
 import { shallow } from "zustand/shallow";
 import { useBookings } from "../hooks/useBookings";
@@ -95,7 +96,7 @@ const BookerWebWrapperComponent = (props: BookerWebWrapperAtomProps): JSX.Elemen
 
   const [dayCount] = useBookerStoreContext((state) => [state.dayCount, state.setDayCount], shallow);
 
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const routerQuery = useRouterQuery();
   const hasSession = !!session;
   const firstNameQueryParam = searchParams?.get("firstName");
@@ -239,8 +240,9 @@ const BookerWebWrapperComponent = (props: BookerWebWrapperAtomProps): JSX.Elemen
       onClickOverlayContinue={(socialLoginProvider) => {
         if (socialLoginProvider) {
           // Signing in with Google/Microsoft also connects that calendar, so we can come straight back here
-          signIn(socialLoginProvider, {
-            callbackUrl: `${window.location.pathname}${window.location.search}`,
+          authClient.signIn.social({
+            provider: socialLoginProvider === "azure-ad" ? "microsoft" : socialLoginProvider,
+            callbackURL: `${window.location.pathname}${window.location.search}`,
           });
           return;
         }

@@ -1,4 +1,4 @@
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useMemo } from "react";
 
 import type { FacetedValue } from "@calcom/features/data-table";
@@ -6,7 +6,7 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 
 export function useEventTypes() {
-  const { data: user } = useSession();
+  const { data: user } = authClient.useSession();
   const { t } = useLocale();
 
   const eventTypesQuery = trpc.viewer.eventTypes.listWithTeam.useQuery(undefined, {
