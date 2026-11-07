@@ -93,7 +93,7 @@ describe("updateProfile secondary email updates on D1", () => {
           { id: 5, email: "renamed@example.com", isDeleted: false },
           { id: 6, email: "second@example.com", isDeleted: false },
         ])
-      ).resolves.toMatchObject({ hasEmailBeenChanged: undefined, sendEmailVerification: false });
+      ).resolves.toMatchObject({ hasEmailBeenChanged: undefined, sendEmailVerification: true });
 
       expect(await secondaryEmails()).toEqual([
         { id: 5, email: "renamed@example.com", emailVerified: null },

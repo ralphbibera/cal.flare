@@ -1,0 +1,513 @@
+{
+  "source": "e8afecd163cd3a0a3ff279bd4721aa7f073c4685",
+  "App": [
+    {
+      "keys": null,
+      "slug": "daily-video",
+      "dirName": "dailyvideo",
+      "enabled": 1,
+      "categories": "[\"video\"]"
+    }
+  ],
+  "Role": [
+    {
+      "id": "admin_role",
+      "name": "Admin",
+      "type": "SYSTEM",
+      "color": "#6633EE",
+      "teamId": null,
+      "description": "Administrative access to most resources"
+    },
+    {
+      "id": "member_role",
+      "name": "Member",
+      "type": "SYSTEM",
+      "color": "#EAB308",
+      "teamId": null,
+      "description": "Basic member access"
+    },
+    {
+      "id": "owner_role",
+      "name": "Owner",
+      "type": "SYSTEM",
+      "color": "#1BA774",
+      "teamId": null,
+      "description": "Full access to all resources"
+    }
+  ],
+  "Feature": [
+    {
+      "slug": "active-user-billing",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable active-user-based billing for teams and organizations"
+    },
+    {
+      "slug": "attributes",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable attributes - Custom fields for users and teams."
+    },
+    {
+      "slug": "booker-botid",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable BotID protection for booking endpoints - Protects booking API endpoints from bot traffic using BotID verification."
+    },
+    {
+      "slug": "booking-audit",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable booking audit trails - Track all booking actions and changes for organizations"
+    },
+    {
+      "slug": "booking-calendar-view",
+      "type": "EXPERIMENT",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable booking calendar view for all users"
+    },
+    {
+      "slug": "bookings-v3",
+      "type": "EXPERIMENT",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable bookings redesign v3 for all users"
+    },
+    {
+      "slug": "cal-ai-voice-agents",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Cal AI Voice Agents - Allow AI-powered voice agents to make phone calls."
+    },
+    {
+      "slug": "cal-video-log-in-overlay",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Log In Overlay - Allows system to show a log in overlay on the Cal Video page."
+    },
+    {
+      "slug": "calendar-cache",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Third Party Calendar Cache - Cache third party calendar events to reduce the number of API calls to third party calendar providers."
+    },
+    {
+      "slug": "calendar-cache-serve",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Whether to serve calendar cache by default or not on a team/user basis."
+    },
+    {
+      "slug": "calendar-subscription-cache",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable calendar subscription cache"
+    },
+    {
+      "slug": "calendar-subscription-sync",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable calendar subscription synchronization"
+    },
+    {
+      "slug": "delegation-credential",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Delegation Credentials - Allows system to act on behalf of Workspace users on third parties such as google,oulook, etc ..."
+    },
+    {
+      "slug": "disable-signup",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable to prevent users from signing up"
+    },
+    {
+      "slug": "domain-wide-delegation",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Google Workspace Domain-Wide Delegation - Allows system to act on behalf of Google Workspace users."
+    },
+    {
+      "slug": "email-verification",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable email verification for new users"
+    },
+    {
+      "slug": "emails",
+      "type": "KILL_SWITCH",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable to prevent any emails being send"
+    },
+    {
+      "slug": "google-workspace-directory",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Google Workspace Directory integration - Syncing of users and groups from Google Workspace to users teams."
+    },
+    {
+      "slug": "hwm-seating",
+      "type": "RELEASE",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "High water mark seating for monthly billing - charges for peak seats used during billing period"
+    },
+    {
+      "slug": "insights",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable insights for this instance"
+    },
+    {
+      "slug": "monthly-proration",
+      "type": "RELEASE",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Monthly aggregated seat proration for annual plans"
+    },
+    {
+      "slug": "onboarding-v3",
+      "type": "EXPERIMENT",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable onboarding v3 for all users"
+    },
+    {
+      "slug": "organizations",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Manage organizations with multiple teams"
+    },
+    {
+      "slug": "organizer-request-email-v2",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable confirmation email with built-in rejection form"
+    },
+    {
+      "slug": "pbac",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enables the PBAC feature."
+    },
+    {
+      "slug": "restriction-schedule",
+      "type": "RELEASE",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": null
+    },
+    {
+      "slug": "salesforce-crm-tasker",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Whether to use tasker for Salesforce CRM event creation or not on a team/user basis."
+    },
+    {
+      "slug": "sidebar-tips",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enables the tips section in the sidebar."
+    },
+    {
+      "slug": "signup-watchlist-review",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "When enabled, new signups are added to the watchlist for review"
+    },
+    {
+      "slug": "sink-shortener",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Sink URL shortener for SMS workflows"
+    },
+    {
+      "slug": "team-booking-page-cache",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable to cache event-type and team data for team booking pages"
+    },
+    {
+      "slug": "teams",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable teams for this instance"
+    },
+    {
+      "slug": "tiered-support-chat",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable Tiered Support Chat - Allow users to access different levels of support chat based on their subscription tier."
+    },
+    {
+      "slug": "use-api-v2-for-team-slots",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Whether to use API v2 for fetching team schedule slots."
+    },
+    {
+      "slug": "webhooks",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable webhooks for this instance"
+    },
+    {
+      "slug": "workflow-smtp-emails",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 0,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Whether to use SMTP for workflow emails or SendGrid on a team/user basis."
+    },
+    {
+      "slug": "workflows",
+      "type": "OPERATIONAL",
+      "stale": 0,
+      "enabled": 1,
+      "updatedBy": null,
+      "lastUsedAt": null,
+      "description": "Enable workflows for this instance"
+    }
+  ],
+  "AuditActor": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "System",
+      "type": "system",
+      "email": null,
+      "phone": null,
+      "userUuid": null,
+      "attendeeId": null,
+      "credentialId": null
+    }
+  ],
+  "RolePermission": [
+    ["admin_role", "apiKey", "create"],
+    ["admin_role", "apiKey", "delete"],
+    ["admin_role", "apiKey", "findKeyOfType"],
+    ["admin_role", "apiKey", "read"],
+    ["admin_role", "availability", "create"],
+    ["admin_role", "availability", "delete"],
+    ["admin_role", "availability", "override"],
+    ["admin_role", "availability", "read"],
+    ["admin_role", "availability", "update"],
+    ["admin_role", "booking", "read"],
+    ["admin_role", "booking", "readOrgAuditLogs"],
+    ["admin_role", "booking", "readOrgBookings"],
+    ["admin_role", "booking", "readRecordings"],
+    ["admin_role", "booking", "readTeamAuditLogs"],
+    ["admin_role", "booking", "readTeamBookings"],
+    ["admin_role", "booking", "update"],
+    ["admin_role", "eventType", "create"],
+    ["admin_role", "eventType", "delete"],
+    ["admin_role", "eventType", "read"],
+    ["admin_role", "eventType", "update"],
+    ["admin_role", "featureOptIn", "read"],
+    ["admin_role", "featureOptIn", "update"],
+    ["admin_role", "insights", "read"],
+    ["admin_role", "ooo", "create"],
+    ["admin_role", "ooo", "delete"],
+    ["admin_role", "ooo", "read"],
+    ["admin_role", "ooo", "update"],
+    ["admin_role", "organization", "changeMemberRole"],
+    ["admin_role", "organization", "impersonate"],
+    ["admin_role", "organization", "invite"],
+    ["admin_role", "organization", "listMembers"],
+    ["admin_role", "organization", "listMembersPrivate"],
+    ["admin_role", "organization", "manageBilling"],
+    ["admin_role", "organization", "passwordReset"],
+    ["admin_role", "organization", "read"],
+    ["admin_role", "organization", "remove"],
+    ["admin_role", "organization", "update"],
+    ["admin_role", "organization.attributes", "create"],
+    ["admin_role", "organization.attributes", "delete"],
+    ["admin_role", "organization.attributes", "editUsers"],
+    ["admin_role", "organization.attributes", "read"],
+    ["admin_role", "organization.attributes", "update"],
+    ["admin_role", "role", "create"],
+    ["admin_role", "role", "delete"],
+    ["admin_role", "role", "read"],
+    ["admin_role", "role", "update"],
+    ["admin_role", "routingForm", "create"],
+    ["admin_role", "routingForm", "delete"],
+    ["admin_role", "routingForm", "manage"],
+    ["admin_role", "routingForm", "read"],
+    ["admin_role", "routingForm", "update"],
+    ["admin_role", "team", "changeMemberRole"],
+    ["admin_role", "team", "create"],
+    ["admin_role", "team", "impersonate"],
+    ["admin_role", "team", "invite"],
+    ["admin_role", "team", "listMembers"],
+    ["admin_role", "team", "listMembersPrivate"],
+    ["admin_role", "team", "manageBilling"],
+    ["admin_role", "team", "read"],
+    ["admin_role", "team", "remove"],
+    ["admin_role", "team", "update"],
+    ["admin_role", "watchlist", "create"],
+    ["admin_role", "watchlist", "delete"],
+    ["admin_role", "watchlist", "read"],
+    ["admin_role", "watchlist", "update"],
+    ["admin_role", "webhook", "create"],
+    ["admin_role", "webhook", "delete"],
+    ["admin_role", "webhook", "read"],
+    ["admin_role", "webhook", "update"],
+    ["admin_role", "workflow", "create"],
+    ["admin_role", "workflow", "delete"],
+    ["admin_role", "workflow", "read"],
+    ["admin_role", "workflow", "update"],
+    ["member_role", "availability", "read"],
+    ["member_role", "availability", "update"],
+    ["member_role", "booking", "update"],
+    ["member_role", "eventType", "read"],
+    ["member_role", "featureOptIn", "read"],
+    ["member_role", "ooo", "read"],
+    ["member_role", "organization", "listMembers"],
+    ["member_role", "organization", "read"],
+    ["member_role", "organization.attributes", "read"],
+    ["member_role", "role", "read"],
+    ["member_role", "routingForm", "read"],
+    ["member_role", "team", "listMembers"],
+    ["member_role", "team", "read"],
+    ["member_role", "webhook", "read"],
+    ["member_role", "workflow", "read"],
+    ["owner_role", "*", "*"]
+  ],
+  "OutOfOfficeReason": [
+    {
+      "id": 1,
+      "emoji": "🕒",
+      "reason": "ooo_reasons_unspecified",
+      "userId": null,
+      "enabled": 1
+    },
+    {
+      "id": 2,
+      "emoji": "🏝️",
+      "reason": "ooo_reasons_vacation",
+      "userId": null,
+      "enabled": 1
+    },
+    {
+      "id": 3,
+      "emoji": "🛫",
+      "reason": "ooo_reasons_travel",
+      "userId": null,
+      "enabled": 1
+    },
+    {
+      "id": 4,
+      "emoji": "🤒",
+      "reason": "ooo_reasons_sick_leave",
+      "userId": null,
+      "enabled": 1
+    },
+    {
+      "id": 5,
+      "emoji": "📅",
+      "reason": "ooo_reasons_public_holiday",
+      "userId": null,
+      "enabled": 1
+    }
+  ]
+}
