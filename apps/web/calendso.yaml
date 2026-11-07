@@ -18,9 +18,7 @@ server:
       default: "3000"
 tags:
   - name: Authentication
-    description: "Auth routes, powered by Next-Auth.js"
-    externalDocs:
-      url: "http://next-auth.js.org/"
+    description: Auth routes
   - name: Availability
     description: Checking and setting user availability
   - name: Booking
@@ -75,7 +73,7 @@ paths:
         - Authentication
   /api/auth/csrf:
     get:
-      description: 'Returns object containing CSRF token. In NextAuth.js, CSRF protection is present on all authentication routes. It uses the "double submit cookie method", which uses a signed HttpOnly, host-only cookie. The CSRF token returned by this endpoint must be passed as form variable named csrfToken in all POST submissions to any API endpoint.'
+      description: 'Returns object containing CSRF token. CSRF protection uses the "double submit cookie method", which uses a signed HttpOnly, host-only cookie. The CSRF token returned by this endpoint must be passed as form variable named csrfToken in all POST submissions to any API endpoint.'
       summary: Returns object containing CSRF token
       tags:
         - Authentication

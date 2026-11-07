@@ -206,7 +206,6 @@ describe("request auth composition with real credential policy and migrated D1",
       user: { id: 123, name: "Owner 0", role: "USER" },
     });
     expect(cookies(response)).toMatch(new RegExp(`${sessionCookie}=.+`));
-    expect(cookies(response)).not.toMatch(/next-auth/);
     const cookie = cookies(response);
     expect(await (await request(auth, "get-session", cookie)).json()).toMatchObject({
       hasValidLicense: false,

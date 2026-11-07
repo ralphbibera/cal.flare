@@ -13,7 +13,7 @@ export async function getServerCsrfToken(
     throw new ErrorWithCode(ErrorCode.InternalServerError, "NEXTAUTH_SECRET is required for auth");
   const webappURL = getAuthRequestConfiguration()?.webappURL ?? WEBAPP_URL;
   const prefix = webappURL.startsWith("https://") ? "__Secure-" : "";
-  const state = await createCalCsrfState({ cookie: req.cookies[`${prefix}next-auth.csrf-token`], secret });
+  const state = await createCalCsrfState({ cookie: req.cookies[`${prefix}calcom.auth_csrf_token`], secret });
   // Legacy SSR reads only the JSON token; the browser /csrf response owns cookie effects.
   return state.token;
 }

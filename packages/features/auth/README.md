@@ -2,8 +2,7 @@
 
 `lib/better-auth.ts` composes Better Auth 1.7.15 from an explicit request-owned DB,
 public URL, existing `NEXTAUTH_SECRET`, and optional `NEXTAUTH_COOKIE_DOMAIN`.
-It has no global instance or migration calls. It is not mounted in the application.
-NextAuth still owns application authentication.
+It has no global instance or migration calls. It is mounted in the application and owns authentication.
 
 The four auth tables share the domain D1 database. Opaque SDK IDs remain internal.
 `AuthUser.calUserId` is a required unique integer foreign key to `users.id`, with

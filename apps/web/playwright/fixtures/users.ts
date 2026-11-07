@@ -18,7 +18,6 @@ import { selectFirstAvailableTimeSlotNextMonth, teamEventSlug, teamEventTitle } 
 import type { createEmailsFixture } from "./emails";
 import { TimeZoneEnum } from "./types";
 
-// Don't import hashPassword from app as that ends up importing next-auth and initializing it before NEXTAUTH_URL can be updated during tests.
 export function hashPassword(password: string) {
   const hashedPassword = hash(password, 12);
   return hashedPassword;

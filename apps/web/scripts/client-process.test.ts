@@ -33,7 +33,7 @@ describe("client process shim", () => {
   it("exposes public variables but never server-only variables or secrets", async () => {
     vi.stubEnv("NEXT_PUBLIC_WEBAPP_URL", "http://127.0.0.1:3000");
     vi.stubEnv("DAILY_API_KEY", "daily-secret-value");
-    vi.stubEnv("NEXTAUTH_SECRET", "nextauth-secret-value");
+    vi.stubEnv("NEXTAUTH_SECRET", "auth-secret-value");
     vi.stubEnv("CALENDSO_ENCRYPTION_KEY", "encryption-secret-value");
 
     const { code, module } = await loadClientProcessShim();
@@ -45,7 +45,7 @@ describe("client process shim", () => {
     expect(module.default.browser).toBe(true);
 
     expect(code).not.toContain("daily-secret-value");
-    expect(code).not.toContain("nextauth-secret-value");
+    expect(code).not.toContain("auth-secret-value");
     expect(code).not.toContain("encryption-secret-value");
   });
 

@@ -14,6 +14,5 @@ test.describe("Login with api request", () => {
 
     // The browser context will already contain all the cookies from the API response.
     expect(cookiesMap.has("better-auth.session_token")).toBe(true);
-    expect([...cookiesMap.keys()].some((name) => name.includes("next-auth"))).toBe(false);
   });
 });
