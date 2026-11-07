@@ -19,13 +19,6 @@ const session: Session = {
   upId: "up_1",
   user: { id: 1, name: "Ada", email: "ada@example.com", uuid: "user-uuid" },
 };
-const credentialsProvider = {
-  id: "credentials",
-  name: "Cal.flare",
-  type: "credentials" as const,
-  signinUrl: "/api/auth/signin/credentials",
-  callbackUrl: "/api/auth/callback/credentials",
-};
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -34,13 +27,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function mockAuth(overrides: Record<string, () => Response> = {}) {
-  const handlers: Record<string, () => Response> = {
-    "/api/auth/providers": () => jsonResponse({ credentials: credentialsProvider }),
-    "/api/auth/csrf": () => jsonResponse({ csrfToken: "csrf-1" }),
-    ...overrides,
-  };
   fetchMock.mockImplementation((url: string) => {
-    const handler = handlers[url];
+    const handler = overrides[url];
     if (!handler) throw new Error(`unexpected ${url}`);
     return Promise.resolve(handler());
   });
@@ -66,12 +54,11 @@ describe("@calcom/features/auth/client", () => {
     const initial = new Promise<Response>((resolve) => {
       resolveInitial = resolve;
     });
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === "/api/auth/csrf") return Promise.resolve(jsonResponse({ csrfToken: "csrf-1" }));
-      if (url !== "/api/auth/session") throw new Error(`unexpected ${url}`);
-      if (init?.method === "POST") {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/auth/cal/update-session") {
         return Promise.resolve(jsonResponse({ ...session, user: { ...session.user, name: "Grace" } }));
       }
+      if (url !== "/api/auth/get-session") throw new Error(`unexpected ${url}`);
       return initial;
     });
 
@@ -98,15 +85,13 @@ describe("@calcom/features/auth/client", () => {
 
     await act(async () => screen.getByRole("button", { name: "update" }).click());
     await waitFor(() => expect(screen.getByTestId("state").textContent).toBe("authenticated:Grace"));
-    const post = callsTo("/api/auth/session").find(([, init]) => (init as RequestInit).method === "POST");
-    expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
-      csrfToken: "csrf-1",
-      data: { name: "Grace" },
-    });
+    const post = callsTo("/api/auth/cal/update-session")[0];
+    expect((post[1] as RequestInit).method).toBe("POST");
+    expect(JSON.parse((post[1] as RequestInit).body as string)).toEqual({ data: { name: "Grace" } });
   });
 
   it("resolves an empty session as unauthenticated and null", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({}));
+    fetchMock.mockResolvedValue(jsonResponse(null));
     function Probe() {
       const { data, status } = useSession();
       return <span data-testid="state">{`${status}:${String(data)}`}</span>;
@@ -120,13 +105,13 @@ describe("@calcom/features/auth/client", () => {
     await expect(getSession()).resolves.toBeNull();
   });
 
-  it("signs in with credentials, posting CSRF and fields, and returns the next-auth response", async () => {
+  it("signs in with credentials as JSON and returns the next-auth response shape", async () => {
     let call = 0;
     mockAuth({
-      "/api/auth/callback/credentials": () =>
+      "/api/auth/sign-in/cal-credentials": () =>
         call++ === 0
-          ? jsonResponse({ url: "http://localhost:3000/api/auth/error?error=incorrect-email-password" }, 401)
-          : jsonResponse({ url: "http://localhost:3000/bookings" }),
+          ? jsonResponse({ code: "INCORRECT_EMAIL_PASSWORD", message: "incorrect-email-password" }, 401)
+          : jsonResponse({ redirect: true, url: "http://localhost:3000/bookings", user: { id: 1 } }),
     });
 
     const options = {
@@ -134,6 +119,7 @@ describe("@calcom/features/auth/client", () => {
       callbackUrl: "/bookings",
       email: "ada@example.com",
       password: "secret",
+      totpCode: "123456",
     };
     await expect(signIn("credentials", options)).resolves.toEqual({
       error: "incorrect-email-password",
@@ -148,44 +134,61 @@ describe("@calcom/features/auth/client", () => {
       url: "http://localhost:3000/bookings",
     });
 
-    const init = callsTo("/api/auth/callback/credentials")[0][1] as RequestInit;
-    const body = init.body as URLSearchParams;
-    expect(body.get("csrfToken")).toBe("csrf-1");
-    expect(body.get("email")).toBe("ada@example.com");
-    expect(body.get("password")).toBe("secret");
-    expect(body.get("callbackUrl")).toBe("/bookings");
-    expect(body.get("redirect")).toBe("false");
-    expect(body.get("json")).toBe("true");
-    expect(init.headers).toEqual({ "Content-Type": "application/x-www-form-urlencoded" });
-    await expect(getProviders()).resolves.toEqual({ credentials: credentialsProvider });
-    await expect(getCsrfToken()).resolves.toBe("csrf-1");
+    const init = callsTo("/api/auth/sign-in/cal-credentials")[0][1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      email: "ada@example.com",
+      password: "secret",
+      totpCode: "123456",
+      callbackUrl: "/bookings",
+    });
+    await expect(getProviders()).resolves.toMatchObject({ credentials: { id: "credentials" } });
+    await expect(getCsrfToken()).resolves.toBeUndefined();
   });
 
-  it("redirects after sign-in by default", async () => {
+  it("redirects after sign-in by default and to the error page on failure", async () => {
     const location = {
       href: "http://localhost:3000/login",
       origin: "http://localhost:3000",
       reload: vi.fn(),
     };
     vi.stubGlobal("location", location);
+    let call = 0;
     mockAuth({
-      "/api/auth/callback/credentials": () => jsonResponse({ url: "http://localhost:3000/bookings" }),
+      "/api/auth/sign-in/cal-credentials": () =>
+        call++ === 0
+          ? jsonResponse({ redirect: true, url: "http://localhost:3000/bookings" })
+          : jsonResponse({ message: "second-factor-required" }, 401),
     });
 
     await signIn("credentials", { email: "ada@example.com", password: "secret" });
     expect(location.href).toBe("http://localhost:3000/bookings");
     expect(location.reload).not.toHaveBeenCalled();
+    await signIn("credentials", { email: "ada@example.com", password: "secret" });
+    expect(location.href).toBe("/auth/error?error=second-factor-required");
   });
 
-  it("signs out with CSRF and returns the response without redirecting", async () => {
-    mockAuth({ "/api/auth/signout": () => jsonResponse({ url: "/auth/logout" }) });
+  it("sends providers that are not served natively to the auth error page", async () => {
+    const location = {
+      href: "http://localhost:3000/login",
+      origin: "http://localhost:3000",
+      reload: vi.fn(),
+    };
+    vi.stubGlobal("location", location);
+    await signIn("google");
+    expect(location.href).toBe("/auth/error?error=OAuthSignin");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("posts native sign-out and returns the callback without redirecting", async () => {
+    mockAuth({ "/api/auth/sign-out": () => jsonResponse({ success: true }) });
     await expect(signOut({ redirect: false, callbackUrl: "/auth/logout" })).resolves.toEqual({
       url: "/auth/logout",
     });
-    const body = (callsTo("/api/auth/signout")[0][1] as RequestInit).body as URLSearchParams;
-    expect(body.get("csrfToken")).toBe("csrf-1");
-    expect(body.get("callbackUrl")).toBe("/auth/logout");
-    expect(body.get("json")).toBe("true");
+    const init = callsTo("/api/auth/sign-out")[0][1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe("{}");
   });
 
   it("keeps next-auth useSession working under the shared provider", async () => {
