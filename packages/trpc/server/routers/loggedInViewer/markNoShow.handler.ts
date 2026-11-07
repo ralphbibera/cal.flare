@@ -1,15 +1,13 @@
-import type { Session } from "next-auth";
-
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { handleMarkAttendeesAndHostNoShow } from "@calcom/features/handleMarkNoShow";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
-
 import type { TNoShowInputSchema } from "./markNoShow.schema";
 
 type NoShowOptions = {
   input: TNoShowInputSchema;
   ctx: {
     user: NonNullable<TrpcSessionUser>;
-    session: Session;
+    session: CalServerSession;
   };
 };
 

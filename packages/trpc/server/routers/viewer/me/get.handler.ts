@@ -1,3 +1,4 @@
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
@@ -5,7 +6,6 @@ import prisma from "@calcom/prisma";
 import { IdentityProvider, MembershipRole } from "@calcom/prisma/enums";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
-import type { Session } from "next-auth";
 import type { TGetInputSchema } from "./get.schema";
 
 class PermissionCheckService {
@@ -24,7 +24,7 @@ class PermissionCheckService {
 type MeOptions = {
   ctx: {
     user: NonNullable<TrpcSessionUser>;
-    session: Session;
+    session: CalServerSession;
   };
   input: TGetInputSchema;
 };

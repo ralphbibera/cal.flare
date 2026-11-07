@@ -1,3 +1,4 @@
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import type { GetBookingType } from "@calcom/features/bookings/lib/get-booking";
 import { getBookingForReschedule, getBookingForSeatedEvent } from "@calcom/features/bookings/lib/get-booking";
@@ -12,7 +13,6 @@ import { BookingStatus, RedirectType } from "@calcom/prisma/enums";
 import { handleOrgRedirect } from "@lib/handleOrgRedirect";
 import { getUsersInOrgContext } from "@server/lib/[user]/getServerSideProps";
 import type { GetServerSidePropsContext } from "next";
-import type { Session } from "next-auth";
 import { z } from "zod";
 
 type Props = {
@@ -35,7 +35,7 @@ async function processReschedule({
   allowRescheduleForCancelledBooking,
 }: {
   props: Props;
-  session: Session | null;
+  session: CalServerSession | null;
   rescheduleUid: string | string[] | undefined;
   allowRescheduleForCancelledBooking?: boolean;
 }) {

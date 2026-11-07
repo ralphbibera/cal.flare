@@ -1,7 +1,6 @@
-import type { GetServerSidePropsContext, NextApiResponse } from "next";
-
 import { prisma } from "@calcom/prisma";
 import { IdentityProvider } from "@calcom/prisma/enums";
+import type { GetServerSidePropsContext, NextApiResponse } from "next";
 
 type UpdateProfileOptions = {
   ctx: {
@@ -16,19 +15,17 @@ type UpdateProfileOptions = {
 
 const unlinkConnectedAccount = async ({ ctx }: UpdateProfileOptions) => {
   const { user } = ctx;
-  // Unlink the account
-  const CalComAdapter = (await import("@calcom/features/auth/lib/next-auth-custom-adapter")).default;
-  const calcomAdapter = CalComAdapter(prisma);
   const provider = user.identityProvider.toLocaleLowerCase();
   // If it fails to delete, don't stop because the users login data might not be present
   try {
-    // if fn doesn't exist, do nothing.
-    if (calcomAdapter.unlinkAccount) {
-      await calcomAdapter.unlinkAccount({
-        provider,
-        providerAccountId: user.identityProviderId || "",
-      });
-    }
+    await prisma.account.delete({
+      where: {
+        provider_providerAccountId: {
+          provider,
+          providerAccountId: user.identityProviderId || "",
+        },
+      },
+    });
   } catch {
     // Fail silently if we don't have a record in the account table
   }
