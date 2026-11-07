@@ -34,7 +34,7 @@ type AuthorizedCredentialsUser = ReturnType<typeof AdapterUserPresenter.fromCalU
   inactiveAdminReason?: "both" | "password" | "2fa";
 };
 
-const log = logger.getSubLogger({ prefix: ["next-auth-options"] });
+const log = logger.getSubLogger({ prefix: ["authorizeCredentials"] });
 
 export async function authorizeCredentials(
   credentials: Record<"email" | "password" | "totpCode" | "backupCode", string> | undefined

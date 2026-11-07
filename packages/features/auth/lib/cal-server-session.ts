@@ -3,6 +3,8 @@ import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import prisma from "@calcom/prisma";
 import type { CalClaims, CalProfileContext } from "./cal-session";
 
+export type CalServerSession = NonNullable<Awaited<ReturnType<typeof projectCalServerSession>>>;
+
 export async function projectCalServerSession({
   claims,
   profile,
@@ -54,7 +56,8 @@ export async function projectCalServerSession({
       role: user.role,
       image: getUserAvatarUrl({ avatarUrl: user.avatarUrl }),
       belongsToActiveTeam: claims.belongsToActiveTeam,
-      org: claims.org,
+      // Session consumers expect an absent organization as undefined, not null.
+      org: claims.org ?? undefined,
       orgAwareUsername: claims.orgAwareUsername,
       locale: user.locale ?? undefined,
       profile: user.profile,

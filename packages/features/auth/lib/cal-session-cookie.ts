@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { GetServerSidePropsContext } from "next";
 import type { NextRequest } from "next/server";
-import type { Session } from "next-auth";
+import type { CalServerSession } from "./cal-server-session";
 import { createCalRequestAuth } from "./request-auth";
 import { getAuthRequestConfiguration } from "./request-context";
 
@@ -52,14 +52,11 @@ function createCalReader(req: SessionRequest): CalReader | null {
   return { auth: createCalRequestAuth(config), headers: new Headers({ cookie }) };
 }
 
-export async function getCalServerSession(req: SessionRequest): Promise<Session | null> {
+export async function getCalServerSession(req: SessionRequest): Promise<CalServerSession | null> {
   try {
     const reader = createCalReader(req);
     if (!reader) return null;
-    const session = await reader.auth.api.getServerSession({ headers: reader.headers });
-    if (!session) return null;
-    // Session consumers expect an absent organization as undefined, not null.
-    return { ...session, user: { ...session.user, org: session.user.org ?? undefined } };
+    return await reader.auth.api.getServerSession({ headers: reader.headers });
   } catch {
     return null;
   }
