@@ -1,12 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { symmetricDecrypt, symmetricEncrypt } from "@calcom/lib/crypto";
+import type { RuntimeStateNamespace } from "@calcom/lib/runtimeStateContext";
+import { withRuntimeState } from "@calcom/lib/runtimeStateContext";
 import prisma from "@calcom/prisma";
 import { hash } from "bcryptjs";
+import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import { authenticator } from "otplib";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 import type { authorizeCredentials } from "./authorizeCredentials";
@@ -25,6 +29,8 @@ const databases: Awaited<ReturnType<Miniflare["getD1Database"]>>[] = [];
 let root: string;
 let passwordHash: string;
 let weakPasswordHash: string;
+let limiter: RuntimeStateNamespace;
+let brokenLimiter: RuntimeStateNamespace;
 
 function config(index = 0, overrides: Partial<AuthRequestConfiguration> = {}): AuthRequestConfiguration {
   return {
@@ -75,6 +81,49 @@ beforeAll(async () => {
     runtimes.push(runtime);
     databases.push(await runtime.getD1Database("DB"));
   }
+  const stdin = {
+    contents: `export { RuntimeState } from "./RuntimeState";
+      export class Broken { fetch() { throw new Error("runtime state unavailable"); } }
+      export default { fetch() { return new Response(); } };`,
+    resolveDir: join(__dirname, "../../../lib"),
+  };
+  const { outputFiles } = await build({ stdin, bundle: true, format: "esm", write: false });
+  const owner = "calflare-api-v2";
+  const durableObject = { type: "durable-object", storage: "sqlite" } as const;
+  const runtime = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    workers: [worker.name, owner].map((name) => ({
+      config: {
+        name,
+        compatibilityDate: worker.compatibilityDate,
+        compatibilityFlags: worker.compatibilityFlags,
+        ...(name === owner
+          ? { exports: { RuntimeState: durableObject, Broken: durableObject } }
+          : {
+              env: {
+                RUNTIME_STATE: worker.env.RUNTIME_STATE,
+                BROKEN: { type: "durable-object", worker: owner, exportName: "Broken" },
+              },
+            }),
+        manifest: {
+          mainModule: "worker.js",
+          modules: {
+            "worker.js": {
+              type: "esm" as const,
+              contents:
+                name === owner ? outputFiles[0].text : "export default {fetch(){return new Response()}}",
+            },
+          },
+        },
+      },
+    })),
+  });
+  runtimes.push(runtime);
+  const namespace = async (binding: string) =>
+    (await runtime.getDurableObjectNamespace(binding, worker.name)) as unknown as RuntimeStateNamespace;
+  [limiter, brokenLimiter] = await Promise.all([namespace("RUNTIME_STATE"), namespace("BROKEN")]);
   [passwordHash, weakPasswordHash] = await Promise.all([hash(password, 12), hash("weak", 12)]);
 }, 120_000);
 
@@ -89,6 +138,8 @@ beforeEach(async () => {
     await db.prepare('INSERT INTO "UserPassword"(userId,hash) VALUES(123,?)').bind(passwordHash).run();
   }
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 afterAll(async () => {
   for (const runtime of runtimes) await runtime.dispose();
@@ -136,6 +187,20 @@ async function csrf(auth: Auth) {
   expect(response.status).toBe(200);
   return { cookie: cookies(response), ...z.object({ csrfToken: z.string() }).parse(await response.json()) };
 }
+const rateLimited = /^Rate limit exceeded\. Try again in \d+ seconds\.$/;
+const withLimiter = <T>(namespace: RuntimeStateNamespace | undefined, callback: () => T) =>
+  withRuntimeState({ RUNTIME_STATE: namespace }, callback);
+function enabledConfig() {
+  const settings = config();
+  return config(0, { credentialPolicy: { ...settings.credentialPolicy, rateLimit: "enabled" } });
+}
+// The core window outlives a test and is keyed by the hashed email, so each limiter test needs its own.
+async function limitedEmail() {
+  vi.stubEnv("UNKEY_ROOT_KEY", "configured");
+  const email = `${randomUUID()}@calflare.test`;
+  await databases[0].prepare("UPDATE users SET email=? WHERE id=123").bind(email).run();
+  return email;
+}
 async function enableMfa(index = 0) {
   await databases[index]
     .prepare("UPDATE users SET twoFactorEnabled=1,twoFactorSecret=?,backupCodes=? WHERE id=123")
@@ -177,15 +242,19 @@ describe("request auth composition with real credential policy and migrated D1",
   });
 
   it("preserves lookup, limiter and password rejection order", async () => {
-    const settings = config();
-    const enabled = config(0, { credentialPolicy: { ...settings.credentialPolicy, rateLimit: "enabled" } });
-    await expect(authorize(enabled, { email: "missing@calflare.test" })).rejects.toThrow(
-      "incorrect-email-password"
-    );
+    const email = await limitedEmail();
+    const enabled = enabledConfig();
+    const attempt = (extra: Parameters<typeof credentials>[0] = {}) =>
+      withLimiter(limiter, () => authorize(enabled, { email, ...extra }));
     await databases[0].prepare("UPDATE users SET locked=1 WHERE id=123").run();
-    await expect(authorize(enabled)).rejects.toThrow("incorrect-email-password");
+    for (let i = 0; i < 11; i++) await expect(attempt()).rejects.toThrow("incorrect-email-password");
     await databases[0].prepare("UPDATE users SET locked=0 WHERE id=123").run();
-    await expect(authorize(enabled, { password: "incorrect" })).rejects.toThrow("internal-server-error");
+    for (let i = 0; i < 10; i++) {
+      await expect(attempt({ password: "incorrect" })).rejects.toThrow("incorrect-email-password");
+    }
+    await expect(attempt()).rejects.toThrow(rateLimited);
+    await expect(attempt({ email: "missing@calflare.test" })).rejects.toThrow("incorrect-email-password");
+    const settings = config();
     await enableMfa();
     await expect(authorize(settings, { password: "incorrect", backupCode: "incorrect" })).rejects.toThrow(
       "incorrect-email-password"
@@ -225,20 +294,60 @@ describe("request auth composition with real credential policy and migrated D1",
     await expect(authorize(config(), { totpCode: "123456" })).rejects.toThrow("internal-server-error");
   });
 
-  it("fails closed for unsupported enabled limiting without issuing a session", async () => {
-    const settings = config();
-    const auth = createCalRequestAuth(
-      config(0, { credentialPolicy: { ...settings.credentialPolicy, rateLimit: "enabled" } })
-    );
+  it("admits enabled credential sign-ins up to the core limit, then rejects without a session", async () => {
+    const email = await limitedEmail();
+    const auth = createCalRequestAuth(enabledConfig());
     const state = await csrf(auth);
-    const response = await request(auth, "callback/credentials", state.cookie, {
-      ...credentials(),
-      csrfToken: state.csrfToken,
-      json: "true",
-    });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ url: `${origin}/api/auth/error?error=internal-server-error` });
-    expect((await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
+    const signIn = () =>
+      withLimiter(limiter, () =>
+        request(auth, "callback/credentials", state.cookie, {
+          ...credentials({ email }),
+          csrfToken: state.csrfToken,
+          json: "true",
+        })
+      );
+    const sessions = async () =>
+      (await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results.length;
+    for (let i = 0; i < 10; i++) expect((await signIn()).status).toBe(200);
+    const issued = await sessions();
+    expect(issued).toBeGreaterThan(0);
+    const limited = await signIn();
+    expect(limited.status).toBe(401);
+    const { url } = z.object({ url: z.string() }).parse(await limited.json());
+    const error = new URL(url);
+    expect(error.origin + error.pathname).toBe(`${origin}/api/auth/error`);
+    expect(error.searchParams.get("error")).toMatch(rateLimited);
+    expect(cookies(limited)).not.toMatch(/session-token/);
+    expect(await sessions()).toBe(issued);
+  });
+
+  it("leaves disabled limiting untouched even when the limiter is configured", async () => {
+    vi.stubEnv("UNKEY_ROOT_KEY", "configured");
+    const untouched = { idFromName: vi.fn(), get: vi.fn() };
+    for (let i = 0; i < 11; i++) expect((await withLimiter(untouched, () => authorize())).id).toBe(123);
+    expect(untouched.idFromName).not.toHaveBeenCalled();
+  });
+
+  it("fails open to password verification when the limiter errors or its binding is missing", async () => {
+    const email = await limitedEmail();
+    const enabled = enabledConfig();
+    for (const namespace of [brokenLimiter, undefined]) {
+      expect((await withLimiter(namespace, () => authorize(enabled, { email }))).id).toBe(123);
+      await expect(
+        withLimiter(namespace, () => authorize(enabled, { email, password: "incorrect" }))
+      ).rejects.toThrow("incorrect-email-password");
+    }
+    const auth = createCalRequestAuth(enabled);
+    const state = await csrf(auth);
+    const response = await withLimiter(brokenLimiter, () =>
+      request(auth, "callback/credentials", state.cookie, {
+        ...credentials({ email }),
+        csrfToken: state.csrfToken,
+        json: "true",
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(cookies(response)).toMatch(/__Secure-next-auth.session-token=.+/);
   });
 
   it("preserves inactive-admin reasons and request-scoped development and E2E exceptions", async () => {
