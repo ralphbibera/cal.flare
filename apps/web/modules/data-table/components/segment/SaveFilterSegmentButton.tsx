@@ -1,3 +1,4 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { FilterSegmentScope } from "@calcom/prisma/enums";
@@ -13,7 +14,6 @@ import {
 import { Form, Input, Label, Select, Switch } from "@calcom/ui/components/form";
 import { RadioField, RadioGroup } from "@calcom/ui/components/radio";
 import { showToast } from "@calcom/ui/components/toast";
-import { useSession } from "next-auth/react";
 import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -41,7 +41,7 @@ export function SaveFilterSegmentButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [isTeamSegment, setIsTeamSegment] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<number>();
-  const session = useSession();
+  const session = authClient.useSession();
   const isAdminOrOwner = checkAdminOrOwner(session.data?.user?.org?.role);
 
   const form = useForm<FormValues>({

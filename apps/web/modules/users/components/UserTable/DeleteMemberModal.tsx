@@ -1,9 +1,9 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { Dialog } from "@calcom/features/components/controlled-dialog";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import { ConfirmationDialogContent } from "@calcom/ui/components/dialog";
 import { showToast } from "@calcom/ui/components/toast";
-import { useSession } from "next-auth/react";
 import type { Dispatch } from "react";
 import type { UserTableAction, UserTableState } from "./types";
 
@@ -15,7 +15,7 @@ export function DeleteMemberModal({
   dispatch: Dispatch<UserTableAction>;
 }) {
   const { t } = useLocale();
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const utils = trpc.useUtils();
   const removeMemberMutation = {
     mutate: (..._args: unknown[]) => {},

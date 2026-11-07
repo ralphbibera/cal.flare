@@ -1,3 +1,4 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import classNames from "@calcom/ui/classNames";
@@ -14,7 +15,6 @@ import {
 } from "@calcom/ui/components/dropdown";
 import { showToast } from "@calcom/ui/components/toast";
 import { Tooltip } from "@calcom/ui/components/tooltip";
-import { useSession } from "next-auth/react";
 import type { UserTableAction, UserTableUser } from "./types";
 
 export function TableActions({
@@ -35,7 +35,7 @@ export function TableActions({
   };
 }) {
   const { t, i18n } = useLocale();
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const resendInvitationMutation = {
     mutate: (..._args: unknown[]) => {},
     mutateAsync: async () => ({}),
