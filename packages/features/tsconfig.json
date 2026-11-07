@@ -11,7 +11,7 @@
     "esModuleInterop": true,
     "experimentalDecorators": true
   },
-  "include": [".", "../types/next-auth.d.ts", "../types/tanstack-table.d.ts"],
+  "include": [".", "../types/tanstack-table.d.ts"],
   "exclude": [
     "dist",
     "build",

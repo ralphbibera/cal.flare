@@ -8,6 +8,6 @@
     "jsx": "react-jsx",
     "resolveJsonModule": true
   },
-  "include": [".", "../types/next-auth.d.ts"],
+  "include": ["."],
   "exclude": ["dist", "build", "node_modules"]
 }

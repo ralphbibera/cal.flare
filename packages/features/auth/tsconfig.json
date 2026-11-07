@@ -10,7 +10,6 @@
   },
   "include": [
     ".",
-    "../../types/next-auth.d.ts",
     "../../types/tanstack-table.d.ts",
     "../../types/business-days-plugin.d.ts",
     "../../types/window.d.ts"

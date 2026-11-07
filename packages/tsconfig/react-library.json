@@ -8,6 +8,6 @@
     "target": "ES5",
     "jsx": "react-jsx"
   },
-  "include": [".", "../types/next-auth.d.ts"],
+  "include": ["."],
   "exclude": ["dist", "build", "node_modules"]
 }
