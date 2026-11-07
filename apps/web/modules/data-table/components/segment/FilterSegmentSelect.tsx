@@ -1,3 +1,4 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 import { useDataTable } from "~/data-table/hooks";
 import type {
@@ -18,7 +19,6 @@ import {
   DropdownMenuTrigger,
 } from "@calcom/ui/components/dropdown";
 import { Icon, type IconName } from "@calcom/ui/components/icon";
-import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
 import { DeleteSegmentDialog } from "./DeleteSegmentDialog";
 import { DuplicateSegmentDialog } from "./DuplicateSegmentDialog";
@@ -39,7 +39,7 @@ interface Props {
 
 export function FilterSegmentSelect({ shortLabel }: Props = {}) {
   const { t } = useLocale();
-  const session = useSession();
+  const session = authClient.useSession();
   const isAdminOrOwner = checkAdminOrOwner(session.data?.user?.org?.role);
   const { segments, selectedSegment, segmentId, setSegmentId, isSegmentEnabled, clearAll } = useDataTable();
   const [segmentToRename, setSegmentToRename] = useState<FilterSegmentOutput | undefined>();

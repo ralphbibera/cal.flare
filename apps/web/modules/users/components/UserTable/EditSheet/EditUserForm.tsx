@@ -1,3 +1,4 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { timeZoneSchema } from "@calcom/lib/dayjs/timeZone.schema";
 import { emailSchema } from "@calcom/lib/emailSchema";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
@@ -6,20 +7,12 @@ import { trpc } from "@calcom/trpc/react";
 import { Avatar } from "@calcom/ui/components/avatar";
 import { Button } from "@calcom/ui/components/button";
 import { Divider } from "@calcom/ui/components/divider";
-import {
-  Form,
-  Label,
-  SelectField,
-  TextAreaField,
-  TextField,
-  ToggleGroup,
-} from "@calcom/ui/components/form";
+import { Form, Label, SelectField, TextAreaField, TextField, ToggleGroup } from "@calcom/ui/components/form";
 import { ImageUploader } from "@calcom/ui/components/image-uploader";
 import { SheetBody, SheetFooter, SheetHeader, SheetTitle } from "@calcom/ui/components/sheet";
 import { showToast } from "@calcom/ui/components/toast";
 import { TimezoneSelect } from "@calcom/web/modules/timezone/components/TimezoneSelect";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useSession } from "next-auth/react";
 import type { Dispatch } from "react";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -59,7 +52,7 @@ export function EditForm({
   const setEditMode = useEditMode((state) => state.setEditMode);
   const [mutationLoading, setMutationLoading] = useState(false);
   const { t } = useLocale();
-  const session = useSession();
+  const session = authClient.useSession();
   const org = session?.data?.user?.org;
   const utils = trpc.useUtils();
   const form = useForm<EditSchema>({

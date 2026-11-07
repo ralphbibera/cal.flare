@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { JSX } from "react";
 import { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 import { ColumnFilterType, convertFacetedValuesToMap, type FacetedValue } from "@calcom/features/data-table";
@@ -31,7 +32,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import posthog from "posthog-js";
 import { useMemo, useReducer, useState } from "react";
@@ -186,7 +186,7 @@ function UserListTableContent({
   const domain = WEBAPP_URL;
   const { t } = useLocale();
 
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const isPlatformUser = false;
   const [state, dispatch] = useReducer(reducer, initialState);
   const [isDownloading, setIsDownloading] = useState(false);
