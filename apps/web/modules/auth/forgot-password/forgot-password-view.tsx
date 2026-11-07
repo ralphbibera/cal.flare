@@ -12,12 +12,7 @@ import { EmailField } from "@calcom/ui/components/form";
 
 import AuthContainer from "@components/ui/AuthContainer";
 
-export type PageProps = {
-  csrfToken?: string;
-};
-
-export default function ForgotPassword(props: PageProps) {
-  const csrfToken = "csrfToken" in props ? (props.csrfToken as string) : undefined;
+export default function ForgotPassword() {
   const { t } = useLocale();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<{ message: string } | null>(null);
@@ -125,7 +120,6 @@ export default function ForgotPassword(props: PageProps) {
                 "--cal-brand-subtle": "#9CA3AF",
               } as CSSProperties
             }>
-            <input name="csrfToken" type="hidden" defaultValue={csrfToken} hidden />
             <EmailField
               onChange={handleChange}
               id="email"

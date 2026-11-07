@@ -33,7 +33,6 @@ interface LoginValues {
   password: string;
   totpCode: string;
   backupCode: string;
-  csrfToken: string;
 }
 
 const MicrosoftIcon = () => (
@@ -102,7 +101,6 @@ function BackgroundGrid() {
 }
 export type PageProps = inferSSRProps<typeof getServerSideProps>;
 export default function Login({
-  csrfToken,
   isGoogleLoginEnabled,
   isOutlookLoginEnabled,
   totpEmail,
@@ -239,7 +237,6 @@ export default function Login({
             )}
 
             <form onSubmit={methods.handleSubmit(onSubmit)} noValidate data-testid="login-form">
-              <input defaultValue={csrfToken || undefined} type="hidden" hidden {...register("csrfToken")} />
 
               {!twoFactorRequired && (
                 <div className="space-y-6">

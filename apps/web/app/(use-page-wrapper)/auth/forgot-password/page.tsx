@@ -1,4 +1,3 @@
-import { getServerCsrfToken } from "@calcom/features/auth/lib/getServerCsrfToken";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import { buildLegacyCtx } from "@lib/buildLegacyCtx";
 import type { PageProps as ServerPageProps } from "app/_types";
@@ -25,9 +24,7 @@ const ServerPage = async ({ params, searchParams }: ServerPageProps) => {
     redirect("/");
   }
 
-  const csrfToken = await getServerCsrfToken(context.req);
-
-  return <ForgotPassword csrfToken={csrfToken} />;
+  return <ForgotPassword />;
 };
 
 export default ServerPage;
