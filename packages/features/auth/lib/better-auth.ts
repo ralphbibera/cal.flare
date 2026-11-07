@@ -62,6 +62,8 @@ export function createBetterAuth({
       "/set-password",
       "/request-password-reset",
       "/reset-password",
+      // Its session carries no Cal claims; /cal/magic-link/verify consumes the same native token.
+      "/magic-link/verify",
     ],
     advanced: {
       useSecureCookies: secure,
