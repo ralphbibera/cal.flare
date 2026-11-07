@@ -17,62 +17,44 @@ export type SessionRequest =
         | { getAll(): { name: string; value: string }[] };
     };
 
-const sessionCookie = "next-auth.session-token";
-const secureSessionCookie = `__Secure-${sessionCookie}`;
+function serializeCookies(
+  cookies: NonNullable<Extract<SessionRequest, { cookies?: unknown }>["cookies"]>
+): string {
+  const pairs =
+    "getAll" in cookies && typeof cookies.getAll === "function"
+      ? cookies.getAll().map(({ name, value }) => [name, value] as const)
+      : cookies instanceof Map
+        ? Array.from(cookies.entries())
+        : Object.entries(cookies as Partial<Record<string, string>>);
+  return pairs
+    .filter((pair): pair is readonly [string, string] => typeof pair[1] === "string")
+    .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+    .join("; ");
+}
 
-function readCookie(req: SessionRequest, name: string): string | undefined {
-  const cookies = req && "cookies" in req ? req.cookies : undefined;
-  if (cookies) {
-    if ("getAll" in cookies && typeof cookies.getAll === "function") {
-      const found = cookies.getAll().find((cookie) => cookie.name === name);
-      if (found) return found.value;
-    } else if (cookies instanceof Map) {
-      const value = cookies.get(name);
-      if (value !== undefined) return value;
-    } else {
-      const value = (cookies as Record<string, string | undefined>)[name];
-      if (value !== undefined) return value;
-    }
-  }
-
-  let header: string | null | undefined;
-  if (req?.headers instanceof Headers) header = req.headers.get("cookie");
-  else header = req?.headers?.cookie;
-  if (!header) return undefined;
-  for (const part of header.split(";")) {
-    const index = part.indexOf("=");
-    if (index === -1 || part.slice(0, index).trim() !== name) continue;
-    const value = part.slice(index + 1).trim();
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      return value;
-    }
-  }
-  return undefined;
+// Forward the request's cookies unchanged so Better Auth finds its own session cookie by its configured name.
+function cookieHeader(req: SessionRequest): string | null {
+  if (!req) return null;
+  const header = req.headers instanceof Headers ? req.headers.get("cookie") : req.headers?.cookie;
+  if (typeof header === "string" && header) return header;
+  const cookies = "cookies" in req ? req.cookies : undefined;
+  return cookies ? serializeCookies(cookies) || null : null;
 }
 
 type CalReader = { auth: ReturnType<typeof createCalRequestAuth>; headers: Headers };
 
-function createCalReader(rawToken: string): CalReader | null {
+function createCalReader(req: SessionRequest): CalReader | null {
+  const cookie = cookieHeader(req);
+  if (!cookie) return null;
   // Without a request-bound configuration (D1 and signing secret) the Cal reader cannot run.
   const config = getAuthRequestConfiguration();
   if (!config) return null;
-  let name = sessionCookie;
-  if (config.webappURL.startsWith("https://")) name = secureSessionCookie;
-  const headers = new Headers({ cookie: `${name}=${encodeURIComponent(rawToken)}` });
-  return { auth: createCalRequestAuth(config), headers };
-}
-
-export async function readSessionToken(req: SessionRequest): Promise<string | null> {
-  return readCookie(req, secureSessionCookie) ?? readCookie(req, sessionCookie) ?? null;
+  return { auth: createCalRequestAuth(config), headers: new Headers({ cookie }) };
 }
 
 export async function getCalServerSession(req: SessionRequest): Promise<Session | null> {
-  const rawToken = await readSessionToken(req);
-  if (!rawToken) return null;
   try {
-    const reader = createCalReader(rawToken);
+    const reader = createCalReader(req);
     if (!reader) return null;
     const session = await reader.auth.api.getServerSession({ headers: reader.headers });
     if (!session) return null;
@@ -84,10 +66,8 @@ export async function getCalServerSession(req: SessionRequest): Promise<Session 
 }
 
 export async function getCalSessionLocale(req: SessionRequest): Promise<string | null> {
-  const rawToken = await readSessionToken(req);
-  if (!rawToken) return null;
   try {
-    const reader = createCalReader(rawToken);
+    const reader = createCalReader(req);
     if (!reader) return null;
     const session = await reader.auth.api.getSessionClaims({ headers: reader.headers });
     return session?.claims.locale ?? null;
