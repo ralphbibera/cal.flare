@@ -60,6 +60,11 @@ export function readOAuthProvidersConfig(): OAuthProvidersConfig {
   return config;
 }
 
+// Public booking pages offer overlay sign-in, so they need the same enabled set as the login page.
+export function enabledOAuthProviders(config: OAuthProvidersConfig): string[] {
+  return [...(config.google ? ["google"] : []), ...(config.microsoft ? ["azure-ad"] : [])];
+}
+
 export function socialProviderOptions(
   config: OAuthProvidersConfig,
   baseURL: string

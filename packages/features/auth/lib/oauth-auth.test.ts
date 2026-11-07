@@ -16,17 +16,23 @@ let root: string;
 let runtime: Miniflare;
 let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
 
-function auth({ withService = true } = {}) {
+function auth({
+  withService = true,
+  oauth = {
+    google: { clientId: "google-client", clientSecret: "google-secret" },
+    microsoft: { clientId: "microsoft-client", clientSecret: "microsoft-secret" },
+  },
+}: {
+  withService?: boolean;
+  oauth?: AuthRequestConfiguration["oauth"];
+} = {}) {
   const config: AuthRequestConfiguration = {
     DB: db,
     baseURL: origin,
     webappURL: origin,
     NEXTAUTH_SECRET: `synthetic-signing-secret-${"x".repeat(32)}`,
     ...(withService && { oauthSignIn: new OAuthSignInService() }),
-    oauth: {
-      google: { clientId: "google-client", clientSecret: "google-secret" },
-      microsoft: { clientId: "microsoft-client", clientSecret: "microsoft-secret" },
-    },
+    oauth,
   };
   return createCalRequestAuth(config);
 }
@@ -221,6 +227,32 @@ describe("OAuth authorize redirect", () => {
     expect(response.status).toBe(400);
     expect(cookiesOf(response)).not.toMatch(/session_token/);
     expect(await rows("AuthSession")).toEqual([]);
+  });
+});
+
+describe("OAuth provider advertisement", () => {
+  const providers = (a: Auth) => a.handler(new Request(`${origin}/api/auth/cal/oauth-providers`));
+
+  it("lists the social providers the instance can sign in with", async () => {
+    const response = await providers(auth());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-cache, no-store");
+    expect(await response.json()).toEqual({ providers: ["google", "azure-ad"] });
+  });
+
+  it("omits a provider that has no credentials", async () => {
+    const response = await providers(
+      auth({ oauth: { microsoft: { clientId: "microsoft-client", clientSecret: "microsoft-secret" } } })
+    );
+
+    expect(await response.json()).toEqual({ providers: ["azure-ad"] });
+  });
+
+  it("returns no providers when OAuth sign-in is not configured", async () => {
+    const response = await providers(auth({ withService: false }));
+
+    expect(await response.json()).toEqual({ providers: [] });
   });
 });
 
