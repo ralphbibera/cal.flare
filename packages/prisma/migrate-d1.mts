@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -18,6 +18,7 @@ const configUrl = new URL("../../apps/web/cloudflare.config.ts", import.meta.url
 const webRequire = createRequire(join(webRoot, "package.json"));
 const cfPackage = webRequire.resolve("cf/package.json");
 const cf = join(dirname(cfPackage), "bin/cf");
+const d1TemplateEnv = "CALFLARE_D1_TEMPLATE";
 const resultSchema = z
   .array(
     z.object({
@@ -38,12 +39,21 @@ const targetSchema = z.object({
 
 type Query = { sql: string; params?: string[] };
 
+const defaultMigrationsDirectory = fileURLToPath(new URL("./migrations-d1/", import.meta.url));
+
+async function isEmptyOrMissing(directory: string) {
+  const entries = await readdir(directory).catch(() => null);
+  return !entries || entries.length === 0;
+}
+
 async function migrateD1({
-  persistTo = join(webRoot, ".cloudflare/state"),
-  migrationsDirectory = fileURLToPath(new URL("./migrations-d1/", import.meta.url)),
+  persistTo,
+  migrationsDirectory,
+  useTemplate = true,
 }: {
   persistTo?: string;
   migrationsDirectory?: string;
+  useTemplate?: boolean;
 } = {}) {
   const { version } = z
     .object({ version: z.literal("1.0.0-beta.27") })
@@ -55,17 +65,37 @@ async function migrateD1({
     throw new ErrorWithCode(ErrorCode.BadRequest, "Web DB must resolve to a local D1 identity");
   }
   const migrations = await Promise.all(
-    (await readdir(migrationsDirectory))
+    (await readdir(migrationsDirectory ?? defaultMigrationsDirectory))
       .filter((name) => name.endsWith(".sql"))
       .sort()
       .map(async (name) => {
-        const bytes = await readFile(join(migrationsDirectory, name));
+        const bytes = await readFile(join(migrationsDirectory ?? defaultMigrationsDirectory, name));
         return { name, hash: createHash("sha256").update(bytes).digest("hex"), sql: bytes.toString("utf8") };
       })
   );
+  const persistence = resolve(persistTo ?? join(webRoot, ".cloudflare/state"));
+  const template = process.env[d1TemplateEnv];
+  // The Vitest global setup migrates the same default files once and exports this variable, so a test
+  // that asks for a fresh database copies that state instead of booting workerd per batch. The CLI
+  // opts out with useTemplate: false, and an inherited variable must not hollow out the migrator.
+  if (
+    useTemplate &&
+    template &&
+    persistTo !== undefined &&
+    migrationsDirectory === undefined &&
+    (await isEmptyOrMissing(persistence))
+  ) {
+    await cp(template, persistence, { recursive: true });
+    return {
+      applied: migrations.length,
+      total: migrations.length,
+      database: binding.id,
+      persistence,
+      version,
+    };
+  }
   const temporary = await mkdtemp(join(tmpdir(), "calflare-migrate-d1-"));
   const batchPath = join(temporary, "batch.json");
-  const persistence = resolve(persistTo);
   async function query(batch: Query[]) {
     await writeFile(batchPath, JSON.stringify(batch));
     try {
@@ -140,11 +170,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         "D1 migrations require --local-only; remote execution is unavailable"
       );
     }
-    process.stdout.write(`${JSON.stringify(await migrateD1({ persistTo: values["persist-to"] }))}\n`);
+    process.stdout.write(
+      `${JSON.stringify(await migrateD1({ persistTo: values["persist-to"], useTemplate: false }))}\n`
+    );
   } catch (error) {
     process.stderr.write(`${String(error)}\n`);
     process.exitCode = 1;
   }
 }
 
-export { migrateD1 };
+export { d1TemplateEnv, migrateD1 };
