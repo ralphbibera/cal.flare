@@ -1,23 +1,22 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useSession } from "next-auth/react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { Toaster } from "sonner";
-import { z } from "zod";
-
 import AppNotInstalledMessage from "@calcom/app-store/_components/AppNotInstalledMessage";
 import KeyField from "@calcom/app-store/hitpay/components/KeyInput";
 import { hitpayCredentialKeysSchema } from "@calcom/app-store/hitpay/lib/hitpayCredentialKeysSchema";
 import type { IHitPaySetupProps } from "@calcom/app-store/hitpay/pages/setup/_getServerSideProps";
+import { useSession } from "@calcom/features/auth/client";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import { Button } from "@calcom/ui/components/button";
 import { Switch } from "@calcom/ui/components/form";
-import { InfoIcon } from "@coss/ui/icons";
 import { showToast } from "@calcom/ui/components/toast";
+import { InfoIcon } from "@coss/ui/icons";
+import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { Toaster } from "sonner";
+import { z } from "zod";
 
 export default function HitPaySetup(props: IHitPaySetupProps) {
   const params = useCompatSearchParams();

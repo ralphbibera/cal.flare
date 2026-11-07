@@ -9,6 +9,7 @@
 
 import process from "node:process";
 import type { ParsedUrlQuery } from "node:querystring";
+import { useSession } from "@calcom/features/auth/client";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";
 import type { SSRConfig } from "@calcom/i18n/ssr";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
@@ -20,7 +21,6 @@ import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { createInstance, dir } from "i18next";
 import type { AppProps as NextAppProps } from "next/app";
 import type { Session } from "next-auth";
-import { useSession } from "next-auth/react";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/pages";
 import type { JSX, PropsWithChildren, ReactNode } from "react";

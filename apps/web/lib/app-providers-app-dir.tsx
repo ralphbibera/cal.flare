@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { useSession } from "@calcom/features/auth/client";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
 import type { PageWrapperProps } from "@components/PageWrapperAppDir";
@@ -11,9 +11,9 @@ import type { AppProps as NextAppProps } from "next/app";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { Session } from "next-auth";
-import { useSession } from "next-auth/react";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import type { JSX } from "react";
 import { getThemeProviderProps } from "./getThemeProviderProps";
 
 // Workaround for https://github.com/vercel/next.js/issues/8592

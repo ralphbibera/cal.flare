@@ -1,10 +1,4 @@
-import classNames from "classnames";
-// eslint-disable-next-line no-restricted-imports
-import { noop } from "lodash";
-import { useSession } from "next-auth/react";
-import type { RefCallback } from "react";
-import { useEffect, useState } from "react";
-
+import { useSession } from "@calcom/features/auth/client";
 import { Dialog } from "@calcom/features/components/controlled-dialog";
 import { fetchUsername } from "@calcom/lib/fetchUsername";
 import { useDebounce } from "@calcom/lib/hooks/useDebounce";
@@ -12,12 +6,16 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import type { AppRouter } from "@calcom/trpc/types/server/routers/_app";
 import { Button } from "@calcom/ui/components/button";
-import { DialogContent, DialogFooter, DialogClose } from "@calcom/ui/components/dialog";
+import { DialogClose, DialogContent, DialogFooter } from "@calcom/ui/components/dialog";
 import { TextField } from "@calcom/ui/components/form";
-import { CheckIcon } from "@coss/ui/icons";
 import { Tooltip } from "@calcom/ui/components/tooltip";
-
+import { CheckIcon } from "@coss/ui/icons";
 import type { TRPCClientErrorLike } from "@trpc/client";
+import classNames from "classnames";
+// eslint-disable-next-line no-restricted-imports
+import { noop } from "lodash";
+import type { RefCallback } from "react";
+import { useEffect, useState } from "react";
 
 interface ICustomUsernameProps {
   currentUsername: string | undefined;
