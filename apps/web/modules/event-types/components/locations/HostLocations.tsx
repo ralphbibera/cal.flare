@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import type { CSSObjectWithLabel } from "react-select";
@@ -834,7 +834,7 @@ const UpgradeBadge = () => {
 
 export const HostLocations = ({ eventTypeId, locationOptions }: HostLocationsProps) => {
   const { t } = useLocale();
-  const session = useSession();
+  const session = authClient.useSession();
   const formMethods = useFormContext<FormValues>();
   const [isMassApplyDialogOpen, setIsMassApplyDialogOpen] = useState(false);
 

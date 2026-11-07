@@ -1,4 +1,4 @@
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { FC } from "react";
 import { Fragment } from "react";
 
@@ -17,7 +17,7 @@ export const PermissionContainer: FC<AdminRequiredProps> = ({
   roleRequired = "ADMIN",
   ...rest
 }) => {
-  const session = useSession();
+  const session = authClient.useSession();
 
   // Admin can do everything
   if (session.data?.user.role !== roleRequired && session.data?.user.role != UserPermissionRole.ADMIN)

@@ -1,5 +1,5 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import formbricks from "@formbricks/js";
-import { useSession } from "next-auth/react";
 import { useEffect } from "react";
 
 import useMeQuery from "@calcom/trpc/react/hooks/useMeQuery";
@@ -30,7 +30,7 @@ const initFormbricks = async ({
 
 export const useFormbricks = () => {
   const { data: user, isLoading } = useMeQuery();
-  const { data: session, status } = useSession();
+  const { data: session } = authClient.useSession();
 
   useEffect(() => {
     if (!isLoading && user && session) {
@@ -45,5 +45,5 @@ export const useFormbricks = () => {
         },
       });
     }
-  }, [isLoading, user, status, session]);
+  }, [isLoading, user, session]);
 };
