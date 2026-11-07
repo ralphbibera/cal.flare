@@ -695,13 +695,13 @@ export const getOptions = ({
         });
         let existingUser = existingUserId
           ? await prisma.user.findFirst({
-              include: {
-                password: {
-                  select: {
-                    hash: true,
-                  },
-                },
+              select: {
+                id: true,
+                email: true,
+                twoFactorEnabled: true,
+                identityProvider: true,
                 accounts: {
+                  select: { id: true },
                   where: {
                     provider: account.provider,
                   },
@@ -714,13 +714,13 @@ export const getOptions = ({
         /* --- START FIX LEGACY ISSUE WHERE 'identityProviderId' was accidentally set to userId --- */
         if (!existingUser) {
           existingUser = await prisma.user.findFirst({
-            include: {
-              password: {
-                select: {
-                  hash: true,
-                },
-              },
+            select: {
+              id: true,
+              email: true,
+              twoFactorEnabled: true,
+              identityProvider: true,
               accounts: {
+                select: { id: true },
                 where: {
                   provider: account.provider,
                 },
@@ -799,7 +799,12 @@ export const getOptions = ({
         const existingUserWithEmail = existingUserWithEmailId
           ? await prisma.user.findFirst({
               where: { id: existingUserWithEmailId },
-              include: {
+              select: {
+                email: true,
+                emailVerified: true,
+                username: true,
+                twoFactorEnabled: true,
+                identityProvider: true,
                 password: {
                   select: {
                     hash: true,
