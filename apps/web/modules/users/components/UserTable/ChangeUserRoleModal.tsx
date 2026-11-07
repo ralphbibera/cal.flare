@@ -1,9 +1,9 @@
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { Dispatch } from "react";
 import type { UserTableAction, UserTableState } from "./types";
 
 export function ChangeUserRoleModal(props: { state: UserTableState; dispatch: Dispatch<UserTableAction> }) {
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const orgId = session?.user.org?.id;
   if (!orgId || !props.state.changeMemberRole.user) return null;
 
