@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,8 +23,8 @@ function ConnectAndJoin() {
   const [meetingUrl, setMeetingUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
-  const session = useSession();
-  const isUserPartOfOrg = session.status === "authenticated" && !!session.data.user?.org;
+  const session = authClient.useSession();
+  const isUserPartOfOrg = !!session.data?.user.org;
 
   const mutation = trpc.viewer.loggedInViewerRouter.connectAndJoin.useMutation({
     onSuccess: (res) => {
@@ -44,7 +44,7 @@ function ConnectAndJoin() {
     },
   });
 
-  if (session.status === "loading") return <p>{t("loading")}</p>;
+  if (session.isPending) return <p>{t("loading")}</p>;
 
   if (!token) return <p>{t("token_not_found")}</p>;
 

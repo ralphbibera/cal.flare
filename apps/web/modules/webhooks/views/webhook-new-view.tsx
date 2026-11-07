@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { WEBHOOK_TRIGGER_EVENTS } from "@calcom/features/webhooks/lib/constants";
 import { subscriberUrlReserved } from "@calcom/features/webhooks/lib/subscriberUrlReserved";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
@@ -9,7 +10,6 @@ import { trpc } from "@calcom/trpc/react";
 import { revalidateWebhooksList } from "@calcom/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/webhooks/(with-loader)/actions";
 import { toastManager } from "@coss/ui/components/toast";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import type { WebhookFormSubmitData } from "../components/WebhookForm";
 import WebhookForm from "../components/WebhookForm";
 import { WebhookVersionCTA } from "../components/WebhookVersionCTA";
@@ -25,7 +25,7 @@ export const NewWebhookView = ({ webhooks, installedApps }: Props) => {
   const { t } = useLocale();
   const utils = trpc.useUtils();
   const router = useRouter();
-  const session = useSession();
+  const session = authClient.useSession();
 
   const teamId = searchParams?.get("teamId") ? Number(searchParams.get("teamId")) : undefined;
   const platform = searchParams?.get("platform") ? Boolean(searchParams.get("platform")) : false;

@@ -1,12 +1,12 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { WEBSITE_URL } from "@calcom/lib/constants";
 import { localeOptions } from "@calcom/lib/i18n";
-import { useSession } from "next-auth/react";
 import type { EventSetupTabProps } from "./EventSetupTab";
 import { EventSetupTab } from "./EventSetupTab";
 
 const EventSetupTabWebWrapper = (props: EventSetupTabProps) => {
   const orgBranding = null;
-  const session = useSession();
+  const session = authClient.useSession();
   const urlPrefix = orgBranding
     ? "".replace(/^(https?:|)\/\//, "")
     : `${WEBSITE_URL?.replace(/^(https?:|)\/\//, "")}`;
