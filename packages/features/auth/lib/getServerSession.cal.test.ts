@@ -257,9 +257,10 @@ describe("dual session cookie readers on migrated D1", () => {
   it("(d) returns null for missing, garbage and tampered cookies", async () => {
     const validCal = await calCookie();
     const validJwe = await jweCookie();
-    // Tamper inside the signed/stored payload, not the last character: base64 padding bits can leave the last byte unchanged.
+    // The last character of a base64 segment can hold only padding bits, so flipping it may decode to
+    // the same bytes; the one before it always carries six data bits.
     const tamper = (cookie: string) => {
-      const index = cookie.lastIndexOf(".") - 1;
+      const index = cookie.lastIndexOf(".") - 2;
       const original = cookie[index];
       return `${cookie.slice(0, index)}${original === "A" ? "B" : "A"}${cookie.slice(index + 1)}`;
     };
