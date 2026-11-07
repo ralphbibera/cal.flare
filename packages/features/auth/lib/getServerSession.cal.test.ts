@@ -5,7 +5,6 @@ import prisma from "@calcom/prisma";
 import { hash } from "bcryptjs";
 import { Miniflare } from "miniflare";
 import type { NextApiRequest } from "next";
-import { encode } from "next-auth/jwt";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
@@ -168,38 +167,8 @@ async function calCookie() {
   return session!;
 }
 
-async function jweCookie() {
-  const token = await encode({
-    token: {
-      sub: "123",
-      email,
-      upId,
-      profileId,
-      belongsToActiveTeam: false,
-      orgAwareUsername: "dual",
-      locale,
-    },
-    secret,
-    maxAge: 60 * 60,
-  });
-  return `__Secure-next-auth.session-token=${token}`;
-}
-
-function shape(value: unknown, path = ""): string[] {
-  if (Array.isArray(value)) return value.flatMap((item, index) => shape(item, `${path}[${index}]`));
-  if (value && typeof value === "object") {
-    return Object.entries(value)
-      .filter(([, field]) => field !== undefined)
-      .flatMap(([key, field]) => {
-        const next = path ? `${path}.${key}` : key;
-        return [next, ...shape(field, next)];
-      });
-  }
-  return [];
-}
-
-describe("dual session cookie readers on migrated D1", () => {
-  it("(a) reads a Cal credentials sign-in cookie through getServerSession", async () => {
+describe("Better Auth session readers on migrated D1", () => {
+  it("reads a Cal credentials sign-in cookie through getServerSession", async () => {
     const cookie = await calCookie();
     const session = await read(() => getServerSession({ req: request(cookie) }));
 
@@ -218,45 +187,8 @@ describe("dual session cookie readers on migrated D1", () => {
     });
   });
 
-  it("(b) keeps reading a next-auth JWE cookie exactly as before", async () => {
-    const cookie = await jweCookie();
-    const session = await read(() => getServerSession({ req: request(cookie) }));
-
-    expect(session).toMatchObject({
-      hasValidLicense: true,
-      profileId,
-      upId,
-      user: {
-        id: 123,
-        email,
-        username: "dual",
-        name: "Dual user",
-        locale,
-        profile: { id: profileId, upId },
-      },
-    });
-  });
-
-  it("(c) projects the same shape and values for the same user from both formats", async () => {
-    const cal = await calCookie();
-    const jwe = await jweCookie();
-    const calSession = await read(() => getServerSession({ req: request(cal) }));
-    const jweSession = await read(() => getServerSession({ req: request(jwe) }));
-
-    expect(calSession).not.toBeNull();
-    expect(jweSession).not.toBeNull();
-    expect(shape(calSession)).toEqual(shape(jweSession));
-
-    const { expires: calExpires, ...calRest } = calSession!;
-    const { expires: jweExpires, ...jweRest } = jweSession!;
-    expect(typeof calExpires).toBe("string");
-    expect(typeof jweExpires).toBe("string");
-    expect(calRest).toEqual(jweRest);
-  });
-
-  it("(d) returns null for missing, garbage and tampered cookies", async () => {
+  it("returns null for missing, garbage and tampered cookies", async () => {
     const validCal = await calCookie();
-    const validJwe = await jweCookie();
     // Tamper inside the signed/stored payload, not the last character: base64 padding bits can leave the last byte unchanged.
     const tamper = (cookie: string) => {
       const index = cookie.lastIndexOf(".") - 1;
@@ -264,7 +196,7 @@ describe("dual session cookie readers on migrated D1", () => {
       return `${cookie.slice(0, index)}${original === "A" ? "B" : "A"}${cookie.slice(index + 1)}`;
     };
 
-    for (const cookie of [undefined, "garbage", "not.valid", tamper(validCal), tamper(validJwe)]) {
+    for (const cookie of [undefined, "garbage", "not.valid", tamper(validCal)]) {
       await expect(read(() => getServerSession({ req: request(cookie) }))).resolves.toBeNull();
     }
 
@@ -272,10 +204,8 @@ describe("dual session cookie readers on migrated D1", () => {
     await expect(getServerSession({ req: request(validCal) })).resolves.toBeNull();
   });
 
-  it("(e) reads the session locale from both formats", async () => {
-    const cal = await calCookie();
-    const jwe = await jweCookie();
-    await expect(read(() => getLocale(request(cal)))).resolves.toBe(locale);
-    await expect(read(() => getLocale(request(jwe)))).resolves.toBe(locale);
+  it("reads the session locale", async () => {
+    const cookie = await calCookie();
+    await expect(read(() => getLocale(request(cookie)))).resolves.toBe(locale);
   });
 });
