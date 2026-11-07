@@ -1,34 +1,65 @@
 import prismaMock from "@calcom/testing/lib/__mocks__/prisma";
-
 import {
-  getBooker,
-  TestData,
-  getOrganizer,
-  createBookingScenario,
-  getGoogleCalendarCredential,
-  Timezones,
-  getScenarioData,
-  mockSuccessfulVideoMeetingCreation,
   BookingLocations,
+  createBookingScenario,
+  getBooker,
   getDate,
+  getGoogleCalendarCredential,
   getMockBookingAttendee,
+  getOrganizer,
+  getScenarioData,
   mockCalendarToHaveNoBusySlots,
+  mockSuccessfulVideoMeetingCreation,
+  TestData,
+  Timezones,
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
+import { appStoreMetadata } from "@calcom/app-store/apps.metadata.generated";
+import * as emailManager from "@calcom/emails/email-manager";
+import { ErrorCode } from "@calcom/lib/errorCodes";
+import { HttpError } from "@calcom/lib/http-error";
+import { BookingStatus, SchedulingType } from "@calcom/prisma/enums";
 import { createMockNextJsRequest } from "@calcom/testing/lib/bookingScenario/createMockNextJsRequest";
 import { getMockRequestDataForBooking } from "@calcom/testing/lib/bookingScenario/getMockRequestDataForBooking";
 import { getMockRequestDataForCancelBooking } from "@calcom/testing/lib/bookingScenario/getMockRequestDataForCancelBooking";
 import { setupAndTeardown } from "@calcom/testing/lib/bookingScenario/setupAndTeardown";
-
-import { describe, test, vi, expect } from "vitest";
-
-import { appStoreMetadata } from "@calcom/app-store/apps.metadata.generated";
-import * as emailManager from "@calcom/emails/email-manager";
-import { ErrorCode } from "@calcom/lib/errorCodes";
-import { SchedulingType } from "@calcom/prisma/enums";
-import { BookingStatus } from "@calcom/prisma/enums";
-
+import { describe, expect, test, vi } from "vitest";
 import { getNewBookingHandler } from "../../handleNewBooking/test/getNewBookingHandler";
+import type { AddSeatInput } from "../create/D1BookingSeatPersistence";
 import * as handleSeatsModule from "../handleSeats";
+
+vi.mock("../create/D1BookingSeatPersistence", () => ({
+  addD1BookingSeat: async (input: AddSeatInput, referenceUid: string) => {
+    const booking = await prismaMock.booking.findUnique({
+      where: { uid: input.bookingUid },
+      select: { attendees: { select: { bookingSeat: { select: { id: true } } } } },
+    });
+    if (!booking) throw new HttpError({ statusCode: 404, message: "Booking not found" });
+    const count = booking.attendees.filter((attendee) => attendee.bookingSeat).length;
+    if (input.seatsPerTimeSlot > 0 && count >= input.seatsPerTimeSlot) {
+      throw new HttpError({ statusCode: 409, message: ErrorCode.BookingSeatsFull });
+    }
+    await prismaMock.booking.update({
+      where: { uid: input.bookingUid },
+      data: {
+        attendees: {
+          create: {
+            ...input.attendee,
+            bookingSeat: {
+              create: {
+                referenceUid,
+                data: input.seatData,
+                metadata: input.metadata,
+                booking: { connect: { id: input.bookingId } },
+              },
+            },
+          },
+        },
+        ...(input.bookingStatus === BookingStatus.CANCELLED && { status: BookingStatus.ACCEPTED }),
+      },
+    });
+    return prismaMock.bookingSeat.findUnique({ where: { referenceUid } });
+  },
+}));
 
 describe("handleSeats", () => {
   setupAndTeardown();
