@@ -1,10 +1,8 @@
+import prisma from "@calcom/prisma";
 import type { Page } from "@playwright/test";
 import { test as base } from "@playwright/test";
 // eslint-disable-next-line no-restricted-imports
 import { noop } from "lodash";
-
-import prisma from "@calcom/prisma";
-
 import type { ExpectedUrlDetails } from "../../../../playwright.config";
 import { createAppsFixture } from "../fixtures/apps";
 import { createBookingsFixture } from "../fixtures/bookings";
@@ -18,6 +16,7 @@ import { createBookingPageFixture } from "../fixtures/regularBookings";
 import { createServersFixture } from "../fixtures/servers";
 import { createUsersFixture } from "../fixtures/users";
 import { createWebhookPageFixture } from "../fixtures/webhooks";
+import { bindFixtureD1, openLocalD1 } from "./localD1";
 
 export interface Fixtures {
   page: Page;
@@ -34,6 +33,10 @@ export interface Fixtures {
   eventTypePage: ReturnType<typeof createEventTypeFixture>;
   appsPage: ReturnType<typeof createAppsFixture>;
   webhooks: ReturnType<typeof createWebhookPageFixture>;
+}
+
+interface WorkerFixtures {
+  localD1: void;
 }
 
 declare global {
@@ -55,7 +58,20 @@ declare global {
 /**
  *  @see https://playwright.dev/docs/test-fixtures
  */
-export const test = base.extend<Fixtures>({
+export const test = base.extend<Fixtures, WorkerFixtures>({
+  localD1: [
+    async ({}, use) => {
+      const { mf, db } = await openLocalD1();
+      const release = bindFixtureD1(db);
+      try {
+        await use();
+      } finally {
+        release();
+        await mf.dispose();
+      }
+    },
+    { scope: "worker", auto: true },
+  ],
   orgs: async ({ page }, use) => {
     const orgsFixture = createOrgsFixture(page);
     await use(orgsFixture);
