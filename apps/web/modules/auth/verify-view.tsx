@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
@@ -10,23 +11,20 @@ import { showToast } from "@calcom/ui/components/toast";
 import { MailOpenIcon, TriangleAlertIcon } from "@coss/ui/icons";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
-import { signIn } from "@calcom/features/auth/client";
 import { useEffect, useRef, useState } from "react";
 import z from "zod";
 
 async function sendVerificationLogin(email: string, username: string, t: (key: string) => string) {
-  await signIn("email", {
+  const { error } = await authClient.signIn.magicLink({
     email: email.toLowerCase(),
-    username: username.toLowerCase(),
-    redirect: false,
-    callbackUrl: WEBAPP_URL || "https://app.cal.com",
-  })
-    .then(() => {
-      showToast(t("verification_email_sent"), "success");
-    })
-    .catch((err) => {
-      showToast(err, "error");
-    });
+    name: username.toLowerCase(),
+    callbackURL: WEBAPP_URL || "https://app.cal.com",
+  });
+  if (error) {
+    showToast(error.message ?? t("something_went_wrong"), "error");
+    return;
+  }
+  showToast(t("verification_email_sent"), "success");
 }
 
 function useSendFirstVerificationLogin({

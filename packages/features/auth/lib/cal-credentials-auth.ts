@@ -183,6 +183,7 @@ export function createCalCredentialsAuth(config: AuthConfig) {
   });
 
   return {
+    options: auth.options,
     api: {
       getServerSession: auth.api.calServerSession,
       getSessionClaims: auth.api.calSessionClaims,
@@ -190,3 +191,5 @@ export function createCalCredentialsAuth(config: AuthConfig) {
     handler: (request: Request) => auth.handler(request),
   };
 }
+
+export type CalCredentialsServerPlugin = ReturnType<typeof createCalCredentialsAuth>["options"]["plugins"][number];
