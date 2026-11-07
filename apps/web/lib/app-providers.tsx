@@ -19,8 +19,7 @@ import type { WithLocaleProps } from "@lib/withLocale";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { createInstance, dir } from "i18next";
 import type { AppProps as NextAppProps } from "next/app";
-import type { Session } from "next-auth";
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/pages";
 import type { JSX, PropsWithChildren, ReactNode } from "react";
@@ -60,7 +59,6 @@ export type AppProps = Omit<
   NextAppProps<
     WithLocaleProps<{
       themeBasis?: string;
-      session: Session;
       i18n?: SSRConfig;
     }>
   >,
@@ -93,8 +91,8 @@ const CustomI18nextProvider = (props: AppPropsWithChildren) => {
    * i18n should never be clubbed with other queries, so that it's caching can be managed independently.
    **/
 
-  const session = useSession();
-  const locale = session?.data?.user.locale ?? props.pageProps.newLocale;
+  const { data: session } = authClient.useSession();
+  const locale = session?.user.locale ?? props.pageProps.newLocale;
 
   useEffect(() => {
     try {

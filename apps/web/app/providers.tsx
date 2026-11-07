@@ -1,6 +1,5 @@
 "use client";
 
-import { SessionProvider } from "@calcom/features/auth/client";
 import { NotificationSoundHandler } from "@calcom/web/components/notification-sound-handler";
 import { WebPushProvider } from "@calcom/web/modules/notifications/components/WebPushContext";
 import { ToastProvider } from "@coss/ui/components/toast";
@@ -20,16 +19,14 @@ export function Providers({ isEmbed, children, country }: ProvidersProps) {
 
   return (
     <GeoProvider country={country}>
-      <SessionProvider>
-        <TrpcProvider>
-          <ToastProvider position="bottom-center">
-            {!isEmbed && !isBookingPage && <NotificationSoundHandler />}
-            <CacheProvider>
-              <WebPushProvider>{children}</WebPushProvider>
-            </CacheProvider>
-          </ToastProvider>
-        </TrpcProvider>
-      </SessionProvider>
+      <TrpcProvider>
+        <ToastProvider position="bottom-center">
+          {!isEmbed && !isBookingPage && <NotificationSoundHandler />}
+          <CacheProvider>
+            <WebPushProvider>{children}</WebPushProvider>
+          </CacheProvider>
+        </ToastProvider>
+      </TrpcProvider>
     </GeoProvider>
   );
 }

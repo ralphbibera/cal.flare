@@ -10,8 +10,6 @@ import { TooltipProvider } from "@radix-ui/react-tooltip";
 import type { AppProps as NextAppProps } from "next/app";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { usePathname, useSearchParams } from "next/navigation";
-import type { Session } from "next-auth";
-import { useSession } from "next-auth/react";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { getThemeProviderProps } from "./getThemeProviderProps";
@@ -22,7 +20,6 @@ export type AppProps = Omit<
     WithLocaleProps<{
       nonce: string | undefined;
       themeBasis?: string;
-      session: Session;
     }>
   >,
   "Component"

@@ -1,5 +1,4 @@
 import type { IncomingMessage } from "node:http";
-import { SessionProvider } from "@calcom/features/auth/client";
 import { trpc } from "@calcom/trpc/react";
 import { WebPushProvider } from "@calcom/web/modules/notifications/components/WebPushContext";
 import type { AppProps } from "@lib/app-providers";
@@ -12,13 +11,11 @@ function MyApp(props: AppProps) {
   const { Component, pageProps } = props;
 
   return (
-    <SessionProvider session={pageProps.session ?? undefined}>
-      <WebPushProvider>
-        <CacheProvider>
-          {Component.PageWrapper ? <Component.PageWrapper {...props} /> : <Component {...pageProps} />}
-        </CacheProvider>
-      </WebPushProvider>
-    </SessionProvider>
+    <WebPushProvider>
+      <CacheProvider>
+        {Component.PageWrapper ? <Component.PageWrapper {...props} /> : <Component {...pageProps} />}
+      </CacheProvider>
+    </WebPushProvider>
   );
 }
 
