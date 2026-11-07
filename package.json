@@ -78,6 +78,7 @@
     "test:ui": "TZ=UTC vitest --ui",
     "type-check": "turbo run type-check",
     "type-check:ci": "turbo run type-check:ci --log-prefix=none",
+    "prepush": "bun scripts/prepush.ts",
     "web": "bun run --cwd apps/web",
     "changesets-add": "bun run changeset add",
     "changesets-version": "bun run changeset version",
