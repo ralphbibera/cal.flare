@@ -281,6 +281,38 @@ describe("OAuth callback on migrated D1", () => {
     expect(await current.json()).toMatchObject({ user: { id: created?.id, email: "person@calflare.test" } });
   });
 
+  it("repairs a legacy identityProviderId that stored the Cal user id", async () => {
+    const a = auth();
+    await seedUser({
+      id: 323,
+      username: "person",
+      name: "Person",
+      emailVerified: "2024-01-01T00:00:00.000Z",
+      identityProvider: "GOOGLE",
+      identityProviderId: "323",
+    });
+    await db
+      .prepare('INSERT INTO "Account"(id,userId,type,provider,providerAccountId) VALUES(?,?,?,?,?)')
+      .bind("legacy-account", 323, "oauth", "google", "google-sub-1")
+      .run();
+    mockProvider(googleToken, {
+      access_token: "google-access",
+      expires_in: 3600,
+      scope: "openid",
+      id_token: idToken(googleClaims),
+    });
+    const { state, cookie } = await authorize(a, "google");
+
+    const response = await callback(a, "google", { code: "auth-code", state }, cookie);
+
+    expect(response.headers.get("location")).toBe(`${origin}/bookings`);
+    const repaired = await db
+      .prepare('SELECT "identityProviderId" FROM users WHERE id=323')
+      .first<Record<string, string>>();
+    expect(repaired?.identityProviderId).toBe("google-sub-1");
+    expect(await rows("users")).toHaveLength(1);
+  });
+
   it("signs an existing Azure AD user in and installs Outlook with the default calendar", async () => {
     const a = auth();
     await db

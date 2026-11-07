@@ -143,9 +143,17 @@ export function createCalOAuth({ webappURL, sessions, callback, oauthSignIn }: C
         const claims = oauthClaimsSchema.safeParse(info?.data);
         if (!info?.user || !claims.success) throw fail(CALLBACK_ERROR);
         const subject = claims.data.sub;
+        // next-auth handed the sign-in callback the linked Cal user's numeric id. The legacy
+        // identityProviderId repair compares that id, so resolve it the same way here.
+        const linked = await prisma.account.findUnique({
+          where: {
+            provider_providerAccountId: { provider: login.provider, providerAccountId: subject },
+          },
+          select: { userId: true },
+        });
 
         const user = {
-          id: subject,
+          id: linked?.userId ?? subject,
           email: info.user.email,
           name: info.user.name,
           // Azure AD pictures never reached the user row; Microsoft Graph fills the avatar afterwards.
