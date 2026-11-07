@@ -1,7 +1,7 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { ManipulateType as DayjsManipulateType } from "dayjs";
-import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 
 import dayjs from "@calcom/dayjs";
@@ -79,10 +79,12 @@ const TimezoneChangeDialogContent = () => {
 export function useOpenTimezoneDialog() {
   const { data: user } = trpc.viewer.me.get.useQuery();
   const [showDialog, setShowDialog] = useState(false);
-  const { data: userSession, status } = useSession();
+  const { data: userSession } = authClient.useSession();
+  const isAuthenticated = !!userSession;
+  const impersonatedBy = userSession?.user.impersonatedBy;
 
   useEffect(() => {
-    if (!user?.timeZone || status !== "authenticated" || userSession?.user?.impersonatedBy) {
+    if (!user?.timeZone || !isAuthenticated || impersonatedBy) {
       return;
     }
 
@@ -91,7 +93,7 @@ export function useOpenTimezoneDialog() {
     ) {
       setShowDialog(true);
     }
-  }, [user?.timeZone, status, userSession?.user?.impersonatedBy]);
+  }, [user?.timeZone, isAuthenticated, impersonatedBy]);
 
   return { open: showDialog, setOpen: setShowDialog };
 }
