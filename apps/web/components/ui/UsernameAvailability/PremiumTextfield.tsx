@@ -1,7 +1,7 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import classNames from "classnames";
 // eslint-disable-next-line no-restricted-imports
 import { noop } from "lodash";
-import { useSession } from "next-auth/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { RefCallback } from "react";
 import { useEffect, useState } from "react";
@@ -57,7 +57,6 @@ const PremiumTextfield = (props: ICustomUsernameProps) => {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLocale();
-  const { update } = useSession();
   const {
     currentUsername,
     setCurrentUsername = noop,
@@ -106,7 +105,7 @@ const PremiumTextfield = (props: ICustomUsernameProps) => {
   const updateUsername = trpc.viewer.me.updateProfile.useMutation({
     onSuccess: async () => {
       onSuccessMutation && (await onSuccessMutation());
-      await update({ username: inputUsernameValue });
+      await authClient.cal.updateSession({ data: { username: inputUsernameValue } });
       setOpenDialogSaveUsername(false);
     },
     onError: (error) => {

@@ -1,8 +1,8 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { revalidateSettingsAppearance } from "app/(use-page-wrapper)/settings/(settings-layout)/my-account/appearance/actions";
 import { revalidateHasTeamPlan } from "app/cache/membership";
-import { useSession } from "next-auth/react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import type { z } from "zod";
@@ -26,7 +26,6 @@ import { Button } from "@calcom/ui/components/button";
 import { SettingsToggle, ColorPicker, Form } from "@calcom/ui/components/form";
 import { showToast } from "@calcom/ui/components/toast";
 import { useCalcomTheme } from "@calcom/ui/styles";
-
 
 const useBrandColors = (
   currentTheme: string | null,
@@ -57,7 +56,7 @@ const AppearanceView = ({
 }) => {
   const { t } = useLocale();
   const utils = trpc.useUtils();
-  const session = useSession();
+  const session = authClient.useSession();
   const isApartOfOrganization = session.data?.user.org?.id;
   const [darkModeError, setDarkModeError] = useState(false);
   const [lightModeError, setLightModeError] = useState(false);

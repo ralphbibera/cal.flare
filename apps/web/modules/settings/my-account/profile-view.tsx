@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { ErrorCode } from "@calcom/features/auth/lib/ErrorCode";
 import { Dialog } from "@calcom/features/components/controlled-dialog";
 import SettingsHeader from "@calcom/features/settings/appDir/SettingsHeader";
@@ -34,7 +35,6 @@ import type { TRPCClientErrorLike } from "@trpc/client";
 import { revalidateSettingsProfile } from "app/cache/path/settings/my-account";
 // eslint-disable-next-line no-restricted-imports
 import { get, pick } from "lodash";
-import { signOut, useSession } from "next-auth/react";
 import type React from "react";
 import type { BaseSyntheticEvent } from "react";
 import { useRef, useState } from "react";
@@ -68,11 +68,10 @@ type Props = {
 const ProfileView = ({ user }: Props) => {
   const { t } = useLocale();
   const utils = trpc.useUtils();
-  const session = useSession();
-  const { update } = session;
+  const session = authClient.useSession();
   const updateProfileMutation = trpc.viewer.me.updateProfile.useMutation({
     onSuccess: async (res) => {
-      await update(res);
+      await authClient.cal.updateSession({ data: res });
       utils.viewer.me.invalidate();
       utils.viewer.me.shouldVerifyEmail.invalidate();
       revalidateSettingsProfile();
@@ -146,9 +145,11 @@ const ProfileView = ({ user }: Props) => {
 
     setHasDeleteErrors(false); // dismiss any open errors
     if (process.env.NEXT_PUBLIC_WEBAPP_URL === "https://app.cal.com") {
-      signOut({ callbackUrl: "/auth/logout?survey=true" });
+      authClient.signOut({
+        fetchOptions: { onSuccess: () => window.location.assign("/auth/logout?survey=true") },
+      });
     } else {
-      signOut({ callbackUrl: "/auth/logout" });
+      authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign("/auth/logout") } });
     }
   };
 
