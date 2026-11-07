@@ -20,9 +20,6 @@ export type AppConfig = {
     redisUrl: string;
     usePool: boolean;
   };
-  next: {
-    authSecret: string;
-  };
   stripe: {
     apiKey: string;
     webhookSecret: string;

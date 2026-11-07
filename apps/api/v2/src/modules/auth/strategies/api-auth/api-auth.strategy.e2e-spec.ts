@@ -23,6 +23,7 @@ import {
 import appConfig from "@/config/app";
 import { AuthMethods } from "@/lib/enums/auth-methods";
 import { ApiKeysRepository } from "@/modules/api-keys/api-keys-repository";
+import { CalWebSessionClient } from "@/modules/auth/services/cal-web-session.client";
 import { DeploymentsRepository } from "@/modules/deployments/deployments.repository";
 import { DeploymentsService } from "@/modules/deployments/deployments.service";
 import { JwtService } from "@/modules/jwt/jwt.service";
@@ -74,6 +75,7 @@ describe("ApiAuthStrategy", () => {
       providers: [
         MockedRedisService,
         ApiAuthStrategy,
+        CalWebSessionClient,
         ConfigService,
         OAuthFlowService,
         UsersRepository,

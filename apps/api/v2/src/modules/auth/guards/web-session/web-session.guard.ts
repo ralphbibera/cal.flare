@@ -1,6 +1,6 @@
 import { AuthGuard } from "@nestjs/passport";
 
-export class NextAuthGuard extends AuthGuard("next-auth") {
+export class WebSessionGuard extends AuthGuard("web-session") {
   constructor() {
     super();
   }

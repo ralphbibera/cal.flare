@@ -22,11 +22,6 @@ import { AuthModule } from "@/modules/auth/auth.module";
 import { PrismaModule } from "@/modules/prisma/prisma.module";
 import { UsersModule } from "@/modules/users/users.module";
 
-// Mock next-auth/jwt getToken so the NextAuth fallback in ApiAuthStrategy doesn't crash in tests
-jest.mock("next-auth/jwt", () => ({
-  getToken: jest.fn().mockResolvedValue(null),
-}));
-
 describe("OAuth2 Controller Endpoints", () => {
   describe("User Not Authenticated", () => {
     let appWithoutAuth: INestApplication;

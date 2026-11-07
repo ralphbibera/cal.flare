@@ -32,9 +32,6 @@ const loadConfig = (): AppConfig => {
       redisUrl: getEnv("REDIS_URL"),
       usePool: getEnv("USE_POOL", "true") === "true",
     },
-    next: {
-      authSecret: getEnv("NEXTAUTH_SECRET"),
-    },
     stripe: {
       apiKey: getEnv("STRIPE_API_KEY"),
       webhookSecret: getEnv("STRIPE_WEBHOOK_SECRET"),

@@ -1,8 +1,9 @@
 import { ApiKeysModule } from "@/modules/api-keys/api-keys.module";
 import { ApiAuthGuard } from "@/modules/auth/guards/api-auth/api-auth.guard";
-import { NextAuthGuard } from "@/modules/auth/guards/next-auth/next-auth.guard";
+import { WebSessionGuard } from "@/modules/auth/guards/web-session/web-session.guard";
 import { ApiAuthStrategy } from "@/modules/auth/strategies/api-auth/api-auth.strategy";
-import { NextAuthStrategy } from "@/modules/auth/strategies/next-auth/next-auth.strategy";
+import { WebSessionStrategy } from "@/modules/auth/strategies/web-session/web-session.strategy";
+import { CalWebSessionModule } from "@/modules/auth/services/cal-web-session.module";
 import { DeploymentsModule } from "@/modules/deployments/deployments.module";
 import { MembershipsModule } from "@/modules/memberships/memberships.module";
 import { OAuthFlowService } from "@/modules/oauth-clients/services/oauth-flow.service";
@@ -15,6 +16,7 @@ import { PassportModule } from "@nestjs/passport";
 @Module({
   imports: [
     PassportModule,
+    CalWebSessionModule,
     RedisModule,
     ApiKeysModule,
     UsersModule,
@@ -22,7 +24,7 @@ import { PassportModule } from "@nestjs/passport";
     TokensModule,
     DeploymentsModule,
   ],
-  providers: [NextAuthGuard, NextAuthStrategy, ApiAuthGuard, ApiAuthStrategy, OAuthFlowService],
-  exports: [NextAuthGuard, ApiAuthGuard],
+  providers: [WebSessionGuard, WebSessionStrategy, ApiAuthGuard, ApiAuthStrategy, OAuthFlowService],
+  exports: [WebSessionGuard, ApiAuthGuard],
 })
 export class AuthModule {}

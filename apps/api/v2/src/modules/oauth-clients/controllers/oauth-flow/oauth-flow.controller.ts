@@ -23,7 +23,7 @@ import { API_VERSIONS_VALUES } from "@/lib/api-versions";
 import { isOriginAllowed } from "@/lib/is-origin-allowed/is-origin-allowed";
 import { GetUser } from "@/modules/auth/decorators/get-user/get-user.decorator";
 import { ApiAuthGuard } from "@/modules/auth/guards/api-auth/api-auth.guard";
-import { NextAuthGuard } from "@/modules/auth/guards/next-auth/next-auth.guard";
+import { WebSessionGuard } from "@/modules/auth/guards/web-session/web-session.guard";
 import { KeysResponseDto } from "@/modules/oauth-clients/controllers/oauth-flow/responses/KeysResponse.dto";
 import { OAuthAuthorizeInput } from "@/modules/oauth-clients/inputs/authorize.input";
 import { ExchangeAuthorizationCodeInput } from "@/modules/oauth-clients/inputs/exchange-code.input";
@@ -48,7 +48,7 @@ export class OAuthFlowController {
 
   @Post("/authorize")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(NextAuthGuard)
+  @UseGuards(WebSessionGuard)
   @DocsExcludeEndpoint()
   async authorize(
     @Param("clientId") clientId: string,

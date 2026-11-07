@@ -1,3 +1,4 @@
+import { CalWebSessionClient } from "@/modules/auth/services/cal-web-session.client";
 import { OAuthClientRepository } from "@/modules/oauth-clients/oauth-client.repository";
 import { OAuthClientsOutputService } from "@/modules/oauth-clients/services/oauth-clients/oauth-clients-output.service";
 import { TokensRepository } from "@/modules/tokens/tokens.repository";
@@ -14,9 +15,11 @@ import { PermissionsGuard } from "./permissions.guard";
 describe("PermissionsGuard", () => {
   let guard: PermissionsGuard;
   let reflector: Reflector;
+  let webSessionClient: CalWebSessionClient;
 
   beforeEach(async () => {
     reflector = new Reflector();
+    webSessionClient = createMock<CalWebSessionClient>({ getSession: jest.fn().mockResolvedValue(null) });
     guard = new PermissionsGuard(
       reflector,
       createMock<TokensRepository>(),
@@ -45,7 +48,8 @@ describe("PermissionsGuard", () => {
               return "UNKNOWN";
           }
         }),
-      })
+      }),
+      webSessionClient
     );
   });
 
@@ -69,6 +73,18 @@ describe("PermissionsGuard", () => {
       await expect(guard.canActivate(mockContext)).rejects.toThrow(
         "PermissionsGuard - no authentication provided. Provide either authorization bearer token containing managed user access token or oAuth client id in 'x-cal-client-id' header."
       );
+    });
+  });
+
+  describe("when a web session is present", () => {
+    it("should bypass the permission check", async () => {
+      const mockContext = createMockExecutionContext({});
+      jest.spyOn(reflector, "get").mockReturnValue([SCHEDULE_WRITE]);
+      jest.spyOn(webSessionClient, "getSession").mockResolvedValue({ id: 1, email: "user@example.com" });
+      const getOAuthClientById = jest.spyOn(guard, "getOAuthClientById");
+
+      await expect(guard.canActivate(mockContext)).resolves.toBe(true);
+      expect(getOAuthClientById).not.toHaveBeenCalled();
     });
   });
 
