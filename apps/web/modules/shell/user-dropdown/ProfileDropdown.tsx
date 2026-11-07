@@ -1,3 +1,4 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { ENABLE_PROFILE_SWITCHER } from "@calcom/lib/constants";
 import { useRefreshData } from "@calcom/lib/hooks/useRefreshData";
 import { trpc } from "@calcom/trpc/react";
@@ -12,11 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "@calcom/ui/components/dropdown";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "@coss/ui/icons";
-import { useSession } from "next-auth/react";
 import { useState } from "react";
 
 export function ProfileDropdown() {
-  const { update, data: sessionData } = useSession();
+  const { data: sessionData } = authClient.useSession();
   const { data } = trpc.viewer.me.get.useQuery();
   const [menuOpen, setMenuOpen] = useState(false);
   const refreshData = useRefreshData();
@@ -80,9 +80,7 @@ export function ProfileDropdown() {
                 onClick={() => {
                   setMenuOpen(false);
                   if (isSelected) return;
-                  update({
-                    upId: option.value,
-                  }).then(() => {
+                  authClient.cal.updateSession({ data: { upId: option.value } }).then(() => {
                     refreshData();
                   });
                 }}

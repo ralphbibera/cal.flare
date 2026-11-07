@@ -24,6 +24,7 @@ const client = createAuthClient({
 });
 
 export type CalSession = ReturnType<typeof browserSession>;
+export type CalSessionUser = CalSession["user"];
 
 type CalSessionState = Omit<ReturnType<typeof client.useSession>, "data"> & {
   data: CalSession | null;

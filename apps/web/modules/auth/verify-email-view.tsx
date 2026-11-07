@@ -1,6 +1,6 @@
 "use client";
 
-import { signOut, useSession } from "@calcom/features/auth/client";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import { useEffect } from "react";
@@ -39,7 +39,7 @@ const EMAIL_CLIENTS = [
 
 function VerifyEmailPage() {
   const { data } = useEmailVerifyCheck();
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const router = useRouter();
   const { t, isLocaleReady } = useLocale();
   const mutation = trpc.viewer.auth.resendVerifyEmail.useMutation();
@@ -97,7 +97,9 @@ function VerifyEmailPage() {
                   <Button
                     color="minimal"
                     onClick={() => {
-                      signOut({ callbackUrl: "/signup" });
+                      authClient.signOut({
+                        fetchOptions: { onSuccess: () => window.location.assign("/signup") },
+                      });
                     }}>
                     {t("use_different_email")}
                   </Button>

@@ -1,3 +1,4 @@
+import { authClient, type CalSessionUser } from "@calcom/features/auth/client/auth-client";
 import { ENABLE_PROFILE_SWITCHER, IS_VISUAL_REGRESSION_TESTING, WEBAPP_URL } from "@calcom/lib/constants";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { useIsStandalone } from "@calcom/lib/hooks/useIsStandalone";
@@ -12,8 +13,6 @@ import { SkeletonText } from "@calcom/ui/components/skeleton";
 import { Tooltip } from "@calcom/ui/components/tooltip";
 import { ArrowLeftIcon, ArrowRightIcon } from "@coss/ui/icons";
 import Link from "next/link";
-import type { User as UserAuth } from "next-auth";
-import { useSession } from "next-auth/react";
 import { KBarTrigger } from "./Kbar";
 import { Navigation } from "./navigation/Navigation";
 import { useBottomNavItems } from "./useBottomNavItems";
@@ -26,17 +25,17 @@ export type SideBarContainerProps = {
 
 export type SideBarProps = {
   bannersHeight: number;
-  user?: UserAuth | null;
+  user?: CalSessionUser | null;
 };
 
 export function SideBarContainer({ bannersHeight }: SideBarContainerProps) {
-  const { status, data } = useSession();
+  const { data, isPending } = authClient.useSession();
   const isStandalone = useIsStandalone();
 
   // Make sure that Sidebar is rendered optimistically so that a refresh of pages when logged in have SideBar from the beginning.
   // This improves the experience of refresh on app store pages(when logged in) which are SSG.
   // Though when logged out, app store pages would temporarily show SideBar until session status is confirmed.
-  if (status !== "loading" && status !== "authenticated") return null;
+  if (!isPending && !data) return null;
   if (isStandalone) return null;
   return <SideBar bannersHeight={bannersHeight} user={data?.user} />;
 }
