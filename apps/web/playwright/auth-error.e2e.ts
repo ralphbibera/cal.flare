@@ -25,10 +25,10 @@ for (const { locale, lang, dir, title } of [
   });
 }
 
-test("serves an unauthenticated session through the original API", async ({ request }) => {
-  const response = await request.get("/api/auth/session");
+test("serves an unauthenticated session through the native Better Auth API", async ({ request }) => {
+  const response = await request.get("/api/auth/get-session");
   expect(response.status()).toBe(200);
-  expect(await response.json()).toEqual({});
+  expect(await response.json()).toBeNull();
 });
 
 test("serves bundled viewer translations through the original tRPC API", async ({ request }) => {

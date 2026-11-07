@@ -15,7 +15,7 @@ import { withAuthRequestEnvironment } from "./request-context";
 const origin = "https://calflare.test";
 const secret = `synthetic-server-session-secret-${"x".repeat(32)}`;
 const password = "Synthetic-Password-123!";
-const sessionCookieName = "__Secure-next-auth.session-token";
+const sessionCookieName = "__Secure-better-auth.session_token";
 
 const orgUser = { id: 123, email: "org-user@calflare.test", username: "orguser", name: "Org user" };
 const plainUser = { id: 124, email: "plain-user@calflare.test", username: "plainuser", name: "Plain user" };
@@ -154,16 +154,11 @@ function request(cookie?: string): NextApiRequest {
 const sessionFor = (cookie?: string) => read(() => getServerSession({ req: request(cookie) }));
 
 async function signIn(email: string) {
-  const auth = createCalRequestAuth(config());
-  const csrfResponse = await auth.handler(new Request(`${origin}/api/auth/csrf`));
-  expect(csrfResponse.status).toBe(200);
-  const csrfCookie = cookies(csrfResponse);
-  const { csrfToken } = z.object({ csrfToken: z.string() }).parse(await csrfResponse.json());
-  const response = await auth.handler(
-    new Request(`${origin}/api/auth/callback/credentials`, {
+  const response = await createCalRequestAuth(config()).handler(
+    new Request(`${origin}/api/auth/sign-in/cal-credentials`, {
       method: "POST",
-      headers: { cookie: csrfCookie, origin, "content-type": "application/json" },
-      body: JSON.stringify({ email, password, csrfToken, json: "true" }),
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
     })
   );
   expect(response.status).toBe(200);
@@ -172,19 +167,15 @@ async function signIn(email: string) {
     .map((value) => value.split(";")[0])
     .find((value) => value.startsWith(`${sessionCookieName}=`));
   expect(session).toBeDefined();
-  return { cookie: session as string, csrfCookie, csrfToken };
+  return { cookie: session as string };
 }
 
 async function signOut(state: Awaited<ReturnType<typeof signIn>>) {
   const response = await createCalRequestAuth(config()).handler(
-    new Request(`${origin}/api/auth/signout`, {
+    new Request(`${origin}/api/auth/sign-out`, {
       method: "POST",
-      headers: {
-        cookie: `${state.csrfCookie}; ${state.cookie}`,
-        origin,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ csrfToken: state.csrfToken, json: "true", callbackUrl: "/auth/login" }),
+      headers: { cookie: state.cookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({}),
     })
   );
   expect(response.status).toBe(200);

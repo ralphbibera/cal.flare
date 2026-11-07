@@ -2,7 +2,7 @@ import { createCalCredentialsAuth } from "./cal-credentials-auth";
 import type { AuthRequestConfiguration } from "./request-context";
 import { withAuthRequestEnvironment } from "./request-context";
 
-// This boundary remains unmounted until every retained provider issues compatible sessions.
+// Binds the Better Auth handler and Cal server reads to one request configuration.
 export function createCalRequestAuth(config: AuthRequestConfiguration) {
   const auth = createCalCredentialsAuth(config);
   const run = <T>(callback: () => T) => withAuthRequestEnvironment(config, callback);

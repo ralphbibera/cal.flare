@@ -1,11 +1,10 @@
-import type { Page } from "@playwright/test";
-import { expect } from "@playwright/test";
-import { authenticator } from "otplib";
-
+import process from "node:process";
 import { symmetricDecrypt } from "@calcom/lib/crypto";
 import { totpAuthenticatorCheck } from "@calcom/lib/totp";
 import { prisma } from "@calcom/prisma";
-
+import type { Page } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { authenticator } from "otplib";
 import { test } from "./lib/fixtures";
 import { getDefaultPassword } from "./lib/testUtils";
 
@@ -78,7 +77,7 @@ test.describe("2FA Tests", async () => {
       await fillOtp({ page: secondPage, secret: secret! });
       await Promise.all([
         secondPage.press('input[name="2fa6"]', "Enter"),
-        secondPage.waitForResponse("**/api/auth/callback/credentials**"),
+        secondPage.waitForResponse("**/api/auth/sign-in/cal-credentials**"),
       ]);
       const shellLocator = secondPage.locator(`[data-testid=dashboard-shell]`);
       await expect(shellLocator).toBeVisible();

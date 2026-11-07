@@ -10,7 +10,7 @@ type AuthRequestConfig = D1Environment & {
   webappURL?: string;
 };
 
-// Compose inside the owned request boundary. This core is not an application login handler.
+// Compose inside the owned request boundary. Credential sign-in is added by the Cal plugin.
 export function createBetterAuth({
   DB,
   baseURL,
@@ -65,9 +65,11 @@ export function createBetterAuth({
     ],
     advanced: {
       useSecureCookies: secure,
+      // The SDK turns origin checks off under NODE_ENV=test unless they are pinned.
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
       cookies: {
         session_token: {
-          name: "next-auth.session-token",
           attributes: {
             domain: NEXTAUTH_COOKIE_DOMAIN || undefined,
             sameSite: secure ? "none" : "lax",
