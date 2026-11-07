@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 
 let root: string;
@@ -79,6 +80,81 @@ const lookup = (cookie: string) =>
   mf.dispatchFetch("https://calflare.test/api/auth/get-session", { headers: { cookie } });
 
 describe("Better Auth native D1 foundation (library-only)", () => {
+  const cal = (action: string, cookie = "", sessionTimeout?: number) =>
+    mf.dispatchFetch(`https://calflare.test/api/auth/fixture-cal/${action}`, {
+      method: action === "read" ? "GET" : "POST",
+      headers: { cookie, origin: "https://calflare.test", "content-type": "application/json" },
+      ...(action === "read" ? {} : { body: JSON.stringify({ sessionTimeout }) }),
+    });
+
+  it("issues a Cal snapshot with effective validity separate from browser expiry", async () => {
+    const issued = await cal("issue", "", 2);
+    expect(issued.status).toBe(200);
+    const cookie = (issued.headers.get("set-cookie") ?? "").split(";")[0];
+    expect(cookie).toMatch(/^__Secure-next-auth.session-token=/);
+    expect(issued.headers.get("set-cookie")).toContain("Max-Age=2592000");
+    const response = await cal("read", cookie);
+    const session = z
+      .object({
+        expiresAt: z.string(),
+        browser: z.object({ expires: z.string() }).passthrough(),
+      })
+      .passthrough()
+      .parse(await response.json());
+    expect(session).toMatchObject({
+      browser: {
+        hasValidLicense: false,
+        profileId: null,
+        upId: "usr-123",
+        user: { id: 123, role: "INACTIVE_ADMIN", inactiveAdminReason: "both", locale: "de" },
+      },
+    });
+    expect(new Date(session.expiresAt).getTime() - Date.now()).toBeGreaterThan(110_000);
+    expect(new Date(session.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(120_000);
+    expect(new Date(session.browser.expires).getTime() - Date.now()).toBeGreaterThan(29 * 86400_000);
+    expect(JSON.stringify(session)).not.toMatch(/calUserId|userId|token|password|twoFactorSecret/);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("keeps lookup read-only and explicitly renews, updates, expires and revokes sessions", async () => {
+    const issued = await cal("issue", "", 2);
+    const cookie = (issued.headers.get("set-cookie") ?? "").split(";")[0];
+    const before = (await db.prepare('SELECT * FROM "AuthSession"').all()).results;
+    await cal("read", cookie);
+    expect((await db.prepare('SELECT * FROM "AuthSession"').all()).results).toEqual(before);
+    const renewed = await cal("renew", cookie);
+    expect(renewed.headers.get("set-cookie")).toContain("Max-Age=2592000");
+    expect(await renewed.json()).toMatchObject({ user: { id: 123, locale: "ar", role: "INACTIVE_ADMIN" } });
+    const validity = await db.prepare('SELECT expiresAt FROM "AuthSession"').first<{ expiresAt: string }>();
+    expect(new Date(validity!.expiresAt).getTime() - Date.now()).toBeGreaterThan(290_000);
+    await db.prepare('UPDATE "AuthSession" SET expiresAt=?').bind("2020-01-01T00:00:00.000Z").run();
+    expect(await (await cal("read", cookie)).json()).toBeNull();
+    expect(await (await cal("renew", cookie)).json()).toBeNull();
+    const signedIn = await cal("issue");
+    const nextCookie = (signedIn.headers.get("set-cookie") ?? "").split(";")[0];
+    const signedOut = await cal("revoke", nextCookie);
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(await (await cal("read", nextCookie)).json()).toBeNull();
+  });
+
+  it("uses one opaque mapping across logins and prevents locked or missing Cal users from acquiring sessions", async () => {
+    expect((await cal("issue")).status).toBe(200);
+    const first = (await db.prepare('SELECT id,calUserId FROM "AuthUser"').all()).results;
+    expect((await cal("issue")).status).toBe(200);
+    expect((await db.prepare('SELECT id,calUserId FROM "AuthUser"').all()).results).toEqual(first);
+    await db.prepare("UPDATE users SET locked=1 WHERE id=123").run();
+    const count = (await db.prepare('SELECT id FROM "AuthSession"').all()).results.length;
+    expect((await cal("issue")).status).toBe(500);
+    expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toHaveLength(count);
+    await db.prepare("UPDATE users SET locked=0 WHERE id=123").run();
+    await db.prepare("DELETE FROM users WHERE id=123").run();
+    expect((await cal("issue")).status).toBe(500);
+    expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
+    await db
+      .prepare("INSERT INTO users (id,uuid,email) VALUES (123,'synthetic-auth-user','library@calflare.test')")
+      .run();
+  });
+
   it("reproduces exact SDK schema with only the reviewed numeric domain FK", async () => {
     const response = await mf.dispatchFetch("https://calflare.test/schema");
     expect(response.status).toBe(200);
