@@ -28,8 +28,8 @@ afterEach(() => {
 // Mock all modules that are used in multiple tests for modules
 // We don't intend to provide the mock implementation here. They should be provided by respective tests.
 // But it makes it super easy to start testing any module view without worrying about mocking the dependencies.
-vi.mock("next-auth/react", () => ({
-  useSession: vi.fn(),
+vi.mock("@calcom/features/auth/client/auth-client", () => ({
+  authClient: { useSession: vi.fn(), signOut: vi.fn() },
 }));
 
 vi.mock("next/navigation", () => ({
