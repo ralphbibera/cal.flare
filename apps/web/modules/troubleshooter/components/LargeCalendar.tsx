@@ -1,3 +1,4 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import dayjs from "@calcom/dayjs";
 import { useAvailableTimeSlots } from "@calcom/features/bookings/Booker/hooks/useAvailableTimeSlots";
 import { useTimePreferences } from "@calcom/features/bookings/lib/timePreferences";
@@ -7,7 +8,6 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { BookingStatus } from "@calcom/prisma/enums";
 import { trpc } from "@calcom/trpc/react";
 import { Calendar } from "@calcom/web/modules/calendars/weeklyview/components/Calendar";
-import { useSession } from "next-auth/react";
 import { useMemo } from "react";
 
 export const LargeCalendar = ({ extraDays }: { extraDays: number }) => {
@@ -16,7 +16,7 @@ export const LargeCalendar = ({ extraDays }: { extraDays: number }) => {
   const selectedDate = useTroubleshooterStore((state) => state.selectedDate);
   const event = useTroubleshooterStore((state) => state.event);
   const calendarToColorMap = useTroubleshooterStore((state) => state.calendarToColorMap);
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const startDate = selectedDate ? dayjs(selectedDate) : dayjs();
 
   const { data: busyEvents } = trpc.viewer.availability.user.useQuery(

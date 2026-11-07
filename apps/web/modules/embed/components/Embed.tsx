@@ -1,6 +1,6 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { Collapsible, CollapsibleContent } from "@radix-ui/react-collapsible";
 import classNames from "classnames";
-import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import type { RefObject, Dispatch, SetStateAction } from "react";
 import { createRef, useRef, useState } from "react";
@@ -718,7 +718,7 @@ const EmbedTypeCodeAndPreviewDialogContent = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const dialogContentRef = useRef<HTMLDivElement>(null);
   const emailContentRef = useRef<HTMLDivElement>(null);
-  const { data } = useSession();
+  const { data } = authClient.useSession();
 
   const [month, selectedDatesAndTimes] = useBookerStoreContext(
     (state) => [state.month, state.selectedDatesAndTimes],
