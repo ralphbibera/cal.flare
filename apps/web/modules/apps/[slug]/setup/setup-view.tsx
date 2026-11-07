@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useRouter } from "next/navigation";
 
 import type { getServerSideProps } from "@calcom/app-store/_pages/setup/_getServerSideProps";
@@ -14,13 +14,13 @@ export default function SetupInformation(props: PageProps) {
   const searchParams = useCompatSearchParams();
   const router = useRouter();
   const slug = searchParams?.get("slug") as string;
-  const { status } = useSession();
+  const { data: session, isPending } = authClient.useSession();
 
-  if (status === "loading") {
+  if (isPending) {
     return <div className="bg-emphasis absolute z-50 flex h-screen w-full items-center" />;
   }
 
-  if (status === "unauthenticated") {
+  if (!session) {
     const urlSearchParams = new URLSearchParams({
       callbackUrl: `/apps/${slug}/setup`,
     });

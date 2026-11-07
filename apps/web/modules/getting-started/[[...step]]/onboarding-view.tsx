@@ -1,7 +1,7 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { TFunction } from "i18next";
-import { signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useTransition } from "react";
 import { Toaster } from "sonner";
@@ -219,7 +219,9 @@ const OnboardingPage = (props: PageProps) => {
                   step: currentStep,
                   step_index: currentStepIndex,
                 });
-                signOut({ callbackUrl: "/auth/logout" });
+                authClient.signOut({
+                  fetchOptions: { onSuccess: () => window.location.assign("/auth/logout") },
+                });
               }}
               className="mt-8 cursor-pointer px-4 py-2 font-sans text-sm font-medium">
               {t("sign_out")}

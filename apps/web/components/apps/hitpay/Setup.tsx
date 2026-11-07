@@ -1,5 +1,5 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -79,7 +79,7 @@ function HitPaySetupPage(props: IHitPaySetupProps) {
       }
     | undefined
   >();
-  const session = useSession();
+  const session = authClient.useSession();
   const router = useRouter();
   const { t } = useLocale();
 
@@ -193,7 +193,7 @@ function HitPaySetupPage(props: IHitPaySetupProps) {
     </>
   );
 
-  if (session.status === "loading") return <></>;
+  if (session.isPending) return <></>;
 
   if (integrations.isPending) {
     return <div className="absolute z-50 flex h-screen w-full items-center bg-gray-200" />;
@@ -205,8 +205,8 @@ function HitPaySetupPage(props: IHitPaySetupProps) {
         {showContent ? (
           <div className="flex w-full w-full max-w-[43em] flex-col items-center justify-center stack-y-4 p-4 lg:stack-y-5">
             <div className="rounded bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-              <InfoIcon className="mb-0.5 inline-flex h-4 w-4" /> Create or connect to an existing
-              HitPay account to receive payments for your paid bookings.
+              <InfoIcon className="mb-0.5 inline-flex h-4 w-4" /> Create or connect to an existing HitPay
+              account to receive payments for your paid bookings.
             </div>
 
             <form className="w-full stack-y-4" onSubmit={onSubmit}>
