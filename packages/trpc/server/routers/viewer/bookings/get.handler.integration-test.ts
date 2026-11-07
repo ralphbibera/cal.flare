@@ -685,6 +685,24 @@ describe("getBookings - integration", () => {
     }
   );
 
+  d1Test("lists bookings reported with a mapped BookingReportReason", async () => {
+    await prisma.bookingReport.upsert({
+      where: { bookingUid: booking1.uid },
+      update: { reason: "DONT_KNOW_PERSON" },
+      create: { bookingUid: booking1.uid, bookerEmail: user2.email, reason: "DONT_KNOW_PERSON" },
+    });
+    const result = await getBookings({
+      user: user1,
+      prisma,
+      kysely,
+      bookingListingByStatus: ["upcoming"],
+      filters: { bookingUid: booking1.uid },
+      take: 10,
+      skip: 0,
+    });
+    expect(result.bookings[0].report?.reason).toBe("DONT_KNOW_PERSON");
+  });
+
   d1Test("matches advanced attendee text filters as PostgreSQL ILIKE and lower() do", async () => {
     const owner = await prisma.user.create({
       data: { username: `ilike-${timestamp}`, email: `ilike-${timestamp}@example.com`, name: "Owner" },
