@@ -1,11 +1,14 @@
-import { NextAuthPassportStrategy } from "@/lib/passport/strategies/types";
+import { WebSessionPassportStrategy } from "@/lib/passport/strategies/types";
 import { UsersRepository } from "@/modules/users/users.repository";
 import { Injectable } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 
 @Injectable()
-export class NextAuthMockStrategy extends PassportStrategy(NextAuthPassportStrategy, "next-auth") {
-  constructor(private readonly email: string, private readonly userRepository: UsersRepository) {
+export class WebSessionMockStrategy extends PassportStrategy(WebSessionPassportStrategy, "web-session") {
+  constructor(
+    private readonly email: string,
+    private readonly userRepository: UsersRepository
+  ) {
     super();
   }
   async authenticate() {

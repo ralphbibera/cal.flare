@@ -14,10 +14,7 @@ $ bun install --frozen-lockfile
 $ cd packages/emails && bun run dx
 ```
 4. Setup api v2 environment - make a copy of `apps/api/v2/.env.example` and rename it to `apps/api/v2/.env` - it has almost all the required values setup - ones you need to add will be explained below.
-- Then copy the value of `NEXTAUTH_SECRET` from there to the root `.env` `NEXTAUTH_SECRET`. If you have `NEXTAUTH_SECRET` already in the root `.env` then you can paste that value in `apps/api/v2/.env`.
-```
-Note: make sure that the value of `NEXTAUTH_SECRET` is the same in both the root `.env` and in the api v2 `.env`.
-```
+- Set `WEB_APP_URL` to the origin of the running web app. Requests authenticated with a web session cookie are verified against `<WEB_APP_URL>/api/auth/get-session`, so the web app must be reachable from api v2.
 5. Setup license key. In the Deployment table in database create the following entry:
 ```
 id, logo, theme, licenseKey, agreedLicenseAt:-

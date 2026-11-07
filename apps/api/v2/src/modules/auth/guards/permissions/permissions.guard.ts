@@ -1,5 +1,6 @@
 import { isApiKey } from "@/lib/api-key";
 import { Permissions } from "@/modules/auth/decorators/permissions/permissions.decorator";
+import { CalWebSessionClient } from "@/modules/auth/services/cal-web-session.client";
 import { OAuthClientRepository } from "@/modules/oauth-clients/oauth-client.repository";
 import { OAuthClientsOutputService } from "@/modules/oauth-clients/services/oauth-clients/oauth-clients-output.service";
 import { TokensRepository } from "@/modules/tokens/tokens.repository";
@@ -7,7 +8,6 @@ import { TokensService } from "@/modules/tokens/tokens.service";
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Reflector } from "@nestjs/core";
-import { getToken } from "next-auth/jwt";
 
 import { X_CAL_CLIENT_ID } from "@calcom/platform-constants";
 import { hasPermissions } from "@calcom/platform-utils";
@@ -21,7 +21,8 @@ export class PermissionsGuard implements CanActivate {
     private tokensService: TokensService,
     private readonly config: ConfigService,
     private readonly oAuthClientRepository: OAuthClientRepository,
-    private readonly oAuthClientsOutputService: OAuthClientsOutputService
+    private readonly oAuthClientsOutputService: OAuthClientsOutputService,
+    private readonly webSessionClient: CalWebSessionClient
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -33,14 +34,13 @@ export class PermissionsGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const bearerToken = request.get("Authorization")?.replace("Bearer ", "");
-    const nextAuthSecret = this.config.get("next.authSecret", { infer: true });
-    const nextAuthToken = await getToken({ req: request, secret: nextAuthSecret });
+    const webSession = await this.webSessionClient.getSession(request);
     const oAuthClientId = request.params?.clientId || request.get(X_CAL_CLIENT_ID);
     const apiKey = bearerToken && isApiKey(bearerToken, this.config.get("api.apiKeyPrefix") ?? "cal_");
     const isThirdPartyBearerToken = bearerToken && this.getDecodedThirdPartyAccessToken(bearerToken);
 
-    // only check permissions for accessTokens attached to platform oAuth Client or platform oAuth credentials, not for next token or api key or third party oauth client
-    if (nextAuthToken || apiKey || isThirdPartyBearerToken) {
+    // only check permissions for accessTokens attached to platform oAuth Client or platform oAuth credentials, not for web session or api key or third party oauth client
+    if (webSession || apiKey || isThirdPartyBearerToken) {
       return true;
     }
 

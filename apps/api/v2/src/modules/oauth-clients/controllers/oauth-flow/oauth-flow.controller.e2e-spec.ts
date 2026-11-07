@@ -11,7 +11,7 @@ import { OrganizationRepositoryFixture } from "test/fixtures/repository/organiza
 import { ProfileRepositoryFixture } from "test/fixtures/repository/profiles.repository.fixture";
 import { UserRepositoryFixture } from "test/fixtures/repository/users.repository.fixture";
 import { randomString } from "test/utils/randomString";
-import { withNextAuth } from "test/utils/withNextAuth";
+import { withWebSession } from "test/utils/withWebSession";
 import { AppModule } from "@/app.module";
 import { bootstrap } from "@/bootstrap";
 import { HttpExceptionFilter } from "@/filters/http-exception.filter";
@@ -75,7 +75,7 @@ describe("OAuthFlow Endpoints", () => {
     beforeAll(async () => {
       const userEmail = `oauth-flow-user-${randomString()}@api.com`;
 
-      const moduleRef: TestingModule = await withNextAuth(
+      const moduleRef: TestingModule = await withWebSession(
         userEmail,
         Test.createTestingModule({
           providers: [PrismaExceptionFilter, HttpExceptionFilter, ZodExceptionFilter],

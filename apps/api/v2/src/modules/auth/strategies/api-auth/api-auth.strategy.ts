@@ -4,7 +4,6 @@ import { Injectable, InternalServerErrorException, Logger, UnauthorizedException
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import type { Request } from "express";
-import { getToken } from "next-auth/jwt";
 import type { AllowedAuthMethod } from "../../decorators/api-auth-guard-only-allow.decorator";
 import { isApiKey, sha256Hash, stripApiKey } from "@/lib/api-key";
 import { AuthMethods } from "@/lib/enums/auth-methods";
@@ -13,6 +12,7 @@ import { BaseStrategy } from "@/lib/passport/strategies/types";
 import { ApiKeysRepository } from "@/modules/api-keys/api-keys-repository";
 import { MembershipsRepository } from "@/modules/memberships/memberships.repository";
 import { OAuthClientRepository } from "@/modules/oauth-clients/oauth-client.repository";
+import { CalWebSessionClient, type CalWebSession } from "@/modules/auth/services/cal-web-session.client";
 import { OAuthFlowService } from "@/modules/oauth-clients/services/oauth-flow.service";
 import { TokensRepository } from "@/modules/tokens/tokens.repository";
 import { TokensService } from "@/modules/tokens/tokens.service";
@@ -45,7 +45,8 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
     private readonly apiKeyRepository: ApiKeysRepository,
     private readonly oauthRepository: OAuthClientRepository,
     private readonly usersService: UsersService,
-    private readonly membershipsRepository: MembershipsRepository
+    private readonly membershipsRepository: MembershipsRepository,
+    private readonly webSessionClient: CalWebSessionClient
   ) {
     super();
   }
@@ -63,7 +64,7 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
       const oAuthAllowed = noSpecificAuthExpected || allowedMethods.includes("OAUTH_CLIENT_CREDENTIALS");
       const apiKeyAllowed = noSpecificAuthExpected || allowedMethods.includes("API_KEY");
       const accessTokenAllowed = noSpecificAuthExpected || allowedMethods.includes("ACCESS_TOKEN");
-      const nextAuthAllowed = noSpecificAuthExpected || allowedMethods.includes("NEXT_AUTH");
+      const webSessionAllowed = noSpecificAuthExpected || allowedMethods.includes("WEB_SESSION");
       const thirdPartyAccessTokenAllowed =
         noSpecificAuthExpected || allowedMethods.includes("THIRD_PARTY_ACCESS_TOKEN");
 
@@ -108,17 +109,15 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
         throw new UnauthorizedException(`ApiAuthStrategy - Invalid Bearer token`);
       }
 
-      const nextAuthSecret = this.config.get("next.authSecret", { infer: true });
-      const nextAuthToken = await getToken({ req: request, secret: nextAuthSecret });
-      if (nextAuthToken && nextAuthAllowed) {
-        request.authMethod = AuthMethods["NEXT_AUTH"];
-        return await this.authenticateNextAuth(nextAuthToken, request);
+      const webSession = await this.webSessionClient.getSession(request);
+      if (webSession && webSessionAllowed) {
+        request.authMethod = AuthMethods["WEB_SESSION"];
+        return await this.authenticateWebSession(webSession, request);
       }
 
-      const noAuthProvided = !oAuthClientId && !oAuthClientSecret && !bearerToken && !nextAuthToken;
-      const onlyClientIdProvided = !!oAuthClientId && !oAuthClientSecret && !bearerToken && !nextAuthToken;
-      const onlyClientSecretProvided =
-        !oAuthClientId && !!oAuthClientSecret && !bearerToken && !nextAuthToken;
+      const noAuthProvided = !oAuthClientId && !oAuthClientSecret && !bearerToken && !webSession;
+      const onlyClientIdProvided = !!oAuthClientId && !oAuthClientSecret && !bearerToken && !webSession;
+      const onlyClientSecretProvided = !oAuthClientId && !!oAuthClientSecret && !bearerToken && !webSession;
 
       if (noAuthProvided) {
         throw new UnauthorizedException(`ApiAuthStrategy - ${NO_AUTH_PROVIDED_MESSAGE}`);
@@ -149,8 +148,8 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
     }
   }
 
-  async authenticateNextAuth(token: { email?: string | null }, request: ApiAuthGuardRequest) {
-    const user = await this.nextAuthStrategy(token, request);
+  async authenticateWebSession(session: CalWebSession, request: ApiAuthGuardRequest) {
+    const user = await this.webSessionStrategy(session, request);
     return this.success(this.getSuccessUser(user));
   }
 
@@ -296,17 +295,11 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
     return user;
   }
 
-  async nextAuthStrategy(token: { email?: string | null }, request: ApiAuthGuardRequest) {
-    if (!token.email) {
-      throw new UnauthorizedException(
-        "ApiAuthStrategy - next auth - Email not found in the authentication token."
-      );
-    }
-
-    const user = await this.userRepository.findByEmailWithProfile(token.email);
+  async webSessionStrategy(session: CalWebSession, request: ApiAuthGuardRequest) {
+    const user = await this.userRepository.findByEmailWithProfile(session.email);
     if (!user) {
       throw new UnauthorizedException(
-        "ApiAuthStrategy - next auth - User associated with the authentication token email not found."
+        "ApiAuthStrategy - web session - User associated with the web session email not found."
       );
     }
     const organizationId = this.usersService.getUserMainOrgId(user) as number;

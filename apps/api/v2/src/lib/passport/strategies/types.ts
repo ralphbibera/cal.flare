@@ -5,7 +5,7 @@ export class BaseStrategy {
   error!: (error: Error) => void;
 }
 
-export class NextAuthPassportStrategy {
+export class WebSessionPassportStrategy {
   success!: (user: UserWithProfile) => void;
   error!: (error: Error) => void;
 }
