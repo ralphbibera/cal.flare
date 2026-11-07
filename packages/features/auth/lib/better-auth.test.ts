@@ -178,7 +178,7 @@ describe("Better Auth native D1 foundation (library-only)", () => {
     const issued = await cal("issue", "", 2);
     expect(issued.status).toBe(200);
     const cookie = (issued.headers.get("set-cookie") ?? "").split(";")[0];
-    expect(cookie).toMatch(/^__Secure-next-auth.session-token=/);
+    expect(cookie).toMatch(/^__Secure-better-auth.session_token=/);
     expect(issued.headers.get("set-cookie")).toContain("Max-Age=2592000");
     const response = await cal("read", cookie);
     const session = z
@@ -309,7 +309,7 @@ describe("Better Auth native D1 foundation (library-only)", () => {
   it("uses the original HTTPS and dev cookie policy with thirty-day browser lifetime", async () => {
     const { setCookie } = await issue();
     for (const attribute of [
-      "__Secure-next-auth.session-token=",
+      "__Secure-better-auth.session_token=",
       "Max-Age=2592000",
       "Domain=.calflare.test",
       "Path=/",
@@ -326,7 +326,7 @@ describe("Better Auth native D1 foundation (library-only)", () => {
     await db.prepare('DELETE FROM "AuthUser"').run();
     const dev = (await issue("http://localhost")).setCookie;
     for (const attribute of [
-      "next-auth.session-token=",
+      "better-auth.session_token=",
       "Max-Age=2592000",
       "Path=/",
       "HttpOnly",
