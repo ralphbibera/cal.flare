@@ -44,7 +44,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
-import { signIn } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 import type { SubmitHandler } from "react-hook-form";
@@ -309,10 +309,12 @@ export default function Signup({
         return callbackUrlSearchParams ? constructCallBackIfUrlPresent() : constructCallBackIfUrlNotPresent();
       };
 
-      await signIn<"credentials">("credentials", {
-        ...data,
+      const { error } = await authClient.signIn.calCredentials({
+        email: data.email,
+        password: data.password,
         callbackUrl: constructCallBackUrl(),
       });
+      if (error) throw new Error(error.message ?? t("unexpected_error_try_again"));
     } catch (err) {
       setTurnstileKey((k) => k + 1);
       formMethods.setValue("cfToken", undefined);
@@ -511,15 +513,8 @@ export default function Signup({
                           setPremium={(value) => setPremiumUsername(value)}
                           addOnLeading={
                             orgSlug
-                              ? truncateDomain(
-                                  `${WEBAPP_URL.replace(
-                                    URL_PROTOCOL_REGEX,
-                                    ""
-                                  )}/`
-                                )
-                              : truncateDomain(
-                                  `${WEBSITE_URL.replace(URL_PROTOCOL_REGEX, "")}/`
-                                )
+                              ? truncateDomain(`${WEBAPP_URL.replace(URL_PROTOCOL_REGEX, "")}/`)
+                              : truncateDomain(`${WEBSITE_URL.replace(URL_PROTOCOL_REGEX, "")}/`)
                           }
                         />
                       ) : null}
@@ -828,7 +823,11 @@ export default function Signup({
               </>
             )}
             <div className="hidden rounded-tl-2xl rounded-br-none rounded-bl-2xl border border-default border-r-0 border-dashed bg-black/3 lg:block lg:py-[6px] lg:pl-[6px] dark:bg-white/5">
-              <img className="block dark:hidden" src="/mock-event-type-list.svg" alt="Cal.flare Booking Page" />
+              <img
+                className="block dark:hidden"
+                src="/mock-event-type-list.svg"
+                alt="Cal.flare Booking Page"
+              />
               {/* eslint-disable @next/next/no-img-element */}
               <img
                 className="hidden dark:block"
