@@ -5,7 +5,7 @@ import { createAuthEndpoint } from "better-auth/api";
 import type { setSessionCookie } from "better-auth/cookies";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
-import { authorizeCredentials } from "./authorizeCredentials";
+import { authorizeCredentials, authorizeCredentialsForRequest } from "./authorizeCredentials";
 import { createBetterAuth } from "./better-auth";
 import { createCalCsrfState } from "./cal-csrf";
 import { projectCalServerSession } from "./cal-server-session";
@@ -17,8 +17,12 @@ import {
   updateCalSession,
 } from "./cal-session-policy";
 import { createCalSessionStore } from "./cal-session-store";
+import type { CredentialPolicy } from "./request-context";
 
-type AuthConfig = Parameters<typeof createBetterAuth>[0] & { webappURL: string };
+type AuthConfig = Parameters<typeof createBetterAuth>[0] & {
+  webappURL: string;
+  credentialPolicy?: CredentialPolicy;
+};
 type EndpointContext = Parameters<typeof setSessionCookie>[0];
 const form = z.object({
   csrfToken: z.string().optional(),
@@ -38,7 +42,7 @@ export function createCalCredentialsAuth(config: AuthConfig) {
   const sessions = createCalSessionStore(config);
   const origin = new URL(config.baseURL).origin;
   const apiURL = `${origin}/api/auth`;
-  const secure = new URL(origin).protocol === "https:";
+  const secure = config.webappURL.startsWith("https://");
   const prefix = secure ? "__Secure-" : "";
   const sameSite: "none" | "lax" = secure ? "none" : "lax";
   const attributes = { domain: config.NEXTAUTH_COOKIE_DOMAIN || undefined, sameSite, secure, path: "/" };
@@ -170,7 +174,9 @@ export function createCalCredentialsAuth(config: AuthConfig) {
                 return redirect(ctx, `${apiURL}/signin?csrf=true`, ctx.body.json);
               let user;
               try {
-                user = await authorizeCredentials(ctx.body);
+                user = config.credentialPolicy
+                  ? await authorizeCredentialsForRequest(ctx.body, config.credentialPolicy)
+                  : await authorizeCredentials(ctx.body);
               } catch (error) {
                 const message = error instanceof Error ? error.message : "internal-server-error";
                 return redirect(
