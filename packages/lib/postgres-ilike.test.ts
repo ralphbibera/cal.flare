@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { ErrorCode } from "./errorCodes";
 import {
   createContainsInsensitiveMatcher,
   createIlikeMatcher,
@@ -95,6 +96,7 @@ describe("PostgreSQL ILIKE parity", () => {
 
   it("rejects a pattern ending in an escape as PostgreSQL does", () => {
     expect(() => createIlikeMatcher("%a\\")).toThrow("LIKE pattern must not end with escape character");
+    expect(() => createIlikeMatcher("%a\\")).toThrow(expect.objectContaining({ code: ErrorCode.BadRequest }));
   });
 
   it("does not backtrack exponentially on repeated wildcards", () => {
