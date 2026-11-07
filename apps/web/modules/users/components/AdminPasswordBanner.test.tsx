@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { SessionContextValue } from "next-auth/react";
+import type { CalSession } from "@calcom/features/auth/client/auth-client";
 import { describe, expect, it, vi } from "vitest";
 
 import AdminPasswordBanner from "./AdminPasswordBanner";
@@ -28,9 +28,7 @@ vi.mock("@calcom/ui/components/top-banner", () => ({
   ),
 }));
 
-function buildSession(overrides?: Partial<NonNullable<SessionContextValue["data"]>>): NonNullable<
-  SessionContextValue["data"]
-> {
+function buildSession(overrides?: Partial<CalSession>): CalSession {
   return {
     expires: "2099-01-01T00:00:00.000Z",
     hasValidLicense: true,
@@ -38,9 +36,9 @@ function buildSession(overrides?: Partial<NonNullable<SessionContextValue["data"
     profileId: 1,
     user: {
       id: 1,
-      uuid: "uuid_test",
       email: "test@example.com",
       name: "Test User",
+      image: null,
       username: "testuser",
       role: "INACTIVE_ADMIN",
       inactiveAdminReason: "both",

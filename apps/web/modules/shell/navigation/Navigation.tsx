@@ -1,7 +1,7 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useIsEmbed } from "@calcom/embed-core/embed-iframe";
 import { useIsStandalone } from "@calcom/lib/hooks/useIsStandalone";
 import classNames from "@calcom/ui/classNames";
-import { useSession } from "next-auth/react";
 import { useMemo } from "react";
 import UnconfirmedBookingBadge from "../../bookings/components/UnconfirmedBookingBadge";
 import { KBarTrigger } from "../Kbar";
@@ -99,9 +99,9 @@ export const Navigation = () => {
 };
 
 export function MobileNavigationContainer() {
-  const { status } = useSession();
+  const { data: session } = authClient.useSession();
   const isStandalone = useIsStandalone();
-  if (status !== "authenticated" || isStandalone) return null;
+  if (!session || isStandalone) return null;
   return <MobileNavigation />;
 }
 
