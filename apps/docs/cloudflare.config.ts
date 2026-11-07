@@ -1,0 +1,18 @@
+import { bindings, defineConfig, defineWorker } from "cf/config";
+
+export default defineConfig({
+  worker: defineWorker({
+    name: "calflare-docs",
+    entrypoint: "vinext/server/fetch-handler",
+    compatibilityDate: "2026-11-04",
+    compatibilityFlags: ["nodejs_compat"],
+    workersDev: false,
+    previewUrls: false,
+    assets: {
+      htmlHandling: "none",
+      notFoundHandling: "none",
+      runWorkerFirst: ["/*", "!/_next/static/*", "!/*/_next/static/*", "!/_pagefind/*"],
+    },
+    env: { ASSETS: bindings.assets() },
+  }),
+});
