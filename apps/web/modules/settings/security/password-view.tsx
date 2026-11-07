@@ -95,9 +95,8 @@ const PasswordView = ({ user }: PasswordViewProps) => {
       if (data?.user.role === "INACTIVE_ADMIN") {
         /*
       AdminPasswordBanner component relies on the role returned from the session.
-      Next-Auth doesn't provide a way to revalidate the session cookie,
+      The session claims are not revalidated after a password change,
       so this a workaround to hide the banner after updating the password.
-      discussion: https://github.com/nextauthjs/next-auth/discussions/4229
       */
         authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign("/auth/login") } });
       }

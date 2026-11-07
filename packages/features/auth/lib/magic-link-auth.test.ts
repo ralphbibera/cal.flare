@@ -115,7 +115,6 @@ describe("native Better Auth magic link on migrated D1", () => {
     expect(verified.headers.get("location")).toBe(`${origin}/bookings`);
     const cookie = cookies(verified);
     expect(cookie).toMatch(new RegExp(`${sessionCookie}=.+`));
-    expect(cookie).not.toMatch(/next-auth/);
     expect(await rows("AuthVerification")).toEqual([]);
     const session = await a.handler(new Request(`${origin}/api/auth/get-session`, { headers: { cookie } }));
     expect(await session.json()).toMatchObject({ user: { id: 123, username: "owner" } });

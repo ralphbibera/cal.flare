@@ -1,10 +1,10 @@
 import { IdentityProvider } from "@calcom/prisma/enums";
 
 /**
- * Maps NextAuth provider names to IdentityProvider enum values.
+ * Maps account provider names to IdentityProvider enum values.
  * Includes aliases (e.g., "saml-idp" -> SAML).
  */
-export const NEXTAUTH_TO_IDENTITY_PROVIDER: Record<string, IdentityProvider> = {
+export const ACCOUNT_PROVIDER_TO_IDENTITY_PROVIDER: Record<string, IdentityProvider> = {
   "azure-ad": IdentityProvider.AZUREAD,
   google: IdentityProvider.GOOGLE,
   saml: IdentityProvider.SAML,
@@ -13,9 +13,9 @@ export const NEXTAUTH_TO_IDENTITY_PROVIDER: Record<string, IdentityProvider> = {
 };
 
 /**
- * Get IdentityProvider enum from NextAuth provider name.
+ * Get IdentityProvider enum from account provider name.
  * Returns null for unknown providers so callers can reject the login gracefully.
  */
-export const getIdentityProvider = (nextAuthProvider: string): IdentityProvider | null => {
-  return NEXTAUTH_TO_IDENTITY_PROVIDER[nextAuthProvider] ?? null;
+export const getIdentityProvider = (accountProvider: string): IdentityProvider | null => {
+  return ACCOUNT_PROVIDER_TO_IDENTITY_PROVIDER[accountProvider] ?? null;
 };

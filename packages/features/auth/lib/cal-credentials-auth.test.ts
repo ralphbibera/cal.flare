@@ -198,7 +198,7 @@ describe("native credential endpoints (stubbed authorizer, native D1 sessions)",
     expect(expired.headers.getSetCookie().some((value) => value.includes("Max-Age=0"))).toBe(true);
   });
 
-  it("serves no next-auth protocol endpoints", async () => {
+  it("serves no legacy auth protocol endpoints", async () => {
     for (const path of ["csrf", "providers", "session", "signout", "signin"]) {
       expect((await request(path)).status).toBe(404);
     }

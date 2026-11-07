@@ -1,11 +1,11 @@
 import { IdentityProvider } from "@calcom/prisma/enums";
 import { describe, expect, it } from "vitest";
-import { getIdentityProvider, NEXTAUTH_TO_IDENTITY_PROVIDER } from "./identityProviders";
+import { getIdentityProvider, ACCOUNT_PROVIDER_TO_IDENTITY_PROVIDER } from "./identityProviders";
 
 describe("identityProviders", () => {
-  describe("NEXTAUTH_TO_IDENTITY_PROVIDER", () => {
+  describe("ACCOUNT_PROVIDER_TO_IDENTITY_PROVIDER", () => {
     it("contains exactly the expected mapping keys", () => {
-      expect(Object.keys(NEXTAUTH_TO_IDENTITY_PROVIDER).sort()).toEqual(
+      expect(Object.keys(ACCOUNT_PROVIDER_TO_IDENTITY_PROVIDER).sort()).toEqual(
         ["azure-ad", "cal", "google", "saml", "saml-idp"].sort()
       );
     });

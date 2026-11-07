@@ -12,7 +12,7 @@ const hash = (value: string, key: string) =>
     .update(value + key)
     .digest("hex");
 const cookie = `${token}|${hash(token, secret)}`;
-const name = `${WEBAPP_URL.startsWith("https://") ? "__Secure-" : ""}next-auth.csrf-token`;
+const name = `${WEBAPP_URL.startsWith("https://") ? "__Secure-" : ""}calcom.auth_csrf_token`;
 
 afterEach(() => {
   vi.restoreAllMocks();
