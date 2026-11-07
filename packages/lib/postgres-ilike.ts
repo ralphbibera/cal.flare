@@ -1,3 +1,5 @@
+import { ErrorCode } from "./errorCodes";
+import { ErrorWithCode } from "./errors";
 import { type KeysetPage as NumericKeysetPage, scanKeysetBatches } from "./keyset-scan";
 import { POSTGRES_LOWERCASE_RANGES } from "./postgres-lowercase-ranges";
 
@@ -44,7 +46,10 @@ function compilePattern(pattern: string): number[] {
     } else if (codePoint === BACKSLASH) {
       index++;
       if (index === source.length) {
-        throw new Error(`LIKE pattern must not end with escape character: ${pattern}`);
+        throw new ErrorWithCode(
+          ErrorCode.BadRequest,
+          `LIKE pattern must not end with escape character: ${pattern}`
+        );
       }
       tokens.push(source[index]);
     } else {
