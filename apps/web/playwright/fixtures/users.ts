@@ -986,7 +986,7 @@ export async function login(
   await passwordLocator.fill(user.password ?? user.username!);
 
   // waiting for specific login request to resolve
-  const responsePromise = page.waitForResponse(/\/api\/auth\/callback\/credentials/);
+  const responsePromise = page.waitForResponse(/\/api\/auth\/sign-in\/cal-credentials/);
   await signInLocator.click();
   await responsePromise;
 }
@@ -1024,42 +1024,30 @@ export async function apiLogin(
   page: Page,
   navigateToUrl?: string
 ) {
-  // Get CSRF token with retry for transient network errors
-  const csrfToken = await retryOnNetworkError(async () => {
-    const response = await page.context().request.get("/api/auth/csrf");
-    const json = await response.json();
-    return json.csrfToken;
-  });
-
-  // Make the login request
-  const loginData = {
-    email: user.email ?? `${user.username}@example.com`,
-    password: user.password ?? user.username,
-    callbackURL: WEBAPP_URL,
-    redirect: "false",
-    json: "true",
-    csrfToken,
-  };
-
   const response = await retryOnNetworkError(() =>
-    page.context().request.post("/api/auth/callback/credentials", {
-      data: loginData,
+    page.context().request.post("/api/auth/sign-in/cal-credentials", {
+      data: {
+        email: user.email ?? `${user.username}@example.com`,
+        password: user.password ?? user.username,
+      },
+      // Better Auth rejects a cookie-bearing POST that carries no Origin header.
+      headers: { origin: WEBAPP_URL },
     })
   );
 
   expect(response.status()).toBe(200);
 
   /**
-   * Critical: Navigate to a protected page to trigger NextAuth session loading
-   * This forces NextAuth to run the jwt and session callbacks that populate
-   * the session with profile, org, and other important data
+   * Critical: Navigate to a protected page to trigger session loading
+   * This forces the session projection that carries profile, org, and other
+   * important data to be read once before the test continues
    */
   await page.goto(navigateToUrl || "/e2e/session-warmup");
 
   // Wait for the session API call to complete to ensure session is fully established
   // Only wait if we're on a protected page that would trigger the session API call
   try {
-    await page.waitForResponse("/api/auth/session", { timeout: 2000 });
+    await page.waitForResponse("/api/auth/get-session", { timeout: 2000 });
   } catch {
     // Session API call not made (likely on a public page), continue anyway
   }
