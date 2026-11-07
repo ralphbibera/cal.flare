@@ -1,13 +1,16 @@
 import type { GetServerSidePropsContext } from "next";
-import { getToken } from "next-auth/jwt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import { loadTranslations } from "@calcom/i18n/server";
+import { getCalSessionLocale } from "./cal-session-cookie";
 import { getLocale } from "./getLocale";
 import { getLocaleFromRequest } from "./getLocaleFromRequest";
 
-vi.mock("next-auth/jwt", () => ({ getToken: vi.fn() }));
+vi.mock("./cal-session-cookie", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./cal-session-cookie")>()),
+  getCalSessionLocale: vi.fn(),
+}));
 vi.mock("@calcom/features/auth/lib/getServerSession", () => ({ getServerSession: vi.fn() }));
 
 const rootRequest = (acceptLanguage?: string): Parameters<typeof getLocale>[0] =>
@@ -23,11 +26,11 @@ const apiRequest = (acceptLanguage?: string): GetServerSidePropsContext["req"] =
 
 describe("root getLocale", () => {
   beforeEach(() => {
-    vi.mocked(getToken).mockResolvedValue(null);
+    vi.mocked(getCalSessionLocale).mockResolvedValue(null);
   });
 
   it("prefers the session locale over Accept-Language", async () => {
-    vi.mocked(getToken).mockResolvedValue({ locale: "ja" });
+    vi.mocked(getCalSessionLocale).mockResolvedValue("ja");
     expect(await getLocale(rootRequest("de"))).toBe("ja");
   });
 
