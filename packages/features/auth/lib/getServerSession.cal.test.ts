@@ -6,7 +6,6 @@ import { hash } from "bcryptjs";
 import { Miniflare } from "miniflare";
 import type { NextApiRequest } from "next";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 import { getLocale } from "./getLocale";
 import { getServerSession } from "./getServerSession";
@@ -123,13 +122,6 @@ afterAll(async () => {
 
 const read = <T>(callback: () => Promise<T>) => withAuthRequestEnvironment(config(), callback);
 
-function cookies(response: Response) {
-  return response.headers
-    .getSetCookie()
-    .map((value) => value.split(";")[0])
-    .join("; ");
-}
-
 function request(cookie?: string): NextApiRequest {
   const parsed: Record<string, string> = {};
   for (const part of cookie?.split("; ") ?? []) {
@@ -144,25 +136,18 @@ function request(cookie?: string): NextApiRequest {
 
 async function calCookie() {
   const auth = createCalRequestAuth(config());
-  const csrfResponse = await auth.handler(new Request(`${origin}/api/auth/csrf`));
-  expect(csrfResponse.status).toBe(200);
-  const { csrfToken } = z.object({ csrfToken: z.string() }).parse(await csrfResponse.json());
   const response = await auth.handler(
-    new Request(`${origin}/api/auth/callback/credentials`, {
+    new Request(`${origin}/api/auth/sign-in/cal-credentials`, {
       method: "POST",
-      headers: {
-        cookie: cookies(csrfResponse),
-        origin,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ email, password, csrfToken, json: "true" }),
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
     })
   );
   expect(response.status).toBe(200);
   const session = response.headers
     .getSetCookie()
     .map((value) => value.split(";")[0])
-    .find((value) => value.startsWith("__Secure-next-auth.session-token="));
+    .find((value) => value.startsWith("__Secure-better-auth.session_token="));
   expect(session).toBeDefined();
   return session!;
 }
