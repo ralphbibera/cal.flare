@@ -1,6 +1,5 @@
 import type { NextApiHandler } from "next";
-import type { Session } from "next-auth";
-
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import type { Credential } from "@calcom/prisma/client";
 
 export type AppDeclarativeHandler = {
@@ -10,7 +9,7 @@ export type AppDeclarativeHandler = {
   supportsMultipleInstalls: false;
   handlerType: "add";
   createCredential: (arg: {
-    user: Session["user"];
+    user: CalServerSession["user"];
     appType: string;
     slug: string;
     teamId?: number;

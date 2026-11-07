@@ -87,7 +87,7 @@ export const extendEventData = (
         : original?.isTeamBooking,
     referrer: "",
     onVercel,
-    isAuthorized: !!cookies["next-auth.session-token"] || !!cookies["__Secure-next-auth.session-token"],
+    isAuthorized: !!cookies["better-auth.session_token"] || !!cookies["__Secure-better-auth.session_token"],
     utc_time: new Date().toISOString(),
   };
 };
