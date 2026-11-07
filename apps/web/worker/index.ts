@@ -8,11 +8,47 @@ import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
 import type { SentryEnvironment } from "../sentry.server.config";
 import { getSentryOptions } from "../sentry.server.config";
+import type { ScheduleEnvironment } from "./schedules";
+import { dispatchSchedules } from "./schedules";
 import { frameStaticAsset, withStaticAssets } from "./static-assets";
 
-type WorkerEnvironment = SentryEnvironment & NonNullable<Parameters<typeof handler.fetch>[1]> & Env;
+type WorkerEnvironment = SentryEnvironment &
+  NonNullable<Parameters<typeof handler.fetch>[1]> &
+  Env &
+  ScheduleEnvironment;
 
 export * from "vinext/server/fetch-handler";
+
+function serve(
+  request: Parameters<typeof handler.fetch>[0],
+  env: WorkerEnvironment,
+  ctx: Parameters<typeof handler.fetch>[2]
+) {
+  return withCloudflareEmail(
+    async ({ from, to, raw }) => {
+      if (!env.EMAIL) {
+        throw new ErrorWithCode(
+          ErrorCode.InternalServerError,
+          "EMAIL binding is required for email delivery"
+        );
+      }
+      await env.EMAIL.send(
+        new EmailMessage(
+          from,
+          to,
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(raw);
+              controller.close();
+            },
+          })
+        )
+      );
+    },
+    () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
+    (promise) => ctx.waitUntil(promise)
+  );
+}
 
 const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env), {
   ...handler,
@@ -22,30 +58,10 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
     ctx: Parameters<typeof handler.fetch>[2]
   ) {
     if (!env) throw new Error("Worker bindings are required");
-    return withCloudflareEmail(
-      async ({ from, to, raw }) => {
-        if (!env.EMAIL) {
-          throw new ErrorWithCode(
-            ErrorCode.InternalServerError,
-            "EMAIL binding is required for email delivery"
-          );
-        }
-        await env.EMAIL.send(
-          new EmailMessage(
-            from,
-            to,
-            new ReadableStream({
-              start(controller) {
-                controller.enqueue(raw);
-                controller.close();
-              },
-            })
-          )
-        );
-      },
-      () => withD1Database(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx)),
-      (promise) => ctx.waitUntil(promise)
-    );
+    return serve(request, env, ctx);
+  },
+  scheduled(controller: ScheduledController, env: WorkerEnvironment, ctx: ExecutionContext) {
+    ctx.waitUntil(dispatchSchedules(controller, env, (request) => serve(request, env, ctx)));
   },
 });
 
