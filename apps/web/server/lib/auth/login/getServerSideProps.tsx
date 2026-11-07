@@ -1,5 +1,4 @@
 import process from "node:process";
-import { getServerCsrfToken } from "@calcom/features/auth/lib/getServerCsrfToken";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import { IS_OUTLOOK_LOGIN_ENABLED } from "@calcom/features/auth/lib/outlook";
 import { WEBSITE_URL } from "@calcom/lib/constants";
@@ -87,7 +86,6 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
   }
   return {
     props: {
-      csrfToken: await getServerCsrfToken(context.req),
       isGoogleLoginEnabled: IS_GOOGLE_LOGIN_ENABLED,
       isOutlookLoginEnabled: IS_OUTLOOK_LOGIN_ENABLED,
       totpEmail,
