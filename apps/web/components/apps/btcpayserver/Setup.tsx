@@ -1,5 +1,5 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -73,7 +73,7 @@ function BTCPaySetupCallback() {
 function BTCPaySetupPage(props: IBTCPaySetupProps) {
   const router = useRouter();
   const { t } = useLocale();
-  const session = useSession();
+  const session = authClient.useSession();
   const [loading, setLoading] = useState<boolean>(false);
   const [validating, setValidating] = useState<boolean>(false);
   const [updatable, setUpdatable] = useState<boolean>(false);
@@ -236,7 +236,7 @@ function BTCPaySetupPage(props: IBTCPaySetupProps) {
     </>
   );
 
-  if (session.status === "loading") return <></>;
+  if (session.isPending) return <></>;
 
   if (integrations.isPending) {
     return <div className="absolute z-50 flex h-screen w-full items-center bg-gray-200" />;
