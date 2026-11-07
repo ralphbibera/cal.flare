@@ -1,5 +1,4 @@
 import { expect } from "@playwright/test";
-
 import { test } from "./lib/fixtures";
 
 test.describe.configure({ mode: "parallel" });
@@ -14,8 +13,7 @@ test.describe("Login with api request", () => {
     const cookiesMap = new Map(contextCookies.map(({ name, value }) => [name, value]));
 
     // The browser context will already contain all the cookies from the API response.
-    expect(cookiesMap.has("next-auth.csrf-token")).toBe(true);
-    expect(cookiesMap.has("next-auth.callback-url")).toBe(true);
-    expect(cookiesMap.has("next-auth.session-token")).toBe(true);
+    expect(cookiesMap.has("better-auth.session_token")).toBe(true);
+    expect([...cookiesMap.keys()].some((name) => name.includes("next-auth"))).toBe(false);
   });
 });

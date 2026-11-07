@@ -15,7 +15,7 @@ import type {
 import { SessionContext as NextAuthSessionContext } from "next-auth/react";
 import * as React from "react";
 
-type ProvidersMap = Record<LiteralUnion<BuiltInProviderType, string>, ClientSafeProvider>;
+type ProvidersMap = Partial<Record<LiteralUnion<BuiltInProviderType, string>, ClientSafeProvider>>;
 type SignInResult<P extends RedirectableProviderType | undefined> = P extends RedirectableProviderType
   ? SignInResponse | undefined
   : undefined;
@@ -66,18 +66,29 @@ async function fetchData<T>(path: string, params?: GetSessionParams): Promise<T 
   const req = params?.req ?? params?.ctx?.req;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (req?.headers?.cookie) headers.cookie = req.headers.cookie;
-  const options: RequestInit = { headers };
-  if (req?.body) {
-    options.body = JSON.stringify(req.body);
-    options.method = "POST";
-  }
   try {
-    const res = await fetch(`${authBaseUrl()}/${path}`, options);
-    const data = (await res.json()) as Record<string, unknown>;
+    const res = await fetch(`${authBaseUrl()}/${path}`, { headers });
+    const data = (await res.json()) as Record<string, unknown> | null;
     if (!res.ok) throw data;
-    return (Object.keys(data).length > 0 ? data : null) as T | null;
+    return (data && Object.keys(data).length > 0 ? data : null) as T | null;
   } catch {
     return null;
+  }
+}
+
+async function postJson(path: string, body: unknown): Promise<Response> {
+  return fetch(`${authBaseUrl()}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readJson<T>(res: Response): Promise<T> {
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return {} as T;
   }
 }
 
@@ -131,64 +142,55 @@ export function useSession<R extends boolean = false>(
 }
 
 export async function getSession(params?: GetSessionParams): Promise<Session | null> {
-  return fetchData<Session>("session", params);
+  return fetchData<Session>("get-session", params);
 }
 
-export async function getCsrfToken(params?: GetSessionParams): Promise<string | undefined> {
-  const data = await fetchData<{ csrfToken?: string }>("csrf", params);
-  return data?.csrfToken;
+// Better Auth guards state changes with origin checks instead of a CSRF token.
+export async function getCsrfToken(_params?: GetSessionParams): Promise<string | undefined> {
+  return undefined;
 }
 
+// Only Cal credentials are served natively until the email and OAuth steps land.
 export async function getProviders(): Promise<ProvidersMap | null> {
-  return fetchData<ProvidersMap>("providers");
+  return {
+    credentials: {
+      id: "credentials",
+      name: "Cal.flare",
+      type: "credentials",
+      signinUrl: `${authBaseUrl()}/sign-in/cal-credentials`,
+      callbackUrl: `${authBaseUrl()}/sign-in/cal-credentials`,
+    },
+  };
 }
 
 export async function signIn<P extends RedirectableProviderType | undefined = undefined>(
   provider?: LiteralUnion<P extends RedirectableProviderType ? P | BuiltInProviderType : BuiltInProviderType>,
   options?: SignInOptions,
-  authorizationParams?: SignInAuthorizationParams
+  _authorizationParams?: SignInAuthorizationParams
 ): Promise<SignInResult<P>> {
   const { callbackUrl = window.location.href, redirect = true } = options ?? {};
-  const baseUrl = authBaseUrl();
-  const providers = await getProviders();
-  if (!providers) {
-    window.location.href = `${baseUrl}/error`;
-    return undefined as P extends RedirectableProviderType ? SignInResponse | undefined : undefined;
-  }
-  const selected = provider ? providers[provider] : undefined;
-  if (!selected) {
-    window.location.href = `${baseUrl}/signin?${new URLSearchParams({ callbackUrl })}`;
-    return undefined as P extends RedirectableProviderType ? SignInResponse | undefined : undefined;
+  if (provider !== "credentials") {
+    const error = provider === "email" ? "EmailSignin" : "OAuthSignin";
+    window.location.href = `/auth/error?${new URLSearchParams({ error })}`;
+    return undefined as SignInResult<P>;
   }
 
-  const isCredentials = selected.type === "credentials";
-  const isEmail = selected.type === "email";
-  const signInUrl = `${baseUrl}/${isCredentials ? "callback" : "signin"}/${provider}`;
-  const url = authorizationParams ? `${signInUrl}?${new URLSearchParams(authorizationParams)}` : signInUrl;
-  const body = new URLSearchParams();
-  for (const [key, value] of Object.entries({
-    ...options,
-    csrfToken: await getCsrfToken(),
-    callbackUrl,
-    json: true,
-  })) {
-    if (value !== undefined && value !== null) body.append(key, String(value));
+  const credentials: Record<string, string> = {};
+  for (const field of ["email", "password", "totpCode", "backupCode"] as const) {
+    const value = options?.[field];
+    if (value !== undefined && value !== null) credentials[field] = String(value);
   }
-  const res = await fetch(url, {
-    method: "post",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const data = (await res.json()) as { url?: string };
+  const res = await postJson("sign-in/cal-credentials", { ...credentials, callbackUrl });
+  const data = await readJson<{ url?: string; message?: string }>(res);
+  const error = res.ok ? null : (data.message ?? "internal-server-error");
 
-  if (redirect || !(isCredentials || isEmail)) {
-    const target = data.url ?? callbackUrl;
+  if (redirect) {
+    const target = error ? `/auth/error?${new URLSearchParams({ error })}` : (data.url ?? callbackUrl);
     window.location.href = target;
     if (target.includes("#")) window.location.reload();
-    return undefined as P extends RedirectableProviderType ? SignInResponse | undefined : undefined;
+    return undefined as SignInResult<P>;
   }
 
-  const error = data.url ? new URL(data.url, window.location.origin).searchParams.get("error") : null;
   if (res.ok) await clientState.refetch({ event: "storage" });
   return {
     error,
@@ -202,27 +204,15 @@ export async function signOut<R extends boolean = true>(
   options?: SignOutParams<R>
 ): Promise<R extends true ? undefined : SignOutResponse> {
   const { callbackUrl = window.location.href } = options ?? {};
-  const baseUrl = authBaseUrl();
-  const body = new URLSearchParams({
-    csrfToken: (await getCsrfToken()) ?? "",
-    callbackUrl,
-    json: "true",
-  });
-  const res = await fetch(`${baseUrl}/signout`, {
-    method: "post",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const data = (await res.json()) as SignOutResponse;
+  await postJson("sign-out", {});
 
   if (options?.redirect ?? true) {
-    const target = data.url ?? callbackUrl;
-    window.location.href = target;
-    if (target.includes("#")) window.location.reload();
+    window.location.href = callbackUrl;
+    if (callbackUrl.includes("#")) window.location.reload();
     return undefined as R extends true ? undefined : SignOutResponse;
   }
   await clientState.refetch({ event: "storage" });
-  return data as R extends true ? undefined : SignOutResponse;
+  return { url: callbackUrl } as R extends true ? undefined : SignOutResponse;
 }
 
 export function SessionProvider(props: SessionProviderProps) {
@@ -268,8 +258,8 @@ export function SessionProvider(props: SessionProviderProps) {
       if (loading || !session) return null;
       setLoading(true);
       try {
-        const csrfToken = await getCsrfToken();
-        const nextSession = await getSession({ req: { body: { csrfToken, data } } });
+        const res = await postJson("cal/update-session", { data });
+        const nextSession = res.ok ? await readJson<Session>(res) : null;
         if (nextSession) {
           clientState.session = nextSession;
           setSession(nextSession);
