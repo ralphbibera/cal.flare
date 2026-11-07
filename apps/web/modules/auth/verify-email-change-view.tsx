@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "@calcom/features/auth/client";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import React from "react";
@@ -15,13 +15,12 @@ import type { getServerSideProps } from "@server/lib/auth/verify-email-change/ge
 export type PageProps = inferSSRProps<typeof getServerSideProps>;
 
 function VerifyEmailChange(props: PageProps) {
-  const { update } = useSession();
   const { t, isLocaleReady } = useLocale();
   const router = useRouter();
 
   useEffect(() => {
     async function updateSessionAndDisplayToast() {
-      await update({ email: props.updatedEmail });
+      await authClient.cal.updateSession({ data: { email: props.updatedEmail } });
       if (isLocaleReady) {
         showToast(t("verify_email_change_success_toast", { email: props.updatedEmail }), "success");
       }
