@@ -6,10 +6,12 @@ import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createOrUpdateMemberships } from "./createOrUpdateMemberships";
+import { joinAnyChildTeamOnOrgInvite } from "./organization";
 
 const d1DateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+00:00$/;
 const orgId = 10;
 const subTeamId = 11;
+const otherSubTeamId = 12;
 const userId = 1;
 const orgSettings = { orgAutoAcceptEmail: "example.com" };
 const subTeam = {
@@ -17,6 +19,12 @@ const subTeam = {
   parentId: orgId,
   isOrganization: false,
   parent: { id: orgId, organizationSettings: orgSettings },
+};
+const org = {
+  id: orgId,
+  organizationSettings: { orgAutoAcceptEmail: "example.com" } as Parameters<
+    typeof joinAnyChildTeamOnOrgInvite
+  >[0]["org"]["organizationSettings"],
 };
 
 describe("signup membership writes on D1", () => {
@@ -162,6 +170,57 @@ describe("signup membership writes on D1", () => {
         expect(await snapshot()).toMatchObject({
           profiles: [{ userId, organizationId: orgId }],
           memberships: [{ teamId: orgId }, { teamId: subTeamId }],
+        });
+      }));
+  });
+
+  describe("joinAnyChildTeamOnOrgInvite", () => {
+    const pendingMemberships = () =>
+      db
+        .prepare(`INSERT INTO "Membership" ("userId", "teamId", "role", "accepted")
+          VALUES (1, 10, 'MEMBER', 0), (1, 11, 'MEMBER', 0), (1, 12, 'MEMBER', 0)`)
+        .run();
+
+    it("moves the user into the org and accepts org and child team invites", () =>
+      withD1Database({ DB: db }, async () => {
+        await pendingMemberships();
+
+        await expect(joinAnyChildTeamOnOrgInvite({ userId, org })).resolves.toBeUndefined();
+
+        expect(await snapshot()).toMatchObject({
+          organizationId: orgId,
+          profiles: [{ userId, organizationId: orgId, username: "jane" }],
+          memberships: [{ accepted: 1 }, { accepted: 1 }, { accepted: 1 }],
+        });
+      }));
+
+    it("leaves the user, profile and invites untouched when the last invite update fails", () =>
+      withD1Database({ DB: db }, async () => {
+        await pendingMemberships();
+        await failWritesTo("UPDATE", otherSubTeamId);
+
+        await expect(joinAnyChildTeamOnOrgInvite({ userId, org })).rejects.toThrow(/forced late failure/);
+
+        expect(await snapshot()).toMatchObject({
+          organizationId: null,
+          profiles: [],
+          memberships: [{ accepted: 0 }, { accepted: 0 }, { accepted: 0 }],
+        });
+      }));
+
+    it("lets simultaneous joins both succeed with one profile", () =>
+      withD1Database({ DB: db }, async () => {
+        await pendingMemberships();
+
+        await Promise.all([
+          joinAnyChildTeamOnOrgInvite({ userId, org }),
+          joinAnyChildTeamOnOrgInvite({ userId, org }),
+        ]);
+
+        expect(await snapshot()).toMatchObject({
+          organizationId: orgId,
+          profiles: [{ userId, organizationId: orgId }],
+          memberships: [{ accepted: 1 }, { accepted: 1 }, { accepted: 1 }],
         });
       }));
   });
