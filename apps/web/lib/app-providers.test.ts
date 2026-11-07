@@ -14,7 +14,9 @@ vi.mock("@calcom/web/modules/feature-flags/hooks/useFlags", () => ({ useFlags: v
 vi.mock("@components/I18nLanguageHandler", () => ({ useViewerI18n: vi.fn() }));
 vi.mock("@lib/hooks/useIsBookingPage", () => ({ default: vi.fn() }));
 vi.mock("@lib/hooks/useNuqsParams", () => ({ useNuqsParams: vi.fn() }));
-vi.mock("next-auth/react", () => ({ useSession: vi.fn() }));
+vi.mock("@calcom/features/auth/client/auth-client", () => ({
+  authClient: { useSession: vi.fn().mockReturnValue({ data: null, isPending: false }) },
+}));
 vi.mock("next-themes", () => ({ ThemeProvider: vi.fn() }));
 vi.mock("nuqs/adapters/next/pages", () => ({ NuqsAdapter: vi.fn() }));
 vi.mock("next-i18next", () => {
