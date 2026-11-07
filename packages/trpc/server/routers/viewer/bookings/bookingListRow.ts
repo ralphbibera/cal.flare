@@ -24,6 +24,15 @@ const storedJson = text
 const json = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((value) => (typeof value === "string" ? JSON.parse(value) : value), schema);
 
+// BookingReport.reason is returned as stored by D1, i.e. the @map value rather than the enum key.
+const storedReportReasons: Record<string, BookingReportReason> = {
+  dont_know_person: BookingReportReason.DONT_KNOW_PERSON,
+};
+const reportReason = z.preprocess(
+  (value) => (typeof value === "string" ? (storedReportReasons[value] ?? value) : value),
+  z.nativeEnum(BookingReportReason)
+);
+
 const row = z.object({
   id: integer,
   title: text,
@@ -160,7 +169,7 @@ const row = z.object({
       .object({
         id: text,
         reportedById: nullableInteger,
-        reason: z.nativeEnum(BookingReportReason),
+        reason: reportReason,
         description: nullableText,
         createdAt: nestedDate,
       })
