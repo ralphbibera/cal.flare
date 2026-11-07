@@ -1,5 +1,5 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { JSX } from "react";
-import { useSession } from "next-auth/react";
 
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
 import dayjs from "@calcom/dayjs";
@@ -267,7 +267,7 @@ function useEventTypesAction(): void {
 
 function useUpcomingBookingsAction(): void {
   const router = useRouter();
-  const session = useSession();
+  const session = authClient.useSession();
   const userId = session.data?.user.id;
 
   const { data } = trpc.viewer.bookings.get.useQuery(

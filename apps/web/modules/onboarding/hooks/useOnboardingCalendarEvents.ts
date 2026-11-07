@@ -1,4 +1,4 @@
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useMemo, useEffect } from "react";
 
 import dayjs from "@calcom/dayjs";
@@ -33,7 +33,7 @@ export const useOnboardingCalendarEvents = ({
   startDate,
   endDate,
 }: UseOnboardingCalendarEventsProps): UseOnboardingCalendarEventsResult => {
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const utils = trpc.useUtils();
 
   // Watch for calendar installations to refetch events

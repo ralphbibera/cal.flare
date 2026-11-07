@@ -1,7 +1,7 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { JSX } from "react";
-import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import type React from "react";
@@ -101,9 +101,9 @@ const KBarWrapper = ({ children, withKBar = false }: { withKBar: boolean; childr
   );
 
 const PublicShell = (props: LayoutProps) => {
-  const { status } = useSession();
+  const { data: session } = authClient.useSession();
   return (
-    <KBarWrapper withKBar={status === "authenticated"}>
+    <KBarWrapper withKBar={!!session}>
       <Layout {...props} />
     </KBarWrapper>
   );
