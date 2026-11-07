@@ -54,6 +54,7 @@ export default defineConfig({
     environment: "jsdom",
     projects,
     pool: "forks",
+    globalSetup: ["./packages/prisma/tooling/d1-template-global-setup.mts"],
     server: {
       deps: {
         inline: [/@calcom\/.*/, /prismock/],
