@@ -1,5 +1,6 @@
 "use client";
 
+import { signIn } from "@calcom/features/auth/client";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
@@ -10,7 +11,6 @@ import { showToast } from "@calcom/ui/components/toast";
 import { MailOpenIcon, TriangleAlertIcon } from "@coss/ui/icons";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import z from "zod";
 
