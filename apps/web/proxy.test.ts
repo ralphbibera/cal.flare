@@ -264,19 +264,6 @@ describe("Middleware Integration Tests", () => {
       const res = await callProxy(req);
       expectStatus(res, 200);
     });
-
-    it("should delete session cookie on logout", async () => {
-      const req = createTestRequest({
-        url: `${WEBAPP_URL}/auth/logout`,
-      });
-
-      const res = await callProxy(req);
-      const setCookie = getHeader(res, "set-cookie");
-
-      if (setCookie) {
-        expect(setCookie).toContain("next-auth.session-token");
-      }
-    });
   });
 
   describe("Embed Routes", () => {

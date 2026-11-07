@@ -97,10 +97,6 @@ const proxy = async (req: NextRequest): Promise<NextResponse<unknown>> => {
     },
   });
 
-  if (url.pathname.startsWith("/auth/logout")) {
-    res.cookies.delete("next-auth.session-token");
-  }
-
   return responseWithHeaders({ url, res, req: reqWithEnrichedHeaders });
 };
 

@@ -1,6 +1,5 @@
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import type { NextApiRequest } from "next";
-import type { Session } from "next-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BillingPortalServiceFactory,
@@ -20,10 +19,6 @@ vi.mock("@calcom/prisma", () => ({
 
 const mockCustomerModule = vi.mocked(customerModule);
 
-interface RequestWithSession extends NextApiRequest {
-  session?: Session | null;
-}
-
 describe("Portal API - Service-Based Architecture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,8 +32,8 @@ describe("Portal API - Service-Based Architecture", () => {
           hasValidLicense: true,
           upId: "test-upid",
           expires: "2024-12-31T23:59:59.999Z",
-        } as Session,
-      } as RequestWithSession;
+        } as NextApiRequest["session"],
+      };
 
       const result = validateAuthentication(req as NextApiRequest);
 
@@ -56,12 +51,12 @@ describe("Portal API - Service-Based Architecture", () => {
     it("should return null when user id is missing", () => {
       const req = {
         session: {
-          user: {} as any,
+          user: {},
           hasValidLicense: true,
           upId: "test-upid",
           expires: "2024-12-31T23:59:59.999Z",
-        } as Session,
-      } as RequestWithSession;
+        } as NextApiRequest["session"],
+      };
 
       const result = validateAuthentication(req as NextApiRequest);
 
