@@ -1,17 +1,29 @@
+import type { IncomingHttpHeaders } from "node:http";
+import type { GetServerSidePropsContext } from "next";
+import type { NextRequest } from "next/server";
 import type { Session } from "next-auth";
-import type { GetTokenParams } from "next-auth/jwt";
 import { createCalRequestAuth } from "./request-auth";
 import { getAuthRequestConfiguration } from "./request-context";
 
-type SessionRequest = GetTokenParams["req"];
+export type SessionRequest =
+  | GetServerSidePropsContext["req"]
+  | NextRequest
+  | Request
+  | {
+      headers: Headers | IncomingHttpHeaders | Record<string, string>;
+      cookies?:
+        | Partial<Record<string, string>>
+        | Map<string, string>
+        | { getAll(): { name: string; value: string }[] };
+    };
 
 const sessionCookie = "next-auth.session-token";
 const secureSessionCookie = `__Secure-${sessionCookie}`;
 
 function readCookie(req: SessionRequest, name: string): string | undefined {
-  const cookies = req?.cookies;
+  const cookies = req && "cookies" in req ? req.cookies : undefined;
   if (cookies) {
-    if (typeof cookies.getAll === "function") {
+    if ("getAll" in cookies && typeof cookies.getAll === "function") {
       const found = cookies.getAll().find((cookie) => cookie.name === name);
       if (found) return found.value;
     } else if (cookies instanceof Map) {
@@ -43,7 +55,6 @@ function readCookie(req: SessionRequest, name: string): string | undefined {
 type CalReader = { auth: ReturnType<typeof createCalRequestAuth>; headers: Headers };
 
 function createCalReader(rawToken: string): CalReader | null {
-  if (!isCalSignedSessionToken(rawToken)) return null;
   // Without a request-bound configuration (D1 and signing secret) the Cal reader cannot run.
   const config = getAuthRequestConfiguration();
   if (!config) return null;
@@ -53,33 +64,27 @@ function createCalReader(rawToken: string): CalReader | null {
   return { auth: createCalRequestAuth(config), headers };
 }
 
-/**
- * A next-auth session is a five-segment JWE, while better-call's signed cookie value is
- * `token.base64(HMAC)`. Only the latter is routed to the Cal reader.
- */
-export function isCalSignedSessionToken(rawToken: unknown): rawToken is string {
-  return typeof rawToken === "string" && rawToken.length > 0 && rawToken.split(".").length === 2;
-}
-
 export async function readSessionToken(req: SessionRequest): Promise<string | null> {
   return readCookie(req, secureSessionCookie) ?? readCookie(req, sessionCookie) ?? null;
 }
 
-export async function getCalServerSession(rawToken: string | null): Promise<Session | null> {
+export async function getCalServerSession(req: SessionRequest): Promise<Session | null> {
+  const rawToken = await readSessionToken(req);
   if (!rawToken) return null;
   try {
     const reader = createCalReader(rawToken);
     if (!reader) return null;
     const session = await reader.auth.api.getServerSession({ headers: reader.headers });
     if (!session) return null;
-    // The JWE path represents an absent organization as undefined; normalize the nullable claim the same way.
+    // Session consumers expect an absent organization as undefined, not null.
     return { ...session, user: { ...session.user, org: session.user.org ?? undefined } };
   } catch {
     return null;
   }
 }
 
-export async function getCalSessionLocale(rawToken: string | null): Promise<string | null> {
+export async function getCalSessionLocale(req: SessionRequest): Promise<string | null> {
+  const rawToken = await readSessionToken(req);
   if (!rawToken) return null;
   try {
     const reader = createCalReader(rawToken);
