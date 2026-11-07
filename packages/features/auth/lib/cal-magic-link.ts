@@ -3,10 +3,9 @@ import prisma from "@calcom/prisma";
 import { createAuthEndpoint } from "better-auth/api";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { z } from "zod";
-import { calClaimsSchema, profileContextSchema } from "./cal-session";
 import { getCalSessionSettings } from "./cal-session-policy";
 import type { createCalSessionStore } from "./cal-session-store";
-import { checkIfUserBelongsToActiveTeam } from "./checkIfUserBelongsToActiveTeam";
+import { issueUserSession } from "./cal-user-session";
 
 // Executable value of the source provider's `maxAge: 10 * 60 * 60`: 10 hours, despite its "10 min" comment.
 export const MAGIC_LINK_EXPIRES_IN = 10 * 60 * 60;
@@ -101,25 +100,7 @@ export function createCalMagicLink({
                 select: { id: true },
               });
             }
-            const profile = user.allProfiles[0];
-            await sessions.issue(ctx, {
-              claims: calClaimsSchema.parse({
-                id: user.id,
-                name: user.name,
-                username: user.username,
-                orgAwareUsername: user.username,
-                email: user.email,
-                role: user.role,
-                belongsToActiveTeam: checkIfUserBelongsToActiveTeam(user),
-                locale: user.locale,
-              }),
-              profile: profileContextSchema.parse({
-                profileId: profile?.id ?? null,
-                upId: profile?.upId ?? null,
-              }),
-              sessionTimeout: settings.sessionTimeout,
-              emailVerified: true,
-            });
+            await issueUserSession({ ctx, sessions, user, emailVerified: true });
             ctx.setHeader("cache-control", "private, no-cache, no-store");
             throw ctx.redirect(callback(ctx.query.callbackURL));
           }
