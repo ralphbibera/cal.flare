@@ -1,16 +1,10 @@
 import process from "node:process";
-import { updateProfilePhotoGoogle } from "@calcom/app-store/_utils/oauth/updateProfilePhotoGoogle";
-import { updateProfilePhotoMicrosoft } from "@calcom/app-store/_utils/oauth/updateProfilePhotoMicrosoft";
-import { createGoogleCalendarServiceWithGoogleType } from "@calcom/app-store/googlecalendar/lib/CalendarService";
-import { findUserIdByInsensitiveField } from "@calcom/features/auth/lib/findUserIdByInsensitiveField";
 import { getIdentityProvider } from "@calcom/features/auth/lib/identityProviders";
 import {
   OUTLOOK_CLIENT_ID,
   OUTLOOK_CLIENT_SECRET,
   OUTLOOK_LOGIN_ENABLED,
 } from "@calcom/features/auth/lib/outlook";
-import { CredentialRepository } from "@calcom/features/credentials/repositories/CredentialRepository";
-import { buildCredentialCreateData } from "@calcom/features/credentials/services/CredentialDataService";
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import {
@@ -25,19 +19,14 @@ import {
 import { defaultCookies } from "@calcom/lib/default-cookies";
 import { isENVDev } from "@calcom/lib/env";
 import logger from "@calcom/lib/logger";
-import { randomString } from "@calcom/lib/random";
 import { safeStringify } from "@calcom/lib/safeStringify";
-import slugify from "@calcom/lib/slugify";
 import type { TrackingData } from "@calcom/lib/tracking";
 import prisma from "@calcom/prisma";
-import type { UserPermissionRole } from "@calcom/prisma/enums";
-import { CreationSource, IdentityProvider, MembershipRole } from "@calcom/prisma/enums";
+import type { MembershipRole, UserPermissionRole } from "@calcom/prisma/enums";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { UserProfile } from "@calcom/types/UserProfile";
-import { calendar_v3 } from "@googleapis/calendar";
 import { waitUntil } from "@vercel/functions";
-import { OAuth2Client } from "googleapis-common";
-import type { Account, AuthOptions, Profile, Session, User } from "next-auth";
+import type { AuthOptions, Session, User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { encode } from "next-auth/jwt";
 import AzureADProvider from "next-auth/providers/azure-ad";
@@ -45,34 +34,14 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import EmailProvider from "next-auth/providers/email";
 import GoogleProvider from "next-auth/providers/google";
 import type { Provider } from "next-auth/providers/index";
-import { getOrgUsernameFromEmail } from "../signup/utils/getOrgUsernameFromEmail";
 import { authorizeCredentials } from "./authorizeCredentials";
 import { checkIfUserBelongsToActiveTeam } from "./checkIfUserBelongsToActiveTeam";
 import { dub } from "./dub";
 import CalComAdapter from "./next-auth-custom-adapter";
+import { OAuthSignInService, oauthProfileSchema } from "./OAuthSignInService";
 
 export { authorizeCredentials } from "./authorizeCredentials";
 export { checkIfUserBelongsToActiveTeam } from "./checkIfUserBelongsToActiveTeam";
-
-interface ExtendedOAuthProfile extends Profile {
-  email_verified?: boolean; // Google/OIDC standard
-  xms_edov?: boolean | string | number; // Azure AD specific
-}
-
-// Account presenter to handle linkAccount calls
-const AdapterAccountPresenter = {
-  fromCalAccount: (account: Account, userId: number, providerEmail: string) => {
-    return {
-      ...account,
-      userId: String(userId), // Convert userId to string for Next Auth
-      providerEmail,
-      // Ensure these required fields are present
-      provider: account.provider,
-      providerAccountId: account.providerAccountId,
-      type: account.type,
-    };
-  },
-};
 
 const log = logger.getSubLogger({ prefix: ["next-auth-options"] });
 const GOOGLE_API_CREDENTIALS = process.env.GOOGLE_API_CREDENTIALS || "{}";
@@ -80,33 +49,6 @@ const { client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET } =
   JSON.parse(GOOGLE_API_CREDENTIALS)?.web || {};
 const GOOGLE_LOGIN_ENABLED = process.env.GOOGLE_LOGIN_ENABLED === "true";
 const IS_GOOGLE_LOGIN_ENABLED = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_LOGIN_ENABLED);
-const ORGANIZATIONS_AUTOLINK =
-  process.env.ORGANIZATIONS_AUTOLINK === "1" || process.env.ORGANIZATIONS_AUTOLINK === "true";
-
-const usernameSlug = (username: string) => `${slugify(username)}-${randomString(6).toLowerCase()}`;
-const getDomainFromEmail = (email: string): string => email.split("@")[1];
-
-const loginWithTotp = async (email: string) =>
-  `/auth/login?totp=${encodeURIComponent(await (await import("./signJwt")).default({ email }))}`;
-
-const checkIfUserShouldBelongToOrg = async (idP: IdentityProvider, email: string) => {
-  const [orgUsername, apexDomain] = email.split("@");
-  if (!ORGANIZATIONS_AUTOLINK || (idP !== "GOOGLE" && idP !== "AZUREAD"))
-    return { orgUsername, orgId: undefined };
-  const existingOrg = await prisma.team.findFirst({
-    where: {
-      organizationSettings: {
-        isOrganizationVerified: true,
-        orgAutoAcceptEmail: apexDomain,
-      },
-    },
-    select: {
-      id: true,
-    },
-  });
-  return { orgUsername, orgId: existingOrg?.id };
-};
-
 export const CalComCredentialsProvider = CredentialsProvider({
   id: "credentials",
   name: "Cal.flare",
@@ -190,6 +132,7 @@ function isNumber(n: string) {
 }
 
 const calcomAdapter = CalComAdapter(prisma);
+const oauthSignIn = new OAuthSignInService();
 
 export const getOptions = ({
   getDubId,
@@ -416,136 +359,11 @@ export const getOptions = ({
           return await autoMergeIdentities();
         }
 
-        const grantedScopes = account.scope?.split(" ") ?? [];
-        if (
-          account.provider === "google" &&
-          !(await CredentialRepository.findFirstByAppIdAndUserId({
-            userId: Number(user.id),
-            appId: "google-calendar",
-          })) &&
-          GOOGLE_CALENDAR_SCOPES.every((scope) => grantedScopes.includes(scope))
-        ) {
-          // Installing Google Calendar by default
-          const credentialkey = {
-            access_token: account.access_token,
-            refresh_token: account.refresh_token,
-            id_token: account.id_token,
-            token_type: account.token_type,
-            expires_at: account.expires_at,
-          };
-          const gcalCredentialData = buildCredentialCreateData({
-            userId: Number(user.id),
-            key: credentialkey,
-            appId: "google-calendar",
-            type: "google_calendar",
-          });
-          const gcalCredential = await CredentialRepository.create(gcalCredentialData);
-          const gCalService = createGoogleCalendarServiceWithGoogleType({
-            ...gcalCredential,
-            user: null,
-            delegatedTo: null,
-          });
-
-          if (
-            !(await CredentialRepository.findFirstByUserIdAndType({
-              userId: Number(user.id),
-              type: "google_video",
-            }))
-          ) {
-            const googleMeetCredentialData = buildCredentialCreateData({
-              type: "google_video",
-              key: {},
-              userId: Number(user.id),
-              appId: "google-meet",
-            });
-            await CredentialRepository.create(googleMeetCredentialData);
-          }
-
-          const oAuth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
-          oAuth2Client.setCredentials(credentialkey);
-          const calendar = new calendar_v3.Calendar({
-            auth: oAuth2Client,
-          });
-          const primaryCal = await gCalService.getPrimaryCalendar(calendar);
-          if (primaryCal?.id) {
-            await gCalService.createSelectedCalendar({
-              externalId: primaryCal.id,
-              userId: Number(user.id),
-            });
-          }
-          await updateProfilePhotoGoogle(oAuth2Client, Number(user.id));
-        }
-
-        // Installing Outlook Calendar by default for Microsoft/Azure AD sign-in
-        // Note: offline_access is requested but not returned in scope list by Microsoft
-        const microsoftCalendarScopesToCheck = MICROSOFT_CALENDAR_SCOPES.filter(
-          (scope) => scope !== "offline_access"
-        );
-        if (
-          account.provider === "azure-ad" &&
-          !(await CredentialRepository.findFirstByAppIdAndUserId({
-            userId: Number(user.id),
-            appId: "office365-calendar",
-          })) &&
-          microsoftCalendarScopesToCheck.every((scope) => grantedScopes.includes(scope))
-        ) {
-          const credentialKey = {
-            access_token: account.access_token,
-            refresh_token: account.refresh_token,
-            email: user.email,
-            // convert seconds to milliseconds — OAuthManager compares expiry_date against Date.now()
-            expiry_date: account.expires_at ? account.expires_at * 1000 : undefined,
-          };
-
-          const outlookCredentialData = buildCredentialCreateData({
-            userId: Number(user.id),
-            key: credentialKey,
-            appId: "office365-calendar",
-            type: "office365_calendar",
-          });
-          const outlookCredential = await CredentialRepository.create(outlookCredentialData);
-
-          // Fetch default calendar from Microsoft Graph API
-          try {
-            const calendarResponse = await fetch(
-              "https://graph.microsoft.com/v1.0/me/calendars?$select=id,isDefaultCalendar",
-              {
-                headers: {
-                  Authorization: `Bearer ${account.access_token}`,
-                  "Content-Type": "application/json",
-                },
-              }
-            );
-
-            if (calendarResponse.ok) {
-              const calendarData = await calendarResponse.json();
-              const defaultCalendar = calendarData.value?.find(
-                (cal: { isDefaultCalendar?: boolean }) => cal.isDefaultCalendar
-              );
-
-              if (defaultCalendar?.id) {
-                await prisma.selectedCalendar.create({
-                  data: {
-                    userId: Number(user.id),
-                    integration: "office365_calendar",
-                    externalId: defaultCalendar.id,
-                    credentialId: outlookCredential.id,
-                  },
-                });
-              }
-            }
-          } catch (error) {
-            log.error("Failed to fetch default calendar for Microsoft sign-in", error);
-          }
-
-          // Update profile photo for Microsoft/Azure AD sign-in
-          if (account.access_token) {
-            await updateProfilePhotoMicrosoft(account.access_token, Number(user.id));
-          }
-        } else if (account.provider === "azure-ad" && account.access_token) {
-          // Update profile photo even if calendar wasn't installed
-          await updateProfilePhotoMicrosoft(account.access_token, Number(user.id));
-        }
+        await oauthSignIn.installDefaultCalendars({
+          userId: Number(user.id),
+          email: user.email,
+          account,
+        });
 
         const allProfiles = await ProfileRepository.findAllProfilesForUserIncludingMovedUser(existingUser);
         const { upId } = determineProfile({ profiles: allProfiles, token });
@@ -639,352 +457,13 @@ export const getOptions = ({
           return false;
         }
       }
-      if (!user.email) {
-        log.warn("callbacks:signIn - user email is missing", { provider: account?.provider });
-        return false;
-      }
-
-      if (!user.name) {
-        log.warn("callbacks:signIn - user name is missing", {
-          emailDomain: user.email.split("@")[1],
-          provider: account?.provider,
-        });
-        return false;
-      }
-      if (account?.provider) {
-        const idP = getIdentityProvider(account.provider);
-
-        if (!idP) {
-          log.warn("callbacks:signIn - unknown provider, rejecting login", {
-            provider: account.provider,
-          });
-          return "/auth/error?error=unknown-provider";
-        }
-        // Use optional chaining for safety, especially with AdapterUser potentially having different structure initially.
-        const isEmailVerified = user.emailVerified || (profile as ExtendedOAuthProfile)?.email_verified;
-
-        // For Azure AD, check xms_edov (Email Domain Owner Verified) claim
-        // xms_edov returns inconsistent types: boolean for work/school, string "1" for personal accounts
-        const xmsEdov = (profile as ExtendedOAuthProfile)?.xms_edov;
-        const isAzureEmailDomainVerified =
-          xmsEdov === true || xmsEdov === "true" || xmsEdov === "1" || xmsEdov === 1;
-
-        // Azure AD never sets email_verified in the token profile, so isEmailVerified is always
-        // falsy for AZUREAD logins. Use isAzureEmailDomainVerified (xms_edov) as the equivalent
-        // proof of ownership so the auto-merge path treats Azure AD the same as other verified IdPs.
-        const isVerified =
-          isEmailVerified || (idP === IdentityProvider.AZUREAD && isAzureEmailDomainVerified);
-
-        if (idP === IdentityProvider.AZUREAD && !isAzureEmailDomainVerified) {
-          log.error(
-            "Azure AD email domain not verified (xms_edov claim)",
-            safeStringify({ emailDomain: user.email?.split("@")[1], xmsEdov })
-          );
-          return "/auth/error?error=unverified-email";
-        }
-
-        if (!isEmailVerified && idP !== IdentityProvider.AZUREAD) {
-          log.error("Attention: SAML/Google User email is not verified in the IdP", safeStringify({ user }));
-          return "/auth/error?error=unverified-email";
-        }
-
-        const existingUserId = await findUserIdByInsensitiveField({
-          where: { identityProvider: idP },
-          field: "identityProviderId",
-          value: account.providerAccountId,
-        });
-        let existingUser = existingUserId
-          ? await prisma.user.findFirst({
-              select: {
-                id: true,
-                email: true,
-                twoFactorEnabled: true,
-                identityProvider: true,
-                accounts: {
-                  select: { id: true },
-                  where: {
-                    provider: account.provider,
-                  },
-                },
-              },
-              where: { id: existingUserId },
-            })
-          : null;
-
-        /* --- START FIX LEGACY ISSUE WHERE 'identityProviderId' was accidentally set to userId --- */
-        if (!existingUser) {
-          existingUser = await prisma.user.findFirst({
-            select: {
-              id: true,
-              email: true,
-              twoFactorEnabled: true,
-              identityProvider: true,
-              accounts: {
-                select: { id: true },
-                where: {
-                  provider: account.provider,
-                },
-              },
-            },
-            where: {
-              identityProvider: idP,
-              identityProviderId: String(user.id),
-            },
-          });
-          if (existingUser) {
-            await prisma.user.update({
-              where: {
-                id: existingUser?.id,
-              },
-              data: {
-                identityProviderId: account.providerAccountId,
-              },
-            });
-          }
-        }
-        /* --- END FIXES LEGACY ISSUE WHERE 'identityProviderId' was accidentally set to userId --- */
-        if (existingUser) {
-          // In this case there's an existing user and their email address
-          // hasn't changed since they last logged in.
-          if (existingUser.email === user.email) {
-            try {
-              // If old user without Account entry we link their google account
-              if (existingUser.accounts.length === 0) {
-                const linkAccountWithUserData = AdapterAccountPresenter.fromCalAccount(
-                  account,
-                  existingUser.id,
-                  user.email
-                );
-                await calcomAdapter.linkAccount(linkAccountWithUserData);
-              }
-            } catch (error) {
-              if (error instanceof Error) {
-                log.error("Error while linking account of already existing user", safeStringify(error));
-              }
-            }
-            if (existingUser.twoFactorEnabled && existingUser.identityProvider === idP) {
-              return loginWithTotp(existingUser.email);
-            } else {
-              return true;
-            }
-          }
-
-          // If the email address doesn't match, check if an account already exists
-          // with the new email address. If it does, for now we return an error. If
-          // not, update the email of their account and log them in.
-          const userWithNewEmail = await prisma.user.findFirst({
-            where: { email: user.email },
-          });
-
-          if (!userWithNewEmail) {
-            await prisma.user.update({ where: { id: existingUser.id }, data: { email: user.email } });
-            if (existingUser.twoFactorEnabled) {
-              return loginWithTotp(existingUser.email);
-            } else {
-              return true;
-            }
-          } else {
-            return "/auth/error?error=new-email-conflict";
-          }
-        }
-
-        // If there's no existing user for this identity provider and id, create
-        // a new account. If an account already exists with the incoming email
-        // address return an error for now.
-
-        const existingUserWithEmailId = await findUserIdByInsensitiveField({
-          field: "email",
-          value: user.email,
-        });
-        const existingUserWithEmail = existingUserWithEmailId
-          ? await prisma.user.findFirst({
-              where: { id: existingUserWithEmailId },
-              select: {
-                email: true,
-                emailVerified: true,
-                username: true,
-                twoFactorEnabled: true,
-                identityProvider: true,
-                password: {
-                  select: {
-                    hash: true,
-                  },
-                },
-              },
-            })
-          : null;
-
-        if (existingUserWithEmail) {
-          // if self-hosted then we can allow auto-merge of identity providers if email is verified
-          if (isVerified && existingUserWithEmail.identityProvider !== IdentityProvider.CAL) {
-            if (existingUserWithEmail.twoFactorEnabled) {
-              return loginWithTotp(existingUserWithEmail.email);
-            } else {
-              return true;
-            }
-          }
-
-          // check if user was invited
-          if (
-            !existingUserWithEmail.password?.hash &&
-            !existingUserWithEmail.emailVerified &&
-            !existingUserWithEmail.username
-          ) {
-            await prisma.user.update({
-              where: {
-                email: existingUserWithEmail.email,
-              },
-              data: {
-                // update the email to the IdP email
-                email: user.email,
-                // Slugify the incoming name and append a few random characters to
-                // prevent conflicts for users with the same name.
-                username: getOrgUsernameFromEmail(user.email, getDomainFromEmail(user.email)),
-                emailVerified: new Date(Date.now()),
-                name: user.name,
-                identityProvider: idP,
-                identityProviderId: account.providerAccountId,
-              },
-            });
-
-            if (existingUserWithEmail.twoFactorEnabled) {
-              return loginWithTotp(existingUserWithEmail.email);
-            } else {
-              return true;
-            }
-          }
-
-          // User signs up with email/password and then tries to login with Google/SAML/AzureAD using the same email
-          if (
-            existingUserWithEmail.identityProvider === IdentityProvider.CAL &&
-            (idP === IdentityProvider.GOOGLE ||
-              idP === IdentityProvider.SAML ||
-              idP === IdentityProvider.AZUREAD)
-          ) {
-            // Prevent account pre-hijacking: block OAuth linking for unverified accounts
-            if (!existingUserWithEmail.emailVerified) {
-              return "/auth/error?error=unverified-email";
-            }
-
-            await prisma.user.update({
-              where: { email: existingUserWithEmail.email },
-              data: {
-                email: user.email.toLowerCase(),
-                identityProvider: idP,
-                identityProviderId: account.providerAccountId,
-              },
-            });
-
-            if (existingUserWithEmail.twoFactorEnabled) {
-              return loginWithTotp(existingUserWithEmail.email);
-            } else {
-              return true;
-            }
-          } else if (existingUserWithEmail.identityProvider === IdentityProvider.CAL) {
-            log.error(`Userid ${user.id} already exists with CAL identity provider`);
-            return `/auth/error?error=wrong-provider&provider=${existingUserWithEmail.identityProvider}`;
-          } else if (
-            existingUserWithEmail.identityProvider === IdentityProvider.GOOGLE &&
-            idP === IdentityProvider.AZUREAD
-          ) {
-            await prisma.user.update({
-              where: { email: existingUserWithEmail.email },
-              data: {
-                email: user.email.toLowerCase(),
-                identityProvider: idP,
-                identityProviderId: account.providerAccountId,
-              },
-            });
-
-            if (existingUserWithEmail.twoFactorEnabled) {
-              return loginWithTotp(existingUserWithEmail.email);
-            } else {
-              return true;
-            }
-          } else if (
-            existingUserWithEmail.identityProvider === IdentityProvider.AZUREAD &&
-            idP === IdentityProvider.GOOGLE
-          ) {
-            await prisma.user.update({
-              where: { email: existingUserWithEmail.email },
-              data: {
-                email: user.email.toLowerCase(),
-                identityProvider: idP,
-                identityProviderId: account.providerAccountId,
-              },
-            });
-
-            if (existingUserWithEmail.twoFactorEnabled) {
-              return loginWithTotp(existingUserWithEmail.email);
-            } else {
-              return true;
-            }
-          }
-          log.error(`Userid ${user.id} trying to login with the wrong provider`, {
-            userId: user.id,
-            account: {
-              providerAccountId: account?.providerAccountId,
-              type: account?.type,
-              provider: account?.provider,
-            },
-          });
-          return `/auth/error?error=wrong-provider&provider=${existingUserWithEmail.identityProvider}`;
-        }
-
-        // Associate with organization if enabled by flag and idP is Google or Azure AD
-        const { orgUsername, orgId } = await checkIfUserShouldBelongToOrg(idP, user.email);
-
-        try {
-          const newUsername = orgId ? slugify(orgUsername) : usernameSlug(user.name);
-          const newUser = await prisma.user.create({
-            data: {
-              // Slugify the incoming name and append a few random characters to
-              // prevent conflicts for users with the same name.
-              username: newUsername,
-              emailVerified: new Date(Date.now()),
-              name: user.name,
-              ...(user.image && { avatarUrl: user.image }),
-              email: user.email,
-              identityProvider: idP,
-              identityProviderId: account.providerAccountId,
-              ...(orgId && {
-                verified: true,
-                organization: { connect: { id: orgId } },
-                teams: {
-                  create: { role: MembershipRole.MEMBER, accepted: true, team: { connect: { id: orgId } } },
-                },
-              }),
-              creationSource: CreationSource.WEBAPP,
-            },
-          });
-          const linkAccountNewUserData = AdapterAccountPresenter.fromCalAccount(
-            account,
-            newUser.id,
-            user.email
-          );
-          await calcomAdapter.linkAccount(linkAccountNewUserData);
-
-          // Update profile photo for new Microsoft/Azure AD users
-          if (account.provider === "azure-ad" && account.access_token) {
-            await updateProfilePhotoMicrosoft(account.access_token, newUser.id);
-          }
-
-          if (newUser.twoFactorEnabled) {
-            return loginWithTotp(newUser.email);
-          } else {
-            return true;
-          }
-        } catch (err) {
-          log.error("Error creating a new user", err);
-          return `/auth/error?error=user-creation-error`;
-        }
-      }
-
-      log.warn("callbacks:signIn - no matching provider or condition, denying access", {
-        provider: account?.provider,
-        accountType: account?.type,
+      const decision = await oauthSignIn.signIn({
+        user,
+        account,
+        profile: oauthProfileSchema.parse(profile ?? {}),
       });
-      return false;
+      if (decision.kind === "redirect") return decision.to;
+      return decision.kind === "allow";
     },
     /**
      * Used to handle the navigation right after successful login or logout
