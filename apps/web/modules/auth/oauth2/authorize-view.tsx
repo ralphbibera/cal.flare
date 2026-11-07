@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useSession } from "@calcom/features/auth/client";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -18,7 +18,8 @@ import { Tooltip } from "@calcom/ui/components/tooltip";
 
 export function Authorize() {
   const { t } = useLocale();
-  const { status } = useSession();
+  const { data: session, isPending: isPendingSession } = authClient.useSession();
+  const isAuthenticated = !!session;
   const { data: user } = useMeQuery();
 
   const router = useRouter();
@@ -50,7 +51,7 @@ export function Authorize() {
       redirectUri: redirect_uri,
     },
     {
-      enabled: status === "authenticated" && !!redirect_uri,
+      enabled: isAuthenticated && !!redirect_uri,
     }
   );
 
@@ -105,7 +106,7 @@ export function Authorize() {
   }, [client?.isTrusted]);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
+    if (!isPendingSession && !session) {
       const urlSearchParams = new URLSearchParams({
         callbackUrl: `auth/oauth2/authorize?${queryString}`,
       });
@@ -116,13 +117,13 @@ export function Authorize() {
       }
       router.replace(`/auth/login?${urlSearchParams.toString()}`);
     }
-  }, [status]);
+  }, [isPendingSession, session]);
 
   if (getClientError) {
     return <div>{getClientError.message}</div>;
   }
 
-  if (isPendingGetClient || (show_account_selector && isPendingProfiles) || status !== "authenticated") {
+  if (isPendingGetClient || (show_account_selector && isPendingProfiles) || !isAuthenticated) {
     return <></>;
   }
 

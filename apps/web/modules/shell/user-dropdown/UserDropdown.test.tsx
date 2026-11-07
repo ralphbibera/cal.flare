@@ -2,8 +2,8 @@ import { render, waitFor } from "@testing-library/react";
 import React from "react";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
-vi.mock("next-auth/react", () => ({
-  signOut: vi.fn(),
+vi.mock("@calcom/features/auth/client/auth-client", () => ({
+  authClient: { signOut: vi.fn() },
 }));
 
 vi.mock("@calcom/lib/hooks/useLocale", () => ({

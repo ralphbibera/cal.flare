@@ -1,4 +1,4 @@
-import { useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import Link from "next/link";
 
 import { useIsEmbed } from "@calcom/embed-core/embed-iframe";
@@ -11,9 +11,9 @@ import { KBarTrigger } from "./Kbar";
 import { UserDropdown } from "./user-dropdown/UserDropdown";
 
 export function TopNavContainer() {
-  const { status } = useSession();
+  const { data: session } = authClient.useSession();
   const isStandalone = useIsStandalone();
-  if (status !== "authenticated" || isStandalone) return null;
+  if (!session || isStandalone) return null;
   return <TopNav />;
 }
 
