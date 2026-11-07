@@ -1,8 +1,8 @@
+import i18nConfig from "@calcom/i18n/next-i18next.config";
 import { lookup } from "bcp-47-match";
 import { z } from "zod";
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { i18n } = require("@calcom/i18n/next-i18next.config");
+const { i18n } = i18nConfig;
 
 export const i18nInputSchema = z.object({
   locale: z
