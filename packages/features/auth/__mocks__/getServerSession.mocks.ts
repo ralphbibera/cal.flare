@@ -17,20 +17,6 @@ type LoggerMock = {
   };
 };
 
-// JWT token structure used by NextAuth
-interface MockToken {
-  sub: string;
-  email: string;
-  name: string;
-  exp: number;
-  belongsToActiveTeam: boolean;
-  org: null;
-  orgAwareUsername: string | null;
-  profileId: number | null;
-  upId: string;
-  impersonatedBy?: { id: number };
-}
-
 // Prisma mock instance
 const prismaMock: DeepMockProxy<PrismaClient> = mockDeep<PrismaClient>();
 
@@ -98,10 +84,6 @@ function createSafeStringifyMock(): { safeStringify: Mock } {
   };
 }
 
-function createGetTokenMock(): { getToken: Mock } {
-  return { getToken: vi.fn() };
-}
-
 // Creates a mock User with only the fields used by getServerSession
 function createMockUser(overrides: Partial<User> = {}): User {
   return {
@@ -118,22 +100,6 @@ function createMockUser(overrides: Partial<User> = {}): User {
   } as User;
 }
 
-function createMockToken(overrides: Partial<MockToken> = {}): MockToken {
-  return {
-    sub: "5",
-    email: "user@example.com",
-    name: "Test User",
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    belongsToActiveTeam: false,
-    org: null,
-    orgAwareUsername: null,
-    profileId: null,
-    upId: "usr-5",
-    ...overrides,
-  };
-}
-
-export type { MockToken };
 export {
   prismaMock,
   resetPrismaMock,
@@ -143,7 +109,5 @@ export {
   createUserRepositoryMock,
   createAvatarUrlMock,
   createSafeStringifyMock,
-  createGetTokenMock,
   createMockUser,
-  createMockToken,
 };

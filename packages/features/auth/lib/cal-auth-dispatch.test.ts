@@ -358,11 +358,10 @@ describe("Cal auth mounted under /api/auth with real migrated D1", () => {
   it.each([
     ["GET", "/api/auth/session"],
     ["POST", "/api/auth/signout"],
-  ])("keeps %s %s on NextAuth for a legacy next-auth session", async (method, path) => {
+  ])("sends %s %s to Better Auth even with a next-auth cookie", async (method, path) => {
     const legacy = "__Secure-next-auth.session-token=header.key.iv.ciphertext.tag";
-    nextAuth.mockResolvedValueOnce(undefined);
-    const { request, response } = await dispatch(config(), method, path, legacy);
-    expect(nextAuth).toHaveBeenCalledWith(request, response.res, { mocked: true });
+    await dispatch(config(), method, path, legacy);
+    expect(nextAuth).not.toHaveBeenCalled();
   });
 
   it("keeps a non-Cal action on the existing NextAuth handler", async () => {
