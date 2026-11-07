@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { getLocale } from "@calcom/features/auth/lib/getLocale";
 import type { SSRConfig } from "@calcom/i18n/ssr";
 import getIP from "@calcom/lib/getIP";
@@ -9,7 +10,6 @@ import { prisma, readonlyPrisma } from "@calcom/prisma";
 import type { User as PrismaUser, SelectedCalendar } from "@calcom/prisma/client";
 import type { CreateNextContextOptions } from "@trpc/server/adapters/next";
 import type { GetServerSidePropsContext, NextApiRequest, NextApiResponse } from "next";
-import type { Session } from "next-auth";
 
 type CreateContextOptions =
   | (Omit<CreateNextContextOptions, "info"> & {
@@ -19,7 +19,7 @@ type CreateContextOptions =
 
 export type CreateInnerContextOptions = {
   sourceIp?: string;
-  session?: Session | null;
+  session?: CalServerSession | null;
   locale: string;
   user?: Omit<
     PrismaUser,
@@ -44,8 +44,8 @@ export type GetSessionFn =
   | ((_options: {
       req: GetServerSidePropsContext["req"] | NextApiRequest;
       res: GetServerSidePropsContext["res"] | NextApiResponse;
-    }) => Promise<Session | null>)
-  | (() => Promise<Session | null>);
+    }) => Promise<CalServerSession | null>)
+  | (() => Promise<CalServerSession | null>);
 
 export type InnerContext = CreateInnerContextOptions & {
   prisma: typeof prisma;

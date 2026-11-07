@@ -1,5 +1,4 @@
-import type { Session } from "next-auth";
-
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import prisma from "@calcom/prisma";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
@@ -7,7 +6,7 @@ import type { TrpcSessionUser } from "@calcom/trpc/server/types";
 type MyStatsOptions = {
   ctx: {
     user: NonNullable<TrpcSessionUser>;
-    session: Session;
+    session: CalServerSession;
   };
 };
 

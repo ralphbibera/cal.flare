@@ -1,13 +1,12 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import type { Session } from "next-auth";
-
 import { throwIfNotHaveAdminAccessToTeam } from "@calcom/app-store/_utils/throwIfNotHaveAdminAccessToTeam";
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import { deriveAppDictKeyFromType } from "@calcom/lib/deriveAppDictKeyFromType";
 import { HttpError } from "@calcom/lib/http-error";
 import { getServerErrorFromUnknown } from "@calcom/lib/server/getServerErrorFromUnknown";
 import prisma from "@calcom/prisma";
 import type { AppDeclarativeHandler, AppHandler } from "@calcom/types/AppHandler";
+import type { NextApiRequest, NextApiResponse } from "next";
 
 const defaultIntegrationAddHandler = async ({
   slug,
@@ -20,7 +19,7 @@ const defaultIntegrationAddHandler = async ({
   slug: string;
   supportsMultipleInstalls: boolean;
   appType: string;
-  user?: Session["user"];
+  user?: CalServerSession["user"];
   teamId?: number;
   createCredential: AppDeclarativeHandler["createCredential"];
 }) => {
@@ -46,7 +45,8 @@ const defaultIntegrationAddHandler = async ({
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   // Check that user is authenticated
-  req.session = await getServerSession({ req });
+  const session = await getServerSession({ req });
+  req.session = session;
 
   const { args, teamId } = req.query;
 
@@ -73,7 +73,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     if (typeof handler === "function") {
       await handler(req, res);
     } else {
-      await defaultIntegrationAddHandler({ user: req.session?.user, teamId: Number(teamId), ...handler });
+      await defaultIntegrationAddHandler({ user: session?.user, teamId: Number(teamId), ...handler });
       const redirectUrl = handler.redirect?.url ?? undefined;
       res.json({ url: redirectUrl, newTab: handler.redirect?.newTab });
     }

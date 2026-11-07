@@ -8,17 +8,17 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import prisma from "@calcom/prisma";
 import { teamMetadataSchema, userMetadata } from "@calcom/prisma/zod-utils";
 import type { GetServerSidePropsContext, NextApiRequest } from "next";
-import type { Session } from "next-auth";
+import type { CalServerSession } from "./cal-server-session";
 
 type Maybe<T> = T | null | undefined;
 
 export type SessionContext = {
   req?: NextApiRequest | GetServerSidePropsContext["req"];
   locale?: string;
-  session?: Session | null;
+  session?: CalServerSession | null;
 };
 
-async function getUserFromSession(ctx: SessionContext, session: Maybe<Session>) {
+async function getUserFromSession(ctx: SessionContext, session: Maybe<CalServerSession>) {
   if (!session) {
     return null;
   }

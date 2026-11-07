@@ -1,12 +1,11 @@
-import type { Session } from "next-auth";
-
+import type { CalServerSession } from "@calcom/features/auth/lib/cal-server-session";
 import { ProfileRepository } from "@calcom/features/profile/repositories/ProfileRepository";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
 
 type MeOptions = {
   ctx: {
     user: NonNullable<TrpcSessionUser>;
-    session: Session;
+    session: CalServerSession;
   };
 };
 
