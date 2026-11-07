@@ -14,7 +14,6 @@
     "next-env.d.ts",
     "@calcom/types",
     "../types/*.d.ts",
-    "../types/next-auth.d.ts",
     "*.ts",
     "*.tsx",
     "_components/**/*.ts",
