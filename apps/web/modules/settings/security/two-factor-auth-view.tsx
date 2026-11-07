@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import { Alert } from "@calcom/ui/components/alert";
@@ -8,7 +9,6 @@ import { SettingsToggle } from "@calcom/ui/components/form";
 import { SkeletonButton, SkeletonContainer, SkeletonText } from "@calcom/ui/components/skeleton";
 import DisableTwoFactorModal from "@components/settings/DisableTwoFactorModal";
 import EnableTwoFactorModal from "@components/settings/EnableTwoFactorModal";
-import { signOut, useSession } from "next-auth/react";
 import { useState } from "react";
 
 const SkeletonLoader = () => {
@@ -26,7 +26,7 @@ const SkeletonLoader = () => {
 
 const TwoFactorAuthView = () => {
   const utils = trpc.useUtils();
-  const { data: sessionData } = useSession();
+  const { data: sessionData } = authClient.useSession();
 
   const { t } = useLocale();
   const { data: user, isPending } = trpc.viewer.me.get.useQuery({ includePasswordAdded: true });
@@ -66,7 +66,7 @@ const TwoFactorAuthView = () => {
           if (sessionData?.user.role === "INACTIVE_ADMIN") {
             // Session role is set at login time, so we need to sign out
             // and sign back in to refresh the role and dismiss the banner
-            signOut({ callbackUrl: "/auth/login" });
+            authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign("/auth/login") } });
           } else {
             utils.viewer.me.invalidate();
           }

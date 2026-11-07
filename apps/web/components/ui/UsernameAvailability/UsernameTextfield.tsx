@@ -1,7 +1,7 @@
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import classNames from "classnames";
 // eslint-disable-next-line no-restricted-imports
 import { noop } from "lodash";
-import { useSession } from "next-auth/react";
 import type { RefCallback } from "react";
 import { useEffect, useState } from "react";
 
@@ -31,7 +31,6 @@ interface ICustomUsernameProps {
 
 const UsernameTextfield = (props: ICustomUsernameProps & Partial<React.ComponentProps<typeof TextField>>) => {
   const { t } = useLocale();
-  const { update } = useSession();
 
   const {
     currentUsername,
@@ -75,7 +74,7 @@ const UsernameTextfield = (props: ICustomUsernameProps & Partial<React.Component
       onSuccessMutation && (await onSuccessMutation());
       setOpenDialogSaveUsername(false);
       setCurrentUsername(inputUsernameValue);
-      await update({ username: inputUsernameValue });
+      await authClient.cal.updateSession({ data: { username: inputUsernameValue } });
     },
     onError: (error) => {
       onErrorMutation && onErrorMutation(error);
@@ -142,11 +141,7 @@ const UsernameTextfield = (props: ICustomUsernameProps & Partial<React.Component
           {currentUsername !== inputUsernameValue && (
             <div className="absolute right-[2px] top-6 flex h-7 flex-row">
               <span className={classNames("bg-default mx-0 p-3")}>
-                {usernameIsAvailable ? (
-                  <CheckIcon className="relative bottom-[6px] h-4 w-4" />
-                ) : (
-                  <></>
-                )}
+                {usernameIsAvailable ? <CheckIcon className="relative bottom-[6px] h-4 w-4" /> : <></>}
               </span>
             </div>
           )}

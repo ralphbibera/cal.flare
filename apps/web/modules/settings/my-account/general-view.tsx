@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import SettingsHeader from "@calcom/features/settings/appDir/SettingsHeader";
 import SectionBottomActions from "@calcom/features/settings/SectionBottomActions";
 import { formatLocalizedDateTime } from "@calcom/lib/dayjs";
@@ -17,7 +18,6 @@ import { revalidateTravelSchedules } from "@calcom/web/app/cache/travelSchedule"
 import { TimezoneSelect } from "@calcom/web/modules/timezone/components/TimezoneSelect";
 import TravelScheduleModal from "@components/settings/TravelScheduleModal";
 import { revalidateSettingsGeneral } from "app/(use-page-wrapper)/settings/(settings-layout)/my-account/general/actions";
-import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
@@ -55,7 +55,6 @@ const GeneralView = ({ user, travelSchedules }: GeneralViewProps) => {
     t,
     i18n: { language },
   } = useLocale();
-  const { update } = useSession();
   const [isUpdateBtnLoading, setIsUpdateBtnLoading] = useState<boolean>(false);
   const [isTZScheduleOpen, setIsTZScheduleOpen] = useState<boolean>(false);
 
@@ -66,7 +65,7 @@ const GeneralView = ({ user, travelSchedules }: GeneralViewProps) => {
       revalidateTravelSchedules();
       reset(getValues());
       showToast(t("settings_updated_successfully"), "success");
-      await update(res);
+      await authClient.cal.updateSession({ data: res });
 
       if (res.locale) {
         window.calNewLocale = res.locale;
@@ -281,7 +280,11 @@ const GeneralView = ({ user, travelSchedules }: GeneralViewProps) => {
                     <>{t("time_format")}</>
                   </Label>
                   <Select
-                    value={timeFormatOptions.find((option) => option.value === (typeof value === "object" ? value?.value : value)) || value}
+                    value={
+                      timeFormatOptions.find(
+                        (option) => option.value === (typeof value === "object" ? value?.value : value)
+                      ) || value
+                    }
                     options={timeFormatOptions}
                     onChange={(event) => {
                       if (event) formMethods.setValue("timeFormat", { ...event }, { shouldDirty: true });
@@ -303,7 +306,11 @@ const GeneralView = ({ user, travelSchedules }: GeneralViewProps) => {
                     <>{t("start_of_week")}</>
                   </Label>
                   <Select
-                    value={weekStartOptions.find((option) => option.value === (typeof value === "object" ? value?.value : value)) || value}
+                    value={
+                      weekStartOptions.find(
+                        (option) => option.value === (typeof value === "object" ? value?.value : value)
+                      ) || value
+                    }
                     options={weekStartOptions}
                     onChange={(event) => {
                       if (event) formMethods.setValue("weekStart", { ...event }, { shouldDirty: true });
