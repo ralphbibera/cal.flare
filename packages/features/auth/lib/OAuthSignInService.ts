@@ -15,44 +15,16 @@ import prisma from "@calcom/prisma";
 import { CreationSource, IdentityProvider, MembershipRole } from "@calcom/prisma/enums";
 import { calendar_v3 } from "@googleapis/calendar";
 import { OAuth2Client } from "googleapis-common";
-import { z } from "zod";
 import { getOrgUsernameFromEmail } from "../signup/utils/getOrgUsernameFromEmail";
+import type {
+  OAuthAccount,
+  OAuthProfile,
+  OAuthSignInDecision,
+  OAuthSignInPort,
+  OAuthUser,
+} from "./OAuthSignIn.types";
 
 const log = logger.getSubLogger({ prefix: ["OAuthSignInService"] });
-
-export type OAuthAccount = {
-  provider: string;
-  providerAccountId: string;
-  type: string;
-  access_token?: string;
-  refresh_token?: string;
-  expires_at?: number;
-  token_type?: string;
-  scope?: string;
-  id_token?: string;
-  session_state?: string;
-};
-
-export type OAuthUser = {
-  id: string | number;
-  email?: string | null;
-  name?: string | null;
-  image?: string | null;
-  emailVerified?: Date | null;
-};
-
-// Providers disagree on shape: Google sends a boolean `email_verified`, Azure AD sends `xms_edov`
-// as a boolean for work/school accounts and as "1" for personal ones. A malformed claim reads as absent.
-export const oauthProfileSchema = z.object({
-  email_verified: z.boolean().optional().catch(undefined),
-  xms_edov: z.union([z.boolean(), z.string(), z.number()]).optional().catch(undefined),
-});
-export type OAuthProfile = z.infer<typeof oauthProfileSchema>;
-
-export type OAuthSignInDecision =
-  | { kind: "allow"; userId: number }
-  | { kind: "redirect"; to: string }
-  | { kind: "deny" };
 
 const allow = (userId: number): OAuthSignInDecision => ({ kind: "allow", userId });
 const redirect = (to: string): OAuthSignInDecision => ({ kind: "redirect", to });
@@ -87,7 +59,7 @@ const checkIfUserShouldBelongToOrg = async (idP: IdentityProvider, email: string
 
 const GOOGLE_API_CREDENTIALS = () => JSON.parse(process.env.GOOGLE_API_CREDENTIALS || "{}")?.web || {};
 
-export class OAuthSignInService {
+export class OAuthSignInService implements OAuthSignInPort {
   async linkAccount(account: OAuthAccount, userId: number) {
     await prisma.account.create({
       data: {

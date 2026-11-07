@@ -1,3 +1,4 @@
+import { OAuthSignInService } from "@calcom/features/auth/lib/OAuthSignInService";
 import { createCalRequestAuth } from "@calcom/features/auth/lib/request-auth";
 import { getAuthRequestConfiguration } from "@calcom/features/auth/lib/request-context";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -26,7 +27,9 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     res.status(500).json({ message: "Auth request binding is required" });
     return;
   }
-  const response = await createCalRequestAuth(config).handler(toRequest(req, config.baseURL));
+  const response = await createCalRequestAuth({ ...config, oauthSignIn: new OAuthSignInService() }).handler(
+    toRequest(req, config.baseURL)
+  );
   res.statusCode = response.status;
   response.headers.forEach((value, name) => {
     if (name !== "set-cookie") res.setHeader(name, value);

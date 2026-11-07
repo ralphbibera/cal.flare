@@ -9,6 +9,8 @@ import { z } from "zod";
 import { authorizeCredentials, authorizeCredentialsForRequest } from "./authorizeCredentials";
 import { createBetterAuth } from "./better-auth";
 import { createCalMagicLink } from "./cal-magic-link";
+import type { OAuthProvidersConfig } from "./cal-oauth";
+import { createCalOAuth, readOAuthProvidersConfig, socialProviderOptions } from "./cal-oauth";
 import { projectCalServerSession } from "./cal-server-session";
 import { browserSession, credentialSession } from "./cal-session";
 import {
@@ -19,11 +21,15 @@ import {
 } from "./cal-session-policy";
 import { createCalSessionStore } from "./cal-session-store";
 import { ErrorCode } from "./ErrorCode";
+import type { OAuthSignInPort } from "./OAuthSignIn.types";
 import type { CredentialPolicy } from "./request-context";
 
 type AuthConfig = Parameters<typeof createBetterAuth>[0] & {
   webappURL: string;
   credentialPolicy?: CredentialPolicy;
+  oauth?: OAuthProvidersConfig;
+  // Social sign-in stays off without it, so a caller that never serves /api/auth cannot start OAuth.
+  oauthSignIn?: OAuthSignInPort;
   sendMagicLinkEmail?: Parameters<typeof createCalMagicLink>[0]["sendMagicLinkEmail"];
 };
 type EndpointContext = Parameters<typeof setSessionCookie>[0];
@@ -76,8 +82,18 @@ export function createCalCredentialsAuth(config: AuthConfig) {
     return origin;
   }
 
+  const { oauthSignIn } = config;
   const auth = betterAuth({
     ...core.options,
+    ...(oauthSignIn && {
+      socialProviders: socialProviderOptions(config.oauth ?? readOAuthProvidersConfig(), config.baseURL),
+      disabledPaths: [
+        // The core disables social sign-in; only Cal's callbacks below may complete it.
+        ...(core.options.disabledPaths ?? []).filter((path) => path !== "/sign-in/social"),
+        // Its session carries no Cal claims; /callback/google and /callback/azure-ad are Cal endpoints.
+        "/callback/microsoft",
+      ],
+    }),
     // Cal's authorizer owns throttling and its position in the credential guard order.
     rateLimit: { enabled: false },
     plugins: [
@@ -87,6 +103,9 @@ export function createCalCredentialsAuth(config: AuthConfig) {
         callback,
         sendMagicLinkEmail: config.sendMagicLinkEmail,
       }),
+      ...(oauthSignIn
+        ? [createCalOAuth({ webappURL: config.webappURL, sessions, callback, oauthSignIn })]
+        : []),
       {
         id: "cal-credentials",
         endpoints: {
