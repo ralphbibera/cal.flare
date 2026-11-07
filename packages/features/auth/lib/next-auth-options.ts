@@ -38,7 +38,8 @@ import { authorizeCredentials } from "./authorizeCredentials";
 import { checkIfUserBelongsToActiveTeam } from "./checkIfUserBelongsToActiveTeam";
 import { dub } from "./dub";
 import CalComAdapter from "./next-auth-custom-adapter";
-import { OAuthSignInService, oauthProfileSchema } from "./OAuthSignInService";
+import { oauthProfileSchema } from "./OAuthSignIn.types";
+import { OAuthSignInService } from "./OAuthSignInService";
 
 export { authorizeCredentials } from "./authorizeCredentials";
 export { checkIfUserBelongsToActiveTeam } from "./checkIfUserBelongsToActiveTeam";
