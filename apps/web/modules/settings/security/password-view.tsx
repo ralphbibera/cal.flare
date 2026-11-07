@@ -1,6 +1,6 @@
 "use client";
 
-import { signOut, useSession } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -49,7 +49,7 @@ const SkeletonLoader = () => {
 };
 
 const PasswordView = ({ user }: PasswordViewProps) => {
-  const { data } = useSession();
+  const { data } = authClient.useSession();
   const { t } = useLocale();
   const utils = trpc.useUtils();
   const metadata = userMetadataSchema.safeParse(user?.metadata);
@@ -99,7 +99,7 @@ const PasswordView = ({ user }: PasswordViewProps) => {
       so this a workaround to hide the banner after updating the password.
       discussion: https://github.com/nextauthjs/next-auth/discussions/4229
       */
-        signOut({ callbackUrl: "/auth/login" });
+        authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign("/auth/login") } });
       }
     },
     onError: (error) => {
@@ -142,7 +142,8 @@ const PasswordView = ({ user }: PasswordViewProps) => {
     value: mins,
   }));
 
-  const isDisabled = formMethods.formState.isSubmitting || !formMethods.formState.isDirty || !formMethods.formState.isValid;
+  const isDisabled =
+    formMethods.formState.isSubmitting || !formMethods.formState.isDirty || !formMethods.formState.isValid;
 
   const passwordMinLength = data?.user.role === "USER" ? 7 : 15;
   const isUser = data?.user.role === "USER";
