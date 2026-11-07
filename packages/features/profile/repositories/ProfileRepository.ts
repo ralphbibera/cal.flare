@@ -5,7 +5,8 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import prisma from "@calcom/prisma";
 import type { PrismaClient, User as PrismaUser, Team } from "@calcom/prisma/client";
 import { Prisma } from "@calcom/prisma/client";
-import { getD1Database } from "@calcom/prisma/d1";
+import { D1_IN_LIST_CHUNK_SIZE, findManyInChunks, getD1Database } from "@calcom/prisma/d1";
+import { runD1Batch } from "@calcom/prisma/d1-batch";
 import { MembershipRole } from "@calcom/prisma/enums";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { UpId, UserAsPersonalProfile, UserProfile } from "@calcom/types/UserProfile";
@@ -364,14 +365,18 @@ export class ProfileRepository implements IProfileRepository {
     );
 
     // Populate the movedFromUser
-    const createdProfiles = await prisma.profile.findMany({
-      where: {
-        userId: {
-          in: users.map((user) => user.id),
-        },
-        organizationId,
-      },
-    });
+    const createdProfiles = await findManyInChunks(
+      users.map((user) => user.id),
+      (chunk) =>
+        prisma.profile.findMany({
+          where: {
+            userId: {
+              in: chunk,
+            },
+            organizationId,
+          },
+        })
+    );
 
     for (let i = 0; i < createdProfiles.length; i += DATABASE_CHUNK_SIZE) {
       const profilesBatch = createdProfiles.slice(i, i + DATABASE_CHUNK_SIZE);
@@ -437,11 +442,30 @@ export class ProfileRepository implements IProfileRepository {
     });
   }
 
-  static deleteMany({ userIds, organizationId }: { userIds: number[]; organizationId: number }) {
-    // Even though there can be just one profile matching a userId and organizationId, we are using deleteMany as it won't error if the profile doesn't exist
-    return prisma.profile.deleteMany({
-      where: { userId: { in: userIds }, organizationId },
-    });
+  static async deleteMany({ userIds, organizationId }: { userIds: number[]; organizationId: number }) {
+    const uniqueUserIds = Array.from(new Set(userIds));
+    // A short list stays on Prisma so callers without a D1 binding keep working; a long one deletes through a
+    // single json_each statement, because chunking would commit some chunks before a later one fails.
+    if (uniqueUserIds.length <= D1_IN_LIST_CHUNK_SIZE) {
+      // Even though there can be just one profile matching a userId and organizationId, we are using deleteMany as it won't error if the profile doesn't exist
+      return prisma.profile.deleteMany({
+        where: { userId: { in: uniqueUserIds }, organizationId },
+      });
+    }
+
+    const db = getD1Database();
+    const [result] = await runD1Batch(
+      db,
+      [
+        db
+          .prepare(
+            `DELETE FROM "Profile" WHERE "organizationId" = ? AND "userId" IN (SELECT value FROM json_each(?))`
+          )
+          .bind(organizationId, JSON.stringify(uniqueUserIds)),
+      ],
+      { modelName: "Profile" }
+    );
+    return { count: result.meta.changes ?? 0 };
   }
 
   static async findByUserIdAndOrgId({
