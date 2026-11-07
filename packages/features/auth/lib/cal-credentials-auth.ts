@@ -8,6 +8,7 @@ import { deleteSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 import { authorizeCredentials, authorizeCredentialsForRequest } from "./authorizeCredentials";
 import { createBetterAuth } from "./better-auth";
+import { createCalMagicLink } from "./cal-magic-link";
 import { projectCalServerSession } from "./cal-server-session";
 import { browserSession, credentialSession } from "./cal-session";
 import {
@@ -23,6 +24,7 @@ import type { CredentialPolicy } from "./request-context";
 type AuthConfig = Parameters<typeof createBetterAuth>[0] & {
   webappURL: string;
   credentialPolicy?: CredentialPolicy;
+  sendMagicLinkEmail?: Parameters<typeof createCalMagicLink>[0]["sendMagicLinkEmail"];
 };
 type EndpointContext = Parameters<typeof setSessionCookie>[0];
 
@@ -79,6 +81,12 @@ export function createCalCredentialsAuth(config: AuthConfig) {
     // Cal's authorizer owns throttling and its position in the credential guard order.
     rateLimit: { enabled: false },
     plugins: [
+      ...createCalMagicLink({
+        webappURL: config.webappURL,
+        sessions,
+        callback,
+        sendMagicLinkEmail: config.sendMagicLinkEmail,
+      }),
       {
         id: "cal-credentials",
         endpoints: {
