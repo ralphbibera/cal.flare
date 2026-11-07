@@ -1,7 +1,7 @@
 "use client";
 
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import classNames from "classnames";
-import { signOut } from "next-auth/react";
 import { Children, type ReactNode } from "react";
 import { Toaster } from "sonner";
 
@@ -20,7 +20,7 @@ export const OnboardingLayout = ({ userEmail, currentStep, totalSteps, children 
   const { t } = useLocale();
 
   const handleSignOut = () => {
-    signOut({ callbackUrl: "/auth/logout" });
+    authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign("/auth/logout") } });
   };
 
   // Extract children as array

@@ -1,6 +1,6 @@
 "use client";
 
-import { signOut } from "next-auth/react";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { ReactNode } from "react";
 
 import { useLocale } from "@calcom/lib/hooks/useLocale";
@@ -17,7 +17,7 @@ export const OnboardingLayout = ({ userEmail, currentStep, children }: Onboardin
   const { t } = useLocale();
 
   const handleSignOut = () => {
-    signOut({ callbackUrl: "/auth/logout" });
+    authClient.signOut({ fetchOptions: { onSuccess: () => window.location.assign("/auth/logout") } });
   };
 
   return (
