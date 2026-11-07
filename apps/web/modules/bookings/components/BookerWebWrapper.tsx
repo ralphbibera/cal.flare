@@ -1,8 +1,8 @@
 "use client";
 
-import type { JSX } from "react";
 import { sdkActionManager, useIsEmbed } from "@calcom/embed-core/embed-iframe";
 import { useBookerEmbedEvents } from "@calcom/embed-core/src/embed-iframe/react-hooks";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import type { BookerProps } from "@calcom/features/bookings/Booker";
 import {
   BookerStoreProvider,
@@ -22,8 +22,7 @@ import { useEvent, useScheduleForEvent } from "@calcom/web/modules/schedules/hoo
 import { useNonEmptyScheduleDays } from "@calcom/web/modules/schedules/hooks/useNonEmptyScheduleDays";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getProviders } from "next-auth/react";
-import { authClient } from "@calcom/features/auth/client/auth-client";
+import type { JSX } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { shallow } from "zustand/shallow";
 import { useBookings } from "../hooks/useBookings";
@@ -217,17 +216,20 @@ const BookerWebWrapperComponent = (props: BookerWebWrapperAtomProps): JSX.Elemen
     if (hasSession) onOverlaySwitchStateChange(true);
   }, [hasSession]);
 
-  // Which social logins exist depends on how the instance is configured, so we only offer the available ones.
-  // Fetched once the modal opens to not add a request to every booking page visit.
+  // The instance decides which providers exist, so the booking overlay asks the auth server
+  // instead of guessing from build-time flags.
   const isOverlayContinueModalOpen = useOverlayCalendarStore((state) => state.continueWithProviderModal);
   const { data: authProviders } = useQuery({
     queryKey: ["authProviders"],
-    queryFn: () => getProviders(),
+    queryFn: async () => {
+      const { data } = await authClient.cal.oauthProviders();
+      return data?.providers ?? [];
+    },
     enabled: isOverlayContinueModalOpen,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const overlaySocialLoginProviders = OVERLAY_SOCIAL_LOGIN_PROVIDERS.filter(
-    (provider) => authProviders?.[provider]
+  const overlaySocialLoginProviders = OVERLAY_SOCIAL_LOGIN_PROVIDERS.filter((provider) =>
+    authProviders?.includes(provider)
   );
 
   return (

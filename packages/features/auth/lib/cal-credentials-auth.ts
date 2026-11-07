@@ -10,7 +10,12 @@ import { authorizeCredentials, authorizeCredentialsForRequest } from "./authoriz
 import { createBetterAuth } from "./better-auth";
 import { createCalMagicLink } from "./cal-magic-link";
 import type { OAuthProvidersConfig } from "./cal-oauth";
-import { createCalOAuth, readOAuthProvidersConfig, socialProviderOptions } from "./cal-oauth";
+import {
+  createCalOAuth,
+  enabledOAuthProviders,
+  readOAuthProvidersConfig,
+  socialProviderOptions,
+} from "./cal-oauth";
 import { projectCalServerSession } from "./cal-server-session";
 import { browserSession, credentialSession } from "./cal-session";
 import {
@@ -83,17 +88,20 @@ export function createCalCredentialsAuth(config: AuthConfig) {
   }
 
   const { oauthSignIn } = config;
+  // Shared by the provider registration and the endpoint that advertises them to the booking overlay.
+  const oauthProviders = oauthSignIn ? (config.oauth ?? readOAuthProvidersConfig()) : undefined;
   const auth = betterAuth({
     ...core.options,
-    ...(oauthSignIn && {
-      socialProviders: socialProviderOptions(config.oauth ?? readOAuthProvidersConfig(), config.baseURL),
-      disabledPaths: [
-        // The core disables social sign-in; only Cal's callbacks below may complete it.
-        ...(core.options.disabledPaths ?? []).filter((path) => path !== "/sign-in/social"),
-        // Its session carries no Cal claims; /callback/google and /callback/azure-ad are Cal endpoints.
-        "/callback/microsoft",
-      ],
-    }),
+    ...(oauthSignIn &&
+      oauthProviders && {
+        socialProviders: socialProviderOptions(oauthProviders, config.baseURL),
+        disabledPaths: [
+          // The core disables social sign-in; only Cal's callbacks below may complete it.
+          ...(core.options.disabledPaths ?? []).filter((path) => path !== "/sign-in/social"),
+          // Its session carries no Cal claims; /callback/google and /callback/azure-ad are Cal endpoints.
+          "/callback/microsoft",
+        ],
+      }),
     // Cal's authorizer owns throttling and its position in the credential guard order.
     rateLimit: { enabled: false },
     plugins: [
@@ -103,8 +111,15 @@ export function createCalCredentialsAuth(config: AuthConfig) {
         callback,
         sendMagicLinkEmail: config.sendMagicLinkEmail,
       }),
-      ...(oauthSignIn
-        ? [createCalOAuth({ webappURL: config.webappURL, sessions, callback, oauthSignIn })]
+      ...(oauthSignIn && oauthProviders
+        ? [
+            createCalOAuth({
+              webappURL: config.webappURL,
+              sessions,
+              callback,
+              oauthSignIn,
+            }),
+          ]
         : []),
       {
         id: "cal-credentials",
@@ -132,6 +147,10 @@ export function createCalCredentialsAuth(config: AuthConfig) {
               });
             }
           ),
+          calOAuthProviders: createAuthEndpoint("/cal/oauth-providers", { method: "GET" }, async (ctx) => {
+            noStore(ctx);
+            return ctx.json({ providers: oauthProviders ? enabledOAuthProviders(oauthProviders) : [] });
+          }),
           getSession: createAuthEndpoint(
             "/get-session",
             { method: "GET", requireHeaders: true },
@@ -219,4 +238,6 @@ export function createCalCredentialsAuth(config: AuthConfig) {
   };
 }
 
-export type CalCredentialsServerPlugin = ReturnType<typeof createCalCredentialsAuth>["options"]["plugins"][number];
+export type CalCredentialsServerPlugin = ReturnType<
+  typeof createCalCredentialsAuth
+>["options"]["plugins"][number];
