@@ -1,6 +1,6 @@
 "use client";
 
-import { signOut, useSession } from "@calcom/features/auth/client";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 import { useRouter } from "next/navigation";
 import type { ParsedUrlQuery } from "node:querystring";
 import { useEffect, useState } from "react";
@@ -18,8 +18,8 @@ export type PageProps = {
 
 export function Logout(props: PageProps) {
   const [btnLoading, setBtnLoading] = useState<boolean>(false);
-  const { status } = useSession();
-  if (status === "authenticated") signOut({ redirect: false });
+  const { data: session } = authClient.useSession();
+  if (session) void authClient.signOut();
   const router = useRouter();
   useEffect(() => {
     if (props.query?.survey === "true") {
