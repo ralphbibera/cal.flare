@@ -11,11 +11,9 @@ import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import { authenticator } from "otplib";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 import type { authorizeCredentials } from "./authorizeCredentials";
 import { authorizeCredentialsForRequest } from "./authorizeCredentials";
-import { getServerCsrfToken } from "./getServerCsrfToken";
 import { createCalRequestAuth } from "./request-auth";
 import type { AuthRequestConfiguration } from "./request-context";
 import { getAuthRequestConfiguration, withAuthRequestEnvironment } from "./request-context";
@@ -159,21 +157,12 @@ const authorize = (settings = config(), extra: Parameters<typeof credentials>[0]
     authorizeCredentialsForRequest(credentials(extra), settings.credentialPolicy)
   );
 
-function request(auth: Auth, path: string, cookie = "", body?: object | URLSearchParams) {
+function request(auth: Auth, path: string, cookie = "", body?: object) {
   return auth.handler(
     new Request(`${origin}/api/auth/${path}`, {
       method: body ? "POST" : "GET",
-      headers: {
-        cookie,
-        ...(body
-          ? {
-              origin,
-              "content-type":
-                body instanceof URLSearchParams ? "application/x-www-form-urlencoded" : "application/json",
-            }
-          : {}),
-      },
-      ...(body ? { body: body instanceof URLSearchParams ? body : JSON.stringify(body) } : {}),
+      headers: { cookie, ...(body ? { origin, "content-type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
     })
   );
 }
@@ -182,11 +171,9 @@ const cookies = (response: Response) =>
     .getSetCookie()
     .map((value) => value.split(";")[0])
     .join("; ");
-async function csrf(auth: Auth) {
-  const response = await request(auth, "csrf");
-  expect(response.status).toBe(200);
-  return { cookie: cookies(response), ...z.object({ csrfToken: z.string() }).parse(await response.json()) };
-}
+const signIn = (auth: Auth, extra: Parameters<typeof credentials>[0] & { callbackUrl?: string } = {}) =>
+  request(auth, "sign-in/cal-credentials", "", { ...credentials(), ...extra });
+const sessionCookie = "__Secure-better-auth.session_token";
 const rateLimited = /^Rate limit exceeded\. Try again in \d+ seconds\.$/;
 const withLimiter = <T>(namespace: RuntimeStateNamespace | undefined, callback: () => T) =>
   withRuntimeState({ RUNTIME_STATE: namespace }, callback);
@@ -209,36 +196,94 @@ async function enableMfa(index = 0) {
 }
 
 describe("request auth composition with real credential policy and migrated D1", () => {
-  it.each([
-    "form",
-    "json",
-  ])("authorizes %s credentials, signs a session, and binds server reads and revocation", async (transport) => {
+  it("authorizes JSON credentials, signs a native session, and binds server reads and revocation", async () => {
     const auth = createCalRequestAuth(config());
-    const state = await csrf(auth);
-    const body = { ...credentials(), csrfToken: state.csrfToken, callbackUrl: "/bookings", json: "true" };
-    const response = await request(
-      auth,
-      "callback/credentials",
-      state.cookie,
-      transport === "form" ? new URLSearchParams(body) : body
-    );
+    const response = await signIn(auth, { callbackUrl: "/bookings" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ url: `${origin}/bookings` });
-    expect(cookies(response)).toMatch(/__Secure-next-auth.session-token=.+/);
-    const cookie = `${state.cookie}; ${cookies(response)}`;
-    expect(await (await request(auth, "session", cookie)).json()).toMatchObject({
+    expect(await response.json()).toMatchObject({
+      redirect: true,
+      url: `${origin}/bookings`,
+      user: { id: 123, name: "Owner 0", role: "USER" },
+    });
+    expect(cookies(response)).toMatch(new RegExp(`${sessionCookie}=.+`));
+    expect(cookies(response)).not.toMatch(/next-auth/);
+    const cookie = cookies(response);
+    expect(await (await request(auth, "get-session", cookie)).json()).toMatchObject({
+      hasValidLicense: false,
       user: { id: 123, name: "Owner 0", role: "USER" },
     });
     expect(await auth.api.getServerSession({ headers: new Headers({ cookie }) })).toMatchObject({
       user: { id: 123, uuid: "request-user-0" },
     });
-    const forbidden = await request(auth, "session", cookie, {
-      csrfToken: state.csrfToken,
-      data: { upId: "usr-999" },
-    });
-    expect(forbidden.status).toBe(403);
-    await request(auth, "signout", cookie, { csrfToken: state.csrfToken, json: "true" });
+    expect((await request(auth, "cal/update-session", cookie, { data: { upId: "usr-999" } })).status).toBe(
+      403
+    );
+    const signedOut = await request(auth, "sign-out", cookie, {});
+    expect(signedOut.status).toBe(200);
+    expect(signedOut.headers.getSetCookie().some((value) => value.includes("Max-Age=0"))).toBe(true);
+    expect((await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
     expect(await auth.api.getSessionClaims({ headers: new Headers({ cookie }) })).toBeNull();
+    expect(await (await request(auth, "get-session", cookie)).json()).toBeNull();
+  });
+
+  it("returns Cal error codes with their statuses and issues no session", async () => {
+    const auth = createCalRequestAuth(config());
+    const rejected = async (extra: Parameters<typeof signIn>[1], status: number, message: string) => {
+      const response = await signIn(auth, extra);
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ message });
+      expect(cookies(response)).not.toMatch(/session_token/);
+    };
+    await rejected({ password: "incorrect" }, 401, "incorrect-email-password");
+    await rejected({ email: "missing@calflare.test" }, 401, "incorrect-email-password");
+    await databases[0].prepare("UPDATE users SET locked=1 WHERE id=123").run();
+    await rejected({}, 401, "incorrect-email-password");
+    await databases[0].prepare("UPDATE users SET locked=0 WHERE id=123").run();
+    await enableMfa();
+    await rejected({}, 401, "second-factor-required");
+    await rejected({ totpCode: "invalid" }, 401, "incorrect-two-factor-code");
+    await rejected({ backupCode: "invalid" }, 401, "incorrect-backup-code");
+    expect((await signIn(auth, { totpCode: authenticator.generate(totpSecret) })).status).toBe(200);
+    const backup = await signIn(auth, { backupCode: "1234-5678" });
+    expect(backup.status).toBe(200);
+    await rejected({ backupCode: "12345678" }, 401, "incorrect-backup-code");
+    expect((await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results).toHaveLength(2);
+  });
+
+  it("rejects cross-site sign-in and sign-out before changing any session", async () => {
+    const auth = createCalRequestAuth(config());
+    const cookie = cookies(await signIn(auth));
+    const sessions = async () => (await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results;
+    expect(await sessions()).toHaveLength(1);
+    const post = (path: string, headers: Record<string, string>, body: object) =>
+      auth.handler(
+        new Request(`${origin}/api/auth/${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...headers },
+          body: JSON.stringify(body),
+        })
+      );
+    const evil = { origin: "https://evil.test" };
+    expect((await post("sign-out", { ...evil, cookie }, {})).status).toBe(403);
+    expect((await post("sign-out", { cookie }, {})).status).toBe(403);
+    expect((await post("sign-in/cal-credentials", { ...evil, cookie }, credentials())).status).toBe(403);
+    expect((await post("sign-in/cal-credentials", evil, credentials())).status).toBe(403);
+    const navigation = { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" };
+    expect((await post("sign-in/cal-credentials", navigation, credentials())).status).toBe(403);
+    expect(await sessions()).toHaveLength(1);
+    expect((await post("sign-out", { origin, cookie }, {})).status).toBe(200);
+    expect(await sessions()).toEqual([]);
+  });
+
+  it.each([
+    ["/bookings", `${origin}/bookings`],
+    ["https://calflare.test:9443/bookings", "https://calflare.test:9443/bookings"],
+    ["https://other.test/bookings", origin],
+    ["ftp://calflare.test/bookings", origin],
+    ["invalid URL", origin],
+  ])("resolves the callback %s to %s", async (callbackUrl, expected) => {
+    const response = await signIn(createCalRequestAuth(config()), { callbackUrl });
+    expect(await response.json()).toMatchObject({ url: expected });
   });
 
   it("preserves lookup, limiter and password rejection order", async () => {
@@ -297,27 +342,16 @@ describe("request auth composition with real credential policy and migrated D1",
   it("admits enabled credential sign-ins up to the core limit, then rejects without a session", async () => {
     const email = await limitedEmail();
     const auth = createCalRequestAuth(enabledConfig());
-    const state = await csrf(auth);
-    const signIn = () =>
-      withLimiter(limiter, () =>
-        request(auth, "callback/credentials", state.cookie, {
-          ...credentials({ email }),
-          csrfToken: state.csrfToken,
-          json: "true",
-        })
-      );
+    const attempt = () => withLimiter(limiter, () => signIn(auth, { email }));
     const sessions = async () =>
       (await databases[0].prepare('SELECT id FROM "AuthSession"').all()).results.length;
-    for (let i = 0; i < 10; i++) expect((await signIn()).status).toBe(200);
+    for (let i = 0; i < 10; i++) expect((await attempt()).status).toBe(200);
     const issued = await sessions();
     expect(issued).toBeGreaterThan(0);
-    const limited = await signIn();
-    expect(limited.status).toBe(401);
-    const { url } = z.object({ url: z.string() }).parse(await limited.json());
-    const error = new URL(url);
-    expect(error.origin + error.pathname).toBe(`${origin}/api/auth/error`);
-    expect(error.searchParams.get("error")).toMatch(rateLimited);
-    expect(cookies(limited)).not.toMatch(/session-token/);
+    const limited = await attempt();
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toMatchObject({ message: expect.stringMatching(rateLimited) });
+    expect(cookies(limited)).not.toMatch(/session_token/);
     expect(await sessions()).toBe(issued);
   });
 
@@ -338,16 +372,9 @@ describe("request auth composition with real credential policy and migrated D1",
       ).rejects.toThrow("incorrect-email-password");
     }
     const auth = createCalRequestAuth(enabled);
-    const state = await csrf(auth);
-    const response = await withLimiter(brokenLimiter, () =>
-      request(auth, "callback/credentials", state.cookie, {
-        ...credentials({ email }),
-        csrfToken: state.csrfToken,
-        json: "true",
-      })
-    );
+    const response = await withLimiter(brokenLimiter, () => signIn(auth, { email }));
     expect(response.status).toBe(200);
-    expect(cookies(response)).toMatch(/__Secure-next-auth.session-token=.+/);
+    expect(cookies(response)).toMatch(new RegExp(`${sessionCookie}=.+`));
   });
 
   it("preserves inactive-admin reasons and request-scoped development and E2E exceptions", async () => {
@@ -386,14 +413,9 @@ describe("request auth composition with real credential policy and migrated D1",
     const auths = settings.map(createCalRequestAuth);
     const signedIn = await Promise.all(
       auths.map(async (auth) => {
-        const state = await csrf(auth);
-        const response = await request(auth, "callback/credentials", state.cookie, {
-          ...credentials({ backupCode: "12345678" }),
-          csrfToken: state.csrfToken,
-          json: "true",
-        });
+        const response = await signIn(auth, { backupCode: "12345678" });
         expect(response.status).toBe(200);
-        return `${state.cookie}; ${cookies(response)}`;
+        return cookies(response);
       })
     );
     for (const [index, auth] of auths.entries()) {
@@ -415,39 +437,17 @@ describe("request auth composition with real credential policy and migrated D1",
   it.each([
     "http://calflare.test",
     origin,
-  ])("uses configured URL and %s cookie policy consistently with SSR CSRF", async (webappURL) => {
+  ])("uses configured URL and %s cookie policy for the native session cookie", async (webappURL) => {
     const settings = config(0, { webappURL, NEXTAUTH_COOKIE_DOMAIN: ".calflare.test" });
-    const auth = createCalRequestAuth(settings);
-    const state = await csrf(auth);
-    const prefix = webappURL.startsWith("https://") ? "__Secure-" : "";
-    const name = `${prefix}next-auth.csrf-token`;
-    const value = state.cookie
-      .split("; ")
-      .find((part) => part.startsWith(`${name}=`))
-      ?.slice(name.length + 1);
-    expect(value).toBeDefined();
-    expect(
-      await withAuthRequestEnvironment(settings, () =>
-        getServerCsrfToken({ cookies: { [name]: decodeURIComponent(value!) } })
-      )
-    ).toBe(state.csrfToken);
-    const response = await request(auth, "callback/credentials", state.cookie, {
-      ...credentials(),
-      csrfToken: state.csrfToken,
-      json: "true",
-    });
+    const response = await signIn(createCalRequestAuth(settings));
     expect(response.status).toBe(200);
-    const sessionCookie = response.headers
+    const prefix = webappURL.startsWith("https://") ? "__Secure-" : "";
+    const cookie = response.headers
       .getSetCookie()
-      .find((cookie) => cookie.startsWith(`${prefix}next-auth.session-token=`));
-    expect(sessionCookie).toContain("Domain=.calflare.test");
-    expect(sessionCookie).toContain(prefix ? "SameSite=None" : "SameSite=Lax");
-    expect(sessionCookie?.includes("; Secure")).toBe(Boolean(prefix));
-    const providers = await auth.handler(
-      new Request(`${origin}/api/auth/providers`, { headers: { host: "untrusted.test" } })
-    );
-    expect(await providers.json()).toMatchObject({
-      credentials: { callbackUrl: `${origin}/api/auth/callback/credentials` },
-    });
+      .find((value) => value.startsWith(`${prefix}better-auth.session_token=`));
+    expect(cookie).toContain("Domain=.calflare.test");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain(prefix ? "SameSite=None" : "SameSite=Lax");
+    expect(cookie?.includes("; Secure")).toBe(Boolean(prefix));
   });
 });

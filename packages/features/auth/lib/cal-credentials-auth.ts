@@ -1,13 +1,13 @@
-import { ErrorCode } from "@calcom/lib/errorCodes";
+import { ErrorCode as CalErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
+import { HttpError } from "@calcom/lib/http-error";
 import { betterAuth } from "better-auth";
-import { createAuthEndpoint } from "better-auth/api";
+import { APIError, createAuthEndpoint, formCsrfMiddleware } from "better-auth/api";
 import type { setSessionCookie } from "better-auth/cookies";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 import { authorizeCredentials, authorizeCredentialsForRequest } from "./authorizeCredentials";
 import { createBetterAuth } from "./better-auth";
-import { createCalCsrfState } from "./cal-csrf";
 import { projectCalServerSession } from "./cal-server-session";
 import { browserSession, credentialSession } from "./cal-session";
 import {
@@ -17,6 +17,7 @@ import {
   updateCalSession,
 } from "./cal-session-policy";
 import { createCalSessionStore } from "./cal-session-store";
+import { ErrorCode } from "./ErrorCode";
 import type { CredentialPolicy } from "./request-context";
 
 type AuthConfig = Parameters<typeof createBetterAuth>[0] & {
@@ -24,70 +25,53 @@ type AuthConfig = Parameters<typeof createBetterAuth>[0] & {
   credentialPolicy?: CredentialPolicy;
 };
 type EndpointContext = Parameters<typeof setSessionCookie>[0];
-const form = z.object({
-  csrfToken: z.string().optional(),
-  callbackUrl: z.string().optional(),
-  json: z.string().optional(),
-});
-const credentialsForm = form.extend({
+
+const credentialsBody = z.object({
   email: z.string().default(""),
   password: z.string().default(""),
   totpCode: z.string().default(""),
   backupCode: z.string().default(""),
+  callbackUrl: z.string().optional(),
 });
+const calErrorCodes: ReadonlySet<string> = new Set(Object.values(ErrorCode));
 
-// This credential unit remains unmounted until the retained email and OAuth branches are ported.
+function credentialError(error: unknown) {
+  if (error instanceof HttpError && error.statusCode === 429)
+    return APIError.from("TOO_MANY_REQUESTS", { code: "RATE_LIMIT_EXCEEDED", message: error.message });
+  const message = error instanceof Error ? error.message : "";
+  // Anything outside Cal's error vocabulary may carry internals, so it is reported as an internal error.
+  const code = calErrorCodes.has(message) ? message : ErrorCode.InternalServerError;
+  let status: "UNAUTHORIZED" | "FORBIDDEN" | "INTERNAL_SERVER_ERROR" = "UNAUTHORIZED";
+  if (code === ErrorCode.InternalServerError) status = "INTERNAL_SERVER_ERROR";
+  if (code === ErrorCode.UserAccountLocked) status = "FORBIDDEN";
+  return APIError.from(status, { code: code.toUpperCase().replaceAll("-", "_"), message: code });
+}
+
+function noStore(ctx: EndpointContext) {
+  ctx.setHeader("cache-control", "private, no-cache, no-store");
+  ctx.setHeader("pragma", "no-cache");
+  ctx.setHeader("expires", "0");
+}
+
 export function createCalCredentialsAuth(config: AuthConfig) {
   const core = createBetterAuth(config);
   const sessions = createCalSessionStore(config);
   const origin = new URL(config.baseURL).origin;
-  const apiURL = `${origin}/api/auth`;
-  const secure = config.webappURL.startsWith("https://");
-  const prefix = secure ? "__Secure-" : "";
-  const sameSite: "none" | "lax" = secure ? "none" : "lax";
-  const attributes = { domain: config.NEXTAUTH_COOKIE_DOMAIN || undefined, sameSite, secure, path: "/" };
-  const csrfCookie = `${prefix}next-auth.csrf-token`;
-  const callbackCookie = `${prefix}next-auth.callback-url`;
 
-  async function csrf(ctx: EndpointContext, submitted?: string) {
-    const state = await createCalCsrfState({
-      cookie: ctx.getCookie(csrfCookie),
-      secret: config.NEXTAUTH_SECRET,
-      submitted,
-    });
-    if (state.kind === "created") {
-      ctx.setCookie(csrfCookie, state.cookie, { ...attributes, httpOnly: true });
+  function callback(requested?: string) {
+    if (!requested) return origin;
+    if (requested.startsWith("/")) return `${origin}${requested}`;
+    try {
+      const parsed = new URL(requested);
+      if (
+        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+        parsed.hostname === new URL(config.webappURL).hostname
+      )
+        return requested;
+    } catch {
+      return origin;
     }
-    return state;
-  }
-
-  function callback(ctx: EndpointContext, requested?: string) {
-    const target = requested || ctx.getCookie(callbackCookie) || origin;
-    let url = origin;
-    if (target.startsWith("/")) url = `${origin}${target}`;
-    else {
-      try {
-        const parsed = new URL(target);
-        if (
-          (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-          parsed.hostname === new URL(config.webappURL).hostname
-        ) {
-          url = target;
-        }
-      } catch {
-        url = origin;
-      }
-    }
-    if (url !== ctx.getCookie(callbackCookie)) ctx.setCookie(callbackCookie, url, attributes);
-    return url;
-  }
-
-  function redirect(ctx: EndpointContext, url: string, json?: string, status: 200 | 401 = 200) {
-    if (json === "true") {
-      ctx.setStatus(status);
-      return ctx.json({ url });
-    }
-    throw ctx.redirect(url);
+    return origin;
   }
 
   const auth = betterAuth({
@@ -98,157 +82,81 @@ export function createCalCredentialsAuth(config: AuthConfig) {
       {
         id: "cal-credentials",
         endpoints: {
-          calSigninPage: createAuthEndpoint(
-            "/signin",
-            {
-              method: "GET",
-              query: z.object({ callbackUrl: z.string().optional(), error: z.string().optional() }),
-            },
-            async (ctx) => {
-              await csrf(ctx);
-              const target = callback(ctx, ctx.query.callbackUrl);
-              const error = ctx.query.error ? `&error=${encodeURIComponent(ctx.query.error)}` : "";
-              throw ctx.redirect(`/auth/login?callbackUrl=${encodeURIComponent(target)}${error}`);
-            }
-          ),
-          calSignoutPage: createAuthEndpoint("/signout", { method: "GET" }, async (ctx) => {
-            await csrf(ctx);
-            callback(ctx);
-            throw ctx.redirect("/auth/logout");
-          }),
-          calError: createAuthEndpoint(
-            "/cal/error",
-            { method: "GET", query: z.object({ error: z.string().optional() }) },
-            async (ctx) => {
-              await csrf(ctx);
-              callback(ctx);
-              const error = ctx.query.error ?? "undefined";
-              if (
-                [
-                  "Signin",
-                  "OAuthSignin",
-                  "OAuthCallback",
-                  "OAuthCreateAccount",
-                  "EmailCreateAccount",
-                  "Callback",
-                  "OAuthAccountNotLinked",
-                  "EmailSignin",
-                  "CredentialsSignin",
-                  "SessionRequired",
-                ].includes(error)
-              )
-                throw ctx.redirect(`${apiURL}/signin?error=${encodeURIComponent(error)}`);
-              throw ctx.redirect(`/auth/error?error=${encodeURIComponent(error)}`);
-            }
-          ),
-          calProviders: createAuthEndpoint("/providers", { method: "GET" }, async (ctx) => {
-            await csrf(ctx);
-            callback(ctx);
-            return ctx.json({
-              credentials: {
-                id: "credentials",
-                name: "Cal.flare",
-                type: "credentials",
-                signinUrl: `${apiURL}/signin/credentials`,
-                callbackUrl: `${apiURL}/callback/credentials`,
-              },
-            });
-          }),
-          calCsrf: createAuthEndpoint("/csrf", { method: "GET" }, async (ctx) => {
-            callback(ctx);
-            ctx.setHeader("cache-control", "private, no-cache, no-store");
-            ctx.setHeader("pragma", "no-cache");
-            ctx.setHeader("expires", "0");
-            return ctx.json({ csrfToken: (await csrf(ctx)).token });
-          }),
           calCredentials: createAuthEndpoint(
-            "/callback/credentials",
-            {
-              method: "POST",
-              body: credentialsForm,
-              metadata: { allowedMediaTypes: ["application/json", "application/x-www-form-urlencoded"] },
-            },
+            "/sign-in/cal-credentials",
+            { method: "POST", body: credentialsBody, use: [formCsrfMiddleware] },
             async (ctx) => {
-              const target = callback(ctx, ctx.body.callbackUrl);
-              if (!(await csrf(ctx, ctx.body.csrfToken)).verified)
-                return redirect(ctx, `${apiURL}/signin?csrf=true`, ctx.body.json);
+              noStore(ctx);
+              const { callbackUrl, ...credentials } = ctx.body;
               let user;
               try {
                 user = config.credentialPolicy
-                  ? await authorizeCredentialsForRequest(ctx.body, config.credentialPolicy)
-                  : await authorizeCredentials(ctx.body);
+                  ? await authorizeCredentialsForRequest(credentials, config.credentialPolicy)
+                  : await authorizeCredentials(credentials);
               } catch (error) {
-                const message = error instanceof Error ? error.message : "internal-server-error";
-                return redirect(
-                  ctx,
-                  `${apiURL}/error?error=${encodeURIComponent(message)}`,
-                  ctx.body.json,
-                  401
-                );
+                throw credentialError(error);
               }
-              await sessions.issue(ctx, {
-                ...credentialSession(user),
-                ...(await getCalSessionSettings(user.id)),
+              const issued = credentialSession(user);
+              await sessions.issue(ctx, { ...issued, ...(await getCalSessionSettings(user.id)) });
+              return ctx.json({
+                redirect: Boolean(callbackUrl),
+                url: callback(callbackUrl),
+                user: browserSession(issued.claims, issued.profile).user,
               });
-              return redirect(ctx, target, ctx.body.json);
             }
           ),
-          calSession: createAuthEndpoint(
-            "/session",
-            {
-              method: ["GET", "POST"],
-              body: z
-                .object({ csrfToken: z.string().optional(), data: calSessionUpdateSchema.optional() })
-                .optional(),
-            },
+          getSession: createAuthEndpoint(
+            "/get-session",
+            { method: "GET", requireHeaders: true },
             async (ctx) => {
-              ctx.setHeader("cache-control", "private, no-cache, no-store");
-              ctx.setHeader("pragma", "no-cache");
-              ctx.setHeader("expires", "0");
-              const { verified } = await csrf(ctx, ctx.body?.csrfToken);
-              callback(ctx);
-              if (ctx.method === "POST" && !verified) {
-                ctx.setStatus(400);
-                return ctx.json({});
-              }
+              noStore(ctx);
               const stored = await sessions.read(ctx);
               if (!stored) {
                 if (ctx.getCookie(ctx.context.authCookies.sessionToken.name)) deleteSessionCookie(ctx);
-                return ctx.json({});
+                return ctx.json(null);
               }
-              let snapshot;
+              let snapshot: Awaited<ReturnType<typeof refreshCalSession>>;
               try {
-                snapshot =
-                  ctx.method === "POST"
-                    ? await updateCalSession(stored, ctx.body?.data ?? {})
-                    : await refreshCalSession(stored);
+                snapshot = await refreshCalSession(stored);
               } catch (error) {
-                if (error instanceof ErrorWithCode && error.code === ErrorCode.Forbidden) {
-                  ctx.setStatus(403);
-                  return ctx.json({});
-                }
+                if (error instanceof ErrorWithCode && error.code === CalErrorCode.Forbidden)
+                  throw APIError.from("FORBIDDEN", { code: "FORBIDDEN", message: "forbidden" });
                 throw error;
               }
               const renewed = await sessions.renew(ctx, {
                 ...snapshot,
                 sessionTimeout: (await getCalSessionSettings(stored.claims.id)).sessionTimeout,
               });
-              return ctx.json(renewed ? browserSession(renewed.claims, renewed.profile) : {});
+              return ctx.json(renewed ? browserSession(renewed.claims, renewed.profile) : null);
             }
           ),
-          calSignout: createAuthEndpoint(
-            "/signout",
+          calUpdateSession: createAuthEndpoint(
+            "/cal/update-session",
             {
               method: "POST",
-              body: form,
-              metadata: { allowedMediaTypes: ["application/json", "application/x-www-form-urlencoded"] },
+              body: z.object({ data: calSessionUpdateSchema.optional() }).optional(),
+              requireHeaders: true,
             },
             async (ctx) => {
-              const target = callback(ctx, ctx.body.callbackUrl);
-              if (!(await csrf(ctx, ctx.body.csrfToken)).verified)
-                return redirect(ctx, `${apiURL}/signout?csrf=true`, ctx.body.json);
-              await sessions.revoke(ctx);
-              return redirect(ctx, target, ctx.body.json);
+              noStore(ctx);
+              const stored = await sessions.read(ctx);
+              if (!stored)
+                throw APIError.from("UNAUTHORIZED", { code: "UNAUTHORIZED", message: "unauthorized" });
+              let snapshot: Awaited<ReturnType<typeof refreshCalSession>>;
+              try {
+                snapshot = await updateCalSession(stored, ctx.body?.data ?? {});
+              } catch (error) {
+                if (error instanceof ErrorWithCode && error.code === CalErrorCode.Forbidden)
+                  throw APIError.from("FORBIDDEN", { code: "FORBIDDEN", message: "forbidden" });
+                throw error;
+              }
+              const renewed = await sessions.renew(ctx, {
+                ...snapshot,
+                sessionTimeout: (await getCalSessionSettings(stored.claims.id)).sessionTimeout,
+              });
+              if (!renewed)
+                throw APIError.from("UNAUTHORIZED", { code: "UNAUTHORIZED", message: "unauthorized" });
+              return ctx.json(browserSession(renewed.claims, renewed.profile));
             }
           ),
           calServerSession: createAuthEndpoint.serverOnly(
@@ -279,21 +187,6 @@ export function createCalCredentialsAuth(config: AuthConfig) {
       getServerSession: auth.api.calServerSession,
       getSessionClaims: auth.api.calSessionClaims,
     },
-    handler(request: Request) {
-      const url = new URL(request.url);
-      const path = url.pathname;
-      if (
-        !["providers", "csrf", "callback/credentials", "session", "signout", "signin", "error"].some(
-          (route) => path === `/api/auth/${route}`
-        )
-      )
-        return Promise.resolve(new Response(null, { status: 404 }));
-      // The SDK reserves /error; keep Cal's public error route and page contract.
-      if (path === "/api/auth/error" && request.method === "GET") {
-        url.pathname = "/api/auth/cal/error";
-        return auth.handler(new Request(url, request));
-      }
-      return auth.handler(request);
-    },
+    handler: (request: Request) => auth.handler(request),
   };
 }

@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 import { authorizeCredentials } from "./authorizeCredentials";
 import { createCalCredentialsAuth } from "./cal-credentials-auth";
@@ -17,7 +16,7 @@ let mf: Miniflare;
 let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
 let auth: ReturnType<typeof createCalCredentialsAuth>;
 const origin = "https://calflare.test";
-const cookieName = "__Secure-next-auth.callback-url";
+const sessionCookie = "__Secure-better-auth.session_token";
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "calflare-protocol-test-"));
@@ -69,7 +68,7 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-describe("credential HTTP protocol (stubbed authorizer, native D1 sessions)", () => {
+describe("native credential endpoints (stubbed authorizer, native D1 sessions)", () => {
   async function principal() {
     await prismock.user.create({
       data: {
@@ -98,96 +97,63 @@ describe("credential HTTP protocol (stubbed authorizer, native D1 sessions)", ()
     });
   }
 
-  async function request(path: string, cookie = "", body?: object | URLSearchParams) {
+  function request(path: string, cookie = "", body?: object) {
     return auth.handler(
       new Request(`${origin}/api/auth/${path}`, {
         method: body ? "POST" : "GET",
-        headers: {
-          cookie,
-          ...(body
-            ? {
-                origin,
-                "content-type":
-                  body instanceof URLSearchParams ? "application/x-www-form-urlencoded" : "application/json",
-              }
-            : {}),
-        },
-        ...(body ? { body: body instanceof URLSearchParams ? body : JSON.stringify(body) } : {}),
+        headers: { cookie, ...(body ? { origin, "content-type": "application/json" } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
       })
     );
-  }
-
-  async function csrf() {
-    const response = await request("csrf");
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toContain("no-store");
-    const { csrfToken } = z.object({ csrfToken: z.string() }).parse(await response.json());
-    const cookie = response.headers
-      .getSetCookie()
-      .map((value) => value.split(";")[0])
-      .join("; ");
-    return { csrfToken, cookie };
   }
 
   async function login() {
     await principal();
-    const state = await csrf();
-    const response = await request(
-      "callback/credentials",
-      state.cookie,
-      new URLSearchParams({
-        csrfToken: state.csrfToken,
-        email: "protocol@calflare.test",
-        password: "synthetic-password",
-        callbackUrl: "/bookings",
-        json: "true",
-      })
-    );
+    const response = await request("sign-in/cal-credentials", "", {
+      email: "protocol@calflare.test",
+      password: "synthetic-password",
+      callbackUrl: "/bookings",
+    });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ url: `${origin}/bookings` });
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toMatchObject({
+      redirect: true,
+      url: `${origin}/bookings`,
+      user: { id: 123, role: "INACTIVE_ADMIN", inactiveAdminReason: "both", locale: "de" },
+    });
     expect(authorizeCredentials).toHaveBeenCalledWith({
       email: "protocol@calflare.test",
       password: "synthetic-password",
       totpCode: "",
       backupCode: "",
-      csrfToken: state.csrfToken,
-      callbackUrl: "/bookings",
-      json: "true",
     });
-    const sessionCookie = response.headers
-      .getSetCookie()
-      .find((value) => value.startsWith("__Secure-next-auth.session-token="));
-    expect(sessionCookie).toContain("HttpOnly");
-    expect(sessionCookie).toContain("Secure");
-    return { ...state, cookie: `${state.cookie}; ${sessionCookie?.split(";")[0]}` };
+    const cookie = response.headers.getSetCookie().find((value) => value.startsWith(`${sessionCookie}=`));
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Secure");
+    return cookie?.split(";")[0] ?? "";
   }
 
-  it("rejects missing and tampered CSRF before authorizing credentials", async () => {
-    const state = await csrf();
-    for (const csrfToken of [undefined, `${state.csrfToken}tampered`]) {
-      const response = await request("callback/credentials", state.cookie, { csrfToken, json: "true" });
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ url: `${origin}/api/auth/signin?csrf=true` });
-    }
-    expect(authorizeCredentials).not.toHaveBeenCalled();
+  it("returns credential errors without issuing a session", async () => {
+    vi.mocked(authorizeCredentials).mockRejectedValue(new Error("incorrect-email-password"));
+    const response = await request("sign-in/cal-credentials", "", {});
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      code: "INCORRECT_EMAIL_PASSWORD",
+      message: "incorrect-email-password",
+    });
     expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
   });
 
-  it("returns credential errors without issuing a session", async () => {
-    const state = await csrf();
-    vi.mocked(authorizeCredentials).mockRejectedValue(new Error("incorrect-email-password"));
-    const response = await request("callback/credentials", state.cookie, {
-      csrfToken: state.csrfToken,
-      json: "true",
-    });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ url: `${origin}/api/auth/error?error=incorrect-email-password` });
-    expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
+  it("hides unexpected authorizer failures behind the internal error code", async () => {
+    vi.mocked(authorizeCredentials).mockRejectedValue(new Error("D1_ERROR: no such table"));
+    const response = await request("sign-in/cal-credentials", "", {});
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ message: "internal-server-error" });
   });
 
   it("logs in, refreshes, updates only browser fields, and revokes the stored session", async () => {
-    const state = await login();
-    const response = await request("session", state.cookie);
+    const cookie = await login();
+    const response = await request("get-session", cookie);
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(await response.json()).toMatchObject({
@@ -196,80 +162,45 @@ describe("credential HTTP protocol (stubbed authorizer, native D1 sessions)", ()
     });
     const stored = await db.prepare('SELECT expiresAt FROM "AuthSession"').first<{ expiresAt: string }>();
     expect(new Date(stored!.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(120_000);
-    const updated = await request("session", state.cookie, {
-      csrfToken: state.csrfToken,
+    const updated = await request("cal/update-session", cookie, {
       data: { name: "Updated", locale: "ar", role: "ADMIN", id: 999 },
     });
     const body = await updated.json();
     expect(body).toMatchObject({ user: { id: 123, role: "INACTIVE_ADMIN", name: "Updated", locale: "ar" } });
     expect(JSON.stringify(body)).not.toMatch(/calClaims|calUserId|password|token|twoFactorSecret/);
-    const signedOut = await request(
-      "signout",
-      state.cookie,
-      new URLSearchParams({
-        csrfToken: state.csrfToken,
-        json: "true",
-        callbackUrl: "/auth/login",
-      })
-    );
-    expect(await signedOut.json()).toEqual({ url: `${origin}/auth/login` });
+    const signedOut = await request("sign-out", cookie, {});
+    expect(await signedOut.json()).toEqual({ success: true });
     expect(
       signedOut.headers
         .getSetCookie()
-        .some((cookie) => cookie.includes("session-token=;") && cookie.includes("Max-Age=0"))
+        .some((value) => value.includes("session_token=;") && value.includes("Max-Age=0"))
     ).toBe(true);
     expect((await db.prepare('SELECT id FROM "AuthSession"').all()).results).toEqual([]);
-    expect(await (await request("session", state.cookie)).json()).toEqual({});
+    expect(await (await request("get-session", cookie)).json()).toBeNull();
   });
 
-  it("does not mutate or revoke a session without CSRF and rejects a foreign email update", async () => {
-    const state = await login();
+  it("rejects an unauthenticated or foreign-email update without changing the session", async () => {
+    const cookie = await login();
     const before = (await db.prepare('SELECT * FROM "AuthSession"').all()).results;
-    expect((await request("session", state.cookie, { data: { name: "Not allowed" } })).status).toBe(400);
-    expect(await (await request("signout", state.cookie, { json: "true" })).json()).toEqual({
-      url: `${origin}/api/auth/signout?csrf=true`,
-    });
+    expect((await request("cal/update-session", "", { data: { name: "Not allowed" } })).status).toBe(401);
     await prismock.user.create({ data: { email: "other@calflare.test", username: "other" } });
-    const forbidden = await request("session", state.cookie, {
-      csrfToken: state.csrfToken,
-      data: { email: "other@calflare.test" },
-    });
+    const forbidden = await request("cal/update-session", cookie, { data: { email: "other@calflare.test" } });
     expect(forbidden.status).toBe(403);
-    expect(await forbidden.json()).toEqual({});
     expect((await db.prepare('SELECT * FROM "AuthSession"').all()).results).toEqual(before);
   });
 
   it("treats tampered and expired session cookies as unauthenticated", async () => {
-    const state = await login();
-    expect(await (await request("session", `${state.cookie}tampered`)).json()).toEqual({});
+    const cookie = await login();
+    expect(await (await request("get-session", `${cookie}tampered`)).json()).toBeNull();
     await db.prepare('UPDATE "AuthSession" SET expiresAt=?').bind("2020-01-01T00:00:00.000Z").run();
-    const expired = await request("session", state.cookie);
-    expect(await expired.json()).toEqual({});
-    expect(expired.headers.getSetCookie().some((cookie) => cookie.includes("Max-Age=0"))).toBe(true);
+    const expired = await request("get-session", cookie);
+    expect(await expired.json()).toBeNull();
+    expect(expired.headers.getSetCookie().some((value) => value.includes("Max-Age=0"))).toBe(true);
   });
-});
 
-it.each([
-  ["/bookings", `${origin}/bookings`],
-  ["https://calflare.test:9443/bookings", "https://calflare.test:9443/bookings"],
-  ["http://calflare.test/bookings", "http://calflare.test/bookings"],
-  ["https://other.test/bookings", origin],
-  ["ftp://calflare.test/bookings", origin],
-  ["file://calflare.test/bookings", origin],
-  ["invalid URL", origin],
-])("validates query and cookie callback %s before navigation", async (target, expected) => {
-  for (const source of ["query", "cookie"]) {
-    const query = source === "query" ? `?callbackUrl=${encodeURIComponent(target)}` : "";
-    const response = await auth.handler(
-      new Request(`${origin}/api/auth/signin${query}`, {
-        headers: source === "cookie" ? { cookie: `${cookieName}=${encodeURIComponent(target)}` } : {},
-      })
-    );
-    expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe(`/auth/login?callbackUrl=${encodeURIComponent(expected)}`);
-    const stored = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${cookieName}=`));
-    if (target !== expected || source === "query") {
-      expect(stored?.split(";")[0]).toBe(`${cookieName}=${encodeURIComponent(expected)}`);
+  it("serves no next-auth protocol endpoints", async () => {
+    for (const path of ["csrf", "providers", "session", "signout", "signin"]) {
+      expect((await request(path)).status).toBe(404);
     }
-  }
+  });
 });
