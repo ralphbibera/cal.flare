@@ -1,21 +1,17 @@
 import { readFileSync } from "node:fs";
-import Handlebars from "handlebars";
-import type { SendVerificationRequestParams } from "next-auth/providers/email";
-import type { TransportOptions } from "nodemailer";
-import nodemailer from "nodemailer";
 import path from "node:path";
-
+import process from "node:process";
 import { APP_NAME, WEBAPP_URL } from "@calcom/lib/constants";
 import { serverConfig } from "@calcom/lib/serverConfig";
+import Handlebars from "handlebars";
+import type { TransportOptions } from "nodemailer";
+import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport<TransportOptions>({
   ...(serverConfig.transport as TransportOptions),
 } as TransportOptions);
 
-const sendVerificationRequest = async ({
-  identifier,
-  url,
-}: Pick<SendVerificationRequestParams, "identifier" | "url">) => {
+const sendVerificationRequest = async ({ identifier, url }: { identifier: string; url: string }) => {
   const emailsDir = path.resolve(process.cwd(), "..", "..", "packages/emails", "templates");
   const originalUrl = new URL(url);
   const webappUrl = new URL(process.env.NEXTAUTH_URL || WEBAPP_URL);
@@ -26,8 +22,7 @@ const sendVerificationRequest = async ({
     encoding: "utf8",
   });
   const emailTemplate = Handlebars.compile(emailFile);
-  // async transporter
-  transporter.sendMail({
+  await transporter.sendMail({
     from: `${process.env.EMAIL_FROM}` || APP_NAME,
     to: identifier,
     subject: `Your sign-in link for ${APP_NAME}`,

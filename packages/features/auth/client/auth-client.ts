@@ -18,8 +18,6 @@ const calCredentialsClient = {
 
 const client = createAuthClient({
   basePath: "/api/auth",
-  // The email link flow is served in step D and the OAuth providers in step E; these are the native
-  // client calls (`signIn.magicLink`, `signIn.social`) their call sites use until then.
   plugins: [calCredentialsClient, magicLinkClient()],
 });
 
