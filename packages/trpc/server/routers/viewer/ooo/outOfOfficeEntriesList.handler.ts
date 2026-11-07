@@ -1,11 +1,10 @@
 import { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 import { getTranslation } from "@calcom/i18n/server";
 import prisma from "@calcom/prisma";
+import { D1_IN_LIST_CHUNK_SIZE } from "@calcom/prisma/d1";
 import type { TrpcSessionUser } from "@calcom/trpc/server/types";
-
 import { TRPCError } from "@trpc/server";
-
-import { type TOutOfOfficeEntriesListSchema } from "./outOfOfficeEntriesList.schema";
+import type { TOutOfOfficeEntriesListSchema } from "./outOfOfficeEntriesList.schema";
 
 type GetOptions = {
   ctx: {
@@ -78,10 +77,7 @@ export const outOfOfficeEntriesList = async ({ ctx, input }: GetOptions) => {
     );
   }
 
-  const whereClause = {
-    userId: {
-      in: fetchOOOEntriesForIds,
-    },
+  const entriesWhere = {
     end: {
       gte: endDateFilterStartRange ?? new Date().toISOString(),
       lte: endDateFilterEndRange,
@@ -109,56 +105,79 @@ export const outOfOfficeEntriesList = async ({ ctx, input }: GetOptions) => {
         }
       : {}),
   };
-
-  const getTotalEntries = await prisma.outOfOfficeEntry.count({
-    where: whereClause,
-  });
-
-  const outOfOfficeEntries = await prisma.outOfOfficeEntry.findMany({
-    where: whereClause,
-    select: {
-      id: true,
-      uuid: true,
-      start: true,
-      end: true,
-      toUserId: true,
-      toUser: {
-        select: {
-          username: true,
-          name: true,
-          email: true,
-        },
+  const whereFor = (userIds: number[]) => ({ ...entriesWhere, userId: { in: userIds } });
+  const outOfOfficeSelect = {
+    id: true,
+    uuid: true,
+    start: true,
+    end: true,
+    toUserId: true,
+    toUser: {
+      select: {
+        username: true,
+        name: true,
+        email: true,
       },
-      reason: {
-        select: {
-          id: true,
-          emoji: true,
-          reason: true,
-          userId: true,
-        },
+    },
+    reason: {
+      select: {
+        id: true,
+        emoji: true,
+        reason: true,
+        userId: true,
       },
-      notes: true,
-      showNotePublicly: true,
-      user: fetchTeamMembersEntries
-        ? {
-            select: {
-              id: true,
-              username: true,
-              email: true,
-              avatarUrl: true,
-              name: true,
-            },
-          }
-        : false,
     },
-    orderBy: {
-      start: "asc",
-    },
-    cursor: cursor ? { id: cursor } : undefined,
-    take: limit + 1,
-  });
+    notes: true,
+    showNotePublicly: true,
+    user: fetchTeamMembersEntries
+      ? {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            avatarUrl: true,
+            name: true,
+          },
+        }
+      : false,
+  };
+  const fetchEntries = (userIds: number[], take?: number, after?: number | null) =>
+    prisma.outOfOfficeEntry.findMany({
+      where: whereFor(userIds),
+      select: outOfOfficeSelect,
+      orderBy: take ? { start: "asc" } : [{ start: "asc" }, { id: "asc" }],
+      cursor: after ? { id: after } : undefined,
+      take,
+    });
 
-  let nextCursor: number | undefined = undefined;
+  const selectedUserIds = Array.from(new Set(fetchOOOEntriesForIds));
+  let getTotalEntries: number;
+  let outOfOfficeEntries: Awaited<ReturnType<typeof fetchEntries>>;
+  if (selectedUserIds.length <= D1_IN_LIST_CHUNK_SIZE) {
+    [getTotalEntries, outOfOfficeEntries] = await Promise.all([
+      prisma.outOfOfficeEntry.count({ where: whereFor(selectedUserIds) }),
+      fetchEntries(selectedUserIds, limit + 1, cursor),
+    ]);
+  } else {
+    const chunks: number[][] = [];
+    for (let index = 0; index < selectedUserIds.length; index += D1_IN_LIST_CHUNK_SIZE) {
+      chunks.push(selectedUserIds.slice(index, index + D1_IN_LIST_CHUNK_SIZE));
+    }
+    const [counts, pages] = await Promise.all([
+      Promise.all(chunks.map((chunk) => prisma.outOfOfficeEntry.count({ where: whereFor(chunk) }))),
+      // The keyset cursor spans the whole list, so the chunks are merged in `start` order before the page is cut.
+      Promise.all(chunks.map((chunk) => fetchEntries(chunk))),
+    ]);
+    getTotalEntries = counts.reduce((sum, count) => sum + count, 0);
+    const merged = pages
+      .flat()
+      .sort((left, right) => left.start.getTime() - right.start.getTime() || left.id - right.id);
+    const cursorIndex = cursor ? merged.findIndex((entry) => entry.id === cursor) : -1;
+    const page = cursor ? (cursorIndex === -1 ? [] : merged.slice(cursorIndex + 1)) : merged;
+    outOfOfficeEntries = page.slice(0, limit + 1);
+  }
+
+  let nextCursor: number | undefined;
   if (outOfOfficeEntries && outOfOfficeEntries.length > limit) {
     const nextItem = outOfOfficeEntries.pop();
     nextCursor = nextItem?.id;
