@@ -1,8 +1,14 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { d1TemplateEnv, migrateD1 } from "../migrate-d1.mjs";
+import {
+  d1TemplateEnv,
+  migrateD1,
+  migrationsFingerprint,
+  readMigrations,
+  templateManifestPath,
+} from "../migrate-d1.mjs";
 
 declare global {
   var calflareD1Template: { root?: Promise<string>; holders: number } | undefined;
@@ -15,21 +21,36 @@ globalThis.calflareD1Template = shared;
 
 export async function setup(): Promise<void> {
   shared.holders += 1;
-  shared.root ??= mkdtemp(join(tmpdir(), "calflare-d1-template-")).then(async (directory) => {
+  shared.root ??= buildTemplate().catch((error: unknown) => {
+    // A cached rejection would fail every later setup in this process without retrying.
+    shared.root = undefined;
+    throw error;
+  });
+  await shared.root;
+}
+
+async function buildTemplate(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "calflare-d1-template-"));
+  try {
     const template = join(directory, "state");
+    const migrations = await readMigrations();
     await migrateD1({ persistTo: template, useTemplate: false });
+    await writeFile(templateManifestPath(template), migrationsFingerprint(migrations));
     // Fork workers copy process.env when they spawn, and that happens after every global setup ran.
     process.env[d1TemplateEnv] = template;
     return directory;
-  });
-  await shared.root;
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function teardown(): Promise<void> {
   shared.holders -= 1;
   if (shared.holders > 0 || !shared.root) return;
-  const directory = await shared.root;
+  const directory = await shared.root.catch(() => undefined);
   shared.root = undefined;
+  if (!directory) return;
   delete process.env[d1TemplateEnv];
   await rm(directory, { recursive: true, force: true });
 }

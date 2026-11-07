@@ -41,6 +41,28 @@ type Query = { sql: string; params?: string[] };
 
 const defaultMigrationsDirectory = fileURLToPath(new URL("./migrations-d1/", import.meta.url));
 
+async function readMigrations(directory = defaultMigrationsDirectory) {
+  return Promise.all(
+    (await readdir(directory))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .map(async (name) => {
+        const bytes = await readFile(join(directory, name));
+        return { name, hash: createHash("sha256").update(bytes).digest("hex"), sql: bytes.toString("utf8") };
+      })
+  );
+}
+
+function migrationsFingerprint(migrations: { name: string; hash: string }[]) {
+  return migrations.map(({ name, hash }) => `${name} ${hash}`).join("\n");
+}
+
+// Written beside the template by the Vitest global setup, so a copy is only trusted for the exact
+// migration files that produced it.
+function templateManifestPath(template: string) {
+  return join(dirname(template), "migrations.txt");
+}
+
 async function isEmptyOrMissing(directory: string) {
   const entries = await readdir(directory).catch(() => null);
   return !entries || entries.length === 0;
@@ -64,16 +86,7 @@ async function migrateD1({
   if (binding?.type !== "d1" || !binding.id) {
     throw new ErrorWithCode(ErrorCode.BadRequest, "Web DB must resolve to a local D1 identity");
   }
-  const directory = migrationsDirectory ?? defaultMigrationsDirectory;
-  const migrations = await Promise.all(
-    (await readdir(directory))
-      .filter((name) => name.endsWith(".sql"))
-      .sort()
-      .map(async (name) => {
-        const bytes = await readFile(join(directory, name));
-        return { name, hash: createHash("sha256").update(bytes).digest("hex"), sql: bytes.toString("utf8") };
-      })
-  );
+  const migrations = await readMigrations(migrationsDirectory);
   const persistence = resolve(persistTo ?? join(webRoot, ".cloudflare/state"));
   const template = process.env[d1TemplateEnv];
   // Only the Vitest global setup sets CALFLARE_D1_TEMPLATE; production never does. The CLI passes
@@ -84,6 +97,8 @@ async function migrateD1({
     template &&
     persistTo !== undefined &&
     migrationsDirectory === undefined &&
+    (await readFile(templateManifestPath(template), "utf8").catch(() => null)) ===
+      migrationsFingerprint(migrations) &&
     (await isEmptyOrMissing(persistence))
   ) {
     await cp(template, persistence, { recursive: true });
@@ -180,4 +195,4 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
 }
 
-export { d1TemplateEnv, migrateD1 };
+export { d1TemplateEnv, migrateD1, migrationsFingerprint, readMigrations, templateManifestPath };
