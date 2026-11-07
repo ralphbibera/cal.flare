@@ -1,6 +1,6 @@
 "use client";
 
-import { signIn } from "@calcom/features/auth/client";
+import { authClient } from "@calcom/features/auth/client/auth-client";
 
 import type { inferSSRProps } from "@calcom/types/inferSSRProps";
 import { Button } from "@calcom/ui/components/button";
@@ -9,16 +9,12 @@ import type { getServerSideProps } from "@server/lib/auth/signin/getServerSidePr
 
 export type PageProps = inferSSRProps<typeof getServerSideProps>;
 function Signin({ providers }: PageProps) {
-  if (!providers) {
-    return null;
-  }
-
   return (
     <div className="center mt-10 justify-between stack-y-5 text-center align-baseline">
-      {Object.values(providers).map((provider) => {
+      {providers.map((provider) => {
         return (
-          <div key={provider.name}>
-            <Button onClick={() => signIn(provider.id)}>Sign in with {provider.name}</Button>
+          <div key={provider.id}>
+            <Button onClick={() => authClient.signIn.social({ provider: provider.id, callbackURL: "/" })}>Sign in with {provider.name}</Button>
           </div>
         );
       })}
