@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -25,6 +25,9 @@ const BIOME_EXTENSIONS = /\.(?:[cm]?[jt]sx?|json|jsonc|css|graphql)$/;
 const TEST_SOURCE_EXTENSIONS = /\.(?:tsx?|js)$/;
 const DOCS_FILE = /(?:\.md$|^docs\/)/;
 const LOCKFILES = new Set(["bun.lock", "bun.lockb", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]);
+// Unbounded turbo and vitest fan-out started ~20 Node processes per push, and parallel agent pushes exhausted a 16 GB machine.
+const DEFAULT_CONCURRENCY = 2;
+const LOCK_POLL_MS = 2000;
 
 export function parsePushLines(stdin: string): PushRef[] {
   const refs: PushRef[] = [];
@@ -85,11 +88,13 @@ export function buildSteps({
   base,
   root,
   testReportPath,
+  concurrency = DEFAULT_CONCURRENCY,
 }: {
   files: string[];
   base: string;
   root: string;
   testReportPath: string;
+  concurrency?: number;
 }): Step[] {
   const steps: Step[] = [];
   const biomeFiles = files.filter((file) => BIOME_EXTENSIONS.test(file));
@@ -121,6 +126,7 @@ export function buildSteps({
       "run",
       "type-check:ci",
       "--log-prefix=none",
+      `--concurrency=${concurrency}`,
       `--filter=...[${base}]`,
       ...webFilter,
     ],
@@ -135,6 +141,7 @@ export function buildSteps({
         "--run",
         "--project",
         "!PackagedEmbedTests",
+        `--maxWorkers=${concurrency}`,
         "--reporter=default",
         "--reporter=json",
         `--outputFile.json=${testReportPath}`,
@@ -152,6 +159,70 @@ export function countTestFiles(report: string): number {
   return typeof parsed.numTotalTestSuites === "number" ? parsed.numTotalTestSuites : 0;
 }
 
+export interface LockDeps {
+  isAlive: (pid: number) => boolean;
+  sleep: (ms: number) => void;
+  onWait: (holder: number) => void;
+}
+
+/**
+ * Serializes pre-push runs across every worktree sharing this git common dir, so concurrent pushes
+ * queue instead of stacking type checks and test forks. A lock left by a dead process is taken over.
+ */
+export function acquireLock(lockDir: string, deps: LockDeps): () => void {
+  const pidFile = path.join(lockDir, "pid");
+  let announced = false;
+  for (;;) {
+    try {
+      mkdirSync(lockDir);
+      writeFileSync(pidFile, String(process.pid));
+      return () => rmSync(lockDir, { recursive: true, force: true });
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+    }
+    const holder = existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : Number.NaN;
+    // A missing pid file means the holder is between mkdir and write; wait for it rather than steal.
+    if (Number.isInteger(holder) && holder > 0 && !deps.isAlive(holder)) {
+      rmSync(lockDir, { recursive: true, force: true });
+      continue;
+    }
+    if (!announced) {
+      deps.onWait(holder);
+      announced = true;
+    }
+    deps.sleep(LOCK_POLL_MS);
+  }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+const activeGroups = new Set<number>();
+
+// Steps run in their own process group so leftover tsc, vitest forks or workerd die with the step.
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // The group already exited.
+  }
+}
+
+function killActiveGroups(): void {
+  for (const pid of activeGroups) killGroup(pid);
+  activeGroups.clear();
+}
+
 const BYPASS_HINT =
   "Bypass with SKIP_PREPUSH=1 git push ... or git push --no-verify (CI is still the real gate).";
 
@@ -167,21 +238,35 @@ function formatSeconds(startedAt: number): string {
   return `${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
 }
 
-function runStep(step: Step, cwd: string): boolean {
+async function runStep(step: Step, cwd: string): Promise<boolean> {
   console.log(`\n[prepush] ${step.name}: ${step.command.join(" ")}`);
   const startedAt = performance.now();
-  const result = spawnSync(step.command[0], step.command.slice(1), {
+  const child = spawn(step.command[0], step.command.slice(1), {
     cwd,
     stdio: "inherit",
     env: { ...process.env, ...step.env },
+    detached: true,
   });
-  console.log(
-    `[prepush] ${step.name} ${result.status === 0 ? "passed" : "FAILED"} in ${formatSeconds(startedAt)}`
-  );
-  return result.status === 0;
+  const pid = child.pid;
+  if (pid !== undefined) activeGroups.add(pid);
+  const passed = await new Promise<boolean>((resolve) => {
+    child.once("error", () => resolve(false));
+    child.once("exit", (code) => resolve(code === 0));
+  });
+  if (pid !== undefined) {
+    killGroup(pid);
+    activeGroups.delete(pid);
+  }
+  console.log(`[prepush] ${step.name} ${passed ? "passed" : "FAILED"} in ${formatSeconds(startedAt)}`);
+  return passed;
 }
 
-function main(): number {
+function parseConcurrency(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_CONCURRENCY;
+}
+
+async function main(): Promise<number> {
   if (process.env.SKIP_PREPUSH === "1") {
     console.log("[prepush] skipped: SKIP_PREPUSH=1");
     return 0;
@@ -250,13 +335,32 @@ function main(): number {
 
   const reportDir = mkdtempSync(path.join(tmpdir(), "prepush-"));
   const testReportPath = path.join(reportDir, "vitest.json");
-  const steps = buildSteps({ files: changes.files, base: changes.commonBase, root, testReportPath });
+  const steps = buildSteps({
+    files: changes.files,
+    base: changes.commonBase,
+    root,
+    testReportPath,
+    concurrency: parseConcurrency(process.env.PREPUSH_CONCURRENCY),
+  });
   console.log(`[prepush] ${changes.files.length} changed file(s) against ${changes.commonBase.slice(0, 9)}`);
+
+  const releaseLock = acquireLock(path.join(commonDir, "prepush.lock"), {
+    isAlive,
+    sleep: sleepSync,
+    onWait: (holder) => console.log(`[prepush] waiting for another push's checks (pid ${holder}) to finish`),
+  });
+  const abort = (signal: NodeJS.Signals): void => {
+    killActiveGroups();
+    releaseLock();
+    console.error(`\n[prepush] interrupted by ${signal}`);
+    process.exit(1);
+  };
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.once(signal, abort);
 
   const startedAt = performance.now();
   try {
     for (const step of steps) {
-      if (!runStep(step, root)) {
+      if (!(await runStep(step, root))) {
         console.error(`\n[prepush] failed at step "${step.name}". ${BYPASS_HINT}`);
         return 1;
       }
@@ -267,6 +371,8 @@ function main(): number {
       }
     }
   } finally {
+    killActiveGroups();
+    releaseLock();
     rmSync(reportDir, { recursive: true, force: true });
   }
 
@@ -280,5 +386,5 @@ function main(): number {
 }
 
 if (import.meta.main) {
-  process.exit(main());
+  process.exit(await main());
 }
