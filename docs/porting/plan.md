@@ -53,13 +53,18 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 **Build.**
 
-- [ ] Bind the existing `@calcom/prisma` exports and extensions to `PrismaD1(env.DB)` at version 6.16.1, preserving repository/service ownership.
+- [x] Bind the existing `@calcom/prisma` exports and extensions to `PrismaD1(env.DB)` at version 6.16.3, preserving repository/service ownership.
+  - Evidence: `packages/prisma/index.ts:34-70` builds a request-bound `PrismaD1` client per `D1Database` and keeps the public exports and extensions; `packages/prisma/d1.ts:8-21` binds the database through request storage; `packages/prisma/package.json:31-36` and `docs/porting/architecture.md:26` pin Prisma 6.16.3.
 - [ ] Convert the in-scope Prisma schema, PostgreSQL-only reads, views with consumers and every reached multi-row write to D1.
-- [ ] Put domain and auth schema changes through one reviewed D1 SQL migration history. Do not add independent runtime schema synchronization.
-- [ ] Keep original model IDs, public UIDs, relations, defaults, date/time units, JSON semantics, ordering and caller error mappings.
+- [x] Put domain and auth schema changes through one reviewed D1 SQL migration history. Do not add independent runtime schema synchronization.
+  - Evidence: `packages/prisma/migrations-d1/0001_holiday_cache.sql` through `0007_runtime_config.sql` are the ordered history; `packages/prisma/migrate-d1.mts:181-196` rejects remote execution; `.github/workflows/check-prisma-migrations.yml:16-18` runs `bun run generate-d1-domain --check`.
+- [x] Keep original model IDs, public UIDs, relations, defaults, date/time units, JSON semantics, ordering and caller error mappings.
+  - Evidence: `packages/prisma/d1-batch.ts:20-51` maps SQLite constraint failures to P2002, P2003, P2011, and P2025; `packages/prisma/d1-client.test.ts:71-145` covers request isolation, date precision, JSON nulls, defaults, and Prisma failures; `packages/prisma/reference-data.test.ts:64-105` checks the reference-data end state.
 - [ ] Keep guards and dependent writes in one atomic D1 batch. Prove rollback and concurrency at each original transactional boundary.
-- [ ] Replace next-auth at the selected self-hosted auth boundary while preserving original sessions, OAuth linking, bcrypt, MFA, recovery, roles, profile checks, public URLs and redirects.
-- [ ] Replace next-i18next loading with the selected i18next/react-i18next boundary, retaining resources, keys, locale resolution, fallback, SSR isolation and hydration.
+- [x] Replace next-auth at the selected self-hosted auth boundary while preserving original sessions, OAuth linking, bcrypt, MFA, recovery, roles, profile checks, public URLs and redirects.
+  - Evidence: `packages/features/auth/lib/better-auth.ts:25-75` defines the session, account, and verification contract; `apps/web/pages/api/auth/[...all].ts` serves `/api/auth`; `packages/features/auth/lib/cal-credentials-auth.ts:42-49,127-148` keeps the password, TOTP, and backup-code endpoint; `packages/features/auth/lib/cal-oauth.ts:151-190` keeps the OAuth link flow and calls `OAuthSignInService`; `packages/features/auth/lib/verifyPassword.ts:1` keeps bcrypt; TOTP, reset, and signup routes live under `apps/web/app/api/auth/`; `bun.lock` has no `next-auth` entries; `getServerSession.cal.test.ts`, `request-auth.test.ts`, and `signupMemberships.integration-test.ts` run against Miniflare D1.
+- [x] Replace next-i18next loading with the selected i18next/react-i18next boundary, retaining resources, keys, locale resolution, fallback, SSR isolation and hydration.
+  - Evidence: `packages/i18n/server.ts:13-28` loads a per-request `createInstance` with English fallback; `apps/web/lib/app-providers.tsx:36-54` creates a per-request `I18nextProvider`; `apps/web/app/layout.tsx:107` awaits `loadTranslations`; `packages/i18n/package.json:11` retains only the `next-i18next.config` export.
 
 **You see.**
 
@@ -78,7 +83,8 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 - [ ] Complete public user/event pages, availability, booking submission, success, confirmation, payments, seats, reschedule and cancellation.
 - [ ] Complete signup, onboarding, event types, schedules, date overrides, booking lists, settings and app installation.
 - [ ] Migrate only consumed query, auth, transport and transactional prerequisites with each complete flow. Unrelated package work does not block it.
-- [ ] Preserve the latest upstream notification behavior when all calendar/video integrations fail, including warning details and email suppression settings.
+- [x] Preserve the latest upstream notification behavior when all calendar/video integrations fail, including warning details and email suppression settings.
+  - Evidence: `packages/features/bookings/lib/handleNewBooking/handleAppsStatus.ts:6-18` keeps success, failure, error, and warning aggregation; `packages/features/bookings/lib/handleConfirmation.ts:88-118` records the all-failed status and then sends the confirmation email behind the existing suppression flags; `packages/features/bookings/lib/service/RegularBookingService.ts:2067-2079` takes the same all-failed path for new bookings; `packages/features/bookings/lib/handleNewBooking/handleAppsStatus.test.ts:7-40` covers merged warning and failure aggregation.
 
 **You see.**
 
@@ -96,7 +102,8 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 - [ ] Accept every app-store integration separately, including credential format, enablement, refresh, callbacks, payloads, signatures, failure mapping and link-only catalog behavior.
 - [ ] Replace consumed Trigger, Bull and Redis hosting with selected Cloudflare job/state adapters. Preserve attempt accounting, TTL, throttling, ordering and source-swallowed failures.
-- [ ] Bind existing product schedules to Worker dispatch with exact method, authorization and calendar predicates. Do not invent jobs for absent-handler declarations.
+- [x] Bind existing product schedules to Worker dispatch with exact method, authorization and calendar predicates. Do not invent jobs for absent-handler declarations.
+  - Evidence: `apps/web/worker/schedules.ts:10-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:91-96` wires `scheduled` and `queue`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
 - [ ] Replace the v2 Node host at `apps/api/v2/src/worker.ts`, retaining controller/service folders, version selection, DTOs, guards, filters, pagination and public `/api/v2` routes.
 - [ ] Complete mail, webhooks, social PNGs, embeds, all locales and docs at their bound Cloudflare destinations.
 
