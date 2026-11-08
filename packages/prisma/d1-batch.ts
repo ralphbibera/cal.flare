@@ -3,8 +3,6 @@ import { z } from "zod";
 import { Prisma } from "./generated/prisma/client";
 import { JsonValueSchema } from "./zod/inputTypeSchemas/JsonValueSchema";
 
-type GuardFailure = { modelName: string; operation: "an update" | "a delete" } | { message: string };
-
 const knownRequestError = (message: string, code: string, meta: Record<string, unknown>) =>
   new Prisma.PrismaClientKnownRequestError(message, {
     code,
@@ -16,7 +14,7 @@ const knownRequestError = (message: string, code: string, meta: Record<string, u
 function toPrismaError(error: Error, modelName: string) {
   const guard = /bad JSON path: 'calflare:(.*)'/.exec(error.message);
   if (guard) {
-    const failure: GuardFailure = JSON.parse(guard[1]);
+    const failure: D1GuardFailure = JSON.parse(guard[1]);
     if ("message" in failure) return new Error(failure.message);
     return knownRequestError(error.message, "P2025", failure);
   }
@@ -52,6 +50,8 @@ function toPrismaError(error: Error, modelName: string) {
   return error;
 }
 
+export type D1GuardFailure = { modelName: string; operation: "an update" | "a delete" } | { message: string };
+
 export const toD1DateTime = (value: Date | string) => new Date(value).toISOString().replace("Z", "+00:00");
 
 export const d1Boolean = z.union([z.literal(0), z.literal(1)]).transform((value) => value === 1);
@@ -78,7 +78,7 @@ export function generateUuidV7(now = Date.now()): string {
 // the failure; a zero-row write alone commits. A record failure maps to P2025, a message to a plain Error.
 export function requireD1Record(
   db: D1Database,
-  failure: GuardFailure,
+  failure: D1GuardFailure,
   existsSql: string,
   ...bindings: unknown[]
 ): D1PreparedStatement {
