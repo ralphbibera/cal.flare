@@ -1152,7 +1152,7 @@ apps/docs/content/apps/hubspot.mdx	D_DOCS	retain-adapt-in-place	apps/docs/conten
 apps/docs/content/apps/microsoft.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/apps/microsoft.mdx
 apps/docs/content/apps/sendgrid.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/apps/sendgrid.mdx
 apps/docs/content/apps/stripe.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/apps/stripe.mdx
-apps/docs/content/apps/twilio.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/apps/twilio.mdx
+apps/docs/content/apps/twilio.mdx	D_DOCS	retire-upstream-removed	git-history/apps/docs/content/apps/twilio.mdx
 apps/docs/content/apps/zoho.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/apps/zoho.mdx
 apps/docs/content/apps/zoom.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/apps/zoom.mdx
 apps/docs/content/database-migrations.mdx	D_DOCS	retain-adapt-in-place	apps/docs/content/database-migrations.mdx
