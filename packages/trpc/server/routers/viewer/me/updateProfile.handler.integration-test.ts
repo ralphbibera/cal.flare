@@ -87,4 +87,13 @@ describe("updateProfile secondary email updates on D1", () => {
       { id: 6, email: "second@example.com", emailVerified: verified },
     ]);
   });
+
+  d1.it("persists onboarding completion for a personal account", async () => {
+    const result = await updateProfileHandler({ ctx: { user }, input: { completedOnboarding: true } });
+
+    expect(result).toMatchObject({ completedOnboarding: true });
+    expect(await d1.db.prepare("SELECT completedOnboarding FROM users WHERE id = 1").first()).toEqual({
+      completedOnboarding: 1,
+    });
+  });
 });
