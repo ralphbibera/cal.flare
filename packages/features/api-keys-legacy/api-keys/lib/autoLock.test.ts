@@ -1,14 +1,15 @@
-import type { RatelimitResponse } from "@unkey/ratelimit";
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-
 import { hashAPIKey } from "@calcom/features/api-keys-legacy/api-keys/lib/apiKeys";
-import { RedisService } from "@calcom/features/redis/RedisService";
+import { getRedisService } from "@calcom/features/di/containers/Redis";
+import type { RuntimeStateNamespace } from "@calcom/lib/runtimeStateContext";
+import { getRuntimeStateOrNull } from "@calcom/lib/runtimeStateContext";
 import prisma from "@calcom/prisma";
-
+import type { RatelimitResponse } from "@unkey/ratelimit";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleAutoLock } from "./autoLock";
 
 // Mock the dependencies
-vi.mock("@calcom/features/redis/RedisService");
+vi.mock("@calcom/features/di/containers/Redis", () => ({ getRedisService: vi.fn() }));
+vi.mock("@calcom/lib/runtimeStateContext", () => ({ getRuntimeStateOrNull: vi.fn() }));
 vi.mock("@calcom/features/api-keys-legacy/api-keys/lib/apiKeys", () => ({
   hashAPIKey: vi.fn((key) => `hashed_${key}`),
 }));
@@ -29,28 +30,20 @@ describe("autoLock", () => {
     set: vi.fn(),
     del: vi.fn(),
     expire: vi.fn(),
+    lrange: vi.fn(),
+    lpush: vi.fn(),
   };
 
   beforeEach(() => {
     // Reset all mocks before each test
     vi.clearAllMocks();
-    vi.mocked(RedisService).mockImplementation(function () {
-      return mockRedis as any;
-    });
-
-    // Mock environment variables
-    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
-    process.env.UPSTASH_REDIS_REST_URL = "test-url";
-  });
-
-  afterEach(() => {
-    delete process.env.UPSTASH_REDIS_REST_TOKEN;
-    delete process.env.UPSTASH_REDIS_REST_URL;
+    vi.mocked(getRedisService).mockReturnValue(mockRedis);
+    vi.mocked(getRuntimeStateOrNull).mockReturnValue({} as RuntimeStateNamespace);
   });
 
   describe("handleAutoLock", () => {
-    it("should return early if Upstash env variables are not set", async () => {
-      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    it("should return early if the RUNTIME_STATE binding is not available", async () => {
+      vi.mocked(getRuntimeStateOrNull).mockReturnValue(null);
 
       const rateLimitResponse: RatelimitResponse = {
         success: false,

@@ -1,6 +1,7 @@
 import process from "node:process";
-import { RedisService } from "@calcom/features/redis/RedisService";
+import { getRedisService } from "@calcom/features/di/containers/Redis";
 import logger from "@calcom/lib/logger";
+import { getRuntimeStateOrNull } from "@calcom/lib/runtimeStateContext";
 import prisma from "@calcom/prisma";
 import type { RatelimitResponse } from "@unkey/ratelimit";
 import { hashAPIKey } from "./apiKeys";
@@ -40,10 +41,8 @@ export async function handleAutoLock({
 }: HandleAutoLockInput): Promise<boolean> {
   const { success, remaining } = rateLimitResponse;
 
-  const UPSTASH_ENV_FOUND = process.env.UPSTASH_REDIS_REST_TOKEN && process.env.UPSTASH_REDIS_REST_URL;
-
-  if (!UPSTASH_ENV_FOUND) {
-    log.warn("Skipping auto lock because UPSTASH env variables are not set");
+  if (!getRuntimeStateOrNull()) {
+    log.warn("Skipping auto lock because the RUNTIME_STATE binding is not available");
     return false;
   }
 
@@ -52,7 +51,7 @@ export async function handleAutoLock({
     : _identifier;
 
   if (!success && remaining <= 0) {
-    const redis = new RedisService();
+    const redis = getRedisService();
     const lockKey = `autolock:${identifierType}${
       identifierKeyword ? `:${identifierKeyword}` : ""
     }:${identifier}.count`;

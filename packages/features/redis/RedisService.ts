@@ -1,50 +1,74 @@
-import { Redis } from "@upstash/redis";
-
+import { ErrorCode } from "@calcom/lib/errorCodes";
+import { ErrorWithCode } from "@calcom/lib/errors";
+import type { RedisRequest } from "@calcom/lib/RuntimeState";
+import { getRuntimeState } from "@calcom/lib/runtimeStateContext";
 import type { IRedisService } from "./IRedisService";
 
-export class RedisService implements IRedisService {
-  private redis: Redis;
+const REDIS_STATE_OBJECT = "redis";
+const TIMEOUT_MS = 2000;
 
-  constructor() {
-    // Ensure we throw an Error to mimick old behavior
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      throw new Error("Attempted to initialize Upstash Redis client without url or token.");
-    }
-    this.redis = Redis.fromEnv({
-      signal: () => AbortSignal.timeout(2000),
-    });
+function serialize(value: unknown): string {
+  const json = JSON.stringify(value);
+  if (json === undefined) {
+    throw new ErrorWithCode(ErrorCode.InternalServerError, "Unable to serialize value for RUNTIME_STATE");
   }
+  return json;
+}
 
+export class RedisService implements IRedisService {
   async get<TData>(key: string): Promise<TData | null> {
-    return this.redis.get(key);
+    const { result } = await this.send<{ result: string | null }>({ op: "get", key });
+    return result === null ? null : (JSON.parse(result) as TData);
   }
 
   async del(key: string): Promise<number> {
-    return this.redis.del(key);
+    const { result } = await this.send<{ result: number }>({ op: "del", key });
+    return result;
   }
 
   async set<TData>(key: string, value: TData, opts?: { ttl?: number }): Promise<"OK" | TData | null> {
-    return this.redis.set(
-      key,
-      value,
-      opts?.ttl
-        ? {
-            px: opts.ttl,
-          }
-        : undefined
-    );
+    await this.send({ op: "set", key, value: serialize(value), ...(opts?.ttl ? { ttl: opts.ttl } : {}) });
+    return "OK";
   }
 
   async expire(key: string, seconds: number): Promise<0 | 1> {
-    // Implementation for setting expiration time for key in Redis
-    return this.redis.expire(key, seconds);
+    const { result } = await this.send<{ result: 0 | 1 }>({ op: "expire", key, seconds });
+    return result;
   }
 
   async lrange<TResult = string>(key: string, start: number, end: number): Promise<TResult[]> {
-    return this.redis.lrange(key, start, end);
+    const { result } = await this.send<{ result: string[] }>({ op: "lrange", key, start, end });
+    return result.map((value) => JSON.parse(value) as TResult);
   }
 
   async lpush<TData>(key: string, ...elements: TData[]): Promise<number> {
-    return this.redis.lpush(key, elements);
+    const { result } = await this.send<{ result: number }>({
+      op: "lpush",
+      key,
+      values: elements.map(serialize),
+    });
+    return result;
+  }
+
+  private async send<TResult>(command: RedisRequest): Promise<TResult> {
+    const state = getRuntimeState();
+    const response = await state
+      .get(state.idFromName(REDIS_STATE_OBJECT))
+      .fetch("https://runtime-state/redis", {
+        method: "POST",
+        body: JSON.stringify(command),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+      let message = `RUNTIME_STATE redis command failed with status ${response.status}`;
+      if (typeof body?.error === "string") message = body.error;
+      throw new ErrorWithCode(ErrorCode.InternalServerError, message);
+    }
+
+    return (await response.json()) as TResult;
   }
 }
+
+export { REDIS_STATE_OBJECT };
