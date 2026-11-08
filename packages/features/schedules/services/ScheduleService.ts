@@ -1,5 +1,6 @@
 import type { UserFromSession } from "@calcom/features/auth/lib/userFromSessionUtils";
 import { getAvailabilityFromSchedule } from "@calcom/lib/availability";
+import { parseScheduleAvailability } from "@calcom/lib/availability/parseAvailability";
 import { timeZoneSchema } from "@calcom/lib/dayjs/timeZone.schema";
 import { hasEditPermissionForUserID } from "@calcom/lib/hasEditPermissionForUser";
 import { HttpError } from "@calcom/lib/http-error";
@@ -127,7 +128,7 @@ export class ScheduleService {
       ],
     });
 
-    const userAvailability = transformScheduleToAvailabilityForAtom(schedule);
+    const userAvailability = transformScheduleToAvailabilityForAtom(parseScheduleAvailability(schedule));
 
     return {
       schedule,
