@@ -1,19 +1,66 @@
-import { afterEach, describe, expect, it } from "vitest";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prisma } from "@calcom/prisma";
-
+import { withD1Database } from "@calcom/prisma/d1";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getFeatureRepository } from "./FeatureRepository";
 
 const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const cleanupFunctions: Array<() => Promise<void>> = [];
 
-afterEach(async () => {
-  for (const cleanup of cleanupFunctions) {
-    await cleanup();
-  }
-  cleanupFunctions.length = 0;
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => it(name, () => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-feature-repository-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
 });
+
+afterEach(() =>
+  inD1(async () => {
+    for (const cleanup of cleanupFunctions) {
+      await cleanup();
+    }
+    cleanupFunctions.length = 0;
+  })
+);
 
 interface TestEntities {
   testFeatureSlug: string;
@@ -38,7 +85,7 @@ async function setup(): Promise<TestEntities> {
 
 describe("FeatureRepository DI Container Integration Tests", () => {
   describe("getFeatureRepository with @Memoize decorator", () => {
-    it("should return the cached feature repository instance", () => {
+    d1Test("should return the cached feature repository instance", () => {
       const repo1 = getFeatureRepository();
       const repo2 = getFeatureRepository();
 
@@ -47,7 +94,7 @@ describe("FeatureRepository DI Container Integration Tests", () => {
       expect(repo1).toBe(repo2);
     });
 
-    it("should find a feature by slug using the cached repository", async () => {
+    d1Test("should find a feature by slug using the cached repository", async () => {
       const { testFeatureSlug } = await setup();
 
       await prisma.feature.create({
@@ -67,7 +114,7 @@ describe("FeatureRepository DI Container Integration Tests", () => {
       expect(feature?.enabled).toBe(true);
     });
 
-    it("should return null for non-existent feature", async () => {
+    d1Test("should return null for non-existent feature", async () => {
       const { testFeatureSlug } = await setup();
 
       const repo = getFeatureRepository();
@@ -76,7 +123,7 @@ describe("FeatureRepository DI Container Integration Tests", () => {
       expect(feature).toBeNull();
     });
 
-    it("should check if feature is enabled globally", async () => {
+    d1Test("should check if feature is enabled globally", async () => {
       const { testFeatureSlug } = await setup();
 
       await prisma.feature.create({
@@ -94,7 +141,7 @@ describe("FeatureRepository DI Container Integration Tests", () => {
       expect(isEnabled).toBe(true);
     });
 
-    it("should return false for disabled feature", async () => {
+    d1Test("should return false for disabled feature", async () => {
       const { testFeatureSlug } = await setup();
 
       await prisma.feature.create({
@@ -112,7 +159,7 @@ describe("FeatureRepository DI Container Integration Tests", () => {
       expect(isEnabled).toBe(false);
     });
 
-    it("should find all features", async () => {
+    d1Test("should find all features", async () => {
       const { testFeatureSlug } = await setup();
 
       await prisma.feature.create({
@@ -132,7 +179,7 @@ describe("FeatureRepository DI Container Integration Tests", () => {
       expect(testFeature).toBeDefined();
     });
 
-    it("should update a feature and invalidate cache via @Unmemoize", async () => {
+    d1Test("should update a feature and invalidate cache via @Unmemoize", async () => {
       const { testFeatureSlug } = await setup();
 
       await prisma.feature.create({
