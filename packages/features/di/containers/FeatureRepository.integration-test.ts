@@ -1,14 +1,60 @@
-import { afterEach, describe, expect, it } from "vitest";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prisma } from "@calcom/prisma";
-
+import { withD1Database } from "@calcom/prisma/d1";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, it as vitestIt } from "vitest";
 import { getFeatureRepository } from "./FeatureRepository";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const it = (name: string, callback: () => unknown) => vitestIt(name, () => inD1(callback));
+const d1AfterEach = (callback: () => unknown) => afterEach(() => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-feature-repository-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const cleanupFunctions: Array<() => Promise<void>> = [];
 
-afterEach(async () => {
+d1AfterEach(async () => {
   for (const cleanup of cleanupFunctions) {
     await cleanup();
   }
