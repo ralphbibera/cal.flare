@@ -1,5 +1,7 @@
+import kysely from "@calcom/kysely";
+import { compileD1Statement, requireD1RecordFor } from "@calcom/kysely/d1";
 import { getD1Database } from "@calcom/prisma/d1";
-import { requireD1Record, runD1Batch } from "@calcom/prisma/d1-batch";
+import { runD1Batch } from "@calcom/prisma/d1-batch";
 
 // Prisma's array transaction is not atomic on D1, so one guarded batch moves the attendee and its seat.
 // The guards keep update's P2025 for a missing row, which a zero-row update would silently commit.
@@ -16,20 +18,21 @@ export async function moveSeatedAttendeeInD1({
   await runD1Batch(
     db,
     [
-      requireD1Record(
+      requireD1RecordFor(
         db,
         { modelName: "Attendee", operation: "an update" },
-        `SELECT 1 WHERE EXISTS (SELECT 1 FROM "Attendee" WHERE "id" = ?)`,
-        attendeeId
+        kysely.selectFrom("Attendee").select("id").where("id", "=", attendeeId)
       ),
-      requireD1Record(
+      requireD1RecordFor(
         db,
         { modelName: "BookingSeat", operation: "an update" },
-        `SELECT 1 WHERE EXISTS (SELECT 1 FROM "BookingSeat" WHERE "id" = ?)`,
-        bookingSeatId
+        kysely.selectFrom("BookingSeat").select("id").where("id", "=", bookingSeatId)
       ),
-      db.prepare(`UPDATE "Attendee" SET "bookingId" = ? WHERE "id" = ?`).bind(bookingId, attendeeId),
-      db.prepare(`UPDATE "BookingSeat" SET "bookingId" = ? WHERE "id" = ?`).bind(bookingId, bookingSeatId),
+      compileD1Statement(db, kysely.updateTable("Attendee").set({ bookingId }).where("id", "=", attendeeId)),
+      compileD1Statement(
+        db,
+        kysely.updateTable("BookingSeat").set({ bookingId }).where("id", "=", bookingSeatId)
+      ),
     ],
     { modelName: "Attendee" }
   );
