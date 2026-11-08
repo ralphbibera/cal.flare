@@ -13,11 +13,15 @@ export type JobRetryPolicy = {
   randomize?: boolean;
 };
 
+export type QueueJobContext = {
+  runId: string;
+};
+
 export type QueueJob<TPayload> = {
   id: string;
   retry?: JobRetryPolicy;
   parse: (payload: unknown) => TPayload;
-  execute: (storedPayload: string) => Promise<void>;
+  execute: (storedPayload: string, context: QueueJobContext) => Promise<void>;
 };
 
 class JobPayloadError extends Error {}
@@ -49,20 +53,20 @@ export function defineQueueJob<TPayload>(definition: {
   id: string;
   schema: z.ZodType<TPayload>;
   retry?: JobRetryPolicy;
-  run: (payload: TPayload) => Promise<void>;
+  run: (payload: TPayload, context: QueueJobContext) => Promise<void>;
 }): QueueJob<TPayload> {
   return {
     id: definition.id,
     retry: definition.retry,
     parse: (payload) => definition.schema.parse(payload),
-    execute: async (storedPayload) => {
+    execute: async (storedPayload, context) => {
       let payload: TPayload;
       try {
         payload = definition.schema.parse(JSON.parse(storedPayload));
       } catch (error) {
         throw new JobPayloadError(error instanceof Error ? error.message : "Invalid job payload");
       }
-      await definition.run(payload);
+      await definition.run(payload, context);
     },
   };
 }
@@ -142,7 +146,7 @@ async function consumeMessage(message: Message<JobMessage>, jobs: Map<string, Qu
   }
 
   try {
-    await job.execute(run.payload);
+    await job.execute(run.payload, { runId: run.id });
   } catch (error) {
     await failAttempt(message, job, run, error);
     return;
