@@ -1,6 +1,5 @@
 import "reflect-metadata";
 
-import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +23,7 @@ import { Miniflare } from "miniflare";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import config from "../../cloudflare.config";
-import { prismaQueryCompiler } from "../../vitest.worker.config";
+import { prismaQueryCompiler, workerResolveAliases } from "../../vitest.worker.config";
 import { AppController } from "../app.controller";
 import { PrismaReadService } from "../modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "../modules/prisma/prisma-write.service";
@@ -36,13 +35,7 @@ import { buildRouteTable, defineModule } from "./metadata";
 
 async function buildWorker(directory: string): Promise<string> {
   const appRoot = fileURLToPath(new URL("../..", import.meta.url));
-  const tsconfig = JSON.parse(readFileSync(join(appRoot, "tsconfig.json"), "utf8")) as {
-    compilerOptions: { paths: Record<string, string[]> };
-  };
-  const alias = Object.entries(tsconfig.compilerOptions.paths).map(([find, [target]]) => ({
-    find: new RegExp(`^${find.replace("*", "(.*)")}$`),
-    replacement: join(appRoot, target.replace("*", "$1")),
-  }));
+  const alias = workerResolveAliases(appRoot);
 
   await build({
     configFile: false,
