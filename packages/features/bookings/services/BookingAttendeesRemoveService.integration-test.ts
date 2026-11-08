@@ -1,8 +1,57 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BookingRepository } from "@calcom/features/bookings/repositories/BookingRepository";
 import { PrismaBookingAttendeeRepository } from "@calcom/features/bookings/repositories/PrismaBookingAttendeeRepository";
 import { prisma } from "@calcom/prisma";
+import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus, CreationSource } from "@calcom/prisma/enums";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, beforeAll, beforeEach, describe, expect, vi, it as vitestIt } from "vitest";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const it = (name: string, callback: () => unknown) => vitestIt(name, () => inD1(callback));
+const d1BeforeAll = (callback: () => unknown, timeout?: number) => beforeAll(() => inD1(callback), timeout);
+const d1AfterAll = (callback: () => unknown, timeout?: number) => afterAll(() => inD1(callback), timeout);
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-remove-attendee-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 const mockUpdateCalendarAttendees = vi.fn().mockResolvedValue({});
 vi.mock("@calcom/features/bookings/lib/EventManager", () => ({
@@ -54,7 +103,7 @@ describe("BookingAttendeesRemoveService.removeAttendee (Integration Tests)", () 
     uuid: `test-uuid-${timestamp}`,
   };
 
-  beforeAll(async () => {
+  d1BeforeAll(async () => {
     const organizer = await prisma.user.create({
       data: {
         email: `attendee-svc-organizer-${timestamp}@test.com`,
@@ -150,7 +199,7 @@ describe("BookingAttendeesRemoveService.removeAttendee (Integration Tests)", () 
     vi.clearAllMocks();
   });
 
-  afterAll(async () => {
+  d1AfterAll(async () => {
     if (createdBookingIds.length > 0) {
       await prisma.attendee.deleteMany({ where: { bookingId: { in: createdBookingIds } } });
       await prisma.booking.deleteMany({ where: { id: { in: createdBookingIds } } });
@@ -224,7 +273,7 @@ describe("BookingAttendeesRemoveService.removeAttendee (Integration Tests)", () 
     let emailsDisabledBookingId: number;
     let emailsDisabledAttendeeId: number;
 
-    beforeAll(async () => {
+    d1BeforeAll(async () => {
       const booking = await bookingRepo.createBookingForManagedEventReassignment({
         uid: `attendee-svc-no-email-${timestamp}`,
         userId: organizerId,
@@ -283,7 +332,7 @@ describe("BookingAttendeesRemoveService.removeAttendee (Integration Tests)", () 
     let plusAddressBookingId: number;
     let plusAddressAttendeeId: number;
 
-    beforeAll(async () => {
+    d1BeforeAll(async () => {
       const booking = await bookingRepo.createBookingForManagedEventReassignment({
         uid: `attendee-svc-plus-addr-${timestamp}`,
         userId: organizerId,
