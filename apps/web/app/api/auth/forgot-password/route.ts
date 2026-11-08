@@ -7,7 +7,7 @@ import prisma from "@calcom/prisma";
 import { defaultResponderForAppDir } from "app/api/defaultResponderForAppDir";
 import { parseRequestData } from "app/api/parseRequestData";
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 async function handler(req: NextRequest) {
   const body = await parseRequestData(req);
@@ -30,7 +30,7 @@ async function handler(req: NextRequest) {
       select: { name: true, email: true, locale: true },
     });
     // Don't leak info about whether the user exists
-    if (user) passwordResetRequest(user).catch(console.error);
+    if (user) after(passwordResetRequest(user).catch(console.error));
     return NextResponse.json({ message: "password_reset_email_sent" }, { status: 201 });
   } catch (reason) {
     console.error(reason);
