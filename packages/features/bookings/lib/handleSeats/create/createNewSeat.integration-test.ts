@@ -1,10 +1,57 @@
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
-
-import { prisma } from "@calcom/prisma";
-import { BookingStatus } from "@calcom/prisma/enums";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ErrorCode } from "@calcom/lib/errorCodes";
-
+import { prisma } from "@calcom/prisma";
+import { withD1Database } from "@calcom/prisma/d1";
+import { BookingStatus } from "@calcom/prisma/enums";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, it as vitestIt } from "vitest";
 import { addSeatToBooking } from "./createNewSeat";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const it = (name: string, callback: () => unknown) => vitestIt(name, () => inD1(callback));
+const d1BeforeAll = (callback: () => unknown, timeout?: number) => beforeAll(() => inD1(callback), timeout);
+const d1AfterEach = (callback: () => unknown) => afterEach(() => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-create-new-seat-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 // Track resources to clean up
 const createdBookingIds: number[] = [];
@@ -27,11 +74,16 @@ async function clearTestData() {
 }
 
 describe("createNewSeat Race Condition Prevention (Integration)", () => {
-  beforeAll(async () => {
-    // Use existing seed user
-    const testUser = await prisma.user.findFirstOrThrow({
+  d1BeforeAll(async () => {
+    // Use the seeded user when the D1 template contains it.
+    let testUser = await prisma.user.findFirst({
       where: { email: "member0-acme@example.com" },
     });
+    if (!testUser) {
+      testUser = await prisma.user.create({
+        data: { email: "member0-acme@example.com", username: "member0-acme" },
+      });
+    }
     testUserId = testUser.id;
 
     // Find or create a test event type with seats
@@ -57,7 +109,7 @@ describe("createNewSeat Race Condition Prevention (Integration)", () => {
     testEventTypeId = eventType.id;
   });
 
-  afterEach(async () => {
+  d1AfterEach(async () => {
     await clearTestData();
   });
 
