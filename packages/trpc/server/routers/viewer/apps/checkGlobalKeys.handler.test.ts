@@ -51,11 +51,12 @@ describe("checking globally configured app keys", () => {
   });
 
   it("reports a configured app whether or not it is enabled", async () => {
+    // The reference-data migration already seeds daily-video, so upsert rather than insert.
     await db.batch([
       db.prepare(`INSERT INTO "App" ("slug", "dirName", "enabled", "updatedAt")
-          VALUES ('daily-video', 'dailyvideo', 0, '2026-11-05T00:00:00.000+00:00')`),
+          VALUES ('daily-video', 'dailyvideo', 0, '2026-11-05T00:00:00.000+00:00') ON CONFLICT ("slug") DO UPDATE SET "enabled" = excluded."enabled", "updatedAt" = excluded."updatedAt"`),
       db.prepare(`INSERT INTO "App" ("slug", "dirName", "enabled", "updatedAt")
-          VALUES ('zoom', 'zoomvideo', 1, '2026-11-05T00:00:00.000+00:00')`),
+          VALUES ('zoom', 'zoomvideo', 1, '2026-11-05T00:00:00.000+00:00') ON CONFLICT ("slug") DO UPDATE SET "enabled" = excluded."enabled", "updatedAt" = excluded."updatedAt"`),
     ]);
 
     const results = await withD1Database({ DB: db }, () =>
