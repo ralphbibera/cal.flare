@@ -1,12 +1,11 @@
+import { WEBAPP_URL } from "@calcom/lib/constants";
+import { App, Generic, getOGImageVersion, Meeting } from "@calcom/lib/OgImages";
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
+import type { ReactNode } from "react";
 import { cloneElement, isValidElement } from "react";
-import type { ReactElement, ReactNode } from "react";
 import type { SatoriOptions } from "satori";
-import { z, ZodError } from "zod";
-
-import { Meeting, App, Generic, getOGImageVersion } from "@calcom/lib/OgImages";
-import { WEBAPP_URL } from "@calcom/lib/constants";
+import { ZodError, z } from "zod";
 
 export const runtime = "edge";
 
@@ -48,6 +47,19 @@ function ownImageUrl(source: string) {
   return url.origin === new URL(WEBAPP_URL).origin ? url : undefined;
 }
 
+async function inlineBackgroundImage(
+  backgroundImage: string,
+  assets: AssetsBinding | undefined,
+  sources: Map<string, Promise<string>>
+) {
+  const pattern = /url\(([^)]+)\)/g;
+  const inlined = await Promise.all(
+    Array.from(backgroundImage.matchAll(pattern), (match) => ownImageSource(match[1], assets, sources))
+  );
+  let index = 0;
+  return backgroundImage.replace(pattern, () => `url(${inlined[index++]})`);
+}
+
 async function inlineOwnImages(
   node: ReactNode,
   assets: AssetsBinding | undefined,
@@ -57,49 +69,37 @@ async function inlineOwnImages(
     return Promise.all(node.map((child: ReactNode) => inlineOwnImages(child, assets, sources)));
   }
   if (!isValidElement<Record<string, unknown>>(node)) return node;
-  const component = renderFunctionComponent(node);
-  if (component !== undefined) return inlineOwnImages(component, assets, sources);
+  if (typeof node.type === "function") {
+    // The shared OG components render the host elements whose sources we inline.
+    const component = node.type as (props: Record<string, unknown>) => ReactNode;
+    return inlineOwnImages(component(node.props), assets, sources);
+  }
 
   const props = { ...node.props };
-  if (typeof props.src === "string") {
-    props.src = await ownImageSource(props.src, assets, sources);
-  }
   if (node.type === "img") {
-    // Satori rejects the string width/height attributes the shared OG components
-    // pass and renders those images without a size.
+    if (typeof props.src === "string") {
+      props.src = await ownImageSource(props.src, assets, sources);
+    }
+    // Satori drops string width/height attributes, so pass numbers.
     for (const dimension of ["width", "height"] as const) {
       const value = props[dimension];
       if (typeof value === "string" && /^\d+$/.test(value)) props[dimension] = Number(value);
     }
   }
+
   const style = props.style;
   if (style && typeof style === "object" && "backgroundImage" in style) {
     const backgroundImage = (style as { backgroundImage?: unknown }).backgroundImage;
     if (typeof backgroundImage === "string") {
-      const replaced = await Promise.all(
-        Array.from(backgroundImage.matchAll(/url\(([^)]+)\)/g), async (match) => {
-          const source = await ownImageSource(match[1], assets, sources);
-          return [match[0], `url(${source})`] as const;
-        })
-      );
       props.style = {
         ...style,
-        backgroundImage: replaced.reduce((value, [from, to]) => value.replace(from, to), backgroundImage),
+        backgroundImage: await inlineBackgroundImage(backgroundImage, assets, sources),
       };
     }
   }
-  if (props.children) {
-    props.children = await inlineOwnImages(props.children as ReactNode, assets, sources);
-  }
-  return cloneElement(node, props);
-}
 
-// The shared OG components are function components; resolving them lets the
-// walker reach the host elements whose sources must be inlined.
-function renderFunctionComponent(node: ReactElement<Record<string, unknown>>): ReactNode | undefined {
-  const type = node.type as unknown;
-  if (typeof type !== "function") return undefined;
-  return (type as (props: Record<string, unknown>) => ReactNode)(node.props);
+  props.children = await inlineOwnImages(props.children as ReactNode, assets, sources);
+  return cloneElement(node, props);
 }
 
 async function ownImageSource(
@@ -206,11 +206,11 @@ async function handler(req: NextRequest) {
 
           const etag = await getOGImageVersion("meeting");
           const img = await renderImage(
-            Meeting({
-              title,
-              profile: { name: meetingProfileName, image: meetingImage },
-              users: names.map((name, index) => ({ name, username: usernames[index] })),
-            })
+            <Meeting
+              title={title}
+              profile={{ name: meetingProfileName, image: meetingImage }}
+              users={names.map((name, index) => ({ name, username: usernames[index] }))}
+            />
           );
 
           return new Response(img.body, {
@@ -255,7 +255,9 @@ async function handler(req: NextRequest) {
           const svgHash = SVG_HASHES[slug] ?? undefined;
 
           const etag = await getOGImageVersion("app", { svgHash });
-          const img = await renderImage(App({ name, description, slug, logoUrl }));
+          const img = await renderImage(
+            <App name={name} description={description} slug={slug} logoUrl={logoUrl} />
+          );
 
           return new Response(img.body, {
             status: 200,
@@ -292,7 +294,7 @@ async function handler(req: NextRequest) {
           });
 
           const etag = await getOGImageVersion("generic");
-          const img = await renderImage(Generic({ title, description }));
+          const img = await renderImage(<Generic title={title} description={description} />);
 
           return new Response(img.body, {
             status: 200,
