@@ -1,8 +1,58 @@
 import { ExecutionContextHost } from "@nestjs/core/helpers/execution-context-host";
-import type { RouteRecord } from "../metadata";
-import type { ApiResponseWriter } from "./shims";
+import { Subject } from "rxjs";
+import type { ModuleScope, RouteRecord } from "../metadata";
+import type { GlobalFilterSet } from "./filters";
+import { resolveFilters, respondWithFilters } from "./filters";
+import type { ApiRequest, ApiResponse, ApiResponseWriter } from "./shims";
 import { createRequest, createResponse } from "./shims";
 import { BodyModeError, readBody } from "@/lib/body-modes";
+import { ResponseInterceptor } from "@/middleware/request-ids/request-id.interceptor";
+import { RequestIdMiddleware } from "@/middleware/request-ids/request-id.middleware";
+
+type RequestIdHandler = (
+  this: RequestIdMiddleware,
+  request: ApiRequest,
+  response: ApiResponse,
+  next: () => void
+) => void;
+
+export function runRequestIdMiddleware(request: ApiRequest, response: ApiResponse): void {
+  const use = RequestIdMiddleware.prototype.use as unknown as RequestIdHandler;
+  use.call(new RequestIdMiddleware(), request, response, () => undefined);
+}
+
+interface RequestLifecycle {
+  finish(result: unknown): void;
+  fail(error: unknown): void;
+}
+
+function startRequestLifecycle({
+  request,
+  response,
+  context,
+}: {
+  request: ApiRequest;
+  response: ApiResponse;
+  context: ExecutionContextHost;
+}): RequestLifecycle {
+  runRequestIdMiddleware(request, response);
+  const results = new Subject<unknown>();
+  const subscription = new ResponseInterceptor()
+    .intercept(context, { handle: () => results })
+    .subscribe({ error: () => undefined });
+
+  return {
+    finish(result) {
+      results.next(result);
+      results.complete();
+      subscription.unsubscribe();
+    },
+    fail(error) {
+      results.error(error);
+      subscription.unsubscribe();
+    },
+  };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -54,17 +104,22 @@ export async function executeRoute({
   params,
   originalUrl,
   controller,
+  scope,
+  filters,
 }: {
   record: RouteRecord;
   raw: Request;
   params: Record<string, string>;
   originalUrl: string;
   controller: object;
+  scope: ModuleScope;
+  filters: GlobalFilterSet;
 }): Promise<Response> {
-  if (record.params.length > 0) {
-    throw new Error(
-      `Route ${record.method} ${record.path} uses parameters, which arrive with the validation slice`
-    );
+  const request = createRequest({ raw, params, originalUrl });
+  const response = createResponse();
+  response.status(record.status);
+  for (const header of record.headers) {
+    response.setHeader(header.name, typeof header.value === "function" ? header.value() : header.value);
   }
 
   let body: unknown;
@@ -79,39 +134,55 @@ export async function executeRoute({
     }
     throw error;
   }
-
-  const request = createRequest({ raw, params, originalUrl });
   request.body = body;
   if (body instanceof Uint8Array) request.rawBody = body;
 
-  const response = createResponse();
-  response.status(record.status);
-  for (const header of record.headers) {
-    response.setHeader(header.name, typeof header.value === "function" ? header.value() : header.value);
-  }
-
   const next = (): void => undefined;
-  const prototype = record.controllerClass.prototype;
-  const target = Reflect.get(prototype, record.methodName);
-  if (typeof target !== "function") {
-    throw new Error(`Controller ${record.controllerClass.name}.${record.methodName} is not callable`);
-  }
-  const context = new ExecutionContextHost([request, response, next], record.controllerClass, target);
+  const target = Reflect.get(record.controllerClass.prototype, record.methodName);
+  const context = new ExecutionContextHost(
+    [request, response, next],
+    record.controllerClass,
+    typeof target === "function" ? target : undefined
+  );
   context.setType("http");
+  const routeFilters = [
+    ...resolveFilters([...record.methodFilters].reverse(), scope),
+    ...resolveFilters([...record.classFilters].reverse(), scope),
+  ];
+  const lifecycle = startRequestLifecycle({ request, response, context });
 
-  const callable = context.getHandler();
-  if (typeof callable !== "function") {
-    throw new Error(`Controller ${record.controllerClass.name}.${record.methodName} is not callable`);
-  }
-  const result = await callable.apply(controller, []);
+  try {
+    if (record.params.length > 0) {
+      throw new Error(
+        `Route ${record.method} ${record.path} uses parameters, which arrive with the validation slice`
+      );
+    }
+    const callable = context.getHandler();
+    if (typeof callable !== "function") {
+      throw new Error(`Controller ${record.controllerClass.name}.${record.methodName} is not callable`);
+    }
+    const result = await callable.apply(controller, []);
+    lifecycle.finish(result);
 
-  const redirected = finishRedirect({ record, result, response });
-  if (!redirected) {
-    const responseHandled =
-      !record.responsePassthrough &&
-      record.params.some((param) => param.source === "response" || param.source === "next");
-    finishResult({ result, response, responseHandled });
+    const redirected = finishRedirect({ record, result, response });
+    if (!redirected) {
+      const responseHandled =
+        !record.responsePassthrough &&
+        record.params.some((param) => param.source === "response" || param.source === "next");
+      finishResult({ result, response, responseHandled });
+    }
+    response.runCloseListeners();
+    return response.toResponse();
+  } catch (error) {
+    lifecycle.fail(error);
+    await respondWithFilters({
+      error,
+      host: context,
+      response,
+      globals: filters,
+      routeFilters,
+    });
+    response.runCloseListeners();
+    return response.toResponse();
   }
-  response.runCloseListeners();
-  return response.toResponse();
 }

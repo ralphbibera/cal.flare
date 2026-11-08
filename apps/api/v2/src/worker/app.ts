@@ -1,16 +1,20 @@
 import {
   CAL_API_VERSION_HEADER,
-  ERROR_STATUS,
   X_CAL_CLIENT_ID,
   X_CAL_PLATFORM_EMBED,
   X_CAL_SECRET_KEY,
 } from "@calcom/platform-constants";
 import type { D1Database } from "@cloudflare/workers-types";
+import { NotFoundException } from "@nestjs/common";
+import { ExecutionContextHost } from "@nestjs/core/helpers/execution-context-host";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { executeRoute } from "./execution/execute-route";
+import { executeRoute, runRequestIdMiddleware } from "./execution/execute-route";
+import type { GlobalFilterSet } from "./execution/filters";
+import { createGlobalFilterSet, respondWithFilters } from "./execution/filters";
+import { createRequest, createResponse } from "./execution/shims";
 import type { ModuleScope, RouteRecord } from "./metadata";
 import { extractApiVersion, versionMatches } from "./metadata";
 
@@ -58,10 +62,12 @@ function createInnerApp({
   table,
   scopeFor,
   originalUrls,
+  filters,
 }: {
   table: readonly RouteRecord[];
   scopeFor: (moduleKey: string) => ModuleScope;
   originalUrls: WeakMap<Request, string>;
+  filters: GlobalFilterSet;
 }): Hono<{ Bindings: ApiEnv }> {
   const app = new Hono<{ Bindings: ApiEnv }>({ strict: false });
 
@@ -89,20 +95,25 @@ function createInnerApp({
         params: context.req.param(),
         originalUrl: originalUrls.get(context.req.raw) ?? `${context.req.path}${search}`,
         controller,
+        scope,
+        filters,
       });
     };
     if (first.method === "ALL") app.all(first.path, handle);
     else app.on(first.method, first.path, handle);
   }
 
-  app.notFound((context) =>
-    notFoundResponse({
+  app.notFound((context) => {
+    const search = new URL(context.req.url).search;
+    return respondNotFound({
+      raw: context.req.raw,
       method: context.req.method,
       path: context.req.path,
-      search: new URL(context.req.url).search,
-    })
-  );
-  app.onError((_error, context) => context.json({ statusCode: 500, message: "Internal server error" }, 500));
+      search,
+      originalUrl: originalUrls.get(context.req.raw) ?? `${context.req.path}${search}`,
+      filters,
+    });
+  });
   return app;
 }
 
@@ -146,40 +157,48 @@ export function resolveInnerPath(pathname: string, env: RewriteEnv): { readonly 
   return { path: rewritten ?? unprefixed };
 }
 
-export function notFoundResponse({
+async function respondNotFound({
+  raw,
   method,
   path,
   search,
+  originalUrl,
+  filters,
 }: {
+  raw: Request;
   method: string;
   path: string;
   search: string;
-}): Response {
-  const message = `Cannot ${method} ${path}${search}`;
-  return new Response(
-    JSON.stringify({
-      status: ERROR_STATUS,
-      timestamp: new Date().toISOString(),
-      path: `${path}${search}`,
-      error: {
-        code: "NotFoundException",
-        message,
-        details: { message, error: "Not Found", statusCode: 404 },
-      },
-    }),
-    { status: 404, headers: { "content-type": "application/json" } }
-  );
+  originalUrl: string;
+  filters: GlobalFilterSet;
+}): Promise<Response> {
+  const request = createRequest({ raw, params: {}, originalUrl });
+  const response = createResponse();
+  runRequestIdMiddleware(request, response);
+  const context = new ExecutionContextHost([request, response, () => undefined]);
+  context.setType("http");
+  await respondWithFilters({
+    error: new NotFoundException(`Cannot ${method} ${path}${search}`),
+    host: context,
+    response,
+    globals: filters,
+    routeFilters: [],
+  });
+  response.runCloseListeners();
+  return response.toResponse();
 }
 
 export function createApiApp({
   table,
   scopeFor,
+  filters = createGlobalFilterSet(),
 }: {
   table: readonly RouteRecord[];
   scopeFor: (moduleKey: string) => ModuleScope;
+  filters?: GlobalFilterSet;
 }): Hono<{ Bindings: ApiEnv }> {
   const originalUrls = new WeakMap<Request, string>();
-  const inner = createInnerApp({ table, scopeFor, originalUrls });
+  const inner = createInnerApp({ table, scopeFor, originalUrls, filters });
   const outer = new Hono<{ Bindings: ApiEnv }>();
 
   outer.use("*", secureHeaders());
@@ -195,7 +214,14 @@ export function createApiApp({
     const url = new URL(context.req.url);
     const resolved = resolveInnerPath(url.pathname, context.env);
     if (!resolved) {
-      return notFoundResponse({ method: context.req.method, path: url.pathname, search: url.search });
+      return respondNotFound({
+        raw: context.req.raw,
+        method: context.req.method,
+        path: url.pathname,
+        search: url.search,
+        originalUrl: `${url.pathname}${url.search}`,
+        filters,
+      });
     }
     if (resolved.path === url.pathname) {
       return inner.fetch(context.req.raw, context.env, context.executionCtx);
@@ -207,12 +233,16 @@ export function createApiApp({
     originalUrls.set(rewritten, `${url.pathname}${url.search}`);
     return inner.fetch(rewritten, context.env, context.executionCtx);
   });
-  outer.notFound((context) =>
-    notFoundResponse({
+  outer.notFound((context) => {
+    const url = new URL(context.req.url);
+    return respondNotFound({
+      raw: context.req.raw,
       method: context.req.method,
-      path: context.req.path,
-      search: new URL(context.req.url).search,
-    })
-  );
+      path: url.pathname,
+      search: url.search,
+      originalUrl: `${url.pathname}${url.search}`,
+      filters,
+    });
+  });
   return outer;
 }

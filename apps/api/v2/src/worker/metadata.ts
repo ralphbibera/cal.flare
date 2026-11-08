@@ -1,6 +1,7 @@
 import { API_VERSIONS, VERSION_2024_04_15 } from "@calcom/platform-constants";
-import type { Type } from "@nestjs/common";
+import type { ExceptionFilter, Type } from "@nestjs/common";
 import {
+  EXCEPTION_FILTERS_METADATA,
   HEADERS_METADATA,
   HTTP_CODE_METADATA,
   METHOD_METADATA,
@@ -107,6 +108,39 @@ function readMethodPaths(path: unknown): readonly string[] {
   if (typeof path === "string") return [path];
   if (isStringArray(path)) return path;
   throw new Error("Route path metadata must be a string or an array of strings");
+}
+
+function isFilterInstance(value: unknown): value is ExceptionFilter {
+  if (typeof value !== "object" || value === null) return false;
+  return typeof (value as { catch?: unknown }).catch === "function";
+}
+
+function readFilterRefs(metadata: unknown, source: string): readonly FilterRef[] {
+  if (metadata === undefined) return [];
+  if (!Array.isArray(metadata)) throw new Error(`Filters for ${source} are not an array`);
+  return metadata.map((ref) => {
+    if (typeof ref === "function") return ref as Type<ExceptionFilter>;
+    if (isFilterInstance(ref)) return ref;
+    throw new Error(`Filter for ${source} is neither a class nor an instance`);
+  });
+}
+
+function readClassFilters(controller: Type<unknown>): readonly FilterRef[] {
+  return readFilterRefs(
+    Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, controller),
+    `${controller.name} class`
+  );
+}
+
+function readMethodFilters(
+  controller: Type<unknown>,
+  methodName: string,
+  handler: RouteHandler
+): readonly FilterRef[] {
+  return readFilterRefs(
+    Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, handler),
+    `${controller.name}.${methodName}`
+  );
 }
 
 function readRouteParams(controller: Type<unknown>, methodName: string): readonly RouteParam[] {
@@ -222,6 +256,8 @@ export interface RouteParam {
   readonly pipes: readonly unknown[];
 }
 
+export type FilterRef = Type<ExceptionFilter> | ExceptionFilter;
+
 export interface ResponseHeader {
   readonly name: string;
   readonly value: string | (() => string);
@@ -245,10 +281,13 @@ export interface RouteRecord {
   readonly params: readonly RouteParam[];
   readonly bodyMode: BodyMode;
   readonly responsePassthrough: boolean;
+  readonly classFilters: readonly FilterRef[];
+  readonly methodFilters: readonly FilterRef[];
 }
 
 export interface ModuleScope {
   readonly controllers: ReadonlyMap<Type<unknown>, object>;
+  readonly filters?: readonly ExceptionFilter[];
 }
 
 export interface ModuleDefinition {
@@ -294,6 +333,8 @@ export function buildRouteTable(modules: readonly ModuleDefinition[]): readonly 
         const responsePassthrough = Boolean(
           Reflect.getMetadata(RESPONSE_PASSTHROUGH_METADATA, controller, methodName)
         );
+        const classFilters = readClassFilters(controller);
+        const methodFilters = readMethodFilters(controller, methodName, handler);
 
         for (const controllerPath of controllerPaths) {
           for (const methodPath of readMethodPaths(pathMetadata)) {
@@ -311,6 +352,8 @@ export function buildRouteTable(modules: readonly ModuleDefinition[]): readonly 
               params: readRouteParams(controller, methodName),
               bodyMode: bodyModeFor(method, path),
               responsePassthrough,
+              classFilters,
+              methodFilters,
             });
           }
         }
