@@ -66,4 +66,12 @@ describe("Attio install", () => {
       teamId: 12,
     });
   });
+
+  it("propagates an installation failure", async () => {
+    createDefaultInstallation.mockRejectedValue(new Error("install failed"));
+
+    await expect(
+      attioApp.createCredential({ appType: attioApp.appType, user, slug: attioApp.slug })
+    ).rejects.toThrow("install failed");
+  });
 });
