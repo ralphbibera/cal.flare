@@ -1,5 +1,14 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -28,6 +37,8 @@ const LOCKFILES = new Set(["bun.lock", "bun.lockb", "package-lock.json", "yarn.l
 // Unbounded turbo and vitest fan-out started ~20 Node processes per push, and parallel agent pushes exhausted a 16 GB machine.
 const DEFAULT_CONCURRENCY = 2;
 const LOCK_POLL_MS = 2000;
+// A holder writes its pid immediately after mkdir, so a lock without a valid pid this old was abandoned.
+const UNOWNED_LOCK_STALE_MS = 30_000;
 
 export function parsePushLines(stdin: string): PushRef[] {
   const refs: PushRef[] = [];
@@ -161,31 +172,117 @@ export function countTestFiles(report: string): number {
 
 export interface LockDeps {
   isAlive: (pid: number) => boolean;
+  killGroup: (pgid: number) => void;
   sleep: (ms: number) => void;
-  onWait: (holder: number) => void;
+  onWait: (holder: number | undefined) => void;
+  readFile: (file: string) => string;
+}
+
+export interface Lock {
+  release: () => void;
+  setGroup: (pgid: number | undefined) => void;
+}
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
+// A pid or pgid must be a positive integer; an empty or partly written file is treated as absent.
+function readId(file: string, deps: LockDeps): number | undefined {
+  const id = Number(deps.readFile(file));
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
+function isUnownedLockStale(lockDir: string): boolean {
+  return Date.now() - statSync(lockDir).mtimeMs > UNOWNED_LOCK_STALE_MS;
 }
 
 /**
  * Serializes pre-push runs across every worktree sharing this git common dir, so concurrent pushes
  * queue instead of stacking type checks and test forks. A lock left by a dead process is taken over.
  */
-export function acquireLock(lockDir: string, deps: LockDeps): () => void {
+export function acquireLock(lockDir: string, deps: LockDeps): Lock {
   const pidFile = path.join(lockDir, "pid");
+  const groupFile = path.join(lockDir, "pgid");
   let announced = false;
+
+  const setGroup = (pgid: number | undefined): void => {
+    if (pgid === undefined) {
+      rmSync(groupFile, { force: true });
+      return;
+    }
+    writeFileSync(groupFile, String(pgid));
+  };
+
+  // Renaming first keeps two pushers from deleting each other's fresh lock when both see the same dead pid.
+  const reclaim = (observed: number | undefined, staleDir: string): void => {
+    let moved: number | undefined;
+    try {
+      moved = readId(path.join(staleDir, "pid"), deps);
+    } catch (error) {
+      if (!isErrorCode(error, "ENOENT")) throw error;
+    }
+    if (moved !== observed) {
+      // A live owner replaced the stale lock between the read and the rename; put it back.
+      if (!existsSync(lockDir)) {
+        try {
+          renameSync(staleDir, lockDir);
+        } catch (error) {
+          if (!isErrorCode(error, "EEXIST") && !isErrorCode(error, "ENOTEMPTY")) throw error;
+        }
+      }
+      return;
+    }
+    let group: number | undefined;
+    try {
+      group = readId(path.join(staleDir, "pgid"), deps);
+    } catch (error) {
+      if (!isErrorCode(error, "ENOENT")) throw error;
+    }
+    // A SIGKILLed hook leaves its detached step running; kill it so reclamation cannot stack checks.
+    if (group !== undefined) deps.killGroup(group);
+    rmSync(staleDir, { recursive: true, force: true });
+  };
+
   for (;;) {
     try {
       mkdirSync(lockDir);
       writeFileSync(pidFile, String(process.pid));
-      return () => rmSync(lockDir, { recursive: true, force: true });
+      return { release: () => rmSync(lockDir, { recursive: true, force: true }), setGroup };
     } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+      if (!isErrorCode(error, "EEXIST")) throw error;
     }
-    const holder = existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : Number.NaN;
-    // A missing pid file means the holder is between mkdir and write; wait for it rather than steal.
-    if (Number.isInteger(holder) && holder > 0 && !deps.isAlive(holder)) {
-      rmSync(lockDir, { recursive: true, force: true });
+
+    let holder: number | undefined;
+    if (existsSync(pidFile)) {
+      try {
+        holder = readId(pidFile, deps);
+      } catch (error) {
+        // The holder released between the existence check and the read; retry acquisition.
+        if (isErrorCode(error, "ENOENT")) continue;
+        throw error;
+      }
+    }
+
+    let stale: boolean;
+    try {
+      stale = holder !== undefined ? !deps.isAlive(holder) : isUnownedLockStale(lockDir);
+    } catch (error) {
+      if (isErrorCode(error, "ENOENT")) continue;
+      throw error;
+    }
+    if (stale) {
+      const staleDir = `${lockDir}.stale-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+      try {
+        renameSync(lockDir, staleDir);
+      } catch (error) {
+        if (isErrorCode(error, "ENOENT")) continue;
+        throw error;
+      }
+      reclaim(holder, staleDir);
       continue;
     }
+    // A fresh lock without a pid means the holder is between mkdir and write; wait rather than steal.
     if (!announced) {
       deps.onWait(holder);
       announced = true;
@@ -238,7 +335,11 @@ function formatSeconds(startedAt: number): string {
   return `${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
 }
 
-async function runStep(step: Step, cwd: string): Promise<boolean> {
+async function runStep(
+  step: Step,
+  cwd: string,
+  onGroup: (pgid: number | undefined) => void
+): Promise<boolean> {
   console.log(`\n[prepush] ${step.name}: ${step.command.join(" ")}`);
   const startedAt = performance.now();
   const child = spawn(step.command[0], step.command.slice(1), {
@@ -248,7 +349,10 @@ async function runStep(step: Step, cwd: string): Promise<boolean> {
     detached: true,
   });
   const pid = child.pid;
-  if (pid !== undefined) activeGroups.add(pid);
+  if (pid !== undefined) {
+    activeGroups.add(pid);
+    onGroup(pid);
+  }
   const passed = await new Promise<boolean>((resolve) => {
     child.once("error", () => resolve(false));
     child.once("exit", (code) => resolve(code === 0));
@@ -256,9 +360,25 @@ async function runStep(step: Step, cwd: string): Promise<boolean> {
   if (pid !== undefined) {
     killGroup(pid);
     activeGroups.delete(pid);
+    onGroup(undefined);
   }
   console.log(`[prepush] ${step.name} ${passed ? "passed" : "FAILED"} in ${formatSeconds(startedAt)}`);
   return passed;
+}
+
+export interface WorkingState {
+  tree: string | undefined;
+  clean: boolean;
+}
+
+// Checks read the working tree, so only the tree they actually ran against and that stayed clean is proven.
+export function stampableTree(
+  checked: WorkingState,
+  current: WorkingState,
+  pushedTrees: string[]
+): string | undefined {
+  if (!checked.clean || !current.clean || !checked.tree || current.tree !== checked.tree) return undefined;
+  return pushedTrees.includes(checked.tree) ? checked.tree : undefined;
 }
 
 function parseConcurrency(value: string | undefined): number {
@@ -327,8 +447,6 @@ async function main(): Promise<number> {
   }
 
   const head = git(["rev-parse", "HEAD"]);
-  const headTree = git(["rev-parse", "HEAD^{tree}"]);
-  const clean = git(["status", "--porcelain", "--untracked-files=no"]) === "";
   if (!pushed.some((ref) => ref.localSha === head)) {
     console.warn("[prepush] warning: HEAD is not among the pushed commits; checks read the working tree");
   }
@@ -344,14 +462,26 @@ async function main(): Promise<number> {
   });
   console.log(`[prepush] ${changes.files.length} changed file(s) against ${changes.commonBase.slice(0, 9)}`);
 
-  const releaseLock = acquireLock(path.join(commonDir, "prepush.lock"), {
+  const lock = acquireLock(path.join(commonDir, "prepush.lock"), {
     isAlive,
+    killGroup,
     sleep: sleepSync,
-    onWait: (holder) => console.log(`[prepush] waiting for another push's checks (pid ${holder}) to finish`),
+    readFile: (file) => readFileSync(file, "utf8"),
+    onWait: (holder) =>
+      console.log(
+        holder === undefined
+          ? "[prepush] waiting for another push's checks to finish"
+          : `[prepush] waiting for another push's checks (pid ${holder}) to finish`
+      ),
   });
+  // The worktree can move while this push waits, so capture what the checks are about to run against.
+  const checked: WorkingState = {
+    tree: git(["rev-parse", "HEAD^{tree}"]),
+    clean: git(["status", "--porcelain", "--untracked-files=no"]) === "",
+  };
   const abort = (signal: NodeJS.Signals): void => {
     killActiveGroups();
-    releaseLock();
+    lock.release();
     console.error(`\n[prepush] interrupted by ${signal}`);
     process.exit(1);
   };
@@ -360,7 +490,7 @@ async function main(): Promise<number> {
   const startedAt = performance.now();
   try {
     for (const step of steps) {
-      if (!(await runStep(step, root))) {
+      if (!(await runStep(step, root, lock.setGroup))) {
         console.error(`\n[prepush] failed at step "${step.name}". ${BYPASS_HINT}`);
         return 1;
       }
@@ -370,17 +500,24 @@ async function main(): Promise<number> {
         }
       }
     }
+    const tree = stampableTree(
+      checked,
+      {
+        tree: git(["rev-parse", "HEAD^{tree}"]),
+        clean: git(["status", "--porcelain", "--untracked-files=no"]) === "",
+      },
+      trees
+    );
+    if (tree) {
+      mkdirSync(stampDir, { recursive: true });
+      writeFileSync(path.join(stampDir, tree), "");
+    }
   } finally {
     killActiveGroups();
-    releaseLock();
+    lock.release();
     rmSync(reportDir, { recursive: true, force: true });
   }
 
-  // Checks read the working tree, so only a clean HEAD's tree is proven; other pushed trees stay unstamped.
-  if (clean && headTree && trees.includes(headTree)) {
-    mkdirSync(stampDir, { recursive: true });
-    writeFileSync(path.join(stampDir, headTree), "");
-  }
   console.log(`\n[prepush] all checks passed in ${formatSeconds(startedAt)}`);
   return 0;
 }
