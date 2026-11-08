@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,8 +13,6 @@ import { prismaQueryCompiler } from "../../vitest.worker.config";
 import { PrismaReadService } from "../modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "../modules/prisma/prisma-write.service";
 import * as workerModule from "../worker";
-
-const API_KEY_PREFIX = "cal_";
 
 async function buildWorker(directory: string): Promise<string> {
   const appRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -63,7 +60,6 @@ describe("api v2 Worker host in workerd", () => {
   let directory: string;
   let mf: Miniflare;
   let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
-  let apiKey: string;
 
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "calflare-api-v2-worker-"));
@@ -96,8 +92,6 @@ describe("api v2 Worker host in workerd", () => {
     });
     db = await mf.getD1Database("DB");
 
-    apiKey = `${API_KEY_PREFIX}${crypto.randomUUID().replaceAll("-", "")}`;
-    const hashedKey = createHash("sha256").update(apiKey.slice(API_KEY_PREFIX.length)).digest("hex");
     await db.batch([
       db
         .prepare(
@@ -129,9 +123,6 @@ describe("api v2 Worker host in workerd", () => {
           "Europe/Paris",
           1
         ),
-      db
-        .prepare(`INSERT INTO "ApiKey" (id, "userId", "hashedKey") VALUES (?, ?, ?)`)
-        .bind("worker-api-key", 9001, hashedKey),
     ]);
   }, 300_000);
 
@@ -140,70 +131,49 @@ describe("api v2 Worker host in workerd", () => {
     if (directory) await rm(directory, { recursive: true, force: true });
   });
 
-  it("serves the version-neutral health route under the public prefix only", async () => {
-    const response = await mf.dispatchFetch("https://api.calflare.test/api/v2/health", {
-      headers: { Origin: "https://app.calflare.test" },
-    });
+  it("serves health under both public prefixes", async () => {
+    for (const path of ["/v2/health", "/api/v2/health"]) {
+      const response = await mf.dispatchFetch(`https://api.calflare.test${path}`);
 
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe("OK");
-    expect(response.headers.get("content-type")).toContain("text/html");
-    expect(response.headers.get("access-control-allow-origin")).toBe("*");
-    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
-
-    const outside = await mf.dispatchFetch("https://api.calflare.test/api/health");
-    const body = (await outside.json()) as { status: string; error: { code: string } };
-    expect(outside.status).toBe(404);
-    expect(body.status).toBe("error");
-    expect(body.error.code).toBe("NotFoundException");
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("OK");
+      expect(response.headers.get("content-type")).toContain("text/html");
+    }
   });
 
-  it("serves the versioned, guarded profile endpoint for an API key", async () => {
-    const response = await mf.dispatchFetch("https://api.calflare.test/api/v2/me", {
-      headers: { authorization: `Bearer ${apiKey}`, "cal-api-version": "2024-08-13" },
-    });
+  it("returns the source-shaped 404 outside the health routes", async () => {
+    const response = await mf.dispatchFetch("https://api.calflare.test/api/health?probe=1");
     const body = (await response.json()) as {
       status: string;
-      data: { id: number; email: string; name: string; username: string; timeZone: string };
+      timestamp: string;
+      path: string;
+      error: { code: string; message: string; details: unknown };
     };
 
-    expect(response.status).toBe(200);
-    expect(body.status).toBe("success");
-    expect(body.data).toMatchObject({
-      id: 9001,
-      email: "worker@calflare.test",
-      name: "Worker User",
-      username: "worker-user",
-      timeZone: "Europe/Paris",
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(body).toMatchObject({
+      status: "error",
+      path: "/api/health?probe=1",
+      error: {
+        code: "NotFoundException",
+        message: "Cannot GET /api/health?probe=1",
+        details: {
+          message: "Cannot GET /api/health?probe=1",
+          error: "Not Found",
+          statusCode: 404,
+        },
+      },
     });
-    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
-
-    const fallback = await mf.dispatchFetch("https://api.calflare.test/v2/me", {
-      headers: { authorization: `Bearer ${apiKey}`, "cal-api-version": "2020-01-01" },
-    });
-    expect(fallback.status).toBe(200);
+    expect(body.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("returns 401 for a missing API key and for one that is not in D1", async () => {
-    const missing = await mf.dispatchFetch("https://api.calflare.test/api/v2/me");
-    const missingBody = (await missing.json()) as {
-      status: string;
-      path: string;
-      error: { code: string; message: string };
-    };
+  it("does not serve the copied profile endpoint", async () => {
+    const response = await mf.dispatchFetch("https://api.calflare.test/api/v2/me");
+    const body = (await response.json()) as { error: { code: string } };
 
-    expect(missing.status).toBe(401);
-    expect(missingBody.status).toBe("error");
-    expect(missingBody.path).toBe("/api/v2/me");
-    expect(missingBody.error.code).toBe("UnauthorizedException");
-    expect(missingBody.error.message).toContain("No authentication method provided");
-
-    const unknown = await mf.dispatchFetch("https://api.calflare.test/api/v2/me", {
-      headers: { authorization: `Bearer ${API_KEY_PREFIX}missing` },
-    });
-    const unknownBody = (await unknown.json()) as { error: { message: string } };
-    expect(unknown.status).toBe(401);
-    expect(unknownBody.error.message).toContain("Your api key is not valid");
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe("NotFoundException");
   });
 
   it("declares the RuntimeState Durable Object export", () => {
