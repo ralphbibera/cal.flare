@@ -1,23 +1,18 @@
-import { type Queue, queue, type schemaTask } from "@trigger.dev/sdk";
+import type { JobRetryPolicy } from "@calcom/features/tasker/queue/JobQueue";
 
-type WebhookDeliveryTask = Pick<Parameters<typeof schemaTask>[0], "machine" | "retry" | "queue">;
+export type WebhookDeliveryTaskConfig = {
+  concurrencyLimit: number;
+  retry: JobRetryPolicy;
+};
 
-export const webhookDeliveryQueue: Queue = queue({
-  name: "webhook-delivery",
+export const webhookDeliveryTaskConfig: WebhookDeliveryTaskConfig = {
+  // The shared JOBS consumer runs at the calendars limit of 10 until DO admission applies per-job limits.
   concurrencyLimit: 25,
-});
-
-export const webhookDeliveryTaskConfig: WebhookDeliveryTask = {
-  machine: "small-1x",
-  queue: webhookDeliveryQueue,
   retry: {
     maxAttempts: 3,
     factor: 2,
     minTimeoutInMs: 30000,
     maxTimeoutInMs: 600000,
     randomize: true,
-    outOfMemory: {
-      machine: "medium-1x",
-    },
   },
 };

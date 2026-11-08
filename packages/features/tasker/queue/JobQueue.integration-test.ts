@@ -1,8 +1,11 @@
+import { createHmac } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { calendarsTaskConfig } from "@calcom/features/calendars/lib/tasker/trigger/config";
+import { webhookDeliveryTaskConfig } from "@calcom/features/webhooks/lib/tasker/trigger/config";
+import { WEBHOOK_DELIVERY_JOB_ID } from "@calcom/features/webhooks/lib/tasker/trigger/deliver-webhook";
 import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { build } from "esbuild";
 import { Miniflare, MiniflareWorkerConfigSchema } from "miniflare";
@@ -16,9 +19,12 @@ import { getCalendarsTasker } from "@calcom/features/calendars/di/tasker/Calenda
 import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
 import { calendarsTaskConfig } from "@calcom/features/calendars/lib/tasker/trigger/config";
 import { calendarsTaskSchema } from "@calcom/features/calendars/lib/tasker/trigger/schema";
+import { webhookContainer } from "@calcom/features/di/webhooks/containers/webhook";
+import { WEBHOOK_TOKENS } from "@calcom/features/di/webhooks/Webhooks.tokens";
 import { consumeJobBatch, defineQueueJob, enqueueJob } from "@calcom/features/tasker/queue/JobQueue";
 import { withJobQueue } from "@calcom/features/tasker/queue/context";
 import { TaskProcessor } from "@calcom/features/tasker/task-processor";
+import { deliverWebhookJob } from "@calcom/features/webhooks/lib/tasker/trigger/deliver-webhook";
 import { withD1Database } from "@calcom/prisma/d1";
 
 const failingRun = async () => {
@@ -37,7 +43,7 @@ const failingJobWithCalendarTiming = defineQueueJob({
   retry: calendarsTaskConfig.retry,
   run: failingRun,
 });
-const jobs = [ensureDefaultCalendarsJob, failingJob, failingJobWithCalendarTiming];
+const jobs = [ensureDefaultCalendarsJob, deliverWebhookJob, failingJob, failingJobWithCalendarTiming];
 
 const deliveries = [];
 let loseNextAck = false;
@@ -50,6 +56,10 @@ async function route(request, env) {
     const JOBS = { send: () => Promise.reject(new Error("queue unavailable")) };
     return withJobQueue({ JOBS }, () => getCalendarsTasker().ensureDefaultCalendars({ payload: body }));
   }
+  if (pathname === "/dispatch-webhook") {
+    return webhookContainer.get(WEBHOOK_TOKENS.WEBHOOK_TASKER).deliverWebhook(body);
+  }
+  if (pathname === "/enqueue-webhook") return enqueueJob(deliverWebhookJob, body);
   if (pathname === "/enqueue-failing") return enqueueJob(failingJob, body);
   if (pathname === "/enqueue-failing-calendar-timing") return enqueueJob(failingJobWithCalendarTiming, body);
   if (pathname === "/send") return env.JOBS.send(body);
@@ -77,6 +87,12 @@ export default {
 `;
 
 type Delivery = { runId: string; attempts: number };
+type WebhookCall = {
+  url: string;
+  signature: string | null;
+  version: string | null;
+  body: string;
+};
 type TaskRow = {
   id: string;
   type: string;
@@ -93,13 +109,28 @@ describe("JOBS queue job path in workerd", () => {
   let mf: Miniflare;
   let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
   const providerCalls: string[] = [];
+  const webhookCalls: WebhookCall[] = [];
   const failingProviderTokens = new Set<string>();
 
-  async function provider(request: { url: string; headers: { get(name: string): string | null } }) {
+  async function provider(request: {
+    url: string;
+    headers: { get(name: string): string | null };
+    text(): Promise<string>;
+  }) {
     const { hostname, pathname } = new URL(request.url);
     const token = request.headers.get("authorization")?.replace("Bearer ", "") ?? "";
     providerCalls.push(`${token} ${hostname}${pathname}`);
     const { Response } = await import("miniflare");
+    if (pathname.startsWith("/webhook")) {
+      webhookCalls.push({
+        url: request.url,
+        signature: request.headers.get("x-cal-signature-256"),
+        version: request.headers.get("x-cal-webhook-version"),
+        body: await request.text(),
+      });
+      if (pathname === "/webhook-down") return new Response("rejected", { status: 500 });
+      return Response.json({ ok: true });
+    }
     if (failingProviderTokens.has(token) || pathname === "/always-fails") {
       return new Response("provider down", { status: 500 });
     }
@@ -122,9 +153,17 @@ describe("JOBS queue job path in workerd", () => {
 
   const readTask = (id: string) =>
     db.prepare('SELECT * FROM "Task" WHERE "id" = ?').bind(id).first<TaskRow>();
+  const delayMsOf = (task: TaskRow | undefined) =>
+    Date.parse(task?.scheduledAt ?? "") - Date.parse(task?.lastFailedAttemptAt ?? "");
+  const makeDue = (runId: string) =>
+    db
+      .prepare('UPDATE "Task" SET "scheduledAt" = ? WHERE "id" = ?')
+      .bind("2020-01-01T00:00:00.000+00:00", runId)
+      .run();
   const deliveriesOf = async (runId: string) =>
     (await call<Delivery[]>("/deliveries")).filter((delivery) => delivery.runId === runId);
   const providerCallsOf = (token: string) => providerCalls.filter((entry) => entry.startsWith(`${token} `));
+  const webhookCallsOf = (url: string) => webhookCalls.filter((entry) => entry.url === url);
   const destinationCalendars = async (userId: number) =>
     (
       await db
@@ -147,6 +186,54 @@ describe("JOBS queue job path in workerd", () => {
       db
         .prepare('INSERT INTO "Credential" ("type", "key", "appId", "userId") VALUES (?, ?, ?, ?)')
         .bind("office365_calendar", key, "office365-calendar", userId),
+    ]);
+  }
+
+  async function seedBookingWebhook({
+    userId,
+    subscriberUrl,
+    secret,
+  }: {
+    userId: number;
+    subscriberUrl: string;
+    secret: string | null;
+  }) {
+    await db.batch([
+      db
+        .prepare(
+          'INSERT INTO "users" ("id", "uuid", "email", "username", "name", "timeZone", "locale") VALUES (?, ?, ?, ?, ?, ?, ?)'
+        )
+        .bind(
+          userId,
+          `webhook-user-${userId}`,
+          `webhook-user-${userId}@example.invalid`,
+          `webhook-user-${userId}`,
+          "Webhook User",
+          "UTC",
+          "en"
+        ),
+      db
+        .prepare('INSERT INTO "EventType" ("id", "title", "slug", "length", "userId") VALUES (?, ?, ?, ?, ?)')
+        .bind(userId, "Webhook Event", `webhook-event-${userId}`, 30, userId),
+      db
+        .prepare(
+          'INSERT INTO "Booking" ("id", "uid", "title", "responses", "startTime", "endTime", "userId", "eventTypeId") VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )
+        .bind(
+          userId,
+          `webhook-booking-${userId}`,
+          "Webhook booking",
+          JSON.stringify({ name: "Webhook Booker", email: "booker@example.invalid" }),
+          "2026-11-08T10:00:00.000+00:00",
+          "2026-11-08T10:30:00.000+00:00",
+          userId,
+          userId
+        ),
+      db
+        .prepare(
+          'INSERT INTO "Webhook" ("id", "userId", "subscriberUrl", "eventTriggers", "secret", "active") VALUES (?, ?, ?, ?, ?, 1)'
+        )
+        .bind(`webhook-${userId}`, userId, subscriberUrl, JSON.stringify(["BOOKING_REQUESTED"]), secret),
     ]);
   }
 
@@ -330,6 +417,115 @@ describe("JOBS queue job path in workerd", () => {
     expect(await deliveriesOf(runId)).toHaveLength(1);
   });
 
+  it("delivers a webhook job through JOBS and records the completed attempt", async () => {
+    const userId = 21;
+    const subscriberUrl = "https://provider.test/webhook-delivered";
+    await seedBookingWebhook({ userId, subscriberUrl, secret: "webhook-secret" });
+
+    const { taskId } = await call<{ taskId: string }>("/dispatch-webhook", {
+      operationId: "webhook-delivered",
+      triggerEvent: "BOOKING_REQUESTED",
+      bookingUid: `webhook-booking-${userId}`,
+      eventTypeId: userId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    await expect.poll(async () => (await readTask(taskId))?.succeededAt, { timeout: 30_000 }).toBeTruthy();
+    expect(await readTask(taskId)).toMatchObject({
+      type: WEBHOOK_DELIVERY_JOB_ID,
+      attempts: 1,
+      maxAttempts: 3,
+      lastError: null,
+    });
+
+    await expect.poll(() => webhookCallsOf(subscriberUrl), { timeout: 10_000 }).toHaveLength(1);
+    const [delivery] = webhookCallsOf(subscriberUrl);
+    expect(delivery.version).toBe("2021-10-20");
+    expect(delivery.signature).toBe(
+      createHmac("sha256", "webhook-secret").update(delivery.body).digest("hex")
+    );
+    expect(JSON.parse(delivery.body)).toMatchObject({
+      triggerEvent: "BOOKING_REQUESTED",
+      payload: { title: "Webhook booking" },
+    });
+  });
+
+  it("keeps a webhook provider failure terminal instead of retrying it", async () => {
+    const userId = 22;
+    const subscriberUrl = "https://provider.test/webhook-down";
+    await seedBookingWebhook({ userId, subscriberUrl, secret: null });
+
+    const { taskId } = await call<{ taskId: string }>("/dispatch-webhook", {
+      operationId: "webhook-provider-down",
+      triggerEvent: "BOOKING_REQUESTED",
+      bookingUid: `webhook-booking-${userId}`,
+      eventTypeId: userId,
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    await expect.poll(async () => (await readTask(taskId))?.succeededAt, { timeout: 30_000 }).toBeTruthy();
+    expect(await readTask(taskId)).toMatchObject({
+      attempts: 1,
+      lastError: null,
+      lastFailedAttemptAt: null,
+    });
+    expect(webhookCallsOf(subscriberUrl)).toHaveLength(1);
+    expect(await deliveriesOf(taskId)).toHaveLength(1);
+  });
+
+  it("retries a failing webhook job per its policy and exhausts it", async () => {
+    const { runId } = await call<{ runId: string }>("/enqueue-webhook", {
+      operationId: "webhook-missing-fetcher",
+      triggerEvent: "FORM_SUBMITTED",
+      formId: "form-1",
+      timestamp: new Date().toISOString(),
+    });
+
+    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(1);
+    expect(delayMsOf(await readTask(runId))).toBeGreaterThanOrEqual(30_000);
+    expect(delayMsOf(await readTask(runId))).toBeLessThanOrEqual(60_000);
+
+    await makeDue(runId);
+    await call("/send", { runId });
+    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(2);
+    expect(delayMsOf(await readTask(runId))).toBeGreaterThanOrEqual(60_000);
+    expect(delayMsOf(await readTask(runId))).toBeLessThanOrEqual(120_000);
+
+    await makeDue(runId);
+    await call("/send", { runId });
+    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(3);
+
+    const exhausted = await readTask(runId);
+    expect(exhausted).toMatchObject({ maxAttempts: 3, succeededAt: null });
+    expect(exhausted?.lastError).toContain("No data fetcher registered for trigger event: FORM_SUBMITTED");
+    expect((await deliveriesOf(runId)).map(({ attempts }) => attempts)).toEqual([1, 1, 1]);
+
+    await call("/send", { runId });
+    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(4);
+    expect((await readTask(runId))?.attempts).toBe(3);
+  });
+
+  it("fails an invalid webhook payload without retrying", async () => {
+    const runId = "invalid-webhook-payload";
+    await db
+      .prepare('INSERT INTO "Task" ("id", "type", "payload", "updatedAt") VALUES (?, ?, ?, ?)')
+      .bind(
+        runId,
+        WEBHOOK_DELIVERY_JOB_ID,
+        '{"operationId":"missing-trigger-event"}',
+        "2026-11-05T00:00:00.000+00:00"
+      )
+      .run();
+
+    await call("/send", { runId });
+
+    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 20_000 }).toBe(3);
+    expect((await readTask(runId))?.lastError).toBeTruthy();
+    expect(await deliveriesOf(runId)).toHaveLength(1);
+  });
+
   it("does not run a delivery that arrives before the run is due", async () => {
     await seedUser(6);
     const runId = "not-yet-due";
@@ -423,6 +619,11 @@ describe("JOBS queue job path in workerd", () => {
     expect([1, 2, 3].map((attempt) => nextRetryDelayMs(calendarsTaskConfig.retry, attempt))).toEqual([
       82_200,
       164_400,
+      undefined,
+    ]);
+    expect([1, 2, 3].map((attempt) => nextRetryDelayMs(webhookDeliveryTaskConfig.retry, attempt))).toEqual([
+      41_100,
+      82_200,
       undefined,
     ]);
     expect(nextRetryDelayMs({ maxAttempts: 10, randomize: false }, 8)).toBe(60_000);

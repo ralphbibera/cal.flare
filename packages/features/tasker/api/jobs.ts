@@ -1,4 +1,5 @@
 import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
+import { deliverWebhookJob } from "@calcom/features/webhooks/lib/tasker/trigger/deliver-webhook";
 import type { Message } from "@cloudflare/workers-types";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -9,7 +10,7 @@ import { consumeJobBatch } from "../queue/JobQueue";
 type DeliveredJob = { runId: string; attempts: number };
 type JobOutcome = { retry?: true; delaySeconds?: number };
 
-const QUEUE_JOBS = [ensureDefaultCalendarsJob];
+const QUEUE_JOBS = [ensureDefaultCalendarsJob, deliverWebhookJob];
 
 export async function handler(request: NextRequest) {
   if (!isInternalJobDispatch()) {
