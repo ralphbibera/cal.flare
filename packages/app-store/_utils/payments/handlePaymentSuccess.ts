@@ -12,7 +12,6 @@ import tasker from "@calcom/features/tasker";
 import getWebhooks from "@calcom/features/webhooks/lib/getWebhooks";
 import sendPayload from "@calcom/features/webhooks/lib/sendOrSchedulePayload";
 import type { EventPayloadType, EventTypeInfo } from "@calcom/features/webhooks/lib/sendPayload";
-import { getVideoCallUrlFromCalEvent } from "@calcom/lib/CalEventParser";
 import { getTeamIdFromEventType } from "@calcom/lib/getTeamIdFromEventType";
 import { HttpError as HttpCode } from "@calcom/lib/http-error";
 import logger from "@calcom/lib/logger";
@@ -20,9 +19,10 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import type { TraceContext } from "@calcom/lib/tracing";
 import { distributedTracing } from "@calcom/lib/tracing/factory";
 import prisma from "@calcom/prisma";
-import type { Prisma } from "@calcom/prisma/client";
 import { BookingStatus, WebhookTriggerEvents } from "@calcom/prisma/enums";
 import type { EventTypeMetadata } from "@calcom/prisma/zod-utils";
+import type { PartialReference } from "@calcom/types/EventManager";
+import { commitPaymentSuccessInD1 } from "./commitPaymentSuccessInD1";
 
 const log = logger.getSubLogger({ prefix: ["[handlePaymentSuccess]"] });
 
@@ -32,7 +32,7 @@ export async function handlePaymentSuccess(params: {
   bookingId: number;
   traceContext: TraceContext;
 }) {
-  const { paymentId, bookingId, appSlug, traceContext } = params;
+  const { paymentId, bookingId, traceContext } = params;
   const updatedTraceContext = distributedTracing.updateTrace(traceContext, {
     bookingId,
     paymentId,
@@ -51,11 +51,6 @@ export async function handlePaymentSuccess(params: {
 
   if (booking.location) evt.location = booking.location;
 
-  const bookingData: Prisma.BookingUpdateInput = {
-    paid: true,
-    status: BookingStatus.ACCEPTED,
-  };
-
   const allCredentials = await getAllCredentialsIncludeServiceAccountKey(userWithCredentials, {
     ...booking.eventType,
     metadata: booking.eventType?.metadata as EventTypeMetadata,
@@ -70,13 +65,14 @@ export async function handlePaymentSuccess(params: {
   const areCalendarEventsEnabled = platformOAuthClient?.areCalendarEventsEnabled ?? true;
   const areEmailsEnabled = platformOAuthClient?.areEmailsEnabled ?? true;
 
+  let references: PartialReference[] = [];
   if (isConfirmed) {
     const apps = eventTypeAppMetadataOptionalSchema.parse(eventType?.metadata?.apps);
     const eventManager = new EventManager({ ...userWithCredentials, credentials: allCredentials }, apps);
     const scheduleResult = areCalendarEventsEnabled
       ? await eventManager.create(evt)
       : placeholderCreatedEvent;
-    bookingData.references = { create: scheduleResult.referencesToCreate };
+    references = scheduleResult.referencesToCreate;
   }
 
   const requiresConfirmation = doesBookingRequireConfirmation({
@@ -86,33 +82,12 @@ export async function handlePaymentSuccess(params: {
     },
   });
 
-  if (requiresConfirmation) {
-    delete bookingData.status;
-  }
-  const paymentUpdate = prisma.payment.update({
-    where: {
-      id: paymentId,
-    },
-    data: {
-      success: true,
-    },
-    select: {
-      id: true,
-      externalId: true,
-    },
+  const { payment, booking: updatedBooking } = await commitPaymentSuccessInD1({
+    paymentId,
+    bookingId: booking.id,
+    status: requiresConfirmation ? undefined : BookingStatus.ACCEPTED,
+    references,
   });
-
-  const bookingUpdate = prisma.booking.update({
-    where: {
-      id: booking.id,
-    },
-    data: bookingData,
-    select: {
-      status: true,
-    },
-  });
-
-  const [payment, updatedBooking] = await prisma.$transaction([paymentUpdate, bookingUpdate]);
 
   const platformClientParams = platformOAuthClient ? getPlatformParams(platformOAuthClient) : undefined;
   const teamId = await getTeamIdFromEventType({

@@ -71,6 +71,11 @@ import { getNewBookingHandler } from "./getNewBookingHandler";
 
 const log = logger.getSubLogger({ prefix: ["[fresh-booking.test]"] });
 
+const commitPaymentSuccess = vi.hoisted(() => vi.fn());
+vi.mock("@calcom/app-store/_utils/payments/commitPaymentSuccessInD1", () => ({
+  commitPaymentSuccessInD1: commitPaymentSuccess,
+}));
+
 async function mockPaymentSuccessWebhookFromStripe({ externalId }: { externalId: string }) {
   const { handlePaymentSuccess } = await import("@calcom/app-store/_utils/payments/handlePaymentSuccess");
   let webhookResponse = null;
@@ -107,6 +112,23 @@ describe("handleNewBooking", () => {
   setupAndTeardown();
 
   beforeEach(() => {
+    commitPaymentSuccess.mockImplementation(async (args) => {
+      const payment = await prismaMock.payment.update({
+        where: { id: args.paymentId },
+        data: { success: true },
+        select: { id: true, externalId: true },
+      });
+      const booking = await prismaMock.booking.update({
+        where: { id: args.bookingId },
+        data: {
+          paid: true,
+          ...(args.status ? { status: args.status } : {}),
+          references: { create: args.references },
+        },
+        select: { status: true },
+      });
+      return { payment, booking };
+    });
     vi.spyOn(D1PaymentCredentialRepository, "findForBooking").mockImplementation(
       async ({ credentialId, userId }) => {
         const credentials = await prismaMock.credential.findMany({

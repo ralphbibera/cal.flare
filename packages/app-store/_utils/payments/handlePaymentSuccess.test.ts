@@ -25,9 +25,6 @@ vi.mock("@calcom/prisma", async (importOriginal) => {
     ...actual,
     // Spreading the real client would open its request-bound D1 binding outside a request.
     default: {
-      payment: { update: vi.fn() },
-      booking: { update: vi.fn() },
-      $transaction: vi.fn(),
       profile: { findMany: vi.fn().mockResolvedValue([]) },
       credential: { findMany: vi.fn().mockResolvedValue([]) },
       team: {
@@ -37,6 +34,7 @@ vi.mock("@calcom/prisma", async (importOriginal) => {
     },
   };
 });
+vi.mock("./commitPaymentSuccessInD1");
 vi.mock("@calcom/lib/getTeamIdFromEventType");
 vi.mock("@calcom/lib/CalEventParser");
 vi.mock("@calcom/features/platform-oauth-client/platform-oauth-client.repository", () => ({
@@ -86,7 +84,7 @@ import { WebhookVersion } from "@calcom/features/webhooks/lib/interface/IWebhook
 import sendPayload from "@calcom/features/webhooks/lib/sendOrSchedulePayload";
 import { getTeamIdFromEventType } from "@calcom/lib/getTeamIdFromEventType";
 import type { TraceContext } from "@calcom/lib/tracing";
-import prisma from "@calcom/prisma";
+import { commitPaymentSuccessInD1 } from "./commitPaymentSuccessInD1";
 
 describe("handlePaymentSuccess", () => {
   const mockBookingId = 1;
@@ -198,11 +196,10 @@ describe("handlePaymentSuccess", () => {
       eventType: mockEventType,
     });
 
-    // Mock prisma transaction
-    vi.mocked(prisma.$transaction).mockResolvedValue([
-      { id: mockPaymentId, externalId: "ext-123" },
-      { status: BookingStatus.ACCEPTED },
-    ]);
+    vi.mocked(commitPaymentSuccessInD1).mockResolvedValue({
+      payment: { id: mockPaymentId, externalId: "ext-123" },
+      booking: { status: BookingStatus.ACCEPTED },
+    });
 
     // Mock webhook functions
     vi.mocked(getWebhooks).mockResolvedValue([mockWebhookSubscriber]);
