@@ -36,7 +36,8 @@ const rows = async () => (await db.prepare('SELECT * FROM "Availability" ORDER B
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "calflare-schedule-"));
   const persistTo = join(root, "state");
-  expect(await migrateD1({ persistTo })).toMatchObject({ applied: 4, total: 4 });
+  const migrated = await migrateD1({ persistTo });
+  expect(migrated.applied).toBe(migrated.total);
   mf = new Miniflare({
     cf: false,
     enableDevRegistry: false,
