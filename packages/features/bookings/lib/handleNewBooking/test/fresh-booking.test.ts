@@ -7,6 +7,7 @@
  *
  * They don't intend to test what the apps logic should do, but rather test if the apps are called with the correct data. For testing that, once should write tests within each app.
  */
+import type { CommitPaymentSuccessInput } from "@calcom/app-store/_utils/payments/handlePaymentSuccessInD1";
 import prismaMock from "@calcom/testing/lib/__mocks__/prisma";
 import {
   BookingLocations,
@@ -70,6 +71,33 @@ import { handleConfirmation } from "../../handleConfirmation";
 import { getNewBookingHandler } from "./getNewBookingHandler";
 
 const log = logger.getSubLogger({ prefix: ["[fresh-booking.test]"] });
+
+// This flow keeps its records in prismock; the D1 batch boundary has its own workerd coverage.
+vi.mock("@calcom/app-store/_utils/payments/handlePaymentSuccessInD1", () => ({
+  commitPaymentSuccessInD1: async ({
+    paymentId,
+    bookingId,
+    status,
+    referencesToCreate,
+  }: CommitPaymentSuccessInput) => {
+    const { default: prismaMock } = await import("@calcom/testing/lib/__mocks__/prisma");
+    const payment = await prismaMock.payment.update({
+      where: { id: paymentId },
+      data: { success: true },
+      select: { id: true, externalId: true },
+    });
+    const booking = await prismaMock.booking.update({
+      where: { id: bookingId },
+      data: {
+        paid: true,
+        ...(status === undefined ? {} : { status }),
+        ...(referencesToCreate.length === 0 ? {} : { references: { create: referencesToCreate } }),
+      },
+      select: { status: true },
+    });
+    return { payment, booking };
+  },
+}));
 
 async function mockPaymentSuccessWebhookFromStripe({ externalId }: { externalId: string }) {
   const { handlePaymentSuccess } = await import("@calcom/app-store/_utils/payments/handlePaymentSuccess");
