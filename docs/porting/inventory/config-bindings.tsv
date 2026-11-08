@@ -1,0 +1,159 @@
+variable	disposition	target	evidence
+ALLOWED_HOSTNAMES	binding	var:ALLOWED_HOSTNAMES	
+ANALYZE	unsupported	none:build-script	bundle-analysis script flag; not a Worker binding
+API_KEY_PREFIX	binding	var:API_KEY_PREFIX	
+AUTH_BEARER_TOKEN_CLOUDFLARE	secret	secret:AUTH_BEARER_TOKEN_CLOUDFLARE	Cloudflare DNS provider token for organization domains
+AUTH_BEARER_TOKEN_VERCEL	secret	secret:AUTH_BEARER_TOKEN_VERCEL	Vercel domain provider token for organization domains
+BUILD_STANDALONE	unsupported	none:workerd	next.config throws; Workers has no Node application host
+CALCOM_APP_CREDENTIAL_ENCRYPTION_KEY	secret	secret:CALCOM_APP_CREDENTIAL_ENCRYPTION_KEY	
+CALCOM_CREDENTIAL_SYNC_ENDPOINT	binding	var:CALCOM_CREDENTIAL_SYNC_ENDPOINT	
+CALCOM_CREDENTIAL_SYNC_HEADER_NAME	binding	var:CALCOM_CREDENTIAL_SYNC_HEADER_NAME	
+CALCOM_CREDENTIAL_SYNC_SECRET	secret	secret:CALCOM_CREDENTIAL_SYNC_SECRET	
+CALCOM_ENV	binding	var:CALCOM_ENV	
+CALCOM_LICENSE_KEY	secret	secret:CALCOM_LICENSE_KEY	
+CALCOM_PRIVATE_API_ROUTE	binding	var:CALCOM_PRIVATE_API_ROUTE	
+CALCOM_SERVICE_ACCOUNT_ENCRYPTION_KEY	secret	secret:CALCOM_SERVICE_ACCOUNT_ENCRYPTION_KEY	
+CALCOM_TELEMETRY_DISABLED	binding	var:CALCOM_TELEMETRY_DISABLED	
+CALENDSO_ENCRYPTION_KEY	secret	secret:CALENDSO_ENCRYPTION_KEY	
+CAL_VIDEO_MEETING_LINK_FOR_TESTING	binding	var:CAL_VIDEO_MEETING_LINK_FOR_TESTING	
+CAL_VIDEO_RECORDING_TOKEN_SECRET	secret	secret:CAL_VIDEO_RECORDING_TOKEN_SECRET	
+CLOSECOM_CLIENT_ID	binding	var:CLOSECOM_CLIENT_ID	
+CLOSECOM_CLIENT_SECRET	secret	secret:CLOSECOM_CLIENT_SECRET	
+CLOUDFLARE_ACCOUNT_ID	binding	var:CLOUDFLARE_ACCOUNT_ID	account for Cloudflare URL scanning
+CLOUDFLARE_DNS	binding	var:CLOUDFLARE_DNS	enables Cloudflare DNS records for organization domains
+CLOUDFLARE_TURNSTILE_SECRET	secret	secret:CLOUDFLARE_TURNSTILE_SECRET	
+CLOUDFLARE_URL_SCANNER_API_TOKEN	secret	secret:CLOUDFLARE_URL_SCANNER_API_TOKEN	
+CLOUDFLARE_VERCEL_CNAME	binding	var:CLOUDFLARE_VERCEL_CNAME	CNAME target for Cloudflare DNS records
+CLOUDFLARE_ZONE_ID	binding	var:CLOUDFLARE_ZONE_ID	zone for Cloudflare DNS records
+CRON_SECRET	secret	secret:CRON_SECRET	
+CSP_POLICY	binding	var:CSP_POLICY	
+DAILY_API_KEY	secret	secret:DAILY_API_KEY	
+DAILY_WEBHOOK_SECRET	secret	secret:DAILY_WEBHOOK_SECRET	
+DATABASE_CHUNK_SIZE	binding	var:DATABASE_CHUNK_SIZE	
+DATABASE_DIRECT_URL	destination	d1:migrations-d1	Prisma Postgres migration URL; migrations-d1 replaces
+DATABASE_URL	destination	d1:DB	Prisma Postgres URL; the DB D1 binding replaces
+DEBUG	unsupported	none:test-support	app-store-cli script only
+DIRECTORY_IDS_TO_LOG	binding	var:DIRECTORY_IDS_TO_LOG	
+DUB_API_KEY	secret	secret:DUB_API_KEY	
+DUB_SMS_DOMAIN	unsupported	none:consumer-removed	consumer removed in faa497169c
+DUB_SMS_FOLDER_ID	unsupported	none:consumer-removed	consumer removed in faa497169c
+E2E_DEV_SERVER	unsupported	none:test-support	Playwright server helper only
+E2E_TEST_CALCOM_GCAL_KEYS	unsupported	none:test-support	Playwright fixture only
+E2E_TEST_CALCOM_QA_GCAL_CREDENTIALS	unsupported	none:test-support	Playwright fixture only
+E2E_TEST_MAILHOG_ENABLED	binding	var:E2E_TEST_MAILHOG_ENABLED	
+EDGE_CONFIG	destination	d1:RuntimeConfig	Edge Config SDK replaced by a D1 RuntimeConfig lookup
+EMAIL_FROM	binding	var:EMAIL_FROM	
+EMAIL_FROM_NAME	binding	var:EMAIL_FROM_NAME	
+EMAIL_SERVER	secret	secret:EMAIL_SERVER	
+EMAIL_SERVER_HOST	binding	var:EMAIL_SERVER_HOST	
+EMAIL_SERVER_PASSWORD	secret	secret:EMAIL_SERVER_PASSWORD	
+EMAIL_SERVER_PORT	binding	var:EMAIL_SERVER_PORT	
+EMAIL_SERVER_USER	secret	secret:EMAIL_SERVER_USER	
+ENABLE_ASYNC_TASKER	binding	var:ENABLE_ASYNC_TASKER	
+FORMBRICKS_FEEDBACK_SURVEY_ID	binding	var:FORMBRICKS_FEEDBACK_SURVEY_ID	
+GOOGLE_ADS_ENABLED	binding	var:GOOGLE_ADS_ENABLED	
+GOOGLE_API_CREDENTIALS	secret	secret:GOOGLE_API_CREDENTIALS	
+GOOGLE_LOGIN_ENABLED	binding	var:GOOGLE_LOGIN_ENABLED	
+HEROKU_APP_NAME	unsupported	none:host-specific	host detection for non-Workers platforms; WEBAPP_URL is the source value
+IFFY_API_KEY	secret	secret:IFFY_API_KEY	
+INSIGHTS_DATABASE_URL	unsupported	none:removed-upstream	readonly insights client removed in d278d6c9bc
+INTEGRATION_TESTS	unsupported	none:test-support	Vitest setup only
+INTEGRATION_TEST_MODE	binding	var:INTEGRATION_TEST_MODE	
+IP_BANLIST	binding	var:IP_BANLIST	
+IS_E2E	binding	var:IS_E2E	
+LINGO_DOT_DEV_API_KEY	secret	secret:LINGO_DOT_DEV_API_KEY	
+LINKEDIN_ADS_ENABLED	binding	var:LINKEDIN_ADS_ENABLED	
+NEXTAUTH_COOKIE_DOMAIN	binding	var:NEXTAUTH_COOKIE_DOMAIN	
+NEXTAUTH_SECRET	secret	secret:NEXTAUTH_SECRET	
+NEXTAUTH_URL	binding	var:NEXTAUTH_URL	
+NEXT_PUBLIC_API_V2_URL	public-build	allowlist:NEXT_PUBLIC_API_V2_URL	
+NEXT_PUBLIC_APP_NAME	public-build	allowlist:NEXT_PUBLIC_APP_NAME	
+NEXT_PUBLIC_AXIOM_INGEST_ENDPOINT	public-build	allowlist:NEXT_PUBLIC_AXIOM_INGEST_ENDPOINT	next-axiom build value; no first-party reader
+NEXT_PUBLIC_BODY_SCRIPTS	public-build	allowlist:NEXT_PUBLIC_BODY_SCRIPTS	
+NEXT_PUBLIC_BOOKER_NUMBER_OF_DAYS_TO_LOAD	public-build	allowlist:NEXT_PUBLIC_BOOKER_NUMBER_OF_DAYS_TO_LOAD	
+NEXT_PUBLIC_CALCOM_VERSION	public-build	allowlist:NEXT_PUBLIC_CALCOM_VERSION	
+NEXT_PUBLIC_CAL_AI_PHONE_NUMBER_MONTHLY_PRICE	public-build	allowlist:NEXT_PUBLIC_CAL_AI_PHONE_NUMBER_MONTHLY_PRICE	
+NEXT_PUBLIC_CLOUDFLARE_SITEKEY	public-build	allowlist:NEXT_PUBLIC_CLOUDFLARE_SITEKEY	
+NEXT_PUBLIC_CLOUDFLARE_USE_TURNSTILE_IN_BOOKER	public-build	allowlist:NEXT_PUBLIC_CLOUDFLARE_USE_TURNSTILE_IN_BOOKER	
+NEXT_PUBLIC_COMPANY_NAME	public-build	allowlist:NEXT_PUBLIC_COMPANY_NAME	
+NEXT_PUBLIC_DUB_PROGRAM_ID	public-build	allowlist:NEXT_PUBLIC_DUB_PROGRAM_ID	
+NEXT_PUBLIC_EMBED_LIB_URL	public-build	allowlist:NEXT_PUBLIC_EMBED_LIB_URL	
+NEXT_PUBLIC_ENABLE_PROFILE_SWITCHER	public-build	allowlist:NEXT_PUBLIC_ENABLE_PROFILE_SWITCHER	
+NEXT_PUBLIC_FORMBRICKS_ENVIRONMENT_ID	public-build	allowlist:NEXT_PUBLIC_FORMBRICKS_ENVIRONMENT_ID	
+NEXT_PUBLIC_FORMBRICKS_HOST_URL	public-build	allowlist:NEXT_PUBLIC_FORMBRICKS_HOST_URL	
+NEXT_PUBLIC_GTM_ID	public-build	allowlist:NEXT_PUBLIC_GTM_ID	
+NEXT_PUBLIC_HEAD_SCRIPTS	public-build	allowlist:NEXT_PUBLIC_HEAD_SCRIPTS	
+NEXT_PUBLIC_HOSTED_CAL_FEATURES	public-build	allowlist:NEXT_PUBLIC_HOSTED_CAL_FEATURES	
+NEXT_PUBLIC_INVALIDATE_AVAILABLE_SLOTS_ON_BOOKING_FORM	public-build	allowlist:NEXT_PUBLIC_INVALIDATE_AVAILABLE_SLOTS_ON_BOOKING_FORM	
+NEXT_PUBLIC_IS_E2E	public-build	allowlist:NEXT_PUBLIC_IS_E2E	
+NEXT_PUBLIC_LOGGER_LEVEL	public-build	allowlist:NEXT_PUBLIC_LOGGER_LEVEL	
+NEXT_PUBLIC_MINUTES_TO_BOOK	public-build	allowlist:NEXT_PUBLIC_MINUTES_TO_BOOK	
+NEXT_PUBLIC_ORGANIZATIONS_SELF_SERVE_PRICE_NEW	public-build	allowlist:NEXT_PUBLIC_ORGANIZATIONS_SELF_SERVE_PRICE_NEW	
+NEXT_PUBLIC_ORG_SELF_SERVE_ENABLED	public-build	allowlist:NEXT_PUBLIC_ORG_SELF_SERVE_ENABLED	
+NEXT_PUBLIC_QUERY_AVAILABLE_SLOTS_INTERVAL_SECONDS	public-build	allowlist:NEXT_PUBLIC_QUERY_AVAILABLE_SLOTS_INTERVAL_SECONDS	
+NEXT_PUBLIC_QUERY_RESERVATION_INTERVAL_SECONDS	public-build	allowlist:NEXT_PUBLIC_QUERY_RESERVATION_INTERVAL_SECONDS	
+NEXT_PUBLIC_QUERY_RESERVATION_STALE_TIME_SECONDS	public-build	allowlist:NEXT_PUBLIC_QUERY_RESERVATION_STALE_TIME_SECONDS	
+NEXT_PUBLIC_QUICK_AVAILABILITY_ROLLOUT	public-build	allowlist:NEXT_PUBLIC_QUICK_AVAILABILITY_ROLLOUT	
+NEXT_PUBLIC_SENDER_ID	unsupported	none:consumer-removed	consumer removed in faa497169c
+NEXT_PUBLIC_SENDGRID_SENDER_NAME	public-build	allowlist:NEXT_PUBLIC_SENDGRID_SENDER_NAME	
+NEXT_PUBLIC_SENTRY_DSN	public-build	allowlist:NEXT_PUBLIC_SENTRY_DSN	
+NEXT_PUBLIC_SENTRY_DSN_CLIENT	public-build	allowlist:NEXT_PUBLIC_SENTRY_DSN_CLIENT	
+NEXT_PUBLIC_SINGLE_ORG_MODE_ENABLED	public-build	allowlist:NEXT_PUBLIC_SINGLE_ORG_MODE_ENABLED	allowlisted build value; the inventory reference is the next-config test
+NEXT_PUBLIC_SINGLE_ORG_SLUG	public-build	allowlist:NEXT_PUBLIC_SINGLE_ORG_SLUG	
+NEXT_PUBLIC_STRIPE_CREDITS_PRICE_ID	public-build	allowlist:NEXT_PUBLIC_STRIPE_CREDITS_PRICE_ID	
+NEXT_PUBLIC_STRIPE_PREMIUM_PLAN_PRICE_MONTHLY	public-build	allowlist:NEXT_PUBLIC_STRIPE_PREMIUM_PLAN_PRICE_MONTHLY	
+NEXT_PUBLIC_STRIPE_PUBLIC_KEY	public-build	allowlist:NEXT_PUBLIC_STRIPE_PUBLIC_KEY	
+NEXT_PUBLIC_SUPPORT_MAIL_ADDRESS	public-build	allowlist:NEXT_PUBLIC_SUPPORT_MAIL_ADDRESS	
+NEXT_PUBLIC_VAPID_PUBLIC_KEY	public-build	allowlist:NEXT_PUBLIC_VAPID_PUBLIC_KEY	
+NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA	public-build	allowlist:NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA	
+NEXT_PUBLIC_VERCEL_URL	public-build	allowlist:NEXT_PUBLIC_VERCEL_URL	
+NEXT_PUBLIC_VERCEL_USE_BOTID_IN_BOOKER	public-build	allowlist:NEXT_PUBLIC_VERCEL_USE_BOTID_IN_BOOKER	
+NEXT_PUBLIC_WEBAPP_URL	public-build	allowlist:NEXT_PUBLIC_WEBAPP_URL	
+NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL	public-build	allowlist:NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL	
+NEXT_PUBLIC_WEBSITE_TERMS_URL	public-build	allowlist:NEXT_PUBLIC_WEBSITE_TERMS_URL	
+NEXT_PUBLIC_WEBSITE_URL	public-build	allowlist:NEXT_PUBLIC_WEBSITE_URL	
+NEXT_RUNTIME	unsupported	none:no-consumer	Next runtime marker; Sentry configs are imported directly
+NODE_ENV	dynamic-lookup	dynamic:workers-runtime	provided by the Workers runtime; not deployable config
+ORGANIZATIONS_ENABLED	binding	var:ORGANIZATIONS_ENABLED	
+ORGANIZER_EMAIL_EXEMPT_DOMAINS	binding	var:ORGANIZER_EMAIL_EXEMPT_DOMAINS	
+PAYMENT_FEE_FIXED	unsupported	none:test-support	Playwright fixture only
+PAYMENT_FEE_PERCENTAGE	unsupported	none:test-support	Playwright fixture only
+PLAYWRIGHT_TEST_BASE_URL	unsupported	none:test-support	Playwright server helper only
+PROJECT_ID_VERCEL	binding	var:PROJECT_ID_VERCEL	organization domains stay an outbound Vercel API integration
+RAILWAY_STATIC_URL	unsupported	none:host-specific	host detection for non-Workers platforms
+RENDER_EXTERNAL_URL	unsupported	none:host-specific	host detection for non-Workers platforms
+RESEND_API_KEY	secret	secret:RESEND_API_KEY	
+RESERVED_SUBDOMAINS	binding	var:RESERVED_SUBDOMAINS	
+RETELL_AI_KEY	secret	secret:RETELL_AI_KEY	
+RETELL_AI_TEST_EVENT_TYPE_MAP	binding	var:RETELL_AI_TEST_EVENT_TYPE_MAP	
+RETELL_AI_TEST_MODE	binding	var:RETELL_AI_TEST_MODE	
+SENDGRID_API_KEY	unsupported	none:test-support	Playwright fixture only
+SENDGRID_SYNC_API_KEY	secret	secret:SENDGRID_SYNC_API_KEY	
+SENTRY_DEBUG	binding	var:SENTRY_DEBUG	
+SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE	binding	var:SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE	
+SENTRY_REPLAYS_SESSION_SAMPLE_RATE	binding	var:SENTRY_REPLAYS_SESSION_SAMPLE_RATE	
+SENTRY_SAMPLE_RATE	binding	var:SENTRY_SAMPLE_RATE	
+SENTRY_TRACES_SAMPLE_RATE	binding	var:SENTRY_TRACES_SAMPLE_RATE	
+SINK_API_KEY	secret	secret:SINK_API_KEY	
+SINK_API_URL	binding	var:SINK_API_URL	
+SKIP_DB_MIGRATIONS	destination	d1:migrations-d1	Prisma auto-migrations script replaced by migrations-d1
+STRIPE_CLIENT_ID	binding	var:STRIPE_CLIENT_ID	
+STRIPE_ORG_TRIAL_DAYS	binding	var:STRIPE_ORG_TRIAL_DAYS	
+STRIPE_PRIVATE_KEY	secret	secret:STRIPE_PRIVATE_KEY	
+STRIPE_WEBHOOK_SECRET	unsupported	none:test-support	D_SHELL references are Playwright and testing fixtures
+TEAM_ID_VERCEL	binding	var:TEAM_ID_VERCEL	organization domains stay an outbound Vercel API integration
+TELEMETRY_DEBUG	binding	var:TELEMETRY_DEBUG	
+TRIGGER_API_URL	destination	queue:JOBS	Trigger runner replaced by the JOBS queue
+TRIGGER_SECRET_KEY	destination	queue:JOBS	Trigger runner replaced by the JOBS queue
+TZ	unsupported	none:test-support	timezone test only
+UNKEY_ROOT_KEY	unsupported	none:test-support	D_SHELL references are tests; limiter state moves to RUNTIME_STATE
+UPSTASH_REDIS_REST_TOKEN	destination	do:RUNTIME_STATE	external Redis replaced by the RUNTIME_STATE DO
+UPSTASH_REDIS_REST_URL	destination	do:RUNTIME_STATE	external Redis replaced by the RUNTIME_STATE DO
+USERNAME_BLACKLIST_URL	binding	var:USERNAME_BLACKLIST_URL	
+USE_POOL	destination	d1:DB	Prisma pool flag; the DB D1 binding replaces
+VAPID_PRIVATE_KEY	secret	secret:VAPID_PRIVATE_KEY	
+VERCEL_URL	unsupported	none:host-specific	host detection for non-Workers platforms
+[`${prefix}${kid.toUpperCase()}`]	dynamic-lookup	dynamic:CALCOM_KEYRING_CREDENTIALS_<kid>	one secret per keyring rotation kid
+[`${prefix}CURRENT`]	dynamic-lookup	dynamic:CALCOM_KEYRING_CREDENTIALS_CURRENT	keyring prefix is CALCOM_KEYRING_CREDENTIALS_
+[envVar]	dynamic-lookup	dynamic:release-script-env	create-sentry-release.js reads a caller-named variable
+_CAL_INTERNAL_PAST_BOOKING_RESCHEDULE_CHANGE_TEAM_IDS	binding	var:_CAL_INTERNAL_PAST_BOOKING_RESCHEDULE_CHANGE_TEAM_IDS	

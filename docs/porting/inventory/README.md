@@ -12,6 +12,7 @@ These files bind source scope and placement. They do not claim that the source a
 | [manifests.tsv](manifests.tsv) | Every direct dependency edge at the baseline. Original ranges are not selected target versions. |
 | [schedules.tsv](schedules.tsv) | Vercel schedules, GitHub workflow methods and conditions, and matching or absent handlers. |
 | [environment.tsv](environment.tsv) | Static and computed environment references. No values or secrets. |
+| [config-bindings.tsv](config-bindings.tsv) | Every `D_SHELL` variable names its target: Worker var, secret, public build value, dynamic lookup, or recorded replacement. |
 | [summary.json](summary.json) | Baseline and reproducible counts. |
 
 `source` names the original upstream path. Read it with `git show e8afecd163cd3a0a3ff279bd4721aa7f073c4685:<source>`.

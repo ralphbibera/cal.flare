@@ -29,6 +29,7 @@ Exact flags, cache policy and binding responsibilities are in [architecture](por
 ## Configure local secrets
 
 Use ignored `.dev.vars` files in each app that consumes secrets. Add only required names; do not copy all server variables into browser build configuration.
+The `D_SHELL` rows in [the environment inventory](porting/inventory/environment.tsv) resolve through [config bindings](porting/inventory/config-bindings.tsv). Provision every row with disposition `secret` out of band; a consistent table proves declaration, not deployment.
 Do not use the upstream `.env.example` PostgreSQL URLs as a D1 connection configuration.
 D1 is accessed through the `DB` binding, with fresh local state for development.
 

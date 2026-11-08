@@ -23,6 +23,7 @@ export default defineConfig({
     env: {
       ...cache.env,
       NEXTAUTH_SECRET: bindings.secret(),
+      CALENDSO_ENCRYPTION_KEY: bindings.secret(),
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
       EMAIL: bindings.sendEmail(),

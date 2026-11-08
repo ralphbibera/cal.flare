@@ -168,6 +168,7 @@ E2E_TEST_CALCOM_QA_EMAIL	packages/app-store/googlecalendar/tests/google-calendar
 E2E_TEST_CALCOM_QA_GCAL_CREDENTIALS	apps/web/playwright/lib/testUtils.ts	server-binding	D_SHELL
 E2E_TEST_CALCOM_QA_PASSWORD	packages/app-store/googlecalendar/tests/google-calendar.e2e.ts	server-binding	D_APPS
 E2E_TEST_MAILHOG_ENABLED	packages/lib/constants.ts	server-binding	D_SHELL
+EDGE_CONFIG	apps/web/proxy.ts	d1-runtime-config	D_SHELL
 EMAIL_FROM	apps/web/app/(use-page-wrapper)/auth/verify/page.tsx	server-binding	D_AUTH
 EMAIL_FROM	apps/web/next.config.ts	server-binding	D_SHELL
 EMAIL_FROM	packages/features/auth/lib/sendVerificationRequest.ts	server-binding	D_AUTH
