@@ -30,7 +30,7 @@ export default defineConfig({
   },
   test: {
     name: "@calcom/api-v2-worker",
-    include: ["src/worker/index.worker-test.ts"],
+    include: ["src/worker/**/*.worker-test.ts"],
     environment: "node",
     pool: "forks",
     testTimeout: 300_000,
