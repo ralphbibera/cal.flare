@@ -1,10 +1,55 @@
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
-
-import { prisma } from "@calcom/prisma";
-import { BookingStatus } from "@calcom/prisma/enums";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ErrorCode } from "@calcom/lib/errorCodes";
-
+import { prisma } from "@calcom/prisma";
+import { withD1Database } from "@calcom/prisma/d1";
+import { BookingStatus } from "@calcom/prisma/enums";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { addSeatToBooking } from "./createNewSeat";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => it(name, () => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-create-new-seat-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 // Track resources to clean up
 const createdBookingIds: number[] = [];
@@ -27,41 +72,46 @@ async function clearTestData() {
 }
 
 describe("createNewSeat Race Condition Prevention (Integration)", () => {
-  beforeAll(async () => {
-    // Use existing seed user
-    const testUser = await prisma.user.findFirstOrThrow({
-      where: { email: "member0-acme@example.com" },
-    });
-    testUserId = testUser.id;
+  beforeAll(() =>
+    inD1(async () => {
+      // Use existing seed user
+      let testUser = await prisma.user.findFirst({
+        where: { email: "member0-acme@example.com" },
+      });
+      if (!testUser) {
+        testUser = await prisma.user.create({
+          data: { email: "member0-acme@example.com", username: "member0-acme" },
+        });
+      }
+      testUserId = testUser.id;
 
-    // Find or create a test event type with seats
-    let eventType = await prisma.eventType.findFirst({
-      where: {
-        userId: testUserId,
-        seatsPerTimeSlot: { not: null },
-      },
-    });
-
-    if (!eventType) {
-      eventType = await prisma.eventType.create({
-        data: {
-          title: "Seated Test Event",
-          slug: `seated-test-event-${Date.now()}`,
-          length: 30,
+      // Find or create a test event type with seats
+      let eventType = await prisma.eventType.findFirst({
+        where: {
           userId: testUserId,
-          seatsPerTimeSlot: 2,
-          seatsShowAttendees: false,
+          seatsPerTimeSlot: { not: null },
         },
       });
-    }
-    testEventTypeId = eventType.id;
-  });
 
-  afterEach(async () => {
-    await clearTestData();
-  });
+      if (!eventType) {
+        eventType = await prisma.eventType.create({
+          data: {
+            title: "Seated Test Event",
+            slug: `seated-test-event-${Date.now()}`,
+            length: 30,
+            userId: testUserId,
+            seatsPerTimeSlot: 2,
+            seatsShowAttendees: false,
+          },
+        });
+      }
+      testEventTypeId = eventType.id;
+    })
+  );
 
-  it("should prevent overbooking when concurrent requests race for the last seat", async () => {
+  afterEach(() => inD1(clearTestData));
+
+  d1Test("should prevent overbooking when concurrent requests race for the last seat", async () => {
     const bookingUid = `race-test-${Date.now()}`;
     const startTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
@@ -163,7 +213,7 @@ describe("createNewSeat Race Condition Prevention (Integration)", () => {
     expect(finalSeatCount).toBe(2);
   });
 
-  it("should allow both bookings when enough seats are available", async () => {
+  d1Test("should allow both bookings when enough seats are available", async () => {
     const bookingUid = `multi-seat-test-${Date.now()}`;
     const startTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
@@ -239,7 +289,7 @@ describe("createNewSeat Race Condition Prevention (Integration)", () => {
     expect(finalSeatCount).toBe(2);
   });
 
-  it("should reject booking when event is already full", async () => {
+  d1Test("should reject booking when event is already full", async () => {
     const bookingUid = `full-event-test-${Date.now()}`;
     const startTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
@@ -337,7 +387,7 @@ describe("createNewSeat Race Condition Prevention (Integration)", () => {
     expect(finalSeatCount).toBe(2);
   });
 
-  it("should allow booking when seatsPerTimeSlot is 0 (falsy)", async () => {
+  d1Test("should allow booking when seatsPerTimeSlot is 0 (falsy)", async () => {
     // This tests the fix for the bug where null/undefined seatsPerTimeSlot
     // would fallback to 0 and incorrectly reject all bookings because
     // 0 <= currentSeatCount was always true
@@ -400,7 +450,7 @@ describe("createNewSeat Race Condition Prevention (Integration)", () => {
     expect(finalSeatCount).toBe(1);
   });
 
-  it("should allow multiple bookings when seatsPerTimeSlot is 0 (no limit)", async () => {
+  d1Test("should allow multiple bookings when seatsPerTimeSlot is 0 (no limit)", async () => {
     const bookingUid = `zero-seats-multi-test-${Date.now()}`;
     const startTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);

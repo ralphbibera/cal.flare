@@ -1,9 +1,58 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import handleDeleteCredential from "@calcom/features/credentials/handleDeleteCredential";
 import prisma from "@calcom/prisma";
 import type { Credential, EventType, User } from "@calcom/prisma/client";
+import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("@calcom/features/bookings/lib/payment/deletePayment", () => ({ deletePayment: vi.fn() }));
+vi.mock("@calcom/emails/email-manager", () => ({ sendCancelledEmailsAndSMS: vi.fn() }));
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => it(name, () => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-delete-credential-soft-delete-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 describe("handleDeleteCredential Integration Tests - BookingReference Soft Delete", () => {
   let testUser: User;
@@ -25,178 +74,196 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
     });
   }
 
-  beforeAll(async () => {
-    testUser = await prisma.user.create({
-      data: {
-        email: "delete-credential-test@example.com",
-        username: "delete-credential-test",
-      },
-    });
-
-    testCredential = await prisma.credential.create({
-      data: {
-        type: "stripe_payment",
-        key: { test_key: "test_value" },
-        userId: testUser.id,
-        appId: "stripe",
-      },
-    });
-
-    testEventType = await prisma.eventType.create({
-      data: {
-        title: "Paid Event",
-        slug: "paid-event-test",
-        length: 30,
-        userId: testUser.id,
-        price: 1000, // $10
-        currency: "usd",
-      },
-    });
-  });
-
-  afterEach(async () => {
-    if (createdBookingReferenceIds.length > 0) {
-      await prisma.bookingReference.deleteMany({
-        where: {
-          id: {
-            in: createdBookingReferenceIds,
-          },
-        },
-      });
-      createdBookingReferenceIds.splice(0, createdBookingReferenceIds.length);
-    }
-
-    if (createdBookingIds.length > 0) {
-      await prisma.attendee.deleteMany({
-        where: {
-          bookingId: {
-            in: createdBookingIds,
-          },
-        },
-      });
-
-      await prisma.booking.deleteMany({
-        where: {
-          id: {
-            in: createdBookingIds,
-          },
-        },
-      });
-      createdBookingIds.splice(0, createdBookingIds.length);
-    }
-  });
-
-  afterAll(async () => {
-    await prisma.eventType.delete({
-      where: {
-        id: testEventType.id,
-      },
-    });
-
-    try {
-      await prisma.credential.delete({
-        where: {
-          id: testCredential.id,
-        },
-      });
-    } catch (error) {
-      // Credential already deleted by test
-      console.log("Credential deletion error:", error);
-    }
-
-    await prisma.user.delete({
-      where: {
-        id: testUser.id,
-      },
-    });
-  });
-
-  describe("Soft-delete bookingReferences when deleting payment credential", () => {
-    it("should soft-delete booking references for unpaid bookings when credential is deleted", async () => {
-      const unpaidBooking = await prisma.booking.create({
+  beforeAll(() =>
+    inD1(async () => {
+      await prisma.app.create({
         data: {
-          uid: "unpaid-booking-uid-123",
-          title: "Unpaid Booking",
-          startTime: new Date(Date.now() + 86400000), // Tomorrow
-          endTime: new Date(Date.now() + 90000000),
-          userId: testUser.id,
-          eventTypeId: testEventType.id,
-          status: BookingStatus.PENDING,
-          paid: false,
-          attendees: {
-            create: [
-              {
-                email: "attendee@test.com",
-                name: "Test Attendee",
-                timeZone: "America/New_York",
-              },
-            ],
-          },
-          payment: {
-            create: {
-              uid: "payment-uid-123",
-              appId: "stripe",
-              amount: 1000,
-              fee: 0,
-              currency: "usd",
-              success: false,
-              refunded: false,
-              data: {},
-              externalId: "ext-payment-123",
-            },
-          },
+          slug: "stripe",
+          dirName: "stripepayment",
+          categories: ["payment"],
+          enabled: true,
         },
       });
-      createdBookingIds.push(unpaidBooking.id);
 
-      const bookingRef1 = await prisma.bookingReference.create({
+      testUser = await prisma.user.create({
+        data: {
+          email: "delete-credential-test@example.com",
+          username: "delete-credential-test",
+        },
+      });
+
+      testCredential = await prisma.credential.create({
         data: {
           type: "stripe_payment",
-          uid: "stripe-ref-123",
-          meetingId: "stripe-meeting-123",
-          credentialId: testCredential.id,
-          bookingId: unpaidBooking.id,
+          key: { test_key: "test_value" },
+          userId: testUser.id,
+          appId: "stripe",
         },
       });
-      createdBookingReferenceIds.push(bookingRef1.id);
 
-      const bookingRef2 = await prisma.bookingReference.create({
+      testEventType = await prisma.eventType.create({
         data: {
-          type: "google_calendar",
-          uid: "gcal-ref-123",
-          meetingId: "gcal-meeting-123",
-          credentialId: testCredential.id,
-          bookingId: unpaidBooking.id,
+          title: "Paid Event",
+          slug: "paid-event-test",
+          length: 30,
+          userId: testUser.id,
+          price: 1000, // $10
+          currency: "usd",
         },
       });
-      createdBookingReferenceIds.push(bookingRef2.id);
+    })
+  );
 
-      const refsBeforeDeletion = await prisma.bookingReference.findMany({
+  afterEach(() =>
+    inD1(async () => {
+      if (createdBookingReferenceIds.length > 0) {
+        await prisma.bookingReference.deleteMany({
+          where: {
+            id: {
+              in: createdBookingReferenceIds,
+            },
+          },
+        });
+        createdBookingReferenceIds.splice(0, createdBookingReferenceIds.length);
+      }
+
+      if (createdBookingIds.length > 0) {
+        await prisma.attendee.deleteMany({
+          where: {
+            bookingId: {
+              in: createdBookingIds,
+            },
+          },
+        });
+
+        await prisma.booking.deleteMany({
+          where: {
+            id: {
+              in: createdBookingIds,
+            },
+          },
+        });
+        createdBookingIds.splice(0, createdBookingIds.length);
+      }
+    })
+  );
+
+  afterAll(() =>
+    inD1(async () => {
+      await prisma.eventType.delete({
         where: {
-          bookingId: unpaidBooking.id,
+          id: testEventType.id,
         },
       });
-      expect(refsBeforeDeletion).toHaveLength(2);
-      expect(refsBeforeDeletion.every((ref) => ref.deleted === null)).toBe(true);
 
-      await deleteCredentialWithMetadata(testCredential.id, testUser.id);
+      try {
+        await prisma.credential.delete({
+          where: {
+            id: testCredential.id,
+          },
+        });
+      } catch (error) {
+        // Credential already deleted by test
+        console.log("Credential deletion error:", error);
+      }
 
-      const refsAfterDeletion = await prisma.bookingReference.findMany({
+      await prisma.user.delete({
         where: {
-          bookingId: unpaidBooking.id,
+          id: testUser.id,
         },
       });
+    })
+  );
 
-      expect(refsAfterDeletion).toHaveLength(2);
-      expect(refsAfterDeletion.every((ref) => ref.deleted === true)).toBe(true);
+  describe("Soft-delete bookingReferences when deleting payment credential", () => {
+    d1Test(
+      "should soft-delete booking references for unpaid bookings when credential is deleted",
+      async () => {
+        const unpaidBooking = await prisma.booking.create({
+          data: {
+            uid: "unpaid-booking-uid-123",
+            title: "Unpaid Booking",
+            startTime: new Date(Date.now() + 86400000), // Tomorrow
+            endTime: new Date(Date.now() + 90000000),
+            userId: testUser.id,
+            eventTypeId: testEventType.id,
+            status: BookingStatus.PENDING,
+            paid: false,
+            attendees: {
+              create: [
+                {
+                  email: "attendee@test.com",
+                  name: "Test Attendee",
+                  timeZone: "America/New_York",
+                },
+              ],
+            },
+            payment: {
+              create: {
+                uid: "payment-uid-123",
+                appId: "stripe",
+                amount: 1000,
+                fee: 0,
+                currency: "usd",
+                success: false,
+                refunded: false,
+                data: {},
+                externalId: "ext-payment-123",
+              },
+            },
+          },
+        });
+        createdBookingIds.push(unpaidBooking.id);
 
-      const cancelledBooking = await prisma.booking.findUnique({
-        where: { id: unpaidBooking.id },
-      });
-      expect(cancelledBooking?.status).toBe(BookingStatus.CANCELLED);
-    });
+        const bookingRef1 = await prisma.bookingReference.create({
+          data: {
+            type: "stripe_payment",
+            uid: "stripe-ref-123",
+            meetingId: "stripe-meeting-123",
+            credentialId: testCredential.id,
+            bookingId: unpaidBooking.id,
+          },
+        });
+        createdBookingReferenceIds.push(bookingRef1.id);
 
-    it("should persist soft-deleted references in database", async () => {
+        const bookingRef2 = await prisma.bookingReference.create({
+          data: {
+            type: "google_calendar",
+            uid: "gcal-ref-123",
+            meetingId: "gcal-meeting-123",
+            credentialId: testCredential.id,
+            bookingId: unpaidBooking.id,
+          },
+        });
+        createdBookingReferenceIds.push(bookingRef2.id);
+
+        const refsBeforeDeletion = await prisma.bookingReference.findMany({
+          where: {
+            bookingId: unpaidBooking.id,
+          },
+        });
+        expect(refsBeforeDeletion).toHaveLength(2);
+        expect(refsBeforeDeletion.every((ref) => ref.deleted === null)).toBe(true);
+
+        await deleteCredentialWithMetadata(testCredential.id, testUser.id);
+
+        const refsAfterDeletion = await prisma.bookingReference.findMany({
+          where: {
+            bookingId: unpaidBooking.id,
+          },
+        });
+
+        expect(refsAfterDeletion).toHaveLength(2);
+        expect(refsAfterDeletion.every((ref) => ref.deleted === true)).toBe(true);
+
+        const cancelledBooking = await prisma.booking.findUnique({
+          where: { id: unpaidBooking.id },
+        });
+        expect(cancelledBooking?.status).toBe(BookingStatus.CANCELLED);
+      }
+    );
+
+    d1Test("should persist soft-deleted references in database", async () => {
       const newCredential = await prisma.credential.create({
         data: {
           type: "stripe_payment",
@@ -267,125 +334,128 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
       expect(deletedRef?.type).toBe("stripe_payment");
     });
 
-    it("should soft-delete references for multiple unpaid bookings when credential is deleted", async () => {
-      const newCredential = await prisma.credential.create({
-        data: {
-          type: "stripe_payment",
-          key: { test_key: "test_value" },
-          userId: testUser.id,
-          appId: "stripe",
-        },
-      });
-
-      const booking1 = await prisma.booking.create({
-        data: {
-          uid: "booking-1-uid",
-          title: "Booking 1",
-          startTime: new Date(Date.now() + 86400000),
-          endTime: new Date(Date.now() + 90000000),
-          userId: testUser.id,
-          eventTypeId: testEventType.id,
-          status: BookingStatus.PENDING,
-          paid: false,
-          attendees: {
-            create: [
-              {
-                email: "attendee-b1@test.com",
-                name: "Attendee B1",
-                timeZone: "America/New_York",
-              },
-            ],
+    d1Test(
+      "should soft-delete references for multiple unpaid bookings when credential is deleted",
+      async () => {
+        const newCredential = await prisma.credential.create({
+          data: {
+            type: "stripe_payment",
+            key: { test_key: "test_value" },
+            userId: testUser.id,
+            appId: "stripe",
           },
-          payment: {
-            create: {
-              uid: "payment-uid-b1",
-              appId: "stripe",
-              amount: 1000,
-              fee: 0,
-              currency: "usd",
-              success: false,
-              refunded: false,
-              data: {},
-              externalId: "ext-payment-b1",
+        });
+
+        const booking1 = await prisma.booking.create({
+          data: {
+            uid: "booking-1-uid",
+            title: "Booking 1",
+            startTime: new Date(Date.now() + 86400000),
+            endTime: new Date(Date.now() + 90000000),
+            userId: testUser.id,
+            eventTypeId: testEventType.id,
+            status: BookingStatus.PENDING,
+            paid: false,
+            attendees: {
+              create: [
+                {
+                  email: "attendee-b1@test.com",
+                  name: "Attendee B1",
+                  timeZone: "America/New_York",
+                },
+              ],
+            },
+            payment: {
+              create: {
+                uid: "payment-uid-b1",
+                appId: "stripe",
+                amount: 1000,
+                fee: 0,
+                currency: "usd",
+                success: false,
+                refunded: false,
+                data: {},
+                externalId: "ext-payment-b1",
+              },
             },
           },
-        },
-      });
-      createdBookingIds.push(booking1.id);
+        });
+        createdBookingIds.push(booking1.id);
 
-      const booking2 = await prisma.booking.create({
-        data: {
-          uid: "booking-2-uid",
-          title: "Booking 2",
-          startTime: new Date(Date.now() + 172800000), // 2 days from now
-          endTime: new Date(Date.now() + 176400000),
-          userId: testUser.id,
-          eventTypeId: testEventType.id,
-          status: BookingStatus.PENDING,
-          paid: false,
-          attendees: {
-            create: [
-              {
-                email: "attendee-b2@test.com",
-                name: "Attendee B2",
-                timeZone: "America/New_York",
+        const booking2 = await prisma.booking.create({
+          data: {
+            uid: "booking-2-uid",
+            title: "Booking 2",
+            startTime: new Date(Date.now() + 172800000), // 2 days from now
+            endTime: new Date(Date.now() + 176400000),
+            userId: testUser.id,
+            eventTypeId: testEventType.id,
+            status: BookingStatus.PENDING,
+            paid: false,
+            attendees: {
+              create: [
+                {
+                  email: "attendee-b2@test.com",
+                  name: "Attendee B2",
+                  timeZone: "America/New_York",
+                },
+              ],
+            },
+            payment: {
+              create: {
+                uid: "payment-uid-b2",
+                appId: "stripe",
+                amount: 1000,
+                fee: 0,
+                currency: "usd",
+                success: false,
+                refunded: false,
+                data: {},
+                externalId: "ext-payment-b2",
               },
-            ],
-          },
-          payment: {
-            create: {
-              uid: "payment-uid-b2",
-              appId: "stripe",
-              amount: 1000,
-              fee: 0,
-              currency: "usd",
-              success: false,
-              refunded: false,
-              data: {},
-              externalId: "ext-payment-b2",
             },
           },
-        },
-      });
-      createdBookingIds.push(booking2.id);
+        });
+        createdBookingIds.push(booking2.id);
 
-      const ref1 = await prisma.bookingReference.create({
-        data: {
-          type: "stripe_payment",
-          uid: "stripe-ref-b1",
-          meetingId: "meeting-b1",
-          credentialId: newCredential.id,
-          bookingId: booking1.id,
-        },
-      });
-      createdBookingReferenceIds.push(ref1.id);
-
-      const ref2 = await prisma.bookingReference.create({
-        data: {
-          type: "stripe_payment",
-          uid: "stripe-ref-b2",
-          meetingId: "meeting-b2",
-          credentialId: newCredential.id,
-          bookingId: booking2.id,
-        },
-      });
-      createdBookingReferenceIds.push(ref2.id);
-
-      await deleteCredentialWithMetadata(newCredential.id, testUser.id);
-
-      const allRefsAfter = await prisma.bookingReference.findMany({
-        where: {
-          id: {
-            in: [ref1.id, ref2.id],
+        const ref1 = await prisma.bookingReference.create({
+          data: {
+            type: "stripe_payment",
+            uid: "stripe-ref-b1",
+            meetingId: "meeting-b1",
+            credentialId: newCredential.id,
+            bookingId: booking1.id,
           },
-        },
-      });
+        });
+        createdBookingReferenceIds.push(ref1.id);
 
-      expect(allRefsAfter).toHaveLength(2);
-      expect(allRefsAfter.every((ref) => ref.deleted === true)).toBe(true);
-    });
+        const ref2 = await prisma.bookingReference.create({
+          data: {
+            type: "stripe_payment",
+            uid: "stripe-ref-b2",
+            meetingId: "meeting-b2",
+            credentialId: newCredential.id,
+            bookingId: booking2.id,
+          },
+        });
+        createdBookingReferenceIds.push(ref2.id);
 
-    it("should not affect references of paid bookings when credential is deleted", async () => {
+        await deleteCredentialWithMetadata(newCredential.id, testUser.id);
+
+        const allRefsAfter = await prisma.bookingReference.findMany({
+          where: {
+            id: {
+              in: [ref1.id, ref2.id],
+            },
+          },
+        });
+
+        expect(allRefsAfter).toHaveLength(2);
+        expect(allRefsAfter.every((ref) => ref.deleted === true)).toBe(true);
+      }
+    );
+
+    d1Test("should not affect references of paid bookings when credential is deleted", async () => {
       const newCredential = await prisma.credential.create({
         data: {
           type: "stripe_payment",
@@ -446,7 +516,7 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
   });
 
   describe("Soft-delete behavior with queries after credential deletion", () => {
-    it("should exclude soft-deleted references from regular queries", async () => {
+    d1Test("should exclude soft-deleted references from regular queries", async () => {
       const newCredential = await prisma.credential.create({
         data: {
           type: "stripe_payment",

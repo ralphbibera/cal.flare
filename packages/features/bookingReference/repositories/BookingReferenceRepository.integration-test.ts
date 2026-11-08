@@ -1,8 +1,54 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prisma } from "@calcom/prisma";
 import type { Booking, Credential } from "@calcom/prisma/client";
+import { withD1Database } from "@calcom/prisma/d1";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
 import { BookingReferenceRepository } from "./BookingReferenceRepository";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => it(name, () => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-booking-reference-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 const testRunId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
@@ -46,62 +92,70 @@ async function clearTestBookings() {
 }
 
 describe("BookingReferenceRepository Integration Tests", () => {
-  beforeAll(async () => {
-    let testUser = await prisma.user.findFirst({
-      where: { email: "member0-acme@example.com" },
-    });
-
-    if (!testUser) {
-      testUser = await prisma.user.create({
-        data: {
-          email: `bookingreference-test-${testRunId}@example.com`,
-          username: `bookingreference-test-${testRunId}`,
-        },
+  beforeAll(() =>
+    inD1(async () => {
+      let testUser = await prisma.user.findFirst({
+        where: { email: "member0-acme@example.com" },
       });
-    }
-    testUserId = testUser.id;
 
-    let credential = await prisma.credential.findFirst({
-      where: { userId: testUserId, type: "google_calendar" },
-    });
+      if (!testUser) {
+        testUser = await prisma.user.create({
+          data: {
+            email: `bookingreference-test-${testRunId}@example.com`,
+            username: `bookingreference-test-${testRunId}`,
+          },
+        });
+      }
+      testUserId = testUser.id;
 
-    if (!credential) {
-      credential = await prisma.credential.create({
+      let credential = await prisma.credential.findFirst({
+        where: { userId: testUserId, type: "google_calendar" },
+      });
+
+      if (!credential) {
+        credential = await prisma.credential.create({
+          data: {
+            type: "google_calendar",
+            key: {},
+            userId: testUserId,
+          },
+        });
+      }
+      testCredential = credential;
+    })
+  );
+
+  beforeEach(() =>
+    inD1(async () => {
+      testBooking = await prisma.booking.create({
         data: {
-          type: "google_calendar",
-          key: {},
+          uid: `test-booking-uid-${testRunId}-${Date.now()}`,
+          title: "Test Booking",
+          startTime: new Date(),
+          endTime: new Date(),
           userId: testUserId,
         },
       });
-    }
-    testCredential = credential;
-  });
+      createdBookingIds.push(testBooking.id);
+    })
+  );
 
-  beforeEach(async () => {
-    testBooking = await prisma.booking.create({
-      data: {
-        uid: `test-booking-uid-${testRunId}-${Date.now()}`,
-        title: "Test Booking",
-        startTime: new Date(),
-        endTime: new Date(),
-        userId: testUserId,
-      },
-    });
-    createdBookingIds.push(testBooking.id);
-  });
+  afterEach(() =>
+    inD1(async () => {
+      await clearTestBookingReferences();
+      await clearTestBookings();
+    })
+  );
 
-  afterEach(async () => {
-    await clearTestBookingReferences();
-    await clearTestBookings();
-  });
-
-  afterAll(async () => {
-    await clearTestBookingReferences();
-    await clearTestBookings();
-  });
+  afterAll(() =>
+    inD1(async () => {
+      await clearTestBookingReferences();
+      await clearTestBookings();
+    })
+  );
 
   describe("replaceBookingReferences", () => {
-    it("should soft-delete existing references and create new ones", async () => {
+    d1Test("should soft-delete existing references and create new ones", async () => {
       const existingReference1 = await prisma.bookingReference.create({
         data: {
           type: "google_calendar",
@@ -166,67 +220,70 @@ describe("BookingReferenceRepository Integration Tests", () => {
       });
     });
 
-    it("should only soft-delete references of the same type as new references being created", async () => {
-      const googleRef = await prisma.bookingReference.create({
-        data: {
-          type: "google_calendar",
-          uid: "google-ref",
-          meetingId: "google-meeting",
-          credentialId: testCredential.id,
+    d1Test(
+      "should only soft-delete references of the same type as new references being created",
+      async () => {
+        const googleRef = await prisma.bookingReference.create({
+          data: {
+            type: "google_calendar",
+            uid: "google-ref",
+            meetingId: "google-meeting",
+            credentialId: testCredential.id,
+            bookingId: testBooking.id,
+          },
+        });
+        createdBookingReferenceIds.push(googleRef.id);
+
+        const zoomRef = await prisma.bookingReference.create({
+          data: {
+            type: "zoom_video",
+            uid: "zoom-ref",
+            meetingId: "zoom-meeting",
+            credentialId: testCredential.id,
+            bookingId: testBooking.id,
+          },
+        });
+        createdBookingReferenceIds.push(zoomRef.id);
+
+        const newGoogleReferences = [
+          {
+            type: "google_calendar",
+            uid: "new-google-ref",
+            meetingId: "new-google-meeting",
+            credentialId: testCredential.id,
+          },
+        ];
+
+        await BookingReferenceRepository.replaceBookingReferences({
           bookingId: testBooking.id,
-        },
-      });
-      createdBookingReferenceIds.push(googleRef.id);
+          newReferencesToCreate: newGoogleReferences,
+        });
 
-      const zoomRef = await prisma.bookingReference.create({
-        data: {
-          type: "zoom_video",
-          uid: "zoom-ref",
-          meetingId: "zoom-meeting",
-          credentialId: testCredential.id,
-          bookingId: testBooking.id,
-        },
-      });
-      createdBookingReferenceIds.push(zoomRef.id);
+        const googleRefAfter = await prisma.bookingReference.findUnique({
+          where: { id: googleRef.id },
+        });
+        expect(googleRefAfter?.deleted).toBe(true);
 
-      const newGoogleReferences = [
-        {
-          type: "google_calendar",
-          uid: "new-google-ref",
-          meetingId: "new-google-meeting",
-          credentialId: testCredential.id,
-        },
-      ];
+        const zoomRefAfter = await prisma.bookingReference.findUnique({
+          where: { id: zoomRef.id },
+        });
+        expect(zoomRefAfter?.deleted).toBe(null);
 
-      await BookingReferenceRepository.replaceBookingReferences({
-        bookingId: testBooking.id,
-        newReferencesToCreate: newGoogleReferences,
-      });
-
-      const googleRefAfter = await prisma.bookingReference.findUnique({
-        where: { id: googleRef.id },
-      });
-      expect(googleRefAfter?.deleted).toBe(true);
-
-      const zoomRefAfter = await prisma.bookingReference.findUnique({
-        where: { id: zoomRef.id },
-      });
-      expect(zoomRefAfter?.deleted).toBe(null);
-
-      const newRef = await prisma.bookingReference.findFirst({
-        where: {
-          uid: "new-google-ref",
-          bookingId: testBooking.id,
-        },
-      });
-      expect(newRef).toBeDefined();
-      expect(newRef?.deleted).toBe(null);
-      if (newRef) {
-        createdBookingReferenceIds.push(newRef.id);
+        const newRef = await prisma.bookingReference.findFirst({
+          where: {
+            uid: "new-google-ref",
+            bookingId: testBooking.id,
+          },
+        });
+        expect(newRef).toBeDefined();
+        expect(newRef?.deleted).toBe(null);
+        if (newRef) {
+          createdBookingReferenceIds.push(newRef.id);
+        }
       }
-    });
+    );
 
-    it("should persist soft-deleted records in database", async () => {
+    d1Test("should persist soft-deleted records in database", async () => {
       const reference = await prisma.bookingReference.create({
         data: {
           type: "daily_video",
@@ -272,7 +329,7 @@ describe("BookingReferenceRepository Integration Tests", () => {
   });
 
   describe("findDailyVideoReferenceByRoomName", () => {
-    it("should find active daily video references", async () => {
+    d1Test("should find active daily video references", async () => {
       const roomName = "test-daily-room-123";
       const dailyRef = await prisma.bookingReference.create({
         data: {
@@ -295,7 +352,7 @@ describe("BookingReferenceRepository Integration Tests", () => {
       expect(result?.deleted).toBe(null);
     });
 
-    it("should exclude soft-deleted daily video references", async () => {
+    d1Test("should exclude soft-deleted daily video references", async () => {
       const roomName = "test-daily-room-deleted-456";
       const dailyRef = await prisma.bookingReference.create({
         data: {
@@ -316,7 +373,7 @@ describe("BookingReferenceRepository Integration Tests", () => {
       expect(result).toBeNull();
     });
 
-    it("should return null when room name does not exist", async () => {
+    d1Test("should return null when room name does not exist", async () => {
       const result = await BookingReferenceRepository.findDailyVideoReferenceByRoomName({
         roomName: "non-existent-room",
       });
@@ -324,7 +381,7 @@ describe("BookingReferenceRepository Integration Tests", () => {
       expect(result).toBeNull();
     });
 
-    it("should not return daily video references without a booking", async () => {
+    d1Test("should not return daily video references without a booking", async () => {
       const roomName = "test-daily-room-no-booking";
       const dailyRef = await prisma.bookingReference.create({
         data: {
@@ -346,7 +403,7 @@ describe("BookingReferenceRepository Integration Tests", () => {
   });
 
   describe("Soft-delete behavior verification", () => {
-    it("should not return soft-deleted references in regular queries", async () => {
+    d1Test("should not return soft-deleted references in regular queries", async () => {
       const activeRef = await prisma.bookingReference.create({
         data: {
           type: "zoom_video",
@@ -383,7 +440,7 @@ describe("BookingReferenceRepository Integration Tests", () => {
       expect(foundReferences[0].uid).toBe("active-zoom");
     });
 
-    it("should allow querying soft-deleted references explicitly", async () => {
+    d1Test("should allow querying soft-deleted references explicitly", async () => {
       const deletedRef = await prisma.bookingReference.create({
         data: {
           type: "office365_calendar",
