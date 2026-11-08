@@ -1,6 +1,8 @@
+import kysely from "@calcom/kysely";
+import { compileD1Statement, requireD1RecordFor } from "@calcom/kysely/d1";
 import type { Prisma, PrismaClient } from "@calcom/prisma/client";
 import { getD1Database } from "@calcom/prisma/d1";
-import { requireD1Record, runD1Batch, toD1DateTime } from "@calcom/prisma/d1-batch";
+import { runD1Batch, toD1DateTime } from "@calcom/prisma/d1-batch";
 import type { IBookingAttendeeRepository } from "../lib/dto/IBookingAttendeeRepository";
 
 export class PrismaBookingAttendeeRepository implements IBookingAttendeeRepository {
@@ -25,22 +27,24 @@ export class PrismaBookingAttendeeRepository implements IBookingAttendeeReposito
     await runD1Batch(
       db,
       [
-        requireD1Record(
+        requireD1RecordFor(
           db,
           { modelName: "Attendee", operation: "a delete" },
-          `SELECT 1 FROM "Attendee" WHERE "id" = ?`,
-          attendeeId
+          kysely.selectFrom("Attendee").select("id").where("id", "=", attendeeId)
         ),
-        db.prepare(`DELETE FROM "Attendee" WHERE "id" = ?`).bind(attendeeId),
-        requireD1Record(
+        compileD1Statement(db, kysely.deleteFrom("Attendee").where("id", "=", attendeeId)),
+        requireD1RecordFor(
           db,
           { modelName: "Booking", operation: "an update" },
-          `SELECT 1 FROM "Booking" WHERE "id" = ?`,
-          bookingId
+          kysely.selectFrom("Booking").select("id").where("id", "=", bookingId)
         ),
-        db
-          .prepare(`UPDATE "Booking" SET "responses" = ?, "updatedAt" = ? WHERE "id" = ?`)
-          .bind(JSON.stringify(updatedResponses), toD1DateTime(new Date()), bookingId),
+        compileD1Statement(
+          db,
+          kysely
+            .updateTable("Booking")
+            .set({ responses: JSON.stringify(updatedResponses), updatedAt: toD1DateTime(new Date()) })
+            .where("id", "=", bookingId)
+        ),
       ],
       { modelName: "Attendee" }
     );
