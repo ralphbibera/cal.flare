@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkEnvBindings, evaluateEnvBindings } from "./check-env-bindings";
@@ -39,6 +41,18 @@ const evaluate = ({
 describe("checkEnvBindings", () => {
   it("accepts the repository inventory, bindings and allowlist", () => {
     expect(checkEnvBindings(repoRoot)).toEqual([]);
+  });
+
+  it("records the opt-in CSP policy as an optional Worker var", () => {
+    const rows = readFileSync(
+      path.join(repoRoot, "docs/porting/inventory/config-bindings.tsv"),
+      "utf8"
+    )
+      .split("\n")
+      .map((line) => line.split("\t"));
+    const cspPolicy = rows.find(([variable]) => variable === "CSP_POLICY");
+
+    expect(cspPolicy?.slice(1, 3)).toEqual(["binding", "var:CSP_POLICY"]);
   });
 
   it("reports a D_SHELL variable without a disposition", () => {

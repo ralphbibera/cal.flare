@@ -351,7 +351,7 @@ describe("Middleware Integration Tests", () => {
       expect(cspHeader).toBeNull();
     });
 
-    it("should add x-csp-status when CSP_POLICY not set", async () => {
+    it("should not add CSP headers when CSP_POLICY not set", async () => {
       vi.unstubAllEnvs();
 
       const req = createTestRequest({
@@ -359,6 +359,7 @@ describe("Middleware Integration Tests", () => {
       });
 
       const res = await callProxy(req);
+      expect(getHeader(res, "content-security-policy")).toBeNull();
       expect(getHeader(res, "x-csp-status")).toBe("not-opted-in");
     });
   });
