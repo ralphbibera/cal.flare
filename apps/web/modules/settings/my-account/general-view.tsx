@@ -14,10 +14,8 @@ import { Button } from "@calcom/ui/components/button";
 import { Form, Label, Select, SettingsToggle } from "@calcom/ui/components/form";
 import { Icon } from "@calcom/ui/components/icon";
 import { showToast } from "@calcom/ui/components/toast";
-import { revalidateTravelSchedules } from "@calcom/web/app/cache/travelSchedule";
 import { TimezoneSelect } from "@calcom/web/modules/timezone/components/TimezoneSelect";
 import TravelScheduleModal from "@components/settings/TravelScheduleModal";
-import { revalidateSettingsGeneral } from "app/(use-page-wrapper)/settings/(settings-layout)/my-account/general/actions";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
@@ -61,8 +59,6 @@ const GeneralView = ({ user, travelSchedules }: GeneralViewProps) => {
   const mutation = trpc.viewer.me.updateProfile.useMutation({
     onSuccess: async (res) => {
       await utils.viewer.me.invalidate();
-      revalidateSettingsGeneral();
-      revalidateTravelSchedules();
       reset(getValues());
       showToast(t("settings_updated_successfully"), "success");
       await authClient.cal.updateSession({ data: res });
@@ -77,8 +73,6 @@ const GeneralView = ({ user, travelSchedules }: GeneralViewProps) => {
     },
     onSettled: async () => {
       await utils.viewer.me.invalidate();
-      revalidateSettingsGeneral();
-      revalidateTravelSchedules();
       setIsUpdateBtnLoading(false);
     },
   });
