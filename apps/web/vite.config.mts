@@ -109,6 +109,7 @@ function prismaClient(): Plugin {
 export default defineConfig({
   envPrefix: [],
   environments: {
+    rsc: { define: { __CALFLARE_EMAIL_RENDERER__: JSON.stringify("ssr") } },
     ssr: { build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } } },
   },
   plugins: [
