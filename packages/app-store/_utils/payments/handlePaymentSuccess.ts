@@ -20,9 +20,10 @@ import { safeStringify } from "@calcom/lib/safeStringify";
 import type { TraceContext } from "@calcom/lib/tracing";
 import { distributedTracing } from "@calcom/lib/tracing/factory";
 import prisma from "@calcom/prisma";
-import type { Prisma } from "@calcom/prisma/client";
 import { BookingStatus, WebhookTriggerEvents } from "@calcom/prisma/enums";
 import type { EventTypeMetadata } from "@calcom/prisma/zod-utils";
+import type { PartialReference } from "@calcom/types/EventManager";
+import { commitPaymentSuccessInD1 } from "./handlePaymentSuccessInD1";
 
 const log = logger.getSubLogger({ prefix: ["[handlePaymentSuccess]"] });
 
@@ -51,10 +52,8 @@ export async function handlePaymentSuccess(params: {
 
   if (booking.location) evt.location = booking.location;
 
-  const bookingData: Prisma.BookingUpdateInput = {
-    paid: true,
-    status: BookingStatus.ACCEPTED,
-  };
+  let bookingStatus: BookingStatus | undefined = BookingStatus.ACCEPTED;
+  let referencesToCreate: PartialReference[] = [];
 
   const allCredentials = await getAllCredentialsIncludeServiceAccountKey(userWithCredentials, {
     ...booking.eventType,
@@ -76,7 +75,7 @@ export async function handlePaymentSuccess(params: {
     const scheduleResult = areCalendarEventsEnabled
       ? await eventManager.create(evt)
       : placeholderCreatedEvent;
-    bookingData.references = { create: scheduleResult.referencesToCreate };
+    referencesToCreate = scheduleResult.referencesToCreate;
   }
 
   const requiresConfirmation = doesBookingRequireConfirmation({
@@ -87,32 +86,14 @@ export async function handlePaymentSuccess(params: {
   });
 
   if (requiresConfirmation) {
-    delete bookingData.status;
+    bookingStatus = undefined;
   }
-  const paymentUpdate = prisma.payment.update({
-    where: {
-      id: paymentId,
-    },
-    data: {
-      success: true,
-    },
-    select: {
-      id: true,
-      externalId: true,
-    },
+  const { payment, booking: updatedBooking } = await commitPaymentSuccessInD1({
+    paymentId,
+    bookingId: booking.id,
+    status: bookingStatus,
+    referencesToCreate,
   });
-
-  const bookingUpdate = prisma.booking.update({
-    where: {
-      id: booking.id,
-    },
-    data: bookingData,
-    select: {
-      status: true,
-    },
-  });
-
-  const [payment, updatedBooking] = await prisma.$transaction([paymentUpdate, bookingUpdate]);
 
   const platformClientParams = platformOAuthClient ? getPlatformParams(platformOAuthClient) : undefined;
   const teamId = await getTeamIdFromEventType({
