@@ -157,3 +157,4 @@ VERCEL_URL	unsupported	none:host-specific	host detection for non-Workers platfor
 [`${prefix}CURRENT`]	dynamic-lookup	dynamic:CALCOM_KEYRING_CREDENTIALS_CURRENT	keyring prefix is CALCOM_KEYRING_CREDENTIALS_
 [envVar]	dynamic-lookup	dynamic:release-script-env	create-sentry-release.js reads a caller-named variable
 _CAL_INTERNAL_PAST_BOOKING_RESCHEDULE_CHANGE_TEAM_IDS	binding	var:_CAL_INTERNAL_PAST_BOOKING_RESCHEDULE_CHANGE_TEAM_IDS	
+isSignupDisabled	dynamic-lookup	dynamic:RuntimeConfig	read through the request D1 RuntimeConfig lookup

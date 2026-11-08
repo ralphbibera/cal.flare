@@ -19,7 +19,7 @@ describe("request-bound Prisma D1 client", () => {
     root = await mkdtemp(join(tmpdir(), "prisma-d1-client-"));
     const first = join(root, "first");
     const second = join(root, "second");
-    expect(await migrateD1({ persistTo: first })).toMatchObject({ applied: 6, total: 6 });
+    expect(await migrateD1({ persistTo: first })).toMatchObject({ applied: 7, total: 7 });
     await cp(first, second, { recursive: true });
     const { worker } = (await import("../../apps/web/cloudflare.config")).default;
     for (const [index, state] of [first, second].entries()) {

@@ -1,17 +1,16 @@
 // Import mocked functions
 
 import { WEBAPP_URL } from "@calcom/lib/constants";
-import { get as edgeConfigGet } from "@vercel/edge-config";
+import { getRuntimeConfigValue } from "@calcom/lib/server/runtimeConfig";
 import { NextRequest, NextResponse } from "next/server";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // We'll test the wrapped proxy as it would be used in production
-import proxy from "./proxy";
-import { config } from "./proxy";
+import proxy, { config } from "./proxy";
 
 // Mock dependencies at module level
-vi.mock("@vercel/edge-config", () => ({
-  get: vi.fn(),
+vi.mock("@calcom/lib/server/runtimeConfig", () => ({
+  getRuntimeConfigValue: vi.fn(),
 }));
 
 // Mock NextResponse.json since it's not available in test environment
@@ -122,8 +121,7 @@ const createTestRequest = (overrides?: {
   return req;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const createEdgeConfigMock = (config: Record<string, any>) => {
+const createRuntimeConfigMock = (config: Record<string, unknown>) => {
   return (key: string) => {
     if (key in config) return Promise.resolve(config[key]);
     return Promise.resolve(undefined);
@@ -172,11 +170,11 @@ describe("Middleware Integration Tests", () => {
     });
   });
 
-  describe("Maintenance Mode", () => {
-    it("should redirect to maintenance when enabled", async () => {
-      (edgeConfigGet as Mock).mockImplementation(
-        createEdgeConfigMock({
-          isInMaintenanceMode: true,
+  describe("Signup Flag Scope", () => {
+    it("should not affect page requests when signup is disabled", async () => {
+      (getRuntimeConfigValue as Mock).mockImplementation(
+        createRuntimeConfigMock({
+          isSignupDisabled: true,
         })
       );
 
@@ -189,10 +187,10 @@ describe("Middleware Integration Tests", () => {
       expectStatus(res, 200);
     });
 
-    it("should not affect API routes in maintenance mode", async () => {
-      (edgeConfigGet as Mock).mockImplementation(
-        createEdgeConfigMock({
-          isInMaintenanceMode: true,
+    it("should not affect API routes when signup is disabled", async () => {
+      (getRuntimeConfigValue as Mock).mockImplementation(
+        createRuntimeConfigMock({
+          isSignupDisabled: true,
         })
       );
 
@@ -208,8 +206,8 @@ describe("Middleware Integration Tests", () => {
 
   describe("Signup Control", () => {
     it("should block signup when disabled", async () => {
-      (edgeConfigGet as Mock).mockImplementation(
-        createEdgeConfigMock({
+      (getRuntimeConfigValue as Mock).mockImplementation(
+        createRuntimeConfigMock({
           isSignupDisabled: true,
         })
       );
@@ -227,11 +225,23 @@ describe("Middleware Integration Tests", () => {
     });
 
     it("should allow signup when enabled", async () => {
-      (edgeConfigGet as Mock).mockImplementation(
-        createEdgeConfigMock({
+      (getRuntimeConfigValue as Mock).mockImplementation(
+        createRuntimeConfigMock({
           isSignupDisabled: false,
         })
       );
+
+      const req = createTestRequest({
+        url: `${WEBAPP_URL}/api/auth/signup`,
+        method: "POST",
+      });
+
+      const res = await callProxy(req);
+      expectStatus(res, 200);
+    });
+
+    it("should allow signup when the setting is missing or unreadable", async () => {
+      (getRuntimeConfigValue as Mock).mockResolvedValue(undefined);
 
       const req = createTestRequest({
         url: `${WEBAPP_URL}/api/auth/signup`,
@@ -403,20 +413,6 @@ describe("Middleware Integration Tests", () => {
   });
 
   describe("Error Handling", () => {
-    it("should handle Edge Config errors gracefully", async () => {
-      (edgeConfigGet as Mock).mockImplementation(() => {
-        throw new Error("Config error");
-      });
-
-      const req = createTestRequest({
-        url: `${WEBAPP_URL}/team/test`,
-      });
-
-      const res = await callProxy(req);
-      expect(res).toBeDefined();
-      expectStatus(res, 200);
-    });
-
     it("should handle malformed URLs", async () => {
       const req = createTestRequest({
         url: `${WEBAPP_URL}//double-slash`,
