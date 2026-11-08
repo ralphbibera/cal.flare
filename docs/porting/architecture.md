@@ -28,7 +28,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | Authentication | Self-hosted `better-auth` `1.7.15`; schema CLI package `auth` `1.7.15`. Native D1 binding, no hosted Better Auth service. |
 | Auth primitives | Retain `bcryptjs` `2.4.3`, `otplib` `12.0.1`, and existing encryption and JWT helpers. Better Auth's default password and MFA formats are not selected. |
 | Translation | Retain `i18next` `23.2.3`, `react-i18next` `12.3.1`, original JSON, namespaces, and keys. Replace `next-i18next` `15.4.2` loading boundary. |
-| v2 HTTP | `hono` `4.13.16` for a Fetch Worker dispatcher. Retain source DTO, service, guard, error, and validation contracts. |
+| v2 HTTP | `hono` `4.13.16` router Worker receives public `/api/v2` traffic and forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Group Workers run the source controllers, guards, pipes, and filters with explicit composition and no Nest DI container. |
 | Cache | `@vinext/cloudflare` Response Store adapter, self-contained mode. Its exact dependency is `@cloudflare/workers-response-store` `1.1.5`. |
 | Styling | Retain Tailwind CSS `4.1.17`, PostCSS `8.5.6`, `@tailwindcss/postcss` `4.1.15`, source CSS, classes, and component systems. `vite-css-modules` `1.16.1` handles consumed CSS Modules. |
 | Source async runner | `@trigger.dev/sdk` `4.5.4` is observed upstream, not selected for hosting. Its consumed jobs move to D1/Queues/DO scheduling; no Trigger-hosted or Node worker remains. |
@@ -69,7 +69,7 @@ The clean target preserves original paths. A source-map destination is not evide
 | `apps/web/pages` | Vinext Pages Router and Pages APIs. Preserve `_app`, `_document`, page data functions, catch-alls, API methods, and URLs. |
 | `apps/web/modules`, `lib`, `components`, `server` | Keep feature implementations and imports at original paths. Preserve server/client boundaries, provider order, and permission ownership. |
 | `apps/web/public`, `styles`, `fonts` | Workers Static Assets and browser assets. Preserve filenames, URLs, CSS order, font weights, variables, and preload behavior. |
-| `apps/api/v2/src` | Separate Cloudflare Fetch Worker. Hono replaces Nest Express HTTP hosting. Existing controllers, DTOs, services, and platform code retain their locations. |
+| `apps/api/v2/src` | Hono router Worker and platform, scheduling, and bookings group Workers. Group Workers keep original controllers, DTOs, services, guards, pipes, filters, and platform code at their locations. |
 | `packages` | Keep workspace names and original feature boundaries. Browser packages import no DB, secret, or Worker-only modules. Server packages receive bindings at their existing boundaries. |
 | `packages/prisma` | Complete D1 schema, generated domain client, SQLite SQL migrations, seeds, views or equivalent repository queries, and atomic write plans. |
 | `packages/features/auth` | Better Auth instance, Cal auth plugin, projections, provider policy, and numeric-ID mapping. No global framework compatibility package. |
@@ -81,7 +81,7 @@ The clean target preserves original paths. A source-map destination is not evide
 Dependency direction stays route or action -> existing feature/service -> repository/provider -> D1 or outbound API.
 UI imports browser-safe package entrypoints. `cloudflare:workers` and `env` remain server-only.
 `apps/web/vite.config.mts` and `cloudflare.config.ts` own vinext, Cloudflare plugin v2, bindings, and build output.
-`apps/api/v2` owns its Fetch entry and matching Cloudflare configuration. Web reaches v2 through a service binding at the original `/api/v2` URL.
+`apps/api/v2` owns the router and group Worker entries and their Cloudflare configuration. Web reaches the router through a service binding at the original `/api/v2` URL.
 Both product Workers share the same authoritative `DB`; docs has no product DB binding.
 An implementation move uses `git mv` before edits where a source actually changes location. No blind copy from the Astro port.
 
@@ -259,7 +259,7 @@ Existing cron URLs retain methods and authorization. Repository-maintenance sche
 | --- | --- |
 | `DB` | Complete domain/auth records, existing Task records, and required delivery state. Same database for both product Workers. |
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
-| `API_V2` | Web-to-v2 service binding. Preserve public `/api/v2` transport without a Node host or external app server. |
+| `API_V2` | Web-to-router service binding at the original `/api/v2` URL. The Hono router Worker forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Preserve public transport without a Node host or external app server. |
 | `JOBS` | Cloudflare Queue replaces consumed Bull and Trigger submission, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. |
 | `RUNTIME_STATE` | SQLite DO per rate-limit namespace. Holds application limiter state, including the web limiter when `UNKEY_ROOT_KEY` enables it. Preserve keys, TTLs, atomic counters, and failure results. |
 | Response Store bindings | Native helper-owned DO and R2 cache-body bindings, distinct from `RUNTIME_STATE`. No provider credentials or authoritative product records belong in this cache. |
@@ -297,7 +297,7 @@ Cloudflare-only hosting/storage does not remove original third-party calendar, p
 
 ## v2, docs, configuration, and checks
 
-[Hono Workers dispatch][hono-workers] preserves every consumed controller method/version at `apps/api/v2/src`. Explicit service composition replaces Nest Express bootstrap and background processes.
+[Hono Workers dispatch][hono-workers] preserves every consumed controller method/version at `apps/api/v2/src`. Public `/api/v2` traffic enters a Hono router Worker, which forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Each group Worker runs the original controllers, guards, pipes, and filters with explicit composition and no Nest DI container. The build compiles ESM with decorator metadata (SWC), resolves `@calcom/platform-libraries` to source, and serves locales from static assets.
 Keep original DTO transformation/whitelisting, decorators/validators, guard order, response interceptor, pagination, cache, throttling, and error filters.
 [Bootstrap][pin-v2] selects a supported `cal-api-version`, otherwise `2024-04-15`; preserve that fallback, CORS, optional global prefix, and validation error bodies.
 [App module][pin-v2-module] binds raw webhook parsing, URL-encoded OAuth token parsing, request IDs, logging, root aliases, and rewrite order.
