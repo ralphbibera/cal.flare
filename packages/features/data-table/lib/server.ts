@@ -48,6 +48,7 @@ export function makeWhereClause(props: MakeWhereClauseProps) {
     };
   } else if (isTextFilterValue(filterValue)) {
     const { operator, operand } = filterValue.data;
+    // SQLite's LIKE already folds ASCII case, and the D1 Prisma client rejects PostgreSQL's `mode: "insensitive"`.
     switch (operator) {
       case "equals":
         return {
@@ -67,7 +68,7 @@ export function makeWhereClause(props: MakeWhereClauseProps) {
         return {
           [columnName]: {
             ...jsonPathObj,
-            ...(isJson ? { string_contains: operand } : { contains: operand, mode: "insensitive" }),
+            ...(isJson ? { string_contains: operand } : { contains: operand }),
           },
         };
       case "notContains":
@@ -75,7 +76,7 @@ export function makeWhereClause(props: MakeWhereClauseProps) {
           NOT: {
             [columnName]: {
               ...jsonPathObj,
-              ...(isJson ? { string_contains: operand } : { contains: operand, mode: "insensitive" }),
+              ...(isJson ? { string_contains: operand } : { contains: operand }),
             },
           },
         };
@@ -83,14 +84,14 @@ export function makeWhereClause(props: MakeWhereClauseProps) {
         return {
           [columnName]: {
             ...jsonPathObj,
-            ...(isJson ? { string_starts_with: operand } : { startsWith: operand, mode: "insensitive" }),
+            ...(isJson ? { string_starts_with: operand } : { startsWith: operand }),
           },
         };
       case "endsWith":
         return {
           [columnName]: {
             ...jsonPathObj,
-            ...(isJson ? { string_ends_with: operand } : { endsWith: operand, mode: "insensitive" }),
+            ...(isJson ? { string_ends_with: operand } : { endsWith: operand }),
           },
         };
       case "isEmpty":
