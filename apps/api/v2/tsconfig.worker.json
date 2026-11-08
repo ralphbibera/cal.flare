@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "useDefineForClassFields": false,
+    "noEmit": true,
+    "incremental": false,
+    "types": ["node", "@cloudflare/workers-types"]
+  },
+  "include": ["cloudflare.config.ts", "vitest.worker.config.ts", "src/worker.ts", "src/worker/**/*.ts"],
+  "exclude": ["**/node_modules/**", "dist"]
+}
