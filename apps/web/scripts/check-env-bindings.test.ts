@@ -43,7 +43,12 @@ describe("checkEnvBindings", () => {
     expect(checkEnvBindings(repoRoot)).toEqual([]);
   });
 
-  it("records the opt-in CSP policy as an optional Worker var", () => {
+  it("declares the opt-in CSP policy as an optional Worker var", () => {
+    const config = readFileSync(path.join(repoRoot, "apps/web/cloudflare.config.ts"), "utf8");
+    expect(config).toMatch(
+      /CSP_POLICY:\s*cspPolicy\s*\?\s*bindings\.text\(cspPolicy\)\s*:\s*undefined/
+    );
+
     const rows = readFileSync(
       path.join(repoRoot, "docs/porting/inventory/config-bindings.tsv"),
       "utf8"
