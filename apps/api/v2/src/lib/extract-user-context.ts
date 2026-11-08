@@ -2,8 +2,6 @@ import { Request } from "express";
 
 import type { Team } from "@calcom/prisma/client";
 
-import { ApiAuthGuardUser } from "../modules/auth/strategies/api-auth/api-auth.strategy";
-
 export interface UserContext {
   userId?: string;
   userEmail?: string;
@@ -12,10 +10,16 @@ export interface UserContext {
   userOrgId?: string;
 }
 
+interface RequestUser {
+  id: number | string;
+  email: string;
+  profiles?: readonly { organizationId?: number | null }[];
+}
+
 export function extractUserContext(request: Request): UserContext {
   const context: UserContext = {};
 
-  const user = (request as any).user as ApiAuthGuardUser | undefined;
+  const user = (request as Request & { user?: RequestUser }).user;
   if (user) {
     context.userId = String(user.id);
     context.userEmail = user.email;
@@ -24,12 +28,12 @@ export function extractUserContext(request: Request): UserContext {
     }
   }
 
-  const organizationId = (request as any).organizationId as number | undefined;
+  const organizationId = (request as Request & { organizationId?: number }).organizationId;
   if (organizationId) {
     context.organizationId = String(organizationId);
   }
 
-  const team = (request as any).team as Team | undefined;
+  const team = (request as Request & { team?: Team }).team;
   if (team) {
     context.teamId = String(team.id);
   }

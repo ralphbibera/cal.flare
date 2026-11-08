@@ -4,8 +4,8 @@ import { ArgumentsHost, Catch, ExceptionFilter, Logger } from "@nestjs/common";
 import { Request } from "express";
 
 import { ERROR_STATUS } from "@calcom/platform-constants";
-import { TRPCError } from "@calcom/platform-libraries";
 import { Response } from "@calcom/platform-types";
+import { TRPCError } from "@trpc/server";
 
 export type TRPCErrorCode = TRPCError["code"];
 

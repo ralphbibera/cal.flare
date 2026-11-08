@@ -1,3 +1,4 @@
+// biome-ignore-all lint/style/noRestrictedImports: the Worker reuses the canonical calendar error classes without the app-store graph
 import { extractUserContext } from "@/lib/extract-user-context";
 import { filterReqHeaders } from "@/lib/filterReqHeaders";
 import { ArgumentsHost, Catch, ExceptionFilter, Logger } from "@nestjs/common";
@@ -11,7 +12,7 @@ import {
   CalendarAppDelegationCredentialConfigurationError,
   CalendarAppDelegationCredentialClientIdNotAuthorizedError,
   CalendarAppDelegationCredentialNotSetupError,
-} from "@calcom/platform-libraries/app-store";
+} from "@calcom/lib/CalendarAppError";
 import { Response } from "@calcom/platform-types";
 
 type CalendarError =
