@@ -1,5 +1,5 @@
 import { ErrorCode } from "@calcom/lib/errorCodes";
-import { HttpError } from "@calcom/lib/http-error";
+import { ErrorWithCode } from "@calcom/lib/errors";
 import type { BookingSeat, Prisma } from "@calcom/prisma/client";
 import { getD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
@@ -116,10 +116,10 @@ export async function addD1BookingSeat(
   });
   const booking = bookingRows.parse(results[0].results)[0];
   if (!booking) {
-    throw new HttpError({ statusCode: 404, message: "Booking not found" });
+    throw new ErrorWithCode(ErrorCode.BookingNotFound, "Booking not found");
   }
   if (capacity !== null && capacity <= booking.seatCount) {
-    throw new HttpError({ statusCode: 409, message: ErrorCode.BookingSeatsFull });
+    throw new ErrorWithCode(ErrorCode.BookingSeatsFull, ErrorCode.BookingSeatsFull);
   }
   if (!booking.seatBookingExists) {
     throw new PrismaClientKnownRequestError(
