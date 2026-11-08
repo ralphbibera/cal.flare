@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Git, PushRef } from "./prepush";
 import {
+  acquireLock,
   buildSteps,
   collectChanges,
   countTestFiles,
@@ -120,9 +125,17 @@ describe("buildSteps", () => {
     expect(steps[0].command).toContain("package.json");
     expect(steps[1].command).toContain(`--filter=...[${MERGE_BASE}]`);
     expect(steps[1].command).toContain("--filter=@calcom/web");
+    expect(steps[1].command).toContain("--concurrency=2");
+    expect(steps[2].command).toContain("--maxWorkers=2");
     expect(steps[2].command).toContain("/repo/packages/lib/a.ts");
     expect(steps[2].command).not.toContain("package.json");
     expect(steps[2].env).toEqual({ TZ: "UTC" });
+  });
+
+  it("passes a configured concurrency to turbo and vitest", () => {
+    const steps = buildSteps({ ...args, files: ["packages/lib/a.ts"], concurrency: 1 });
+    expect(steps[1].command).toContain("--concurrency=1");
+    expect(steps[2].command).toContain("--maxWorkers=1");
   });
 
   it("omits the test step when no changed file can have related tests", () => {
@@ -137,5 +150,53 @@ describe("countTestFiles", () => {
     expect(countTestFiles('{"numTotalTestSuites":3}')).toBe(3);
     expect(countTestFiles('{"numTotalTestSuites":0}')).toBe(0);
     expect(countTestFiles("{}")).toBe(0);
+  });
+});
+
+describe("acquireLock", () => {
+  const dirs: string[] = [];
+  const lockDirIn = (): string => {
+    const dir = mkdtempSync(path.join(tmpdir(), "prepush-lock-"));
+    dirs.push(dir);
+    return path.join(dir, "prepush.lock");
+  };
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("takes a free lock and releases it", () => {
+    const lockDir = lockDirIn();
+    const release = acquireLock(lockDir, { isAlive: () => true, sleep: () => {}, onWait: () => {} });
+    expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
+    release();
+    expect(existsSync(lockDir)).toBe(false);
+  });
+
+  it("takes over a lock whose holder is dead", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    writeFileSync(path.join(lockDir, "pid"), "999999");
+    const waits: number[] = [];
+    acquireLock(lockDir, { isAlive: () => false, sleep: () => {}, onWait: (pid) => waits.push(pid) });
+    expect(waits).toEqual([]);
+    expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
+  });
+
+  it("waits while a live holder keeps the lock", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    writeFileSync(path.join(lockDir, "pid"), "4242");
+    const waits: number[] = [];
+    let sleeps = 0;
+    acquireLock(lockDir, {
+      isAlive: () => true,
+      sleep: () => {
+        sleeps += 1;
+        if (sleeps === 3) rmSync(lockDir, { recursive: true, force: true });
+      },
+      onWait: (pid) => waits.push(pid),
+    });
+    expect(waits).toEqual([4242]);
+    expect(sleeps).toBe(3);
   });
 });
