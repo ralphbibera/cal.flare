@@ -42,10 +42,9 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 Exact-version registry reads succeeded for the new pins. No registry-unavailability blocker remains. A fresh install, peer audit, and Worker import probes remain unexecuted.
 Better Auth carries its own Zod 4 and JOSE 6 dependencies. Keep domain Zod 3 and JOSE 4 consumers scoped to their original packages.
 No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, Accelerate, Neon, Hyperdrive-to-PG, or Node application server belongs in the target runtime.
-Optional user-provided Upstash Redis is the approved exception for web and API v2. Both workers read the same `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` names and use `NoopRedisService` when the pair is absent.
-API v2 requires no `REDIS_URL` and no Bull Redis connection. Bull work moves to `JOBS`, and the v2 throttler uses in-memory storage when Upstash is absent.
-Web rate limiting keeps its baseline: it stays disabled unless `UNKEY_ROOT_KEY` is set, and limiter state stays in `RUNTIME_STATE`.
-The operator approved this deviation on 2026-11-08.
+Redis is optional. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, web and API v2 use that Upstash database. When either is missing, both use `NoopRedisService`.
+API v2 has no `REDIS_URL` and no Bull Redis connection. Its Bull work runs on `JOBS`, and its throttler keeps state in memory when Upstash is not configured.
+Web rate limiting is off unless `UNKEY_ROOT_KEY` is set. Limiter state lives in `RUNTIME_STATE`.
 
 ## Bun workspaces and lockfile
 
@@ -262,7 +261,7 @@ Existing cron URLs retain methods and authorization. Repository-maintenance sche
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
 | `API_V2` | Web-to-v2 service binding. Preserve public `/api/v2` transport without a Node host or external app server. |
 | `JOBS` | Cloudflare Queue replaces consumed Bull and Trigger submission, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. |
-| `RUNTIME_STATE` | SQLite DO per rate-limit namespace for application limiter state, including the web limiter when `UNKEY_ROOT_KEY` enables it. Redis stays optional user-provided Upstash for web and API v2, and `NoopRedisService` applies when its env pair is absent. Operator-approved deviation from replacing every Redis operation with this DO, 2026-11-08. Preserve keys, lists, TTLs, atomic counters, invalidation, and failure results. |
+| `RUNTIME_STATE` | SQLite DO per rate-limit namespace. Holds application limiter state, including the web limiter when `UNKEY_ROOT_KEY` enables it. Preserve keys, TTLs, atomic counters, and failure results. |
 | Response Store bindings | Native helper-owned DO and R2 cache-body bindings, distinct from `RUNTIME_STATE`. No provider credentials or authoritative product records belong in this cache. |
 
 [Task repository][pin-tasker] preserves due ordering, `take: 1000`, attempt increments, retry interval, max attempts, cancellation, and success. Its cleanup is a no-op at the pin.
