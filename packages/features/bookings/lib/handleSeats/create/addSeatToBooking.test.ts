@@ -84,7 +84,11 @@ describe("addSeatToBooking on D1", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const failures = results.filter((r) => r.status === "rejected");
     expect(failures).toHaveLength(1);
-    expect(failures[0]).toMatchObject({ reason: { statusCode: 409, message: ErrorCode.BookingSeatsFull } });
+    expect(failures[0]).toMatchObject({ reason: { code: ErrorCode.BookingSeatsFull } });
+    expect(getServerErrorFromUnknown(failures[0].reason)).toMatchObject({
+      statusCode: 409,
+      message: ErrorCode.BookingSeatsFull,
+    });
     expect(await seatCount()).toBe(2);
     expect(await db.prepare('SELECT COUNT(*) FROM "Attendee"').first("COUNT(*)")).toBe(2);
   });
@@ -99,9 +103,16 @@ describe("addSeatToBooking on D1", () => {
   it("rejects a full slot before a missing numeric relation and makes no changes", async () => {
     await addSeat({ seatsPerTimeSlot: 1 });
     const before = await db.prepare('SELECT * FROM "Booking"').all();
-    await expect(
-      addSeat({ seatsPerTimeSlot: 1, bookingId: 999, bookingStatus: BookingStatus.CANCELLED })
-    ).rejects.toMatchObject({ statusCode: 409, message: ErrorCode.BookingSeatsFull });
+    const error = await addSeat({
+      seatsPerTimeSlot: 1,
+      bookingId: 999,
+      bookingStatus: BookingStatus.CANCELLED,
+    }).catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: ErrorCode.BookingSeatsFull });
+    expect(getServerErrorFromUnknown(error)).toMatchObject({
+      statusCode: 409,
+      message: ErrorCode.BookingSeatsFull,
+    });
     expect((await db.prepare('SELECT * FROM "Booking"').all()).results).toEqual(before.results);
     expect(await seatCount()).toBe(1);
   });
@@ -117,9 +128,14 @@ describe("addSeatToBooking on D1", () => {
   });
 
   it("reports missing UID before checking capacity or the numeric relation", async () => {
-    await expect(
-      addSeat({ bookingUid: "absent", bookingId: 999, seatsPerTimeSlot: 1 })
-    ).rejects.toMatchObject({ statusCode: 404, message: "Booking not found" });
+    const error = await addSeat({ bookingUid: "absent", bookingId: 999, seatsPerTimeSlot: 1 }).catch(
+      (error: unknown) => error
+    );
+    expect(error).toMatchObject({ code: ErrorCode.BookingNotFound });
+    expect(getServerErrorFromUnknown(error)).toMatchObject({
+      statusCode: 404,
+      message: "Booking not found",
+    });
     expect(await seatCount()).toBe(0);
   });
 
