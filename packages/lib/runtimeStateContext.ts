@@ -6,7 +6,7 @@ import { ErrorWithCode } from "./errors";
 export type RuntimeStateNamespace = {
   idFromName(name: string): unknown;
   get(id: unknown): {
-    fetch(url: string, init: { method: string; body: string }): Promise<Response>;
+    fetch(url: string, init: { method: string; body: string; signal?: AbortSignal }): Promise<Response>;
   };
 };
 
@@ -23,8 +23,12 @@ export function withRuntimeState<T>(env: RuntimeStateEnvironment, callback: () =
   return runtimeState.run(env.RUNTIME_STATE, callback);
 }
 
+export function getRuntimeStateOrNull(): RuntimeStateNamespace | null {
+  return runtimeState.getStore() ?? null;
+}
+
 export function getRuntimeState(): RuntimeStateNamespace {
-  const namespace = runtimeState.getStore();
+  const namespace = getRuntimeStateOrNull();
   if (!namespace) throw new ErrorWithCode(ErrorCode.InternalServerError, "RUNTIME_STATE binding is required");
   return namespace;
 }
