@@ -17,7 +17,7 @@
     "sentry:release": "NODE_OPTIONS='--max-old-space-size=6144' node scripts/create-sentry-release.js",
     "copy-static": "turbo run copy-app-store-static",
     "copy-app-store-static": "node scripts/copy-app-store-static.js",
-    "build": "turbo run copy-app-store-static && vite build && bun run sentry:release",
+    "build": "turbo run copy-app-store-static && turbo run build --filter=@calcom/embed-core && vite build && bun run sentry:release",
     "start": "vite preview",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
