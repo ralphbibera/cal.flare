@@ -1,9 +1,18 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Git, PushRef } from "./prepush";
+import type { Git, LockDeps, PushRef } from "./prepush";
 import {
   acquireLock,
   buildSteps,
@@ -13,6 +22,7 @@ import {
   isDocsOrLockfileOnly,
   parsePushLines,
   selectBase,
+  stampableTree,
   toAbsolutePaths,
 } from "./prepush";
 
@@ -153,6 +163,18 @@ describe("countTestFiles", () => {
   });
 });
 
+const lockDeps = (overrides: Partial<LockDeps> = {}): LockDeps => ({
+  isAlive: () => true,
+  killGroup: () => {},
+  sleep: () => {},
+  onWait: () => {},
+  readFile: (file) => readFileSync(file, "utf8"),
+  ...overrides,
+});
+
+const staleDirLeftovers = (lockDir: string): string[] =>
+  readdirSync(path.dirname(lockDir)).filter((name) => name.includes(".stale-"));
+
 describe("acquireLock", () => {
   const dirs: string[] = [];
   const lockDirIn = (): string => {
@@ -164,11 +186,16 @@ describe("acquireLock", () => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
+  const ageLock = (lockDir: string): void => {
+    const old = new Date(Date.now() - 31_000);
+    utimesSync(lockDir, old, old);
+  };
+
   it("takes a free lock and releases it", () => {
     const lockDir = lockDirIn();
-    const release = acquireLock(lockDir, { isAlive: () => true, sleep: () => {}, onWait: () => {} });
+    const lock = acquireLock(lockDir, lockDeps());
     expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
-    release();
+    lock.release();
     expect(existsSync(lockDir)).toBe(false);
   });
 
@@ -176,27 +203,163 @@ describe("acquireLock", () => {
     const lockDir = lockDirIn();
     mkdirSync(lockDir);
     writeFileSync(path.join(lockDir, "pid"), "999999");
-    const waits: number[] = [];
-    acquireLock(lockDir, { isAlive: () => false, sleep: () => {}, onWait: (pid) => waits.push(pid) });
+    const waits: (number | undefined)[] = [];
+    acquireLock(lockDir, lockDeps({ isAlive: () => false, onWait: (pid) => waits.push(pid) }));
     expect(waits).toEqual([]);
     expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
   });
 
-  it("waits while a live holder keeps the lock", () => {
+  it("reclaims an ownerless lock once it is clearly abandoned", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    ageLock(lockDir);
+    const waits: (number | undefined)[] = [];
+    acquireLock(lockDir, lockDeps({ onWait: (pid) => waits.push(pid) }));
+    expect(waits).toEqual([]);
+    expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
+  });
+
+  it("waits on a fresh ownerless lock instead of stealing it", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    const waits: (number | undefined)[] = [];
+    let sleeps = 0;
+    acquireLock(
+      lockDir,
+      lockDeps({
+        sleep: () => {
+          sleeps += 1;
+          if (sleeps === 2) writeFileSync(path.join(lockDir, "pid"), "4242");
+          if (sleeps === 3) rmSync(lockDir, { recursive: true, force: true });
+        },
+        onWait: (pid) => waits.push(pid),
+      })
+    );
+    expect(waits).toEqual([undefined]);
+    expect(sleeps).toBe(3);
+  });
+
+  it("waits on a live holder even when the lock directory is old", () => {
     const lockDir = lockDirIn();
     mkdirSync(lockDir);
     writeFileSync(path.join(lockDir, "pid"), "4242");
-    const waits: number[] = [];
+    ageLock(lockDir);
+    const waits: (number | undefined)[] = [];
     let sleeps = 0;
-    acquireLock(lockDir, {
-      isAlive: () => true,
-      sleep: () => {
-        sleeps += 1;
-        if (sleeps === 3) rmSync(lockDir, { recursive: true, force: true });
-      },
-      onWait: (pid) => waits.push(pid),
-    });
+    acquireLock(
+      lockDir,
+      lockDeps({
+        sleep: () => {
+          sleeps += 1;
+          if (sleeps === 3) rmSync(lockDir, { recursive: true, force: true });
+        },
+        onWait: (pid) => waits.push(pid),
+      })
+    );
     expect(waits).toEqual([4242]);
     expect(sleeps).toBe(3);
+  });
+
+  it("retries acquisition when the pid file disappears between the check and the read", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    writeFileSync(path.join(lockDir, "pid"), "999999");
+    let reads = 0;
+    const lock = acquireLock(
+      lockDir,
+      lockDeps({
+        readFile: () => {
+          reads += 1;
+          rmSync(lockDir, { recursive: true, force: true });
+          throw Object.assign(new Error("gone"), { code: "ENOENT" });
+        },
+      })
+    );
+    expect(reads).toBe(1);
+    expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
+    lock.release();
+  });
+
+  it("rethrows a pid read error that is not ENOENT", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    writeFileSync(path.join(lockDir, "pid"), "999999");
+    const denied = () =>
+      lockDeps({
+        readFile: () => {
+          throw Object.assign(new Error("denied"), { code: "EACCES" });
+        },
+      });
+    expect(() => acquireLock(lockDir, denied())).toThrow("denied");
+  });
+
+  it("restores a fresh lock that replaced the dead one before the rename", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    writeFileSync(path.join(lockDir, "pid"), "999999");
+    const waits: (number | undefined)[] = [];
+    const kills: number[] = [];
+    let sleeps = 0;
+    acquireLock(
+      lockDir,
+      lockDeps({
+        isAlive: (pid) => {
+          if (pid !== 999999) return true;
+          // Another pusher reclaims and installs a live holder while we are about to reclaim.
+          rmSync(lockDir, { recursive: true, force: true });
+          mkdirSync(lockDir);
+          writeFileSync(path.join(lockDir, "pid"), "4242");
+          return false;
+        },
+        killGroup: (pgid) => kills.push(pgid),
+        sleep: () => {
+          sleeps += 1;
+          if (sleeps === 1) rmSync(lockDir, { recursive: true, force: true });
+        },
+        onWait: (pid) => waits.push(pid),
+      })
+    );
+    expect(waits).toEqual([4242]);
+    expect(kills).toEqual([]);
+    expect(staleDirLeftovers(lockDir)).toEqual([]);
+    expect(readFileSync(path.join(lockDir, "pid"), "utf8")).toBe(String(process.pid));
+  });
+
+  it("kills the dead holder's leftover process group before reclaiming", () => {
+    const lockDir = lockDirIn();
+    mkdirSync(lockDir);
+    writeFileSync(path.join(lockDir, "pid"), "999999");
+    writeFileSync(path.join(lockDir, "pgid"), "77777");
+    const kills: number[] = [];
+    acquireLock(lockDir, lockDeps({ isAlive: () => false, killGroup: (pgid) => kills.push(pgid) }));
+    expect(kills).toEqual([77777]);
+  });
+
+  it("records the running step's process group and clears it", () => {
+    const lockDir = lockDirIn();
+    const lock = acquireLock(lockDir, lockDeps());
+    lock.setGroup(1234);
+    expect(readFileSync(path.join(lockDir, "pgid"), "utf8")).toBe("1234");
+    lock.setGroup(undefined);
+    expect(existsSync(path.join(lockDir, "pgid"))).toBe(false);
+    lock.release();
+  });
+});
+
+describe("stampableTree", () => {
+  const checked = { tree: "t1", clean: true };
+
+  it("returns the checked tree when the worktree still matches and the tree was pushed", () => {
+    expect(stampableTree(checked, { tree: "t1", clean: true }, ["t1"])).toBe("t1");
+  });
+
+  it("refuses when the worktree moved or became dirty after the checks", () => {
+    expect(stampableTree(checked, { tree: "t2", clean: true }, ["t1", "t2"])).toBeUndefined();
+    expect(stampableTree(checked, { tree: "t1", clean: false }, ["t1"])).toBeUndefined();
+  });
+
+  it("refuses a tree that was dirty when checks started or was not pushed", () => {
+    expect(stampableTree({ tree: "t1", clean: false }, { tree: "t1", clean: true }, ["t1"])).toBeUndefined();
+    expect(stampableTree(checked, { tree: "t1", clean: true }, ["t2"])).toBeUndefined();
   });
 });
