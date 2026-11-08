@@ -2,6 +2,7 @@ import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import type { D1Environment } from "@calcom/prisma/d1";
 import { betterAuth } from "better-auth";
+import { sessionCookieSettings } from "./session-cookie";
 
 type AuthRequestConfig = D1Environment & {
   baseURL: string;
@@ -21,7 +22,6 @@ export function createBetterAuth({
   if (!NEXTAUTH_SECRET?.trim()) {
     throw new ErrorWithCode(ErrorCode.InternalServerError, "NEXTAUTH_SECRET is required for auth");
   }
-  const secure = (webappURL ?? baseURL).startsWith("https://");
   return betterAuth({
     database: DB,
     baseURL,
@@ -66,22 +66,10 @@ export function createBetterAuth({
       "/magic-link/verify",
     ],
     advanced: {
-      useSecureCookies: secure,
+      ...sessionCookieSettings({ baseURL, webappURL, NEXTAUTH_COOKIE_DOMAIN }),
       // The SDK turns origin checks off under NODE_ENV=test unless they are pinned.
       disableOriginCheck: false,
       disableCSRFCheck: false,
-      cookies: {
-        session_token: {
-          attributes: {
-            domain: NEXTAUTH_COOKIE_DOMAIN || undefined,
-            sameSite: secure ? "none" : "lax",
-            secure,
-            httpOnly: true,
-            path: "/",
-            maxAge: 30 * 24 * 60 * 60,
-          },
-        },
-      },
     },
   });
 }
