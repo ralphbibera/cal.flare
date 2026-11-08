@@ -217,6 +217,23 @@ describe("authorizeCredentials", () => {
     });
   });
 
+  describe("Locked account", () => {
+    it("rejects a locked user before verifying the password", async () => {
+      const { verifyPassword } = await import("./verifyPassword");
+      mockFindByEmailAndIncludeProfilesAndPassword.mockResolvedValue(
+        createMockUser({ locked: true }) as never
+      );
+
+      await expect(
+        authorizeCredentials({
+          email: "test@example.com",
+          password: "password123",
+        } as any)
+      ).rejects.toThrow(ErrorCode.UserAccountLocked);
+      expect(verifyPassword).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Inactive admin reason", () => {
     it("sets reason to 'both' when password is invalid and 2FA is disabled", async () => {
       const { isPasswordValid } = await import("@calcom/lib/auth/isPasswordValid");
