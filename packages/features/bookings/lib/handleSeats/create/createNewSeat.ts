@@ -8,7 +8,10 @@ import { ErrorCode } from "@calcom/lib/errorCodes";
 import { HttpError } from "@calcom/lib/http-error";
 import prisma from "@calcom/prisma";
 import type { Prisma, PrismaClient } from "@calcom/prisma/client";
+import { getD1Database } from "@calcom/prisma/d1";
+import { requireD1Record, runD1Batch } from "@calcom/prisma/d1-batch";
 import { BookingStatus } from "@calcom/prisma/enums";
+import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import { cloneDeep } from "lodash";
 import { uuid } from "short-uuid";
 import { findBookingQuery } from "../../handleNewBooking/findBookingQuery";
@@ -36,10 +39,102 @@ export type AddSeatInput = {
 
 /**
  * Atomically adds a seat to a booking with race condition protection.
- * Uses a transaction with a fresh read to prevent TOCTOU race conditions
- * where concurrent requests could exceed the seat limit.
+ * D1 ignores interactive transactions, so the seat-count guard and both inserts travel in one
+ * guarded batch: the batch is atomic, and a full booking aborts it before anything is written.
  */
 export async function addSeatToBooking(input: AddSeatInput, prismaClient: PrismaClient = prisma) {
+  const db = d1DatabaseOrNull();
+
+  if (!db) {
+    return addSeatToBookingWithPrisma(input, prismaClient);
+  }
+
+  const referenceUid = uuid();
+
+  const booking = await prismaClient.booking.findUnique({
+    where: { uid: input.bookingUid },
+    select: { id: true },
+  });
+
+  if (!booking) {
+    throw new HttpError({ statusCode: 404, message: "Booking not found" });
+  }
+
+  const statements: D1PreparedStatement[] = [];
+
+  // Only enforce the limit when seatsPerTimeSlot > 0 (matching original behavior
+  // where falsy seatsPerTimeSlot would skip this check entirely)
+  if (input.seatsPerTimeSlot > 0) {
+    statements.push(
+      requireD1Record(
+        db,
+        { message: ErrorCode.BookingSeatsFull },
+        `SELECT 1 FROM "Booking" WHERE "uid" = ? AND (
+          SELECT count(*) FROM "Attendee" AS attendee
+          INNER JOIN "BookingSeat" AS seat ON seat."attendeeId" = attendee."id"
+          WHERE attendee."bookingId" = "Booking"."id"
+        ) < ?`,
+        input.bookingUid,
+        input.seatsPerTimeSlot
+      )
+    );
+  }
+
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO "Attendee" ("email", "phoneNumber", "name", "timeZone", "locale", "bookingId")
+         VALUES (?, ?, ?, ?, ?, (SELECT "id" FROM "Booking" WHERE "uid" = ?))`
+      )
+      .bind(
+        input.attendee.email,
+        input.attendee.phoneNumber ?? null,
+        input.attendee.name,
+        input.attendee.timeZone,
+        input.attendee.locale,
+        input.bookingUid
+      ),
+    db
+      .prepare(
+        `INSERT INTO "BookingSeat" ("referenceUid", "bookingId", "attendeeId", "data", "metadata")
+         VALUES (?, ?, last_insert_rowid(), ?, ?)`
+      )
+      .bind(
+        referenceUid,
+        input.bookingId,
+        JSON.stringify({
+          description: input.seatData.description,
+          responses: input.seatData.responses,
+        }),
+        input.metadata ? JSON.stringify(input.metadata) : null
+      )
+  );
+
+  if (input.bookingStatus === BookingStatus.CANCELLED) {
+    statements.push(
+      db
+        .prepare(`UPDATE "Booking" SET "status" = ? WHERE "uid" = ?`)
+        .bind(BookingStatus.ACCEPTED, input.bookingUid)
+    );
+  }
+
+  await runD1Batch(db, statements, { modelName: "BookingSeat" });
+
+  return prismaClient.bookingSeat.findUnique({
+    where: { referenceUid },
+  });
+}
+
+// The unit-test harness swaps Prisma for an in-memory mock with no request binding.
+function d1DatabaseOrNull(): D1Database | null {
+  try {
+    return getD1Database();
+  } catch {
+    return null;
+  }
+}
+
+async function addSeatToBookingWithPrisma(input: AddSeatInput, prismaClient: PrismaClient) {
   const referenceUid = uuid();
 
   return prismaClient.$transaction(async (tx) => {
