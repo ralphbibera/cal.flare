@@ -1,4 +1,4 @@
-import { WEBAPP_URL } from "@calcom/lib/constants";
+import { IS_MAILHOG_ENABLED, WEBAPP_URL } from "@calcom/lib/constants";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
@@ -7,7 +7,7 @@ import type { Messages } from "mailhog";
 import type { createEmailsFixture } from "./fixtures/emails";
 import type { createUsersFixture } from "./fixtures/users";
 import { test } from "./lib/fixtures";
-import { getEmailsReceivedByUser, submitAndWaitForResponse, getDefaultPassword } from "./lib/testUtils";
+import { getDefaultPassword, getEmailsReceivedByUser, submitAndWaitForResponse } from "./lib/testUtils";
 
 const expectInvitationEmailToBeReceived = async ({
   emails,
@@ -104,8 +104,7 @@ test.describe("Update Profile", () => {
     expect(errorLocator).toBeDefined();
 
     await page.goto("/settings/my-account/profile");
-    const emailInputUpdated = page.getByTestId("profile-form-email-0");
-    expect(await emailInputUpdated.inputValue()).toEqual(user.email);
+    await expect(page.getByTestId("profile-form-email-0")).toHaveValue(user.email);
   });
 
   // TODO: This test is extremely flaky and has been failing a lot, blocking many PRs. Fix this.
@@ -221,6 +220,8 @@ test.describe("Update Profile", () => {
   };
 
   test("Can add a new email as a secondary email", async ({ page, users, prisma, emails }) => {
+    // eslint-disable-next-line playwright/no-skipped-test
+    test.skip(!IS_MAILHOG_ENABLED, "MailHog is not enabled");
     const user = await users.create({
       name: "update-profile-user",
     });

@@ -2,8 +2,10 @@ import { prisma } from "@calcom/prisma";
 import { v4 as uuidv4 } from "uuid";
 
 export const uploadAvatar = async ({ userId, avatar: data }: { userId: number; avatar: string }) => {
-  const { convertSvgToPng } = await import("./imageUtils");
-  const processedData = await convertSvgToPng(data);
+  // sharp cannot load in workerd, so only load it for the SVG branch that needs it.
+  const processedData = data.startsWith("data:image/svg+xml")
+    ? await (await import("./imageUtils")).convertSvgToPng(data)
+    : data;
 
   // Check if avatar already exists to preserve the objectKey
   const existing = await prisma.avatar.findUnique({
@@ -51,9 +53,10 @@ export const uploadLogo = async ({
   logo: string;
   isBanner?: boolean;
 }): Promise<string> => {
-  const { convertSvgToPng } = await import("./imageUtils");
   const objectKey = uuidv4();
-  const processedData = await convertSvgToPng(data);
+  const processedData = data.startsWith("data:image/svg+xml")
+    ? await (await import("./imageUtils")).convertSvgToPng(data)
+    : data;
 
   await prisma.avatar.upsert({
     where: {

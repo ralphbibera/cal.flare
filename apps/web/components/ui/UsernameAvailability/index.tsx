@@ -9,10 +9,16 @@ import type { ReactNode, RefCallback } from "react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
+type UsernameAvailabilityUser = {
+  username: string | null;
+  organization?: { id: number | null } | null;
+};
+
 interface UsernameAvailabilityFieldProps {
   onSuccessMutation?: () => void;
   onErrorMutation?: (error: TRPCClientErrorLike<AppRouter>) => void;
   disabled?: boolean;
+  user?: UsernameAvailabilityUser;
 }
 
 interface ICustomUsernameProps extends UsernameAvailabilityFieldProps {
@@ -41,13 +47,13 @@ export const UsernameAvailability = (props: ICustomUsernameProps) => {
   return <UsernameAvailabilityComponent {...componentProps} />;
 };
 
-export const UsernameAvailabilityField = ({
+const UsernameAvailabilityFieldWithUser = ({
   onSuccessMutation,
   onErrorMutation,
   disabled,
-}: UsernameAvailabilityFieldProps) => {
+  user,
+}: UsernameAvailabilityFieldProps & { user: UsernameAvailabilityUser }) => {
   const searchParams = useSearchParams();
-  const [user] = trpc.viewer.me.get.useSuspenseQuery();
   const [currentUsernameState, setCurrentUsernameState] = useState(user.username || "");
   const { username: usernameFromQuery, setQuery: setUsernameFromQuery } = useRouterQuery("username");
   const { username: currentUsername, setQuery: setCurrentUsername } =
@@ -88,4 +94,14 @@ export const UsernameAvailabilityField = ({
       )}
     />
   );
+};
+
+const UsernameAvailabilityFieldFromQuery = (props: UsernameAvailabilityFieldProps) => {
+  const [user] = trpc.viewer.me.get.useSuspenseQuery();
+  return <UsernameAvailabilityFieldWithUser {...props} user={user} />;
+};
+
+export const UsernameAvailabilityField = ({ user, ...props }: UsernameAvailabilityFieldProps) => {
+  if (user) return <UsernameAvailabilityFieldWithUser {...props} user={user} />;
+  return <UsernameAvailabilityFieldFromQuery {...props} />;
 };
