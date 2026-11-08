@@ -5,8 +5,10 @@
 import { BookingStatus, WebhookTriggerEvents } from "@calcom/prisma/enums";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handlePaymentSuccess } from "./handlePaymentSuccess";
+import { commitPaymentSuccessInD1 } from "./handlePaymentSuccessInD1";
 
 // Mock dependencies
+vi.mock("./handlePaymentSuccessInD1", () => ({ commitPaymentSuccessInD1: vi.fn() }));
 vi.mock("@calcom/features/bookings/lib/payment/getBooking");
 vi.mock("@calcom/features/webhooks/lib/getWebhooks");
 vi.mock("@calcom/features/webhooks/lib/sendOrSchedulePayload");
@@ -25,9 +27,6 @@ vi.mock("@calcom/prisma", async (importOriginal) => {
     ...actual,
     // Spreading the real client would open its request-bound D1 binding outside a request.
     default: {
-      payment: { update: vi.fn() },
-      booking: { update: vi.fn() },
-      $transaction: vi.fn(),
       profile: { findMany: vi.fn().mockResolvedValue([]) },
       credential: { findMany: vi.fn().mockResolvedValue([]) },
       team: {
@@ -80,13 +79,13 @@ vi.mock("@calcom/features/calendars/lib/CalendarManager", () => ({
   deleteEvent: vi.fn().mockResolvedValue({}),
 }));
 
+import { handleConfirmation } from "@calcom/features/bookings/lib/handleConfirmation";
 import { getBooking } from "@calcom/features/bookings/lib/payment/getBooking";
 import getWebhooks from "@calcom/features/webhooks/lib/getWebhooks";
 import { WebhookVersion } from "@calcom/features/webhooks/lib/interface/IWebhookRepository";
 import sendPayload from "@calcom/features/webhooks/lib/sendOrSchedulePayload";
 import { getTeamIdFromEventType } from "@calcom/lib/getTeamIdFromEventType";
 import type { TraceContext } from "@calcom/lib/tracing";
-import prisma from "@calcom/prisma";
 
 describe("handlePaymentSuccess", () => {
   const mockBookingId = 1;
@@ -198,11 +197,10 @@ describe("handlePaymentSuccess", () => {
       eventType: mockEventType,
     });
 
-    // Mock prisma transaction
-    vi.mocked(prisma.$transaction).mockResolvedValue([
-      { id: mockPaymentId, externalId: "ext-123" },
-      { status: BookingStatus.ACCEPTED },
-    ]);
+    vi.mocked(commitPaymentSuccessInD1).mockResolvedValue({
+      payment: { id: mockPaymentId, externalId: "ext-123" },
+      booking: { status: BookingStatus.ACCEPTED },
+    });
 
     // Mock webhook functions
     vi.mocked(getWebhooks).mockResolvedValue([mockWebhookSubscriber]);
@@ -298,5 +296,62 @@ describe("handlePaymentSuccess", () => {
         }),
       })
     );
+  });
+
+  it("commits the receipt, paid flag and status through one D1 boundary", async () => {
+    await expect(
+      handlePaymentSuccess({
+        paymentId: mockPaymentId,
+        appSlug: "stripe",
+        bookingId: mockBookingId,
+        traceContext: mockTraceContext,
+      })
+    ).rejects.toThrow();
+
+    expect(commitPaymentSuccessInD1).toHaveBeenCalledWith({
+      paymentId: mockPaymentId,
+      bookingId: mockBookingId,
+      status: BookingStatus.ACCEPTED,
+      referencesToCreate: [],
+    });
+  });
+
+  it("leaves the booking status unchanged when confirmation is still required", async () => {
+    vi.mocked(getBooking).mockResolvedValueOnce({
+      booking: {
+        ...mockBooking,
+        eventType: { ...mockBooking.eventType, requiresConfirmation: true },
+      },
+      user: mockUser,
+      evt: mockEvt,
+      eventType: { ...mockEventType, requiresConfirmation: true },
+    });
+
+    await expect(
+      handlePaymentSuccess({
+        paymentId: mockPaymentId,
+        appSlug: "stripe",
+        bookingId: mockBookingId,
+        traceContext: mockTraceContext,
+      })
+    ).rejects.toThrow();
+
+    expect(commitPaymentSuccessInD1).toHaveBeenCalledWith(expect.objectContaining({ status: undefined }));
+  });
+
+  it("does not send BOOKING_PAID webhooks or run confirmation when the commit fails", async () => {
+    vi.mocked(commitPaymentSuccessInD1).mockRejectedValueOnce(new Error("commit failed"));
+
+    await expect(
+      handlePaymentSuccess({
+        paymentId: mockPaymentId,
+        appSlug: "stripe",
+        bookingId: mockBookingId,
+        traceContext: mockTraceContext,
+      })
+    ).rejects.toThrow("commit failed");
+
+    expect(sendPayload).not.toHaveBeenCalled();
+    expect(handleConfirmation).not.toHaveBeenCalled();
   });
 });
