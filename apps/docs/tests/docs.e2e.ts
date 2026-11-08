@@ -1,13 +1,19 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 const root = path.resolve(import.meta.dirname, "..");
-const routes = readFileSync(path.join(root, "../../docs/porting/inventory/routes.tsv"), "utf8")
+const inventory = readFileSync(path.join(root, "../../docs/porting/inventory/routes.tsv"), "utf8")
   .split("\n")
   .filter((line) => line.startsWith("apps/docs/content/"))
   .map((line) => {
     const [file, , , route] = line.split("\t");
+    return { file, route };
+  });
+const missing = inventory.filter(({ file }) => !existsSync(path.join(root, "../..", file)));
+const routes = inventory
+  .filter(({ file }) => existsSync(path.join(root, "../..", file)))
+  .map(({ file, route }) => {
     const source = readFileSync(path.join(root, "../..", file), "utf8");
     const prose = source.replace(/^(?:> )?```[^\n]*\n[\s\S]*?^(?:> )?```/gm, "");
     const heading = prose.match(/^# (.+)$/m)?.[1];
@@ -30,6 +36,9 @@ test.beforeEach(async ({ page, baseURL }) => {
 });
 
 test("every content route hydrates with original metadata, code blocks and anchors", async ({ page }) => {
+  // The upstream content sync removed Twilio after the port inventory was captured.
+  expect(missing.map(({ route }) => route)).toEqual(["/apps/twilio"]);
+  expect(routes).toHaveLength(22);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
