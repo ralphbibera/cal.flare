@@ -1,13 +1,60 @@
-import { prisma } from "@calcom/prisma";
-import type { PrismaClient } from "@calcom/prisma";
-import { CancellationReasonRequirement } from "@calcom/prisma/enums";
 import i18nMock from "@calcom/testing/lib/__mocks__/libServerI18n";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { PrismaClient } from "@calcom/prisma";
+import { prisma } from "@calcom/prisma";
+import { withD1Database } from "@calcom/prisma/d1";
+import { CancellationReasonRequirement } from "@calcom/prisma/enums";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
 
 // import { mockNoTranslations } from "@calcom/testing/lib/bookingScenario/bookingScenario";
 
-import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { getRawEventType } from "./getEventTypeById";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => test(name, () => inD1(callback));
+const d1AfterEach = (callback: () => unknown) => afterEach(() => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-get-event-type-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 export function mockNoTranslations() {
   console.log("Mocking i18n.getTranslation to return identity function");
@@ -32,9 +79,7 @@ describe("getRawEventType", () => {
     users: [],
   };
 
-  const createTestUser = async (overrides?: {
-    username?: string;
-  }) => {
+  const createTestUser = async (overrides?: { username?: string }) => {
     const timestamp = Date.now() + Math.random();
     const username = overrides?.username ?? `testuser-${timestamp}`;
     const user = await prisma.user.create({
@@ -81,7 +126,7 @@ describe("getRawEventType", () => {
     createdResources.users = [];
   });
 
-  afterEach(async () => {
+  d1AfterEach(async () => {
     if (createdResources.eventTypes.length > 0) {
       await prisma.eventType.deleteMany({
         where: { id: { in: createdResources.eventTypes } },
@@ -95,7 +140,7 @@ describe("getRawEventType", () => {
   });
 
   describe("Regular user access", () => {
-    test("should fetch event type when user owns it", async () => {
+    d1Test("should fetch event type when user owns it", async () => {
       const user = await createTestUser();
       const eventType = await createTestEventType(user.id);
 
@@ -113,7 +158,7 @@ describe("getRawEventType", () => {
       expect(result?.userId).toBe(user.id);
     });
 
-    test("should fetch requiresCancellationReason when it is configured", async () => {
+    d1Test("should fetch requiresCancellationReason when it is configured", async () => {
       const user = await createTestUser();
       const eventType = await createTestEventType(user.id, {
         requiresCancellationReason: CancellationReasonRequirement.MANDATORY_ATTENDEE_ONLY,
@@ -127,9 +172,7 @@ describe("getRawEventType", () => {
         prisma: prisma as unknown as PrismaClient,
       });
 
-      expect(result?.requiresCancellationReason).toBe(
-        CancellationReasonRequirement.MANDATORY_ATTENDEE_ONLY
-      );
+      expect(result?.requiresCancellationReason).toBe(CancellationReasonRequirement.MANDATORY_ATTENDEE_ONLY);
     });
 
     test.skip("should return null when user doesn't have access to event type", async () => {

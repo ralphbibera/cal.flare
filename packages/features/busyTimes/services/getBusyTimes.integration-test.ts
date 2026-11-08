@@ -1,8 +1,56 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import dayjs from "@calcom/dayjs";
 import { getBusyTimesService } from "@calcom/features/di/containers/BusyTimes";
 import { prisma } from "@calcom/prisma";
+import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
-import { afterEach, describe, expect, it } from "vitest";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, it as vitestIt } from "vitest";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const it = (name: string, callback: () => unknown) => vitestIt(name, () => inD1(callback));
+const d1AfterEach = (callback: () => unknown) => afterEach(() => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-busy-times-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 type CreatedResources = {
   users: number[];
@@ -67,7 +115,7 @@ const createTestBooking = async (params: {
   return booking;
 };
 
-afterEach(async () => {
+d1AfterEach(async () => {
   if (createdResources.bookings.length > 0) {
     await prisma.booking.deleteMany({
       where: { id: { in: createdResources.bookings } },
