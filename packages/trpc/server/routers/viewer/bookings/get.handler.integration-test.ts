@@ -1,15 +1,10 @@
-import { execFileSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import process from "node:process";
 import kysely from "@calcom/kysely";
 import prisma from "@calcom/prisma";
 import type { Booking, EventType, User } from "@calcom/prisma/client";
 import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
-import { Miniflare } from "miniflare";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
+import { describe, expect, it, vi } from "vitest";
 import { getBookings } from "./get.handler";
 
 let user1: User;
@@ -20,45 +15,13 @@ let booking2: Booking;
 let booking3: Booking;
 
 const timestamp = Date.now();
-let root: string;
-let runtime: Miniflare;
-let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
-const request = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
-const d1Test = (name: string, callback: () => Promise<void>) => it(name, () => request(callback));
+const d1 = setupMiniflareD1({
+  worker: async () => (await import("../../../../../../apps/web/cloudflare.config")).default.worker,
+  env: { OTHER: { type: "d1", name: "booking-list-other", dev: { remote: false } } },
+});
 
 describe("getBookings - integration", () => {
-  beforeAll(async () => {
-    root = await mkdtemp(join(tmpdir(), "booking-list-d1-"));
-    execFileSync("bun", ["packages/prisma/migrate-d1.mts", "--local-only", "--persist-to", root]);
-    const { worker } = (await import(`${process.cwd()}/apps/web/cloudflare.config.ts`)).default;
-    runtime = new Miniflare({
-      cf: false,
-      enableDevRegistry: false,
-      telemetry: { enabled: false },
-      resourcePersistencePath: join(root, "v3"),
-      workers: [
-        {
-          config: {
-            name: worker.name,
-            compatibilityDate: worker.compatibilityDate,
-            compatibilityFlags: worker.compatibilityFlags,
-            env: {
-              DB: worker.env.DB,
-              OTHER: { type: "d1", name: "booking-list-other", dev: { remote: false } },
-            },
-            manifest: {
-              mainModule: "worker.js",
-              modules: {
-                "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
-              },
-            },
-          },
-        },
-      ],
-    });
-    db = await runtime.getD1Database("DB");
-    await request(seedBookings);
-  }, 120_000);
+  d1.beforeAll(() => seedBookings(), 120_000);
 
   const seedBookings = async () => {
     user1 = await prisma.user.create({
@@ -148,13 +111,9 @@ describe("getBookings - integration", () => {
     });
   };
 
-  afterAll(async () => {
-    vi.useRealTimers();
-    await runtime?.dispose();
-    if (root) await rm(root, { recursive: true, force: true });
-  });
+  d1.afterAll(() => vi.useRealTimers());
 
-  d1Test("should return bookings created by the user", async () => {
+  d1.it("should return bookings created by the user", async () => {
     const result = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -170,7 +129,7 @@ describe("getBookings - integration", () => {
     expect(bookingIds).toContain(booking2.id);
   });
 
-  d1Test("should return bookings where user is an attendee", async () => {
+  d1.it("should return bookings where user is an attendee", async () => {
     const result = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -185,7 +144,7 @@ describe("getBookings - integration", () => {
     expect(bookingIds).toContain(booking3.id);
   });
 
-  d1Test("should not return duplicate bookings when user is both creator and attendee matches", async () => {
+  d1.it("should not return duplicate bookings when user is both creator and attendee matches", async () => {
     const result = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -203,7 +162,7 @@ describe("getBookings - integration", () => {
     expect(relevantBookingIds.length).toBe(uniqueIds.size);
   });
 
-  d1Test("should return correct totalCount without duplicates", async () => {
+  d1.it("should return correct totalCount without duplicates", async () => {
     const resultUser1 = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -222,7 +181,7 @@ describe("getBookings - integration", () => {
     expect(resultUser1.totalCount).toBe(resultUser1.bookings.length);
   });
 
-  d1Test("should respect pagination with correct ordering", async () => {
+  d1.it("should respect pagination with correct ordering", async () => {
     const page1 = await getBookings({
       user: { id: user1.id, email: user1.email, orgId: null },
       prisma,
@@ -252,7 +211,7 @@ describe("getBookings - integration", () => {
     expect(date1.getTime()).toBeLessThanOrEqual(date2.getTime());
   });
 
-  d1Test("should return bookings for user2 including those where user2 is an attendee", async () => {
+  d1.it("should return bookings for user2 including those where user2 is an attendee", async () => {
     const result = await getBookings({
       user: { id: user2.id, email: user2.email, orgId: null },
       prisma,
@@ -270,12 +229,12 @@ describe("getBookings - integration", () => {
 
   it("requires a request binding and refuses interactive transactions", async () => {
     await expect(kysely.selectFrom("Booking").select("id").execute()).rejects.toThrow("D1 request binding");
-    await expect(request(() => kysely.transaction().execute(async () => "unreachable"))).rejects.toThrow(
+    await expect(d1.run(() => kysely.transaction().execute(async () => "unreachable"))).rejects.toThrow(
       "D1 interactive transactions are unsupported"
     );
   });
 
-  d1Test(
+  d1.it(
     "keeps nested DTOs, nullable booleans, JSON scalar text and ordered assignment reasons",
     async () => {
       const literal = '{"title":"literal"}';
@@ -390,7 +349,7 @@ describe("getBookings - integration", () => {
     }
   );
 
-  d1Test(
+  d1.it(
     "applies UTC millisecond boundaries, updatedAt null ordering and parameterized attendee filters",
     async () => {
       const now = new Date("2040-01-01T00:00:00.123Z");
@@ -452,7 +411,7 @@ describe("getBookings - integration", () => {
           ).bookings.map(({ id }) => id)
         ).toEqual([after.id]);
         expect((await list(["upcoming"], { attendeeName: "' OR 1=1 --" })).bookings).toEqual([]);
-        await db.prepare("UPDATE Booking SET updatedAt = NULL WHERE id = ?").bind(exact.id).run();
+        await d1.db.prepare("UPDATE Booking SET updatedAt = NULL WHERE id = ?").bind(exact.id).run();
         const sorted = await getBookings({
           user: user1,
           prisma,
@@ -486,7 +445,7 @@ describe("getBookings - integration", () => {
     }
   );
 
-  d1Test("keeps ownership and user filter denial", async () => {
+  d1.it("keeps ownership and user filter denial", async () => {
     await expect(
       getBookings({
         user: user1,
@@ -510,13 +469,13 @@ describe("getBookings - integration", () => {
     expect(result).toMatchObject({ bookings: [], totalCount: 0, recurringInfo: [] });
   });
 
-  d1Test("resolves overlapping Kysely requests independently across awaits", async () => {
-    const other = await runtime.getD1Database("OTHER");
+  d1.it("resolves overlapping Kysely requests independently across awaits", async () => {
+    const other = await d1.runtime.getD1Database("OTHER");
     await other.prepare("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)").run();
     await other.prepare("INSERT INTO users VALUES (?, ?)").bind(user1.id, "other@example.com").run();
     const started = Promise.withResolvers<void>();
     const second = Promise.withResolvers<void>();
-    const firstQuery = request(async () => {
+    const firstQuery = d1.run(async () => {
       const row = await kysely
         .selectFrom("users")
         .select("email")
@@ -551,7 +510,7 @@ describe("getBookings - integration", () => {
     ]);
   });
 
-  d1Test("retains recurring summaries, managed team filters and seated attendee privacy", async () => {
+  d1.it("retains recurring summaries, managed team filters and seated attendee privacy", async () => {
     const team = await prisma.team.create({ data: { name: "Booking team" } });
     const parent = await prisma.eventType.create({
       data: { title: "Parent", slug: "parent", length: 30, teamId: team.id },
@@ -643,7 +602,7 @@ describe("getBookings - integration", () => {
     expect(result.bookings[0].attendees).toHaveLength(2);
   });
 
-  d1Test(
+  d1.it(
     "preserves PostgreSQL nested JSON timestamp formatting without changing top-level dates",
     async () => {
       for (const [iso, nested] of [
@@ -685,7 +644,7 @@ describe("getBookings - integration", () => {
     }
   );
 
-  d1Test("lists bookings reported with a mapped BookingReportReason", async () => {
+  d1.it("lists bookings reported with a mapped BookingReportReason", async () => {
     await prisma.bookingReport.upsert({
       where: { bookingUid: booking1.uid },
       update: { reason: "DONT_KNOW_PERSON" },
@@ -703,7 +662,7 @@ describe("getBookings - integration", () => {
     expect(result.bookings[0].report?.reason).toBe("DONT_KNOW_PERSON");
   });
 
-  d1Test("matches advanced attendee text filters as PostgreSQL ILIKE and lower() do", async () => {
+  d1.it("matches advanced attendee text filters as PostgreSQL ILIKE and lower() do", async () => {
     const owner = await prisma.user.create({
       data: { username: `ilike-${timestamp}`, email: `ilike-${timestamp}@example.com`, name: "Owner" },
     });
