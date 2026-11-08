@@ -1,23 +1,34 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { migrateD1 } from "../../../prisma/migrate-d1.mjs";
 import { createCalCredentialsAuth } from "./cal-credentials-auth";
 
 let mf: Miniflare;
+let directory: string;
 let auth: ReturnType<typeof createCalCredentialsAuth>;
 const origin = "https://calflare.test";
 const cookieName = "__Secure-next-auth.callback-url";
 
 beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-callback-test-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
   mf = new Miniflare({
     cf: false,
     enableDevRegistry: false,
     telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
     workers: [
       {
         config: {
-          name: "callback-test",
-          compatibilityDate: "2026-11-04",
-          env: { DB: { type: "d1", name: "callback-test", dev: { remote: false } } },
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
           manifest: {
             mainModule: "worker.js",
             modules: {
@@ -37,10 +48,11 @@ beforeAll(async () => {
     webappURL: origin,
     NEXTAUTH_SECRET: "synthetic-callback-test-only-secret-0123456789",
   });
-});
+}, 120_000);
 
 afterAll(async () => {
   await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
 });
 
 it.each([
