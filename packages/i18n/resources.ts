@@ -60,7 +60,8 @@ const cache: Map<string, Readonly<TranslationDictionary>> = new Map([["en", free
 export async function loadDictionary(locale: string): Promise<Readonly<TranslationDictionary>> {
   const cached = cache.get(locale);
   if (cached) return cached;
-  const load = Object.hasOwn(dictionaries, locale) ? dictionaries[locale] : undefined;
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn needs ES2022 lib, which API v2 does not target
+  const load = Object.prototype.hasOwnProperty.call(dictionaries, locale) ? dictionaries[locale] : undefined;
   if (!load) return {};
   const { default: dictionary } = await load();
   const immutable = freezeDictionary(dictionary);
