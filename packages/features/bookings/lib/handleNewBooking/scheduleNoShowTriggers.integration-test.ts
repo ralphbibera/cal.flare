@@ -1,14 +1,61 @@
-import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DailyLocationType } from "@calcom/app-store/constants";
 import { getMeetingSessionsFromRoomName } from "@calcom/features/tasker/tasks/triggerNoShow/getMeetingSessionsFromRoomName";
 import { triggerHostNoShow } from "@calcom/features/tasker/tasks/triggerNoShow/triggerHostNoShow";
 import { sendGenericWebhookPayload } from "@calcom/features/webhooks/lib/sendPayload";
 import { prisma } from "@calcom/prisma";
 import type { Booking, User, Webhook } from "@calcom/prisma/client";
+import { withD1Database } from "@calcom/prisma/d1";
 import { TimeUnit, WebhookTriggerEvents } from "@calcom/prisma/enums";
-
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { scheduleNoShowTriggers } from "./scheduleNoShowTriggers";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => test(name, () => inD1(callback));
+const d1BeforeAll = (callback: () => unknown, timeout?: number) => beforeAll(() => inD1(callback), timeout);
+const d1AfterAll = (callback: () => unknown, timeout?: number) => afterAll(() => inD1(callback), timeout);
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-no-show-triggers-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 vi.mock("@calcom/features/tasker/tasks/triggerNoShow/getMeetingSessionsFromRoomName", () => ({
   getMeetingSessionsFromRoomName: vi.fn(),
@@ -26,7 +73,7 @@ describe("scheduleNoShowTriggers Integration", () => {
   const testBookingIds = [98765, 98766];
   const testBookingId = 123456;
 
-  beforeAll(async () => {
+  d1BeforeAll(async () => {
     testUser = await prisma.user.create({
       data: {
         email: "test-user-no-show@example.com",
@@ -61,7 +108,7 @@ describe("scheduleNoShowTriggers Integration", () => {
     ]);
   });
 
-  afterAll(async () => {
+  d1AfterAll(async () => {
     await prisma.task.deleteMany({
       where: {
         OR: [{ type: "triggerHostNoShowWebhook" }, { type: "triggerGuestNoShowWebhook" }],
@@ -93,7 +140,7 @@ describe("scheduleNoShowTriggers Integration", () => {
     });
   });
 
-  test("scheduling a webhook creates the correct Tasker jobs for no-show webhooks", async () => {
+  d1Test("scheduling a webhook creates the correct Tasker jobs for no-show webhooks", async () => {
     const currentDate = new Date("2023-01-01T10:00:00.000Z");
     const bookingData: Partial<Booking> & { startTime: Date; id: number; location: string } = {
       id: testBookingIds[0],
@@ -124,7 +171,7 @@ describe("scheduleNoShowTriggers Integration", () => {
     expect(guestTask).toBeDefined();
   });
 
-  test("created task payloads for no-show webhooks are correct", async () => {
+  d1Test("created task payloads for no-show webhooks are correct", async () => {
     const currentDate = new Date("2023-01-01T11:00:00.000Z");
     const bookingData: Partial<Booking> & { startTime: Date; id: number; location: string } = {
       id: testBookingIds[1],
@@ -196,7 +243,7 @@ describe("scheduleNoShowTriggers Integration", () => {
     });
   });
 
-  test("task handler runs properly with the correct payload", async () => {
+  d1Test("task handler runs properly with the correct payload", async () => {
     await prisma.eventType.create({
       data: {
         id: testEventTypeId,
