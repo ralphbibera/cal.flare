@@ -1,12 +1,10 @@
+import { AVATAR_FALLBACK, WEBAPP_URL } from "@calcom/lib/constants";
+import prisma from "@calcom/prisma";
 import type { Params } from "app/_types";
 import { defaultResponderForAppDir } from "app/api/defaultResponderForAppDir";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { AVATAR_FALLBACK, WEBAPP_URL } from "@calcom/lib/constants";
-import { convertSvgToPng } from "@calcom/lib/server/imageUtils";
-import prisma from "@calcom/prisma";
 
 const querySchema = z.object({
   uuid: z.string().transform((objectKey) => objectKey.split(".")[0]),
@@ -48,6 +46,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<Params> }
 
     // Convert SVG to PNG if needed and update the database
     if (data.startsWith("data:image/svg+xml;base64,")) {
+      const { convertSvgToPng } = await import("@calcom/lib/server/imageUtils");
       const pngData = await convertSvgToPng(data);
 
       await prisma.avatar.update({

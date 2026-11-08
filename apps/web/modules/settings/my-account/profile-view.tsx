@@ -1,5 +1,6 @@
 "use client";
 
+import process from "node:process";
 import { authClient } from "@calcom/features/auth/client/auth-client";
 import { ErrorCode } from "@calcom/features/auth/lib/ErrorCode";
 import { Dialog } from "@calcom/features/components/controlled-dialog";
@@ -69,9 +70,11 @@ const ProfileView = ({ user }: Props) => {
   const { t } = useLocale();
   const utils = trpc.useUtils();
   const session = authClient.useSession();
+  const [updatedAvatarUrl, setUpdatedAvatarUrl] = useState<string | null>(null);
   const updateProfileMutation = trpc.viewer.me.updateProfile.useMutation({
     onSuccess: async (res) => {
       await authClient.cal.updateSession({ data: res });
+      setUpdatedAvatarUrl(res.avatarUrl ?? null);
       utils.viewer.me.invalidate();
       utils.viewer.me.shouldVerifyEmail.invalidate();
       revalidateSettingsProfile();
@@ -229,7 +232,7 @@ const ProfileView = ({ user }: Props) => {
   const userEmail = user.email || "";
   const defaultValues = {
     username: user.username || "",
-    avatarUrl: user.avatarUrl,
+    avatarUrl: updatedAvatarUrl ?? user.avatarUrl,
     name: user.name || "",
     email: userEmail,
     bio: user.bio || "",
@@ -266,7 +269,7 @@ const ProfileView = ({ user }: Props) => {
         key={JSON.stringify(defaultValues)}
         defaultValues={defaultValues}
         isPending={updateProfileMutation.isPending}
-        isFallbackImg={!user.avatarUrl}
+        isFallbackImg={!(updatedAvatarUrl ?? user.avatarUrl)}
         user={user}
         userOrganization={user.organization}
         onSubmit={(values) => {
@@ -294,6 +297,7 @@ const ProfileView = ({ user }: Props) => {
         extraField={
           <div className="mt-6">
             <UsernameAvailabilityField
+              user={user}
               onSuccessMutation={async () => {
                 showToast(t("settings_updated_successfully"), "success");
                 await utils.viewer.me.invalidate();

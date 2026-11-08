@@ -1,9 +1,7 @@
-import { expect } from "@playwright/test";
 import path from "node:path";
-
 import { CAL_URL } from "@calcom/lib/constants";
 import { prisma } from "@calcom/prisma";
-
+import { expect } from "@playwright/test";
 import { test } from "../lib/fixtures";
 
 test.describe("User Avatar", async () => {
@@ -46,11 +44,13 @@ test.describe("User Avatar", async () => {
 
       objectKey = response.objectKey;
 
-      const avatarImage = page.getByTestId("profile-upload-avatar").locator("img");
+      const persistedUser = await prisma.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: { avatarUrl: true },
+      });
+      expect(persistedUser.avatarUrl).toBe(`/api/avatar/${objectKey}.png`);
 
-      await expect(avatarImage).toHaveAttribute("src", new RegExp(`^\/api\/avatar\/${objectKey}\.png$`));
-
-      const urlResponse = await page.request.get((await avatarImage.getAttribute("src")) || "", {
+      const urlResponse = await page.request.get(`/api/avatar/${objectKey}.png`, {
         maxRedirects: 0,
       });
 
@@ -60,10 +60,7 @@ test.describe("User Avatar", async () => {
     await test.step("View avatar on the public page", async () => {
       await page.goto(`/${user.username}`);
 
-      await expect(page.locator(`img`)).toHaveAttribute(
-        "src",
-        new RegExp(`\/api\/avatar\/${objectKey}\.png$`)
-      );
+      await expect(page.locator(`img`)).toHaveAttribute("src", new RegExp(`/api/avatar/${objectKey}.png$`));
       // verify objectKey is passed to the OG image
       // yes, OG image URI encodes at multiple places.. don't want to mess with that.
       const ogImageLocator = page.locator('meta[property="og:image"]');
