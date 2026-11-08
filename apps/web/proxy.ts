@@ -89,6 +89,10 @@ const proxy = async (req: NextRequest): Promise<NextResponse<unknown>> => {
     },
   });
 
+  if (url.pathname.startsWith("/auth/logout")) {
+    res.cookies.delete("next-auth.session-token");
+  }
+
   return responseWithHeaders({ url, res, req: reqWithEnrichedHeaders });
 };
 
@@ -151,7 +155,15 @@ function enrichRequestWithHeaders({ req }: { req: NextRequest }) {
 }
 
 export const config = {
-  matcher: ["/auth/login", "/login", "/apps/installed", "/auth/logout", "/:path*/embed", "/availability", "/api/auth/signup"],
+  matcher: [
+    "/auth/login",
+    "/login",
+    "/apps/installed",
+    "/auth/logout",
+    "/:path*/embed",
+    "/availability",
+    "/api/auth/signup",
+  ],
 };
 
 export default proxy;

@@ -26,7 +26,7 @@ CLOUDFLARE_URL_SCANNER_API_TOKEN	secret	secret:CLOUDFLARE_URL_SCANNER_API_TOKEN
 CLOUDFLARE_VERCEL_CNAME	binding	var:CLOUDFLARE_VERCEL_CNAME	CNAME target for Cloudflare DNS records
 CLOUDFLARE_ZONE_ID	binding	var:CLOUDFLARE_ZONE_ID	zone for Cloudflare DNS records
 CRON_SECRET	secret	secret:CRON_SECRET	
-CSP_POLICY	binding	var:CSP_POLICY	
+CSP_POLICY	secret	secret:CSP_POLICY	Worker secret exposes the opt-in CSP policy to proxy.ts
 DAILY_API_KEY	secret	secret:DAILY_API_KEY	
 DAILY_WEBHOOK_SECRET	secret	secret:DAILY_WEBHOOK_SECRET	
 DATABASE_CHUNK_SIZE	binding	var:DATABASE_CHUNK_SIZE	
