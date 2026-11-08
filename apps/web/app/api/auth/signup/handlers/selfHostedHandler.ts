@@ -9,11 +9,11 @@ import {
   throwIfTokenExpired,
   validateAndGetCorrectedUsernameForTeam,
 } from "@calcom/features/auth/signup/utils/token";
+import { isUniqueEmailOrUsernameConflict } from "@calcom/features/auth/signup/utils/uniqueConstraint";
 import { validateAndGetCorrectedUsernameAndEmail } from "@calcom/features/auth/signup/utils/validateUsername";
 import { hashPassword } from "@calcom/lib/auth/hashPassword";
 
 import logger from "@calcom/lib/logger";
-import { isPrismaError } from "@calcom/lib/server/getServerErrorFromUnknown";
 import { isUsernameReservedDueToMigration } from "@calcom/lib/server/username";
 import slugify from "@calcom/lib/slugify";
 import { prisma } from "@calcom/prisma";
@@ -125,11 +125,8 @@ export default async function handler(body: Record<string, string>) {
           identityProvider: IdentityProvider.CAL
         })
       } catch (error) {
-        if (isPrismaError(error) && error.code === "P2002") {
-          const target = String(error.meta?.target ?? "");
-          if (target.includes("email") || target.includes("username")) {
-            return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
-          }
+        if (isUniqueEmailOrUsernameConflict(error)) {
+          return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
         }
         throw error;
       }
@@ -171,11 +168,8 @@ export default async function handler(body: Record<string, string>) {
       })
     } catch (error) {
       // Fallback for race conditions where user was created between our check and create
-      if (isPrismaError(error) && error.code === "P2002") {
-        const target = String(error.meta?.target ?? "");
-        if (target.includes("email") || target.includes("username")) {
-          return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
-        }
+      if (isUniqueEmailOrUsernameConflict(error)) {
+        return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
       }
       throw error;
     }

@@ -11,6 +11,7 @@ import {
   throwIfTokenExpired,
   validateAndGetCorrectedUsernameForTeam,
 } from "@calcom/features/auth/signup/utils/token";
+import { isUniqueEmailOrUsernameConflict } from "@calcom/features/auth/signup/utils/uniqueConstraint";
 import { validateAndGetCorrectedUsernameAndEmail } from "@calcom/features/auth/signup/utils/validateUsername";
 import { getFeatureRepository } from "@calcom/features/di/containers/FeatureRepository";
 import { getUserRepository } from "@calcom/features/di/containers/UserRepository";
@@ -22,7 +23,6 @@ import { hashPassword } from "@calcom/lib/auth/hashPassword";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { HttpError } from "@calcom/lib/http-error";
 import logger from "@calcom/lib/logger";
-import { isPrismaError } from "@calcom/lib/server/getServerErrorFromUnknown";
 import type { CustomNextApiHandler } from "@calcom/lib/server/username";
 import { usernameHandler } from "@calcom/lib/server/username";
 import { getTrackingFromCookies } from "@calcom/lib/tracking";
@@ -218,11 +218,8 @@ const handler: CustomNextApiHandler = async (body, usernameStatus, query) => {
           identityProvider: IdentityProvider.CAL
         })
       } catch (error) {
-        if (isPrismaError(error) && error.code === "P2002") {
-          const target = String(error.meta?.target ?? "");
-          if (target.includes("email") || target.includes("username")) {
-            return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
-          }
+        if (isUniqueEmailOrUsernameConflict(error)) {
+          return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
         }
         throw error;
       }
@@ -265,11 +262,8 @@ const handler: CustomNextApiHandler = async (body, usernameStatus, query) => {
       })
     } catch (error) {
       // Fallback for race conditions where user was created between our check and create
-      if (isPrismaError(error) && error.code === "P2002") {
-        const target = String(error.meta?.target ?? "");
-        if (target.includes("email") || target.includes("username")) {
-          return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
-        }
+      if (isUniqueEmailOrUsernameConflict(error)) {
+        return NextResponse.json({ message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS }, { status: 409 });
       }
       throw error;
     }

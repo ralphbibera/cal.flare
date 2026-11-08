@@ -1,16 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
-
+import { beforeEach, describe, expect, it } from "vitest";
 import { SIGNUP_ERROR_CODES } from "../../constants";
 import type { MockResponse } from "./mocks/next.mocks";
 import {
-  prismaMock,
+  createGenericPrismaError,
+  createP2002DriverError,
   createP2002Error,
   createP2002ErrorWithoutTarget,
-  createGenericPrismaError,
+  prismaMock,
 } from "./mocks/prisma.mocks";
-import { createSignupBody, createMockUser } from "./mocks/signup.factories";
-
 import type { SignupBody } from "./mocks/signup.factories";
+import { createMockUser, createSignupBody } from "./mocks/signup.factories";
 
 type CallHandler = (body: SignupBody) => Promise<MockResponse>;
 
@@ -37,6 +36,17 @@ export function runP2002TestSuite(
 
       it("returns 409 when target includes 'email' among other fields", async () => {
         prismaMock.user.create.mockRejectedValue(createP2002Error(["id", "email", "username"]));
+
+        const response = await callHandler(createSignupBody());
+
+        expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({
+          message: SIGNUP_ERROR_CODES.USER_ALREADY_EXISTS,
+        });
+      });
+
+      it("returns 409 when D1 reports the constraint under driverAdapterError", async () => {
+        prismaMock.user.create.mockRejectedValue(createP2002DriverError(["email", "username"]));
 
         const response = await callHandler(createSignupBody());
 
