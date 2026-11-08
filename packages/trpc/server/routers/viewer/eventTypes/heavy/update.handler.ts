@@ -2,6 +2,7 @@ import type { appDataSchemas } from "@calcom/app-store/apps.schemas.generated";
 import { DailyLocationType } from "@calcom/app-store/constants";
 import { eventTypeAppMetadataOptionalSchema } from "@calcom/app-store/zod-utils";
 import { CalVideoSettingsRepository } from "@calcom/features/calVideoSettings/repositories/CalVideoSettingsRepository";
+import { writeEventTypeHostGroupsInD1 } from "@calcom/features/eventtypes/repositories/eventTypeHostGroupsInD1";
 import { HashedLinkRepository } from "@calcom/features/hashedLink/lib/repository/HashedLinkRepository";
 import { HashedLinkService } from "@calcom/features/hashedLink/lib/service/HashedLinkService";
 import { MembershipRepository } from "@calcom/features/membership/repositories/MembershipRepository";
@@ -418,36 +419,11 @@ export const updateHandler = async ({ ctx, input }: UpdateOptions) => {
     const groupsToUpdate = hostGroups.filter((group) => existingGroupsMap.has(group.id));
     const groupsToDelete = existingHostGroups.filter((existingGroup) => !newGroupsMap.has(existingGroup.id));
 
-    await ctx.prisma.$transaction(async (tx) => {
-      // Create new groups
-      if (groupsToCreate.length > 0) {
-        await tx.hostGroup.createMany({
-          data: groupsToCreate.map((group) => ({
-            id: group.id,
-            name: group.name,
-            eventTypeId: id,
-          })),
-        });
-      }
-
-      // Update existing groups
-      for (const group of groupsToUpdate) {
-        await tx.hostGroup.update({
-          where: { id: group.id },
-          data: { name: group.name },
-        });
-      }
-
-      // Delete groups that are no longer in the new list
-      if (groupsToDelete.length > 0) {
-        await tx.hostGroup.deleteMany({
-          where: {
-            id: {
-              in: groupsToDelete.map((group) => group.id),
-            },
-          },
-        });
-      }
+    await writeEventTypeHostGroupsInD1({
+      eventTypeId: id,
+      groupsToCreate,
+      groupsToUpdate,
+      groupsToDelete,
     });
   }
 
