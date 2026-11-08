@@ -9,6 +9,7 @@ import {
 import { sendCancelledEmailsAndSMS } from "@calcom/emails/email-manager";
 import { getCalEventResponses } from "@calcom/features/bookings/lib/getCalEventResponses";
 import { deletePayment } from "@calcom/features/bookings/lib/payment/deletePayment";
+import { commitPaymentAppCleanupInD1 } from "@calcom/features/credentials/repositories/commitPaymentAppCleanupInD1";
 import { deleteWebhookScheduledTriggers } from "@calcom/features/webhooks/lib/scheduleTrigger";
 import { getTranslation } from "@calcom/i18n/server";
 import { parseAppCategories } from "@calcom/lib/apps/parseAppCategories";
@@ -17,8 +18,6 @@ import { isPrismaObjOrUndefined } from "@calcom/lib/isPrismaObj";
 import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
 import { bookingMinimalSelect, prisma } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-import { getD1Database } from "@calcom/prisma/d1";
-import { runD1Batch, toD1DateTime } from "@calcom/prisma/d1-batch";
 import { AppCategories } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import type { EventTypeMetadata } from "@calcom/prisma/zod-utils";
@@ -199,191 +198,164 @@ const handleDeleteCredential = async ({
           apps,
         });
 
-        // D1 rejects interactive transactions, and this callback used the outer client, so it never made
-        // these writes atomic.
-        {
-          await prisma.eventType.update({
-            where: {
-              id: eventType.id,
+        // Only cancel unpaid pending bookings that:
+        // 1. Are in the future (startTime > now) - don't cancel old bookings
+        // 2. Have failed payments associated with the payment app being deleted
+        const unpaidBookings = await prisma.booking.findMany({
+          where: {
+            userId: userId,
+            eventTypeId: eventType.id,
+            status: "PENDING",
+            paid: false,
+            startTime: {
+              gt: new Date(),
             },
-            data: {
-              hidden: true,
-              metadata: {
-                ...metadata,
-                apps: {
-                  ...appMetadata,
-                },
+            payment: {
+              some: {
+                appId: credential.appId,
+                success: false,
               },
             },
-          });
-
-          // Only cancel unpaid pending bookings that:
-          // 1. Are in the future (startTime > now) - don't cancel old bookings
-          // 2. Have failed payments associated with the payment app being deleted
-          const unpaidBookings = await prisma.booking.findMany({
-            where: {
-              userId: userId,
-              eventTypeId: eventType.id,
-              status: "PENDING",
-              paid: false,
-              startTime: {
-                gt: new Date(),
-              },
-              payment: {
-                some: {
-                  appId: credential.appId,
-                  success: false,
-                },
-              },
-            },
-            select: {
-              ...bookingMinimalSelect,
-              recurringEventId: true,
-              userId: true,
-              responses: true,
-              user: {
-                select: {
-                  id: true,
-                  credentials: true,
-                  email: true,
-                  timeZone: true,
-                  name: true,
-                  destinationCalendar: true,
-                  locale: true,
-                  profiles: {
-                    select: {
-                      organizationId: true,
-                    },
+          },
+          select: {
+            ...bookingMinimalSelect,
+            recurringEventId: true,
+            userId: true,
+            responses: true,
+            user: {
+              select: {
+                id: true,
+                credentials: true,
+                email: true,
+                timeZone: true,
+                name: true,
+                destinationCalendar: true,
+                locale: true,
+                profiles: {
+                  select: {
+                    organizationId: true,
                   },
                 },
               },
-              location: true,
-              references: {
-                select: {
-                  uid: true,
-                  type: true,
-                  externalCalendarId: true,
-                },
-              },
-              payment: true,
-              paid: true,
-              eventType: {
-                select: {
-                  recurringEvent: true,
-                  title: true,
-                  bookingFields: true,
-                  seatsPerTimeSlot: true,
-                  seatsShowAttendees: true,
-                  eventName: true,
-                  hideOrganizerEmail: true,
-                  team: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                  metadata: true,
-                },
-              },
-              uid: true,
-              eventTypeId: true,
-              destinationCalendar: true,
             },
+            location: true,
+            references: {
+              select: {
+                uid: true,
+                type: true,
+                externalCalendarId: true,
+              },
+            },
+            payment: true,
+            paid: true,
+            eventType: {
+              select: {
+                recurringEvent: true,
+                title: true,
+                bookingFields: true,
+                seatsPerTimeSlot: true,
+                seatsShowAttendees: true,
+                eventName: true,
+                hideOrganizerEmail: true,
+                team: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+                metadata: true,
+              },
+            },
+            uid: true,
+            eventTypeId: true,
+            destinationCalendar: true,
+          },
+        });
+
+        const unpaidBookingsIds = unpaidBookings.map((booking) => booking.id);
+        const unpaidBookingsPaymentIds = unpaidBookings.flatMap((booking) =>
+          booking.payment.map((payment) => payment.id)
+        );
+
+        // deletePayment reads the Payment row, so provider cleanup runs before the batch that removes it.
+        // A provider failure leaves the batch unrun, as the source transaction rolled it back.
+        for (const paymentId of unpaidBookingsPaymentIds) {
+          await deletePayment(paymentId, credential);
+        }
+
+        // The source transaction wrote the event type, the cancelled bookings and their cleanup together.
+        await commitPaymentAppCleanupInD1({
+          eventTypeId: eventType.id,
+          eventTypeMetadata: {
+            ...metadata,
+            apps: {
+              ...appMetadata,
+            },
+          },
+          bookingIds: unpaidBookingsIds,
+          paymentIds: unpaidBookingsPaymentIds,
+        });
+
+        for (const booking of unpaidBookings) {
+          const attendeesListPromises = booking.attendees.map(async (attendee) => {
+            return {
+              name: attendee.name,
+              email: attendee.email,
+              timeZone: attendee.timeZone,
+              language: {
+                translate: await getTranslation(attendee.locale ?? "en", "common"),
+                locale: attendee.locale ?? "en",
+              },
+            };
           });
 
-          const unpaidBookingsIds = unpaidBookings.map((booking) => booking.id);
-          const unpaidBookingsPaymentIds = unpaidBookings.flatMap((booking) =>
-            booking.payment.map((payment) => payment.id)
-          );
-          // json_each keeps any number of bookings within D1's bind limit.
-          const db = getD1Database();
-          await db
-            .prepare(`UPDATE "Booking" SET "status" = 'cancelled', "cancellationReason" = ?, "updatedAt" = ?
-              WHERE "id" IN (SELECT value FROM json_each(?))`)
-            .bind("Payment method removed", toD1DateTime(new Date()), JSON.stringify(unpaidBookingsIds))
-            .run();
-          for (const paymentId of unpaidBookingsPaymentIds) {
-            await deletePayment(paymentId, credential);
-          }
-          // The payment, attendee and reference cleanup commits together or not at all.
-          await runD1Batch(
-            db,
-            [
-              db
-                .prepare(`DELETE FROM "Payment" WHERE "id" IN (SELECT value FROM json_each(?))`)
-                .bind(JSON.stringify(unpaidBookingsPaymentIds)),
-              db
-                .prepare(`DELETE FROM "Attendee" WHERE "bookingId" IN (SELECT value FROM json_each(?))`)
-                .bind(JSON.stringify(unpaidBookingsIds)),
-              db
-                .prepare(
-                  `UPDATE "BookingReference" SET "deleted" = 1 WHERE "bookingId" IN (SELECT value FROM json_each(?))`
-                )
-                .bind(JSON.stringify(unpaidBookingsIds)),
-            ],
-            { modelName: "Booking" }
-          );
-          for (const booking of unpaidBookings) {
-            const attendeesListPromises = booking.attendees.map(async (attendee) => {
-              return {
-                name: attendee.name,
-                email: attendee.email,
-                timeZone: attendee.timeZone,
-                language: {
-                  translate: await getTranslation(attendee.locale ?? "en", "common"),
-                  locale: attendee.locale ?? "en",
-                },
-              };
-            });
-
-            const attendeesList = await Promise.all(attendeesListPromises);
-            const tOrganizer = await getTranslation(booking?.user?.locale ?? "en", "common");
-            await sendCancelledEmailsAndSMS(
-              {
-                type: booking?.eventType?.title as string,
-                title: booking.title,
-                description: booking.description,
-                customInputs: isPrismaObjOrUndefined(booking.customInputs),
-                ...getCalEventResponses({
-                  bookingFields: booking.eventType?.bookingFields ?? null,
-                  booking,
-                }),
-                startTime: booking.startTime.toISOString(),
-                endTime: booking.endTime.toISOString(),
-                organizer: {
-                  email: booking?.userPrimaryEmail ?? (booking?.user?.email as string),
-                  name: booking?.user?.name ?? "Nameless",
-                  timeZone: booking?.user?.timeZone as string,
-                  language: { translate: tOrganizer, locale: booking?.user?.locale ?? "en" },
-                },
-                attendees: attendeesList,
-                uid: booking.uid,
-                recurringEvent: parseRecurringEvent(booking.eventType?.recurringEvent),
-                location: booking.location,
-                destinationCalendar: booking.destinationCalendar
-                  ? [booking.destinationCalendar]
-                  : booking.user?.destinationCalendar
-                    ? [booking.user?.destinationCalendar]
-                    : [],
-                cancellationReason: "Payment method removed by organizer",
-                seatsPerTimeSlot: booking.eventType?.seatsPerTimeSlot,
-                seatsShowAttendees: booking.eventType?.seatsShowAttendees,
-                hideOrganizerEmail: booking.eventType?.hideOrganizerEmail,
-                team: booking.eventType?.team
-                  ? {
-                      name: booking.eventType.team.name,
-                      id: booking.eventType.team.id,
-                      members: [],
-                    }
-                  : undefined,
-                organizationId: booking.user?.profiles?.[0]?.organizationId ?? null,
+          const attendeesList = await Promise.all(attendeesListPromises);
+          const tOrganizer = await getTranslation(booking?.user?.locale ?? "en", "common");
+          await sendCancelledEmailsAndSMS(
+            {
+              type: booking?.eventType?.title as string,
+              title: booking.title,
+              description: booking.description,
+              customInputs: isPrismaObjOrUndefined(booking.customInputs),
+              ...getCalEventResponses({
+                bookingFields: booking.eventType?.bookingFields ?? null,
+                booking,
+              }),
+              startTime: booking.startTime.toISOString(),
+              endTime: booking.endTime.toISOString(),
+              organizer: {
+                email: booking?.userPrimaryEmail ?? (booking?.user?.email as string),
+                name: booking?.user?.name ?? "Nameless",
+                timeZone: booking?.user?.timeZone as string,
+                language: { translate: tOrganizer, locale: booking?.user?.locale ?? "en" },
               },
-              {
-                eventName: booking?.eventType?.eventName,
-              },
-              booking?.eventType?.metadata as EventTypeMetadata
-            );
-          }
+              attendees: attendeesList,
+              uid: booking.uid,
+              recurringEvent: parseRecurringEvent(booking.eventType?.recurringEvent),
+              location: booking.location,
+              destinationCalendar: booking.destinationCalendar
+                ? [booking.destinationCalendar]
+                : booking.user?.destinationCalendar
+                  ? [booking.user?.destinationCalendar]
+                  : [],
+              cancellationReason: "Payment method removed by organizer",
+              seatsPerTimeSlot: booking.eventType?.seatsPerTimeSlot,
+              seatsShowAttendees: booking.eventType?.seatsShowAttendees,
+              hideOrganizerEmail: booking.eventType?.hideOrganizerEmail,
+              team: booking.eventType?.team
+                ? {
+                    name: booking.eventType.team.name,
+                    id: booking.eventType.team.id,
+                    members: [],
+                  }
+                : undefined,
+              organizationId: booking.user?.profiles?.[0]?.organizationId ?? null,
+            },
+            {
+              eventName: booking?.eventType?.eventName,
+            },
+            booking?.eventType?.metadata as EventTypeMetadata
+          );
         }
       }
     } else if (

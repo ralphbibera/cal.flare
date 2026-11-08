@@ -8,6 +8,7 @@ import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import handleDeleteCredential from "./handleDeleteCredential";
+import { commitPaymentAppCleanupInD1 } from "./repositories/commitPaymentAppCleanupInD1";
 
 vi.mock("@calcom/features/bookings/lib/payment/deletePayment", () => ({ deletePayment: vi.fn() }));
 vi.mock("@calcom/emails/email-manager", () => ({ sendCancelledEmailsAndSMS: vi.fn() }));
@@ -30,6 +31,22 @@ describe("removing a payment app with unpaid bookings past D1's bind limit", () 
     (await db.prepare(sql).all<{ id: number }>()).results.map(({ id }) => id);
   const failOn = (trigger: string) =>
     db.prepare(`CREATE TRIGGER "fail_row" ${trigger} BEGIN SELECT RAISE(ABORT, 'forced failure'); END`).run();
+  const eventTypeState = () =>
+    db
+      .prepare('SELECT "hidden", "metadata", "updatedAt" FROM "EventType" WHERE "id" = 1')
+      .first<{ hidden: number; metadata: string; updatedAt: string | null }>();
+  const bookingStatus = (id: number) =>
+    db.prepare('SELECT "status" FROM "Booking" WHERE "id" = ?').bind(id).first<string>("status");
+  const cleanup = (overrides: Partial<Parameters<typeof commitPaymentAppCleanupInD1>[0]> = {}) =>
+    withD1Database({ DB: db }, () =>
+      commitPaymentAppCleanupInD1({
+        eventTypeId: 1,
+        eventTypeMetadata: { apps: {} },
+        bookingIds: [1],
+        paymentIds: [1],
+        ...overrides,
+      })
+    );
   const booking = (id: number, startTime: string, success: number) => [
     db
       .prepare(`INSERT INTO "Booking" ("id", "uid", "title", "description", "startTime", "endTime", "userId", "eventTypeId", "status", "paid")
@@ -85,7 +102,7 @@ describe("removing a payment app with unpaid bookings past D1's bind limit", () 
   });
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     await db.batch([
       db.prepare(`DROP TRIGGER IF EXISTS "fail_row"`),
       db.prepare(`DELETE FROM "Booking"`),
@@ -129,9 +146,34 @@ describe("removing a payment app with unpaid bookings past D1's bind limit", () 
     expect(
       await ids(`SELECT "bookingId" AS "id" FROM "BookingReference" WHERE "deleted" = 1 ORDER BY "bookingId"`)
     ).toEqual(unpaidIds);
+    const eventType = await eventTypeState();
+    expect(eventType?.hidden).toBe(1);
+    expect(JSON.parse(eventType?.metadata ?? "null")).toEqual({ apps: {} });
+    expect(eventType?.updatedAt).toMatch(/\+00:00$/);
     expect(await ids(`SELECT "id" FROM "Credential"`)).toEqual([]);
     expect(deletePayment).toHaveBeenCalledTimes(UNPAID);
     expect(sendCancelledEmailsAndSMS).toHaveBeenCalledTimes(UNPAID);
+  });
+
+  it("calls payment providers before the commit and sends emails after it", async () => {
+    const paymentsAtProvider: number[] = [];
+    vi.mocked(deletePayment).mockImplementation(async () => {
+      const total = await db.prepare('SELECT COUNT(*) AS "total" FROM "Payment"').first<number>("total");
+      paymentsAtProvider.push(total ?? 0);
+      return true;
+    });
+    const statusesAtEmail: string[] = [];
+    vi.mocked(sendCancelledEmailsAndSMS).mockImplementation(async () => {
+      const status = await bookingStatus(1);
+      if (status) statusesAtEmail.push(status);
+    });
+
+    await removePaymentApp();
+
+    expect(paymentsAtProvider).toHaveLength(UNPAID);
+    expect(paymentsAtProvider.every((total) => total === UNPAID + 2)).toBe(true);
+    expect(statusesAtEmail).toHaveLength(UNPAID);
+    expect(statusesAtEmail.every((status) => status === "cancelled")).toBe(true);
   });
 
   it("cancels no booking when one cancellation fails", async () => {
@@ -139,16 +181,84 @@ describe("removing a payment app with unpaid bookings past D1's bind limit", () 
 
     await expect(removePaymentApp()).rejects.toThrow("forced failure");
     expect(await ids(`SELECT "id" FROM "Booking" WHERE "status" != 'pending'`)).toEqual([]);
-    expect(deletePayment).not.toHaveBeenCalled();
+    expect((await eventTypeState())?.hidden).toBe(0);
+    // Provider cleanup runs before the batch because deletePayment reads the Payment row. The failed batch
+    // then leaves every write uncommitted, so only the provider calls happened.
+    expect(deletePayment).toHaveBeenCalledTimes(UNPAID);
+    expect(sendCancelledEmailsAndSMS).not.toHaveBeenCalled();
   });
 
-  it("keeps every payment, attendee and reference when the last cleanup statement fails", async () => {
+  it("keeps the whole boundary unchanged when the last cleanup statement fails", async () => {
+    const originalEventType = await eventTypeState();
     await failOn(`BEFORE UPDATE ON "BookingReference" WHEN OLD."bookingId" = ${FAILING}`);
 
     await expect(removePaymentApp()).rejects.toThrow("forced failure");
     expect(await ids(`SELECT "id" FROM "Payment"`)).toHaveLength(UNPAID + 2);
     expect(await ids(`SELECT "id" FROM "Attendee"`)).toHaveLength(UNPAID + 2);
     expect(await ids(`SELECT "id" FROM "BookingReference" WHERE "deleted" = 1`)).toEqual([]);
+    expect(await ids(`SELECT "id" FROM "Booking" WHERE "status" != 'pending'`)).toEqual([]);
+    expect(await eventTypeState()).toEqual(originalEventType);
     expect(await ids(`SELECT "id" FROM "Credential"`)).toEqual([1]);
+    expect(deletePayment).toHaveBeenCalledTimes(UNPAID);
+    expect(sendCancelledEmailsAndSMS).not.toHaveBeenCalled();
+  });
+
+  it("maps a missing event type to P2025 and rolls back the batch", async () => {
+    const error = await cleanup({ eventTypeId: 999 }).catch((error: unknown) => error);
+
+    expect(error).toMatchObject({ code: "P2025", meta: { modelName: "EventType", operation: "an update" } });
+    expect(await ids(`SELECT "id" FROM "Booking" WHERE "status" != 'pending'`)).toEqual([]);
+    expect(await ids(`SELECT "id" FROM "Payment"`)).toHaveLength(UNPAID + 2);
+  });
+
+  it("maps constraint failures from the batch to the original Prisma codes", async () => {
+    await db
+      .prepare(
+        `CREATE TRIGGER "fail_row" BEFORE UPDATE ON "EventType"
+        BEGIN SELECT RAISE(ABORT, 'NOT NULL constraint failed: EventType.metadata'); END`
+      )
+      .run();
+    await expect(cleanup()).rejects.toMatchObject({
+      code: "P2011",
+      meta: { driverAdapterError: { cause: { constraint: { fields: ["metadata"] } } } },
+    });
+    expect(await bookingStatus(1)).toBe("pending");
+    await db.prepare(`DROP TRIGGER "fail_row"`).run();
+
+    await db
+      .prepare(
+        `CREATE TRIGGER "fail_row" BEFORE DELETE ON "Payment"
+        BEGIN SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed'); END`
+      )
+      .run();
+    await expect(cleanup()).rejects.toMatchObject({ code: "P2003" });
+    expect(await bookingStatus(1)).toBe("pending");
+    await db.prepare(`DROP TRIGGER "fail_row"`).run();
+
+    await db
+      .prepare(
+        `CREATE TRIGGER "fail_row" BEFORE UPDATE ON "BookingReference"
+        BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: BookingReference.uid'); END`
+      )
+      .run();
+    await expect(cleanup()).rejects.toMatchObject({
+      code: "P2002",
+      meta: { driverAdapterError: { cause: { constraint: { fields: ["uid"] } } } },
+    });
+    expect(await bookingStatus(1)).toBe("pending");
+    expect(await db.prepare('SELECT COUNT(*) AS "total" FROM "Payment"').first("total")).toBe(UNPAID + 2);
+  });
+
+  it("converges when two cleanup batches race", async () => {
+    const results = await Promise.allSettled([
+      cleanup({ bookingIds: [1, 2], paymentIds: [1, 2] }),
+      cleanup({ bookingIds: [1, 2], paymentIds: [1, 2] }),
+    ]);
+
+    expect(results.every((result) => result.status === "fulfilled")).toBe(true);
+    expect(await ids(`SELECT "id" FROM "Booking" WHERE "status" = 'cancelled' ORDER BY "id"`)).toEqual([
+      1, 2,
+    ]);
+    expect(await ids(`SELECT "id" FROM "Payment" WHERE "id" IN (1, 2)`)).toEqual([]);
   });
 });

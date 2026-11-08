@@ -255,6 +255,13 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
         where: { id: unpaidBooking.id },
       });
       expect(cancelledBooking?.status).toBe(BookingStatus.CANCELLED);
+
+      const updatedEventType = await prisma.eventType.findUnique({
+        where: { id: testEventType.id },
+        select: { hidden: true, metadata: true },
+      });
+      expect(updatedEventType?.hidden).toBe(true);
+      expect(updatedEventType?.metadata).toEqual({ apps: {} });
     });
 
     it("should persist soft-deleted references in database", async () => {
