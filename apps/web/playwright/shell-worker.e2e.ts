@@ -1,3 +1,4 @@
+import { WEBAPP_URL } from "@calcom/lib/constants";
 import { expect } from "@playwright/test";
 import { test } from "./lib/fixtures";
 
@@ -121,17 +122,32 @@ test("uses the session locale for SSR language and direction", async ({ page, us
 });
 
 test("serves the CSRF token with the original cookie attributes", async ({ request }) => {
+  // /api/csrf derives Secure and the "none" support from WEBAPP_URL, so the same URL decides the
+  // expected attributes here.
+  let secureAttribute = "";
+  let noneSameSite = "lax";
+  if (WEBAPP_URL.startsWith("https://")) {
+    secureAttribute = "; Secure";
+    noneSameSite = "none";
+  }
+
   const response = await request.get("/api/csrf?sameSite=strict");
   expect(response.status()).toBe(200);
   const { csrfToken } = await response.json();
   expect(csrfToken).toMatch(/^[a-f0-9]{64}$/);
   const strictCookie = response.headersArray().find((header) => header.name.toLowerCase() === "set-cookie");
-  expect(strictCookie?.value).toBe(`calcom.csrf_token=${csrfToken}; Path=/; HttpOnly; SameSite=strict`);
+  expect(strictCookie?.value).toBe(
+    `calcom.csrf_token=${csrfToken}; Path=/${secureAttribute}; HttpOnly; SameSite=strict`
+  );
 
-  const insecureNone = await request.get("/api/csrf?sameSite=none");
-  expect(insecureNone.status()).toBe(200);
-  const laxCookie = insecureNone.headersArray().find((header) => header.name.toLowerCase() === "set-cookie");
-  expect(laxCookie?.value).toMatch(/^calcom\.csrf_token=[a-f0-9]{64}; Path=\/; HttpOnly; SameSite=lax$/);
+  const none = await request.get("/api/csrf?sameSite=none");
+  expect(none.status()).toBe(200);
+  const { csrfToken: noneToken } = await none.json();
+  expect(noneToken).toMatch(/^[a-f0-9]{64}$/);
+  const noneCookie = none.headersArray().find((header) => header.name.toLowerCase() === "set-cookie");
+  expect(noneCookie?.value).toBe(
+    `calcom.csrf_token=${noneToken}; Path=/${secureAttribute}; HttpOnly; SameSite=${noneSameSite}`
+  );
 });
 
 test("serves the manifest and favicon referenced by the root metadata", async ({ request }) => {
