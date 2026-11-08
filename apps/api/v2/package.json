@@ -24,6 +24,7 @@
     "start:prod": "node ./dist/apps/api/v2/src/main.js",
     "test": "bun run dev:build && jest",
     "test:worker": "vitest run --config vitest.worker.config.ts",
+    "worker:budget": "bun build src/worker/budget.ts --target node --format esm --packages external --outfile dist/worker-budget.mjs && node dist/worker-budget.mjs",
     "type-check": "tsc --project tsconfig.worker.json",
     "type-check:ci": "tsc --project tsconfig.worker.json",
     "test:watch": "bun run dev:build && jest --watch",
