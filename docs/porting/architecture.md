@@ -28,7 +28,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | Authentication | Self-hosted `better-auth` `1.7.15`; schema CLI package `auth` `1.7.15`. Native D1 binding, no hosted Better Auth service. |
 | Auth primitives | Retain `bcryptjs` `2.4.3`, `otplib` `12.0.1`, and existing encryption and JWT helpers. Better Auth's default password and MFA formats are not selected. |
 | Translation | Retain `i18next` `23.2.3`, `react-i18next` `12.3.1`, original JSON, namespaces, and keys. Replace `next-i18next` `15.4.2` loading boundary. |
-| v2 HTTP | `hono` `4.13.16` router Worker receives public `/api/v2` traffic and forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Group Workers run the source controllers, guards, pipes, and filters with explicit composition and no Nest DI container. |
+| v2 HTTP | `hono` `4.13.16` router Worker receives public `/api/v2` traffic and forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Group Workers run the original controllers, guards, pipes, and filters with explicit composition and no Nest DI container. |
 | Cache | `@vinext/cloudflare` Response Store adapter, self-contained mode. Its exact dependency is `@cloudflare/workers-response-store` `1.1.5`. |
 | Styling | Retain Tailwind CSS `4.1.17`, PostCSS `8.5.6`, `@tailwindcss/postcss` `4.1.15`, source CSS, classes, and component systems. `vite-css-modules` `1.16.1` handles consumed CSS Modules. |
 | Source async runner | `@trigger.dev/sdk` `4.5.4` is observed upstream, not selected for hosting. Its consumed jobs move to D1/Queues/DO scheduling; no Trigger-hosted or Node worker remains. |
@@ -297,7 +297,7 @@ Cloudflare-only hosting/storage does not remove original third-party calendar, p
 
 ## v2, docs, configuration, and checks
 
-[Hono Workers dispatch][hono-workers] preserves every consumed controller method/version at `apps/api/v2/src`. Public `/api/v2` traffic enters a Hono router Worker, which forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Each group Worker runs the original controllers, guards, pipes, and filters with explicit composition and no Nest DI container. The build compiles ESM with decorator metadata (SWC), resolves `@calcom/platform-libraries` to source, and serves locales from static assets.
+[Hono Workers dispatch][hono-workers] preserves every consumed controller method/version at `apps/api/v2/src`. Public `/api/v2` traffic enters a Hono router Worker, which forwards each route by a generated manifest to the platform, scheduling, or bookings group Worker over service bindings. Each group Worker runs the original controllers, guards, pipes, and filters with explicit composition and no Nest DI container. The build uses SWC to compile ESM with decorator metadata, resolves `@calcom/platform-libraries` to source, and serves locales from static assets.
 Keep original DTO transformation/whitelisting, decorators/validators, guard order, response interceptor, pagination, cache, throttling, and error filters.
 [Bootstrap][pin-v2] selects a supported `cal-api-version`, otherwise `2024-04-15`; preserve that fallback, CORS, optional global prefix, and validation error bodies.
 [App module][pin-v2-module] binds raw webhook parsing, URL-encoded OAuth token parsing, request IDs, logging, root aliases, and rewrite order.
