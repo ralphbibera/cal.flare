@@ -19,6 +19,7 @@ const initialConstants = {
   APP_NAME: "Cal.diy",
   BOOKER_NUMBER_OF_DAYS_TO_LOAD: 14,
   PUBLIC_QUICK_AVAILABILITY_ROLLOUT: 100,
+  IS_E2E: false,
   SINGLE_ORG_SLUG: "",
   DEFAULT_GROUP_ID: "default_group_id",
 } as Partial<typeof constants>;

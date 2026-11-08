@@ -144,6 +144,8 @@ export const ORGANIZATION_SELF_SERVE_PRICE = parseFloat(
 
 // Needed for emails in E2E
 export const IS_MAILHOG_ENABLED = process.env.E2E_TEST_MAILHOG_ENABLED === "1";
+// Public build-time flag: browser bundles have no runtime process.env, so read it from this module.
+export const IS_E2E = !!process.env.NEXT_PUBLIC_IS_E2E;
 export const CALCOM_VERSION = process.env.NEXT_PUBLIC_CALCOM_VERSION as string;
 
 export const APP_CREDENTIAL_SHARING_ENABLED =

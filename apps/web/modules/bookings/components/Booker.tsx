@@ -23,6 +23,7 @@ import { scrollIntoViewSmooth } from "@calcom/lib/browser/browser.utils";
 import {
   CLOUDFLARE_SITE_ID,
   CLOUDFLARE_USE_TURNSTILE_IN_BOOKER,
+  IS_E2E,
   PUBLIC_INVALIDATE_AVAILABLE_SLOTS_ON_BOOKING_FORM,
 } from "@calcom/lib/constants";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
@@ -200,10 +201,8 @@ const BookerComponent = ({
   );
 
   // Cloudflare Turnstile Captcha
-  // Note: process.env may be undefined in embed contexts, so we safely check it
-  const isE2E = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_IS_E2E;
   const shouldRenderCaptcha = !!(
-    !isE2E &&
+    !IS_E2E &&
     renderCaptcha &&
     CLOUDFLARE_SITE_ID &&
     CLOUDFLARE_USE_TURNSTILE_IN_BOOKER === "1" &&

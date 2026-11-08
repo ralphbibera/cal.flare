@@ -1,3 +1,4 @@
+import { IS_E2E } from "@calcom/lib/constants";
 import { getCookie } from "@calcom/lib/cookie";
 
 /**
@@ -5,7 +6,7 @@ import { getCookie } from "@calcom/lib/cookie";
  */
 export const isVisitorWithinPercentage = ({ percentage }: { percentage: number }): boolean => {
   // E2E tests must test all features regardless of their rollout percentage
-  if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_IS_E2E) {
+  if (IS_E2E) {
     return true;
   }
 
