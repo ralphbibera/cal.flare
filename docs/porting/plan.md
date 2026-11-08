@@ -32,16 +32,16 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 **You see.**
 
-- [ ] The unchanged route/layout/provider structure renders through the native Workers runtime, including SSR, client navigation, actions, metadata and static assets.
+- [x] The unchanged route/layout/provider structure renders through the native Workers runtime, including SSR, client navigation, actions, metadata and static assets.
 
 **Verify.**
 
 - [x] Run `bun --version` and `bun install --frozen-lockfile` from a clean checkout. Pass when Bun is 1.4.4, the install leaves `bun.lock` unchanged and consumed commands use Bun.
 - [x] Run the planned `bun run --cwd apps/web check:compat`, `bun run --cwd apps/web build` and `bun run --cwd apps/web preview`. Pass when the actual consumed graph builds for Workers and named compatibility findings have source-backed dispositions.
-- [ ] Drive hard load, navigation, back/forward, form action, loading/error/not-found, locale, cookie and static asset cases. Pass when their `D_SHELL` outcomes match the baseline in workerd.
+- [x] Drive hard load, navigation, back/forward, form action, loading/error/not-found, locale, cookie and static asset cases. Pass when their `D_SHELL` outcomes match the baseline in workerd.
 - [x] Run the planned root `bun run lint` and `bun run type-check:ci`. Pass when they check the actual accepted source without shim stubs or exclusions that hide reachable failures.
 
-Observed Worker cases pass for the original authentication error page in English, German and Arabic, including SSR, hydration, metadata, provider placement, RTL and a navigation/back probe. Seven retained-framework Playwright cases cover that page and the original oversized Salesroom asset, including full-file SHA, middleware headers, `HEAD`, ranges, conditionals and cancellation. These cases do not accept the remaining shell flows.
+The `D_SHELL` acceptance set passes in a headless single-worker Playwright run against the built Worker in workerd through the Playwright D1 bridge. `shell-worker.e2e.ts` has seven cases: a hard load with SSR navigation, canonical and Open Graph metadata; client navigation from `/more` to `/event-types`; browser back/forward; the sign-in form action; the streamed `/refer` loading boundary; session-locale Arabic SSR; `/api/csrf` cookie attributes and the manifest/favicon assets. `app-router-not-found.e2e.ts` covers the not-found status, copy, language/direction and robots metadata. `auth-error.e2e.ts` has eight cases covering the original error route in six locales, the unauthenticated session and bundled tRPC translations. `static-assets.e2e.ts` has four cases covering the original oversized Salesroom media, `HEAD`, ranges, conditionals and cancellation. The combined run passes 20 cases.
 
 Retained unit discovery covers the same 417 files without duplicates. The isolated run passes 4,135 tests with 47 inherited skips and three todos; Los Angeles timezone cases pass 62 with two inherited skips. Root type checking passes nine tasks; Biome lint passes eleven tasks with warnings. Unit CI builds the real packaged embed prerequisites and uses Vitest's per-file isolation, preserving assertions and job ownership.
 
