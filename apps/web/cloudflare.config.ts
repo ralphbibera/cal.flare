@@ -1,3 +1,4 @@
+import process from "node:process";
 import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
 import { bindings, defineConfig, defineWorker, triggers } from "cf/config";
 
@@ -5,6 +6,8 @@ const cache = await createWorkersResponseStoreSelfContainedConfig({
   worker: "calflare-web",
   bucket: "calflare-web-response-store-cache-bodies",
 });
+
+const cspPolicy = process.env.CSP_POLICY;
 
 export default defineConfig({
   worker: defineWorker({
@@ -29,7 +32,7 @@ export default defineConfig({
       ...cache.env,
       NEXTAUTH_SECRET: bindings.secret(),
       CALENDSO_ENCRYPTION_KEY: bindings.secret(),
-      CSP_POLICY: bindings.secret(),
+      CSP_POLICY: cspPolicy ? bindings.text(cspPolicy) : undefined,
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
       EMAIL: bindings.sendEmail(),
