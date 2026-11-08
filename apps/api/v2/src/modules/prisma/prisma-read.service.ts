@@ -1,17 +1,23 @@
+import { createRequire as createNodeRequire } from "node:module";
 import { PrismaClient } from "@calcom/prisma/client";
+import type { D1Database } from "@cloudflare/workers-types";
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import { PrismaD1 } from "@prisma/adapter-d1";
+import type { Pool as PgPool } from "pg";
 
 const DB_MAX_POOL_CONNECTION = 10;
+
+// Workers cannot load the PostgreSQL client, and its optional native binding breaks a Worker bundle.
+// The Node host resolves both lazily only when a URL-based pool is configured.
+const nodeRequire = createNodeRequire(typeof __filename === "string" ? __filename : "/worker.js");
 
 @Injectable()
 export class PrismaReadService implements OnModuleInit, OnModuleDestroy {
   private logger = new Logger("PrismaReadService");
 
   public prisma!: PrismaClient;
-  private pool!: Pool;
+  private pool!: PgPool;
 
   constructor(configService?: ConfigService) {
     if (configService) {
@@ -35,9 +41,16 @@ export class PrismaReadService implements OnModuleInit, OnModuleDestroy {
   }
 
   setOptions(options: PrismaServiceOptions): void {
+    if (options.d1) {
+      this.prisma = new PrismaClient({ adapter: new PrismaD1(options.d1) });
+      return;
+    }
+
     const dbUrl = options.readUrl;
     const isE2E = options.e2e ?? false;
     const usePool = options.usePool ?? true;
+    const { Pool } = nodeRequire("pg") as typeof import("pg");
+    const { PrismaPg } = nodeRequire("@prisma/adapter-pg") as typeof import("@prisma/adapter-pg");
 
     if (usePool) {
       let maxReadConnections = options.maxReadConnections ?? DB_MAX_POOL_CONNECTION;
@@ -88,4 +101,5 @@ export interface PrismaServiceOptions {
   e2e?: boolean;
   usePool?: boolean;
   type: "main" | "worker";
+  d1?: D1Database;
 }
