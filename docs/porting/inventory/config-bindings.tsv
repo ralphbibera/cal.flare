@@ -147,8 +147,8 @@ TRIGGER_API_URL	destination	queue:JOBS	Trigger runner replaced by the JOBS queue
 TRIGGER_SECRET_KEY	destination	queue:JOBS	Trigger runner replaced by the JOBS queue
 TZ	unsupported	none:test-support	timezone test only
 UNKEY_ROOT_KEY	unsupported	none:test-support	D_SHELL references are tests; limiter state moves to RUNTIME_STATE
-UPSTASH_REDIS_REST_TOKEN	destination	do:RUNTIME_STATE	external Redis replaced by the RUNTIME_STATE DO
-UPSTASH_REDIS_REST_URL	destination	do:RUNTIME_STATE	external Redis replaced by the RUNTIME_STATE DO
+UPSTASH_REDIS_REST_TOKEN	secret	secret:UPSTASH_REDIS_REST_TOKEN	optional Upstash token for web and API v2; NoopRedisService when absent (operator-approved 2026-11-08)
+UPSTASH_REDIS_REST_URL	binding	var:UPSTASH_REDIS_REST_URL	optional Upstash endpoint for web and API v2; NoopRedisService when absent (operator-approved 2026-11-08)
 USERNAME_BLACKLIST_URL	binding	var:USERNAME_BLACKLIST_URL	
 USE_POOL	destination	d1:DB	Prisma pool flag; the DB D1 binding replaces
 VAPID_PRIVATE_KEY	secret	secret:VAPID_PRIVATE_KEY	
