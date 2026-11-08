@@ -2,11 +2,9 @@
 name: PR Update
 
 on:
+  # No base-branch filter: stacked PRs need the same required checks so GitHub's stack merge can land them.
   pull_request:
     types: [opened, synchronize, reopened]
-    branches:
-      - main
-      - gh-actions-test-branch
 
   workflow_dispatch:
 

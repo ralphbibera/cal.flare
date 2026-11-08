@@ -2,6 +2,10 @@ name: All checks
 
 on:
   merge_group:
+  # Re-check main after every merge, since PRs no longer have to be up to date before merging.
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
