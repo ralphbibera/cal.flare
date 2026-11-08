@@ -84,23 +84,37 @@ describe("uploadAvatar", () => {
     expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: expectedWhere }));
   });
 
-  it("calls convertSvgToPng on input data", async () => {
+  it("calls convertSvgToPng for SVG input data", async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    await uploadAvatar({ userId: 1, avatar: "svg-data-here" });
+    await uploadAvatar({ userId: 1, avatar: "data:image/svg+xml;base64,svg-data-here" });
 
-    expect(mockConvertSvgToPng).toHaveBeenCalledWith("svg-data-here");
+    expect(mockConvertSvgToPng).toHaveBeenCalledWith("data:image/svg+xml;base64,svg-data-here");
   });
 
-  it("passes processed data to upsert create and update", async () => {
+  it("passes processed SVG data to upsert create and update", async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    await uploadAvatar({ userId: 1, avatar: "raw-data" });
+    await uploadAvatar({ userId: 1, avatar: "data:image/svg+xml;base64,raw-data" });
 
     expect(mockUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({ data: "processed_raw-data" }),
-        update: expect.objectContaining({ data: "processed_raw-data" }),
+        create: expect.objectContaining({ data: "processed_data:image/svg+xml;base64,raw-data" }),
+        update: expect.objectContaining({ data: "processed_data:image/svg+xml;base64,raw-data" }),
+      })
+    );
+  });
+
+  it("stores non-SVG data without loading the native image converter", async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    await uploadAvatar({ userId: 1, avatar: "data:image/png;base64,raw-data" });
+
+    expect(mockConvertSvgToPng).not.toHaveBeenCalled();
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ data: "data:image/png;base64,raw-data" }),
+        update: expect.objectContaining({ data: "data:image/png;base64,raw-data" }),
       })
     );
   });
