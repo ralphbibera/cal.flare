@@ -156,12 +156,15 @@ function errorResponse(context: Context<ApiEnvironment>, error: unknown): Respon
   }
 
   const exception = error instanceof HttpException ? error : new InternalServerErrorException();
+  // A bundle can carry two copies of a Nest exception class, and esbuild disambiguates the class name
+  // with a numeric suffix. The public error code stays the source class name.
+  const code = exception.name.replace(/\d+$/, "");
   return context.json(
     {
       status: ERROR_STATUS,
       timestamp: new Date().toISOString(),
       path: requestPath(context),
-      error: { code: exception.name, message: exception.message, details: exception.getResponse() },
+      error: { code, message: exception.message, details: exception.getResponse() },
     },
     exception.getStatus() as ContentfulStatusCode
   );
