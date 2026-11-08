@@ -1,5 +1,6 @@
 import { getPremiumMonthlyPlanPriceId } from "@calcom/app-store/stripepayment/lib/utils";
 import { sendChangeOfEmailVerification } from "@calcom/features/auth/lib/verifyEmail";
+import { isUniqueEmailConflict } from "@calcom/features/auth/signup/utils/uniqueConstraint";
 import { FeaturesRepository } from "@calcom/features/flags/features.repository";
 import { checkUsername } from "@calcom/features/profile/lib/checkUsername";
 import { ScheduleRepository } from "@calcom/features/schedules/repositories/ScheduleRepository";
@@ -274,11 +275,8 @@ export const updateProfileHandler = async ({ ctx, input }: UpdateProfileOptions)
     });
   } catch (e) {
     // Catch unique constraint failure on email field.
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const meta = e.meta as { target: string[] };
-      if (meta.target.indexOf("email") !== -1) {
-        throw new HttpError({ statusCode: 409, message: "email_already_used" });
-      }
+    if (isUniqueEmailConflict(e)) {
+      throw new HttpError({ statusCode: 409, message: "email_already_used" });
     }
     throw e; // make sure other errors are rethrown
   }
