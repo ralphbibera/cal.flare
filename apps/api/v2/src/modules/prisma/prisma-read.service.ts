@@ -1,9 +1,9 @@
 import { createRequire as createNodeRequire } from "node:module";
+import { prisma } from "@calcom/prisma";
 import { PrismaClient } from "@calcom/prisma/client";
 import type { D1Database } from "@cloudflare/workers-types";
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { PrismaD1 } from "@prisma/adapter-d1";
 import type { Pool as PgPool } from "pg";
 
 const DB_MAX_POOL_CONNECTION = 10;
@@ -42,7 +42,8 @@ export class PrismaReadService implements OnModuleInit, OnModuleDestroy {
 
   setOptions(options: PrismaServiceOptions): void {
     if (options.d1) {
-      this.prisma = new PrismaClient({ adapter: new PrismaD1(options.d1) });
+      // The shared proxy resolves the request D1 binding and applies the four shared extensions.
+      this.prisma = prisma;
       return;
     }
 

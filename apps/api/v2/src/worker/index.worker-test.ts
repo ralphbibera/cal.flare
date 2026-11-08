@@ -3,35 +3,19 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { withD1Database } from "@calcom/prisma/d1";
 import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { Miniflare } from "miniflare";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import config from "../../cloudflare.config";
+import { prismaQueryCompiler } from "../../vitest.worker.config";
+import { PrismaReadService } from "../modules/prisma/prisma-read.service";
+import { PrismaWriteService } from "../modules/prisma/prisma-write.service";
 import * as workerModule from "../worker";
 
-const PRISMA_WASM_PREFIX = "\0prisma-query-compiler:";
 const API_KEY_PREFIX = "cal_";
-
-// Prisma's D1 client loads its query compiler through Wrangler's `?module` import. Vite has no
-// equivalent, so the test bundle compiles the same bytes into a WebAssembly.Module directly.
-function prismaQueryCompiler() {
-  return {
-    name: "api-v2-prisma-query-compiler",
-    enforce: "pre" as const,
-    resolveId(source: string, importer: string | undefined) {
-      if (!source.endsWith(".wasm?module") || !importer) return;
-      const file = fileURLToPath(new URL(source.slice(0, -"?module".length), pathToFileURL(importer)));
-      return `${PRISMA_WASM_PREFIX}${file}`;
-    },
-    load(id: string) {
-      if (!id.startsWith(PRISMA_WASM_PREFIX)) return;
-      const wasm = readFileSync(id.slice(PRISMA_WASM_PREFIX.length)).toString("base64");
-      return `const bytes = Uint8Array.from(atob("${wasm}"), (value) => value.charCodeAt(0));\nexport default new WebAssembly.Module(bytes);`;
-    },
-  };
-}
 
 async function buildWorker(directory: string): Promise<string> {
   const appRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -117,10 +101,34 @@ describe("api v2 Worker host in workerd", () => {
     await db.batch([
       db
         .prepare(
-          `INSERT INTO users (id, uuid, username, name, email, emailVerified, timeZone)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO users (id, uuid, username, name, email, emailVerified, timeZone, locked)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .bind(9001, "9001-uuid", "worker-user", "Worker User", "worker@calflare.test", null, "Europe/Paris"),
+        .bind(
+          9001,
+          "9001-uuid",
+          "worker-user",
+          "Worker User",
+          "worker@calflare.test",
+          null,
+          "Europe/Paris",
+          0
+        ),
+      db
+        .prepare(
+          `INSERT INTO users (id, uuid, username, name, email, emailVerified, timeZone, locked)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          9002,
+          "9002-uuid",
+          "locked-user",
+          "Locked User",
+          "locked@calflare.test",
+          null,
+          "Europe/Paris",
+          1
+        ),
       db
         .prepare(`INSERT INTO "ApiKey" (id, "userId", "hashedKey") VALUES (?, ?, ?)`)
         .bind("worker-api-key", 9001, hashedKey),
@@ -201,5 +209,22 @@ describe("api v2 Worker host in workerd", () => {
   it("declares the RuntimeState Durable Object export", () => {
     expect(workerModule.RuntimeState).toBeTypeOf("function");
     expect(config.worker.exports?.RuntimeState).toMatchObject({ type: "durable-object", storage: "sqlite" });
+  });
+
+  it("applies the shared Prisma extensions through the v2 D1 services", async () => {
+    await withD1Database({ DB: db }, async () => {
+      const read = new PrismaReadService();
+      read.setOptions({ type: "worker", d1: db });
+      const write = new PrismaWriteService();
+      write.setOptions({ type: "worker", d1: db });
+
+      await expect(read.prisma.user.findUnique({ where: { id: 9002 } })).resolves.toBeNull();
+      await expect(read.prisma.user.findFirst({ where: { id: 9002, locked: true } })).resolves.toMatchObject({
+        id: 9002,
+      });
+      await expect(
+        write.prisma.user.updateMany({ where: { id: undefined }, data: { name: "Worker User" } })
+      ).rejects.toThrow('The value for the field "id" cannot be undefined.');
+    });
   });
 });
