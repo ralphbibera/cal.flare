@@ -10,6 +10,7 @@ import type { Person, CalendarEvent } from "@calcom/types/Calendar";
 import { findBookingQuery } from "../../../handleNewBooking/findBookingQuery";
 import lastAttendeeDeleteBooking from "../../lib/lastAttendeeDeleteBooking";
 import type { RescheduleSeatedBookingObject, SeatAttendee, NewTimeSlotBooking } from "../../types";
+import { moveSeatedAttendeeInD1 } from "./moveSeatedAttendeeInD1";
 
 const attendeeRescheduleSeatedBooking = async (
   rescheduleSeatedBookingObject: RescheduleSeatedBookingObject,
@@ -68,24 +69,11 @@ const attendeeRescheduleSeatedBooking = async (
   // Need to change the new seat reference and attendee record to remove it from the old booking and add it to the new booking
   // https://stackoverflow.com/questions/4980963/database-insert-new-rows-or-update-existing-ones
   if (seatAttendee?.id && bookingSeat?.id) {
-    await prisma.$transaction([
-      prisma.attendee.update({
-        where: {
-          id: seatAttendee.id,
-        },
-        data: {
-          bookingId: newTimeSlotBooking.id,
-        },
-      }),
-      prisma.bookingSeat.update({
-        where: {
-          id: bookingSeat.id,
-        },
-        data: {
-          bookingId: newTimeSlotBooking.id,
-        },
-      }),
-    ]);
+    await moveSeatedAttendeeInD1({
+      attendeeId: seatAttendee.id,
+      bookingSeatId: bookingSeat.id,
+      bookingId: newTimeSlotBooking.id,
+    });
   }
   // Add the new attendees to the new time slot booking attendees
   for (const attendee of newTimeSlotBooking.attendees) {

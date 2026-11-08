@@ -108,6 +108,21 @@ vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAt
   },
 }));
 
+vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/attendee/moveSeatedAttendeeInD1", () => ({
+  moveSeatedAttendeeInD1: async ({
+    attendeeId,
+    bookingSeatId,
+    bookingId,
+  }: {
+    attendeeId: number;
+    bookingSeatId: number;
+    bookingId: number;
+  }) => {
+    await prismock.attendee.update({ where: { id: attendeeId }, data: { bookingId } });
+    await prismock.bookingSeat.update({ where: { id: bookingSeatId }, data: { bookingId } });
+  },
+}));
+
 vi.mock("@calcom/app-store/video.adapters.generated", () => ({
   VideoApiAdapterMap: new Proxy(
     {},
