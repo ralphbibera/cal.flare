@@ -1,16 +1,9 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
-import type { Message, MessageBatch, Queue } from "@cloudflare/workers-types";
+import type { Message } from "@cloudflare/workers-types";
 import type { z } from "zod";
 import { Task } from "../repository";
-
-/**
- * Only the run ID crosses the Queue. Attempts, due time and payload stay on the D1 Task row, so a
- * redelivered message cannot carry stale run state.
- */
-export type JobMessage = { runId: string };
-export type JobQueueEnvironment = { JOBS?: Queue<JobMessage> };
+import { getJobQueue, type JobBatch, type JobMessage } from "./context";
 
 export type JobRetryPolicy = {
   maxAttempts?: number;
@@ -32,27 +25,6 @@ class JobPayloadError extends Error {}
 // A Worker cannot hold a Queue consumer invocation longer than this, so an expired lease means the
 // invocation that claimed the run is gone.
 const RUN_LEASE_MS = 15 * 60 * 1000;
-
-const storageKey = Symbol.for("calflare.jobs.request-storage");
-const shared = globalThis as typeof globalThis & {
-  [storageKey]?: AsyncLocalStorage<Queue<JobMessage> | undefined>;
-};
-// Vinext evaluates server modules separately for RSC and Pages/SSR.
-const jobQueue = (shared[storageKey] ??= new AsyncLocalStorage<Queue<JobMessage> | undefined>());
-
-export function withJobQueue<T>(env: JobQueueEnvironment, callback: () => T): T {
-  return jobQueue.run(env.JOBS, callback);
-}
-
-export function hasJobQueue(): boolean {
-  return jobQueue.getStore() !== undefined;
-}
-
-function getJobQueue(): Queue<JobMessage> {
-  const queue = jobQueue.getStore();
-  if (!queue) throw new ErrorWithCode(ErrorCode.InternalServerError, "JOBS queue binding is required");
-  return queue;
-}
 
 const DEFAULT_RETRY_POLICY = {
   maxAttempts: 3,
@@ -179,7 +151,7 @@ async function consumeMessage(message: Message<JobMessage>, jobs: Map<string, Qu
   message.ack();
 }
 
-export async function consumeJobBatch(batch: MessageBatch<JobMessage>, jobs: readonly QueueJob<unknown>[]) {
+export async function consumeJobBatch(batch: JobBatch, jobs: readonly QueueJob<unknown>[]) {
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
   for (const message of batch.messages) {
     try {

@@ -1,8 +1,9 @@
 import { EmailMessage } from "cloudflare:email";
 import manifest from "virtual:calflare-static-assets";
 import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-context";
-import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
-import { consumeJobBatch, type JobMessage, withJobQueue } from "@calcom/features/tasker/queue/JobQueue";
+import type { JobMessage } from "@calcom/features/tasker/queue/context";
+import { withJobQueue } from "@calcom/features/tasker/queue/context";
+import { dispatchJobBatch } from "@calcom/features/tasker/queue/internal-dispatch";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
@@ -71,10 +72,8 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
   scheduled(controller: ScheduledController, env: WorkerEnvironment, ctx: ExecutionContext) {
     ctx.waitUntil(dispatchSchedules(controller, env, (request) => serve(request, env, ctx)));
   },
-  queue(batch: MessageBatch<JobMessage>, env: WorkerEnvironment) {
-    return withD1Database(env, () =>
-      withJobQueue(env, () => consumeJobBatch(batch, [ensureDefaultCalendarsJob]))
-    );
+  queue(batch: MessageBatch<JobMessage>, env: WorkerEnvironment, ctx: ExecutionContext) {
+    return dispatchJobBatch(batch, (request) => serve(request, env, ctx));
   },
 });
 

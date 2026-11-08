@@ -1,4 +1,5 @@
-import { enqueueJob, hasJobQueue } from "@calcom/features/tasker/queue/JobQueue";
+import { hasJobQueue } from "@calcom/features/tasker/queue/context";
+import { enqueueJob } from "@calcom/features/tasker/queue/JobQueue";
 import type { ITaskerDependencies } from "@calcom/lib/tasker/types";
 import { ensureDefaultCalendarsJob } from "./trigger/ensure-default-calendars";
 import type { ICalendarsTasker } from "./types";

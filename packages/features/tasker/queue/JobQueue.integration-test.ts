@@ -16,7 +16,8 @@ import { getCalendarsTasker } from "@calcom/features/calendars/di/tasker/Calenda
 import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
 import { calendarsTaskConfig } from "@calcom/features/calendars/lib/tasker/trigger/config";
 import { calendarsTaskSchema } from "@calcom/features/calendars/lib/tasker/trigger/schema";
-import { consumeJobBatch, defineQueueJob, enqueueJob, withJobQueue } from "@calcom/features/tasker/queue/JobQueue";
+import { consumeJobBatch, defineQueueJob, enqueueJob } from "@calcom/features/tasker/queue/JobQueue";
+import { withJobQueue } from "@calcom/features/tasker/queue/context";
 import { TaskProcessor } from "@calcom/features/tasker/task-processor";
 import { withD1Database } from "@calcom/prisma/d1";
 
