@@ -408,6 +408,7 @@ describe("D1 list metadata and historical provenance", () => {
       "7139daefe8968179b248959210cc97fe30a9a829ca65278b3fc758b9778b9a04",
       "53bf18e310512b7b2915e0bb1b57e7b134335eac926c6e1333a35beaf3affd23",
       "0d7046404b58959d9efc05fd050567a46d33918e143c0210225863887daac47c",
+      "b697aca6bce06cd8ab5fb96263f0bb7fe888338fbaf000331863ae4b0ecee00f",
     ];
     const names = (await readdir(new URL("./migrations-d1/", import.meta.url)))
       .filter((name) => name.endsWith(".sql"))

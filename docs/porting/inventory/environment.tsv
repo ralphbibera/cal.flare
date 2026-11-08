@@ -552,3 +552,4 @@ __NEXT_I18N_SUPPORT	packages/platform/atoms/vite.config.ts	server-binding	D_API
 __NEXT_MANUAL_TRAILING_SLASH	packages/platform/atoms/vite.config.ts	server-binding	D_API
 __NEXT_ROUTER_BASEPATH	packages/platform/atoms/vite.config.ts	server-binding	D_API
 __NEXT_TRAILING_SLASH	packages/platform/atoms/vite.config.ts	server-binding	D_API
+isSignupDisabled	packages/lib/server/runtimeConfig.ts	preserve-dynamic-lookup	D_SHELL
