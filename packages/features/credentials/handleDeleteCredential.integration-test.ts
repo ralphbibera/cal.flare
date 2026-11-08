@@ -1,9 +1,61 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import handleDeleteCredential from "@calcom/features/credentials/handleDeleteCredential";
 import prisma from "@calcom/prisma";
 import type { Credential, EventType, User } from "@calcom/prisma/client";
+import { withD1Database } from "@calcom/prisma/d1";
 import { BookingStatus } from "@calcom/prisma/enums";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
+import { afterAll, afterEach, beforeAll, describe, expect, vi, it as vitestIt } from "vitest";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const it = (name: string, callback: () => unknown) => vitestIt(name, () => inD1(callback));
+const d1BeforeAll = (callback: () => unknown, timeout?: number) => beforeAll(() => inD1(callback), timeout);
+const d1AfterAll = (callback: () => unknown, timeout?: number) => afterAll(() => inD1(callback), timeout);
+const d1AfterEach = (callback: () => unknown) => afterEach(() => inD1(callback));
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-delete-credential-soft-delete-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
+
+vi.mock("@calcom/features/bookings/lib/payment/deletePayment", () => ({ deletePayment: vi.fn() }));
+vi.mock("@calcom/emails/email-manager", () => ({ sendCancelledEmailsAndSMS: vi.fn() }));
 
 describe("handleDeleteCredential Integration Tests - BookingReference Soft Delete", () => {
   let testUser: User;
@@ -25,7 +77,16 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
     });
   }
 
-  beforeAll(async () => {
+  d1BeforeAll(async () => {
+    await prisma.app.create({
+      data: {
+        slug: "stripe",
+        dirName: "stripepayment",
+        categories: ["payment"],
+        enabled: true,
+      },
+    });
+
     testUser = await prisma.user.create({
       data: {
         email: "delete-credential-test@example.com",
@@ -54,7 +115,7 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
     });
   });
 
-  afterEach(async () => {
+  d1AfterEach(async () => {
     if (createdBookingReferenceIds.length > 0) {
       await prisma.bookingReference.deleteMany({
         where: {
@@ -86,7 +147,7 @@ describe("handleDeleteCredential Integration Tests - BookingReference Soft Delet
     }
   });
 
-  afterAll(async () => {
+  d1AfterAll(async () => {
     await prisma.eventType.delete({
       where: {
         id: testEventType.id,

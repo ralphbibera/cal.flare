@@ -1,9 +1,58 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prisma } from "@calcom/prisma";
 import type { EventType, User, Webhook } from "@calcom/prisma/client";
+import { withD1Database } from "@calcom/prisma/d1";
 import { WebhookTriggerEvents } from "@calcom/prisma/enums";
+import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
+import { Miniflare } from "miniflare";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { WebhookTaskPayload } from "../types/webhookTask";
+
+let directory: string;
+let mf: Miniflare;
+let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
+const inD1 = <T>(callback: () => T) => withD1Database({ DB: db }, callback);
+const d1Test = (name: string, callback: () => unknown) => test(name, () => inD1(callback));
+const d1BeforeAll = (callback: () => unknown, timeout?: number) => beforeAll(() => inD1(callback), timeout);
+const d1AfterAll = (callback: () => unknown, timeout?: number) => afterAll(() => inD1(callback), timeout);
+
+beforeAll(async () => {
+  directory = await mkdtemp(join(tmpdir(), "calflare-webhook-delivery-"));
+  const persistTo = join(directory, "state");
+  await migrateD1({ persistTo });
+  const { worker } = (await import("../../../../../apps/web/cloudflare.config")).default;
+  mf = new Miniflare({
+    cf: false,
+    enableDevRegistry: false,
+    telemetry: { enabled: false },
+    resourcePersistencePath: join(persistTo, "v3"),
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: { DB: worker.env.DB },
+          manifest: {
+            mainModule: "worker.js",
+            modules: {
+              "worker.js": { type: "esm", contents: "export default {fetch(){return new Response()}}" },
+            },
+          },
+        },
+      },
+    ],
+  });
+  db = await mf.getD1Database("DB");
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  if (directory) await rm(directory, { recursive: true, force: true });
+});
 
 /**
  * Webhook Producer Integration Tests
@@ -45,7 +94,7 @@ describe("Webhook Producer Integration", () => {
   // Use unique identifiers for each test run to avoid collisions
   const testId = v4();
 
-  beforeAll(async () => {
+  d1BeforeAll(async () => {
     // Create test user
     testUser = await prisma.user.create({
       data: {
@@ -82,7 +131,7 @@ describe("Webhook Producer Integration", () => {
     deliveredWebhooks.length = 0;
   });
 
-  afterAll(async () => {
+  d1AfterAll(async () => {
     // Clean up all test data
     await prisma.webhook.deleteMany({
       where: { userId: testUser.id },
@@ -96,7 +145,7 @@ describe("Webhook Producer Integration", () => {
   });
 
   describe("BOOKING_REQUESTED", () => {
-    test("calls deliverWebhook with correct payload", async () => {
+    d1Test("calls deliverWebhook with correct payload", async () => {
       const producer = getWebhookProducer();
       const bookingUid = "test-booking-uid-requested";
 
