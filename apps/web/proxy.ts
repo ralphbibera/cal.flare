@@ -1,4 +1,6 @@
 import process from "node:process";
+import { getAuthRequestConfiguration } from "@calcom/features/auth/lib/request-context";
+import { sessionCookieDeletions } from "@calcom/features/auth/lib/session-cookie";
 import { getRuntimeConfigValue } from "@calcom/lib/server/runtimeConfig";
 import { getCspHeader, getCspNonce } from "@lib/csp";
 import type { NextRequest } from "next/server";
@@ -90,7 +92,12 @@ const proxy = async (req: NextRequest): Promise<NextResponse<unknown>> => {
   });
 
   if (url.pathname.startsWith("/auth/logout")) {
-    res.cookies.delete("next-auth.session-token");
+    const authConfig = getAuthRequestConfiguration();
+    if (authConfig) {
+      for (const cookie of sessionCookieDeletions(authConfig)) {
+        res.cookies.delete(cookie);
+      }
+    }
   }
 
   return responseWithHeaders({ url, res, req: reqWithEnrichedHeaders });

@@ -8,14 +8,20 @@ test.afterEach(async ({ users }) => {
   await users.deleteAll();
 });
 
-test("deletes the legacy session cookie on logout", async ({ request }) => {
+test("deletes the Better Auth session cookie on logout", async ({ request }) => {
   const response = await request.get("/auth/logout", {
-    headers: { cookie: "next-auth.session-token=shell-acceptance-token" },
+    headers: { cookie: "better-auth.session_token=shell-acceptance-token" },
     maxRedirects: 0,
   });
   expect(response.status()).toBe(200);
-  const setCookie = response.headersArray().find((header) => header.name.toLowerCase() === "set-cookie");
-  expect(setCookie?.value).toBe("next-auth.session-token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  const setCookies = response
+    .headersArray()
+    .filter((header) => header.name.toLowerCase() === "set-cookie")
+    .map((header) => header.value);
+  const sessionCookie = setCookies.find((value) => value.startsWith("better-auth.session_token="));
+  expect(sessionCookie).toContain("Path=/");
+  expect(sessionCookie).toMatch(/Expires=Thu, 01 Jan 1970 00:00:00 GMT|Max-Age=0/);
+  expect(setCookies.some((value) => value.startsWith("__Secure-better-auth.session_token="))).toBe(true);
   expect(await response.text()).toContain("You&#x27;ve been logged out");
 });
 

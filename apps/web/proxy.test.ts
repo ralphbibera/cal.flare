@@ -1,5 +1,6 @@
 // Import mocked functions
 
+import { getAuthRequestConfiguration } from "@calcom/features/auth/lib/request-context";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { getRuntimeConfigValue } from "@calcom/lib/server/runtimeConfig";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +12,10 @@ import proxy, { config } from "./proxy";
 // Mock dependencies at module level
 vi.mock("@calcom/lib/server/runtimeConfig", () => ({
   getRuntimeConfigValue: vi.fn(),
+}));
+
+vi.mock("@calcom/features/auth/lib/request-context", () => ({
+  getAuthRequestConfiguration: vi.fn(),
 }));
 
 // Mock NextResponse.json since it's not available in test environment
@@ -35,25 +40,8 @@ vi.mock("next/server", async () => {
     });
   };
 
-  NextResponse.next = (init?: ResponseInit) => {
-    const response = new Response(null, {
-      status: 200,
-      ...init,
-      headers: {
-        ...init?.headers,
-        "x-middleware-next": "1",
-      },
-    });
-
-    // Add cookies property
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (response as any).cookies = {
-      delete: vi.fn(),
-      set: vi.fn(),
-      get: vi.fn(),
-    };
-
-    return response;
+  NextResponse.next = (init?: Parameters<typeof actual.NextResponse.next>[0]) => {
+    return actual.NextResponse.next(init);
   };
 
   NextResponse.rewrite = (url: URL | string, init?: ResponseInit) => {
@@ -147,6 +135,7 @@ const callProxy = async (req: NextRequest): Promise<Response> => {
 describe("Middleware Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (getAuthRequestConfiguration as Mock).mockReset();
     // Set test environment
     vi.stubEnv("NEXT_PUBLIC_WEBAPP_URL", WEBAPP_URL);
   });
@@ -273,6 +262,30 @@ describe("Middleware Integration Tests", () => {
 
       const res = await callProxy(req);
       expectStatus(res, 200);
+    });
+
+    it("should clear the Better Auth session cookie on logout", async () => {
+      (getAuthRequestConfiguration as Mock).mockReturnValue({
+        baseURL: "https://calflare.test",
+        webappURL: "https://calflare.test",
+        NEXTAUTH_COOKIE_DOMAIN: ".calflare.test",
+        NEXTAUTH_SECRET: "synthetic-logout-secret",
+        DB: {},
+      });
+
+      const req = createTestRequest({
+        url: `${WEBAPP_URL}/auth/logout`,
+      });
+
+      const res = await callProxy(req);
+      const setCookies = res.headers.getSetCookie();
+
+      for (const name of ["better-auth.session_token", "__Secure-better-auth.session_token"]) {
+        const cookie = setCookies.find((value) => value.startsWith(`${name}=`));
+        expect(cookie, name).toContain("Domain=.calflare.test");
+        expect(cookie, name).toContain("Path=/");
+        expect(cookie, name).toMatch(/Expires=Thu, 01 Jan 1970 00:00:00 GMT|Max-Age=0/);
+      }
     });
   });
 
