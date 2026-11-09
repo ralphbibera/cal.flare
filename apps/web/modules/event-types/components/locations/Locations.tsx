@@ -357,7 +357,9 @@ const Locations: React.FC<LocationsProps> = ({
                         teamName: e.teamName ?? undefined,
                       }),
                     });
-                    setSelectedNewOption(e);
+                    // The empty select is replaced by the new row. Keeping the option selected would
+                    // make the next "add location" select start with a stale value.
+                    setSelectedNewOption(null);
                   } else {
                     showToast(t("location_already_exists"), "warning");
                     setSelectedNewOption(null);
