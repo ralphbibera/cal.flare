@@ -321,7 +321,6 @@ apps/web/app/reschedule/[uid]/page.tsx	D_BOOKING	app-page	/reschedule/[uid]	apps
 apps/web/pages/api/auth/[...nextauth].ts	D_AUTH	pages-api	/api/auth/[...nextauth]	apps/web/pages/api/auth/[...nextauth].ts	handler-dispatch
 apps/web/pages/api/auth/verify-email.ts	D_AUTH	pages-api	/api/auth/verify-email	apps/web/pages/api/auth/verify-email.ts	handler-dispatch
 apps/web/pages/api/book/event.ts	D_BOOKING	pages-api	/api/book/event	apps/web/pages/api/book/event.ts	handler-dispatch
-apps/web/pages/api/book/recurring-event.test.ts	D_BOOKING	pages-api	/api/book/recurring-event.test	apps/web/pages/api/book/recurring-event.test.ts	handler-dispatch
 apps/web/pages/api/book/recurring-event.ts	D_BOOKING	pages-api	/api/book/recurring-event	apps/web/pages/api/book/recurring-event.ts	handler-dispatch
 apps/web/pages/api/integrations/[...args].ts	D_SHELL	pages-api	/api/integrations/[...args]	apps/web/pages/api/integrations/[...args].ts	handler-dispatch
 apps/web/pages/api/integrations/alby/webhook.ts	D_PAYMENTS	pages-api	/api/integrations/alby/webhook	apps/web/pages/api/integrations/alby/webhook.ts	handler-dispatch
