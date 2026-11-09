@@ -1,9 +1,13 @@
+import process from "node:process";
 import { expect } from "@playwright/test";
 import { test } from "./lib/fixtures";
 
 // Expected values come from the pinned shell sources: apps/web/proxy.ts (matcher, sanitizer,
 // cookie and CSP branches), apps/web/next.config.ts (redirects, rewrites, headers),
 // app/(use-page-wrapper)/maintenance/page.tsx and event-types/[type]/error.tsx.
+const configuredCspPolicy =
+  process.env.CSP_POLICY ?? (process.env.NEXT_PUBLIC_IS_E2E === "1" ? "non-strict" : undefined);
+
 test.afterEach(async ({ users }) => {
   await users.deleteAll();
 });
@@ -71,15 +75,23 @@ test("sanitizes non-ASCII request headers before the page renders", async ({ req
   expect(mojibakeHtml).not.toContain("SÃ£o Paulo");
 });
 
-test("serves the no-policy CSP branch and the configured frame headers", async ({ request }) => {
+test("serves the configured CSP branch and the configured frame headers", async ({ request }) => {
   const login = await request.get("/auth/login");
   expect(login.status()).toBe(200);
-  expect(login.headers()["x-csp-status"]).toBe("not-opted-in");
-  expect(login.headers()["content-security-policy"]).toBeUndefined();
+  if (configuredCspPolicy) {
+    const csp = login.headers()["content-security-policy"];
+    expect(csp).toBeDefined();
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    expect(login.headers()["x-csp-status"]).toBeUndefined();
+    expect(await login.text()).toMatch(/<head nonce="[^"]+">/);
+  } else {
+    expect(login.headers()["x-csp-status"]).toBe("not-opted-in");
+    expect(login.headers()["content-security-policy"]).toBeUndefined();
+    expect(await login.text()).toContain('<head nonce="">');
+  }
   expect(login.headers()["x-frame-options"]).toBe("DENY");
   expect(login.headers()["x-content-type-options"]).toBe("nosniff");
   expect(login.headers()["referrer-policy"]).toBe("strict-origin-when-cross-origin");
-  expect(await login.text()).toContain('<head nonce="">');
 
   const signup = await request.get("/signup");
   expect(signup.status()).toBe(200);
@@ -95,7 +107,13 @@ test("applies embed headers only to the encoded embed request", async ({ request
   expect(enabled.headers()["cross-origin-resource-policy"]).toBe("cross-origin");
   expect(enabled.headers()["x-embedcolorscheme"]).toBe("dark");
   expect(enabled.headers()["x-isembed"]).toBe("true");
-  expect(enabled.headers()["x-csp-status"]).toBe("not-opted-in");
+  // Embed pages receive a nonce but are outside the enforced CSP paths, so the header stays absent.
+  expect(enabled.headers()["content-security-policy"]).toBeUndefined();
+  if (configuredCspPolicy) {
+    expect(enabled.headers()["x-csp-status"]).toBeUndefined();
+  } else {
+    expect(enabled.headers()["x-csp-status"]).toBe("not-opted-in");
+  }
 
   const plain = await request.get(`/${user.username}/embed`);
   expect(plain.status()).toBe(200);
