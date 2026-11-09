@@ -22,6 +22,37 @@ function decode(raw: Uint8Array): string {
 }
 
 describe("cloudflareEmailTransport", () => {
+  it("shares request bindings across Worker module copies and isolates concurrent requests", async () => {
+    vi.resetModules();
+    const handler = await import("./cloudflareEmailTransport");
+    const sendFirst = vi.fn<EmailBinding>(async () => {});
+    const sendSecond = vi.fn<EmailBinding>(async () => {});
+    const waitUntilFirst = vi.fn<(promise: Promise<void>) => void>();
+    const waitUntilSecond = vi.fn<(promise: Promise<void>) => void>();
+
+    const send = async (to: string) => {
+      await Promise.resolve();
+      return createTransport(handler.cloudflareEmailTransport).sendMail({
+        ...mail,
+        to,
+        cc: undefined,
+        bcc: undefined,
+      });
+    };
+    await Promise.all([
+      withCloudflareEmail(sendFirst, () => send("first@example.test"), waitUntilFirst),
+      withCloudflareEmail(sendSecond, () => send("second@example.test"), waitUntilSecond),
+    ]);
+
+    expect(sendFirst).toHaveBeenCalledTimes(1);
+    expect(sendFirst.mock.calls[0][0].to).toBe("first@example.test");
+    expect(sendSecond).toHaveBeenCalledTimes(1);
+    expect(sendSecond.mock.calls[0][0].to).toBe("second@example.test");
+    expect(waitUntilFirst).toHaveBeenCalledTimes(1);
+    expect(waitUntilSecond).toHaveBeenCalledTimes(1);
+    await Promise.all([waitUntilFirst.mock.calls[0][0], waitUntilSecond.mock.calls[0][0]]);
+  });
+
   it("builds one MIME message for every envelope recipient and strips the Bcc header", async () => {
     const messages: { from: string; to: string; raw: string }[] = [];
     const binding: EmailBinding = async ({ from, to, raw }: DeliveredMessage) => {
