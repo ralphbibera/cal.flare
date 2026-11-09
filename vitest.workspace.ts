@@ -200,7 +200,7 @@ const workspaces: TestProjectInlineConfiguration[] = packagedEmbedTestsOnly
               name: "@calcom/packages/lib/hooks",
               include: ["packages/lib/hooks/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}"],
               environment: "jsdom",
-              setupFiles: [],
+              setupFiles: ["packages/testing/src/setupVitest.ts"],
               pool,
             },
           },

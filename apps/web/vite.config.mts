@@ -10,6 +10,7 @@ import { defineConfig } from "vite";
 import { patchCssModules } from "vite-css-modules";
 import { bundleAnalysis } from "./scripts/bundle-analysis";
 import { clientProcessPolyfill, publicBuildEnvironment } from "./scripts/client-process";
+import { localeAssets } from "./scripts/locale-assets";
 import { staticAssets } from "./scripts/static-assets";
 
 function publicEnvironment(): Plugin {
@@ -114,6 +115,7 @@ export default defineConfig({
   },
   plugins: [
     staticAssets(),
+    localeAssets(),
     clientProcessPolyfill(),
     prismaClient(),
     bundleAnalysis(),

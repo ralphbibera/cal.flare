@@ -2030,7 +2030,7 @@ apps/web/pages/_error.tsx	D_SHELL	retain-adapt-in-place	apps/web/pages/_error.ts
 apps/web/pages/api/auth/[...nextauth].ts	D_AUTH	retain-adapt-in-place	apps/web/pages/api/auth/[...nextauth].ts
 apps/web/pages/api/auth/verify-email.ts	D_AUTH	retain-adapt-in-place	apps/web/pages/api/auth/verify-email.ts
 apps/web/pages/api/book/event.ts	D_BOOKING	retain-adapt-in-place	apps/web/pages/api/book/event.ts
-apps/web/pages/api/book/recurring-event.test.ts	D_BOOKING	retain-adapt-in-place	apps/web/test/pages/api/book/recurring-event.test.ts
+apps/web/pages/api/book/recurring-event.test.ts	D_BOOKING	retain-adapt-in-place	apps/web/pages/api/book/recurring-event.test.ts
 apps/web/pages/api/book/recurring-event.ts	D_BOOKING	retain-adapt-in-place	apps/web/pages/api/book/recurring-event.ts
 apps/web/pages/api/integrations/[...args].ts	D_SHELL	retain-adapt-in-place	apps/web/pages/api/integrations/[...args].ts
 apps/web/pages/api/integrations/alby/webhook.ts	D_PAYMENTS	retain-adapt-in-place	apps/web/pages/api/integrations/alby/webhook.ts
