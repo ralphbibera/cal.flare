@@ -455,18 +455,16 @@ jobs:
         e2e-embed-react,
         e2e-app-store,
       ]
-    if: always()
+    # A run cancelled by a newer push or by hand skips the gate; the newer run reports for the PR head.
+    # A job that times out or fails inside a live run still fails the gate.
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
-      # A cancelled run is either superseded by a newer push (concurrency cancel-in-progress) or
-      # cancelled by hand; the newer run reports its own required result in the first case, and the
-      # run itself shows cancelled in the second. Real failures still report failure/timed_out, and
-      # skipped still fails so a job that should have run cannot silently disappear.
       - name: Fail if trust-check did not succeed
         run: |
           echo "::error::Trust check did not complete successfully (result: ${{ needs.trust-check.result }}). Please re-run the workflow."
           exit 1
-        if: needs.trust-check.result != 'success' && needs.trust-check.result != 'cancelled'
+        if: needs.trust-check.result != 'success'
       - name: Fail if PR is not trusted (external contributor without run-ci label)
         run: |
           echo "::error::This PR is from an external contributor and requires the 'run-ci' label before CI can run."
@@ -476,27 +474,27 @@ jobs:
       - name: Fail if conditional jobs failed
         run: exit 1
         if: |
-          (needs.prepare.outputs.run-docs == 'true' && needs.docs.result != 'success' && needs.docs.result != 'cancelled') ||
+          (needs.prepare.outputs.run-docs == 'true' && needs.docs.result != 'success') ||
           (
             needs.prepare.outputs.has-files-requiring-all-checks == 'true' &&
             (
-            (needs.lint.result != 'success' && needs.lint.result != 'cancelled') ||
-            (needs.type-check.result != 'success' && needs.type-check.result != 'cancelled') ||
-            (needs.unit-test.result != 'success' && needs.unit-test.result != 'cancelled') ||
-            (needs.api-v2-unit-test.result != 'success' && needs.api-v2-unit-test.result != 'cancelled') ||
-            (needs.security-audit.result != 'success' && needs.security-audit.result != 'cancelled') ||
-            (needs.prepare.outputs.has-prisma-changes == 'true' && needs.check-prisma-migrations.result != 'success' && needs.check-prisma-migrations.result != 'cancelled') ||
+            needs.lint.result != 'success' ||
+            needs.type-check.result != 'success' ||
+            needs.unit-test.result != 'success' ||
+            needs.api-v2-unit-test.result != 'success' ||
+            needs.security-audit.result != 'success' ||
+            (needs.prepare.outputs.has-prisma-changes == 'true' && needs.check-prisma-migrations.result != 'success') ||
             (needs.prepare.outputs.run-e2e == 'true' && (
-              (needs.build.result != 'success' && needs.build.result != 'cancelled') ||
-              (needs.build-api-v2.result != 'success' && needs.build-api-v2.result != 'cancelled') ||
-              (needs.build-atoms.result != 'success' && needs.build-atoms.result != 'cancelled') ||
-              (needs.setup-db.result != 'success' && needs.setup-db.result != 'cancelled') ||
-              (needs.integration-test.result != 'success' && needs.integration-test.result != 'cancelled') ||
-              (needs.e2e.result != 'success' && needs.e2e.result != 'cancelled') ||
-              (needs.e2e-api-v2.result != 'success' && needs.e2e-api-v2.result != 'cancelled') ||
-              (needs.e2e-embed.result != 'success' && needs.e2e-embed.result != 'cancelled') ||
-              (needs.e2e-embed-react.result != 'success' && needs.e2e-embed-react.result != 'cancelled') ||
-              (needs.e2e-app-store.result != 'success' && needs.e2e-app-store.result != 'cancelled')
+              needs.build.result != 'success' ||
+              needs.build-api-v2.result != 'success' ||
+              needs.build-atoms.result != 'success' ||
+              needs.setup-db.result != 'success' ||
+              needs.integration-test.result != 'success' ||
+              needs.e2e.result != 'success' ||
+              needs.e2e-api-v2.result != 'success' ||
+              needs.e2e-embed.result != 'success' ||
+              needs.e2e-embed-react.result != 'success' ||
+              needs.e2e-app-store.result != 'success'
             ))
             )
           )
