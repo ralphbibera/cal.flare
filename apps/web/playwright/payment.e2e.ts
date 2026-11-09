@@ -1,7 +1,6 @@
-import { expect } from "@playwright/test";
-
+import process from "node:process";
 import { bookTimeSlot, selectFirstAvailableTimeSlotNextMonth } from "@calcom/web/playwright/lib/testUtils";
-
+import { expect } from "@playwright/test";
 import { test } from "./lib/fixtures";
 
 test.describe.configure({ mode: "parallel" });
@@ -21,13 +20,15 @@ test.describe("Payment", () => {
 
       await page.getByPlaceholder("Search").click();
       await page.getByPlaceholder("Search").fill("mock");
+      await expect(page.getByTestId("install-app-button")).toHaveCount(1);
 
       await page.getByTestId("install-app-button").click();
+      await page.waitForURL((url) => url.pathname.endsWith("/apps/installation/event-types"));
+      await page.getByTestId("set-up-later").click();
 
       await page.waitForURL((url) => url.pathname.endsWith("/apps/installed/payment"));
 
-      await page.getByRole("link", { name: "Event Types" }).click();
-
+      await page.goto("/event-types");
       await page.getByRole("link", { name: /^30 min/ }).click();
       await page.getByTestId("vertical-tab-apps").click();
       await page.locator("#event-type-form").getByRole("switch").click();
