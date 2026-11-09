@@ -113,6 +113,7 @@ API v2 (`apps/api/v2`) is not part of this release. The web app runs without it,
   - Evidence: `apps/web/worker/schedules.ts:10-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:91-96` wires `scheduled` and `queue`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
 - [ ] Replace the v2 Node host at `apps/api/v2/src/worker.ts`, retaining controller/service folders, version selection, DTOs, guards, filters, pagination and public `/api/v2` routes.
 - [ ] Complete mail, webhooks, social PNGs, embeds, all locales and docs at their bound Cloudflare destinations.
+  - Locales evidence: `packages/i18n/server.test.ts` loads every configured locale through `loadTranslations` and resolves a known key to the locale string or its English fallback; `apps/web/playwright/locale-sweep.e2e.ts` loads `/auth/verify-email` on the built Worker for all 38 configured locales and checks `lang`, `dir`, the localized heading and the absence of missing-key placeholders.
 
 **You see.**
 

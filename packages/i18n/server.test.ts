@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import localeConfig from "../../i18n.json";
+import englishTranslations from "./locales/en/common.json";
 import { getTranslation, loadTranslations, mergeWithEnglishFallback } from "./server";
 
 describe("mergeWithEnglishFallback", () => {
@@ -192,12 +193,16 @@ describe("request translation policy", () => {
     expect(en("continue_with", { appName: "<Cal>" })).toBe("Continue with &lt;Cal&gt;");
   });
 
-  it.each(
-    localeConfig.locale.targets
-  )("loads the original %s dictionary with English fallback", async (locale) => {
+  it.each([
+    ...localeConfig.locale.targets,
+    localeConfig.locale.source,
+  ])("loads the original %s dictionary with English fallback", async (locale) => {
     const dictionary = await loadTranslations(locale, "common");
     const original = await import(`./locales/${locale}/common.json`);
     expect(dictionary).toEqual({ ...mergeWithEnglishFallback({}), ...original.default });
+    expect(dictionary.welcome_back_sign_in).toBe(
+      original.default.welcome_back_sign_in ?? englishTranslations.welcome_back_sign_in
+    );
   });
 
   it("does not let English resource mutations escape a request", async () => {
