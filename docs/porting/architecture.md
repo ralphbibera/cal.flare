@@ -28,7 +28,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | Authentication | Self-hosted `better-auth` `1.7.15`; schema CLI package `auth` `1.7.15`. Native D1 binding, no hosted Better Auth service. |
 | Auth primitives | Retain `bcryptjs` `2.4.3`, `otplib` `12.0.1`, and existing encryption and JWT helpers. Better Auth's default password and MFA formats are not selected. |
 | Translation | Retain `i18next` `23.2.3`, `react-i18next` `12.3.1`, original JSON, namespaces, and keys. Replace `next-i18next` `15.4.2` loading boundary. |
-| v2 HTTP | `hono` `4.13.16` for a Fetch Worker dispatcher. Retain source DTO, service, guard, error, and validation contracts. |
+| v2 HTTP | `hono` `4.13.16` for a Fetch Worker dispatcher. Retain source DTO, service, guard, error, and validation contracts. API v2 is not part of this release. |
 | Cache | `@vinext/cloudflare` Response Store adapter, self-contained mode. Its exact dependency is `@cloudflare/workers-response-store` `1.1.5`. |
 | Styling | Retain Tailwind CSS `4.1.17`, PostCSS `8.5.6`, `@tailwindcss/postcss` `4.1.15`, source CSS, classes, and component systems. `vite-css-modules` `1.16.1` handles consumed CSS Modules. |
 | Source async runner | `@trigger.dev/sdk` `4.5.4` is observed upstream, not selected for hosting. Its consumed jobs move to D1/Queues/DO scheduling; no Trigger-hosted or Node worker remains. |
@@ -43,7 +43,7 @@ Exact-version registry reads succeeded for the new pins. No registry-unavailabil
 Better Auth carries its own Zod 4 and JOSE 6 dependencies. Keep domain Zod 3 and JOSE 4 consumers scoped to their original packages.
 No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, Accelerate, Neon, Hyperdrive-to-PG, or Node application server belongs in the target runtime.
 Redis is optional. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, web and API v2 use that Upstash database. When either is missing, both use `NoopRedisService`.
-API v2 has no `REDIS_URL` and no Bull Redis connection. Its Bull work runs on `JOBS`, and its throttler keeps state in memory when Upstash is not configured.
+API v2 has no `REDIS_URL` and no Bull Redis connection. Its Bull work runs on `JOBS`, and its throttler keeps state in memory when Upstash is not configured. API v2 is not part of this release.
 Web rate limiting is off unless `UNKEY_ROOT_KEY` is set. Limiter state lives in `RUNTIME_STATE`.
 
 ## Bun workspaces and lockfile
@@ -69,7 +69,7 @@ The clean target preserves original paths. A source-map destination is not evide
 | `apps/web/pages` | Vinext Pages Router and Pages APIs. Preserve `_app`, `_document`, page data functions, catch-alls, API methods, and URLs. |
 | `apps/web/modules`, `lib`, `components`, `server` | Keep feature implementations and imports at original paths. Preserve server/client boundaries, provider order, and permission ownership. |
 | `apps/web/public`, `styles`, `fonts` | Workers Static Assets and browser assets. Preserve filenames, URLs, CSS order, font weights, variables, and preload behavior. |
-| `apps/api/v2/src` | Separate Cloudflare Fetch Worker. Hono replaces Nest Express HTTP hosting. Existing controllers, DTOs, services, and platform code retain their locations. |
+| `apps/api/v2/src` | Separate Cloudflare Fetch Worker. Hono replaces Nest Express HTTP hosting. Existing controllers, DTOs, services, and platform code retain their locations. API v2 is not part of this release. |
 | `packages` | Keep workspace names and original feature boundaries. Browser packages import no DB, secret, or Worker-only modules. Server packages receive bindings at their existing boundaries. |
 | `packages/prisma` | Complete D1 schema, generated domain client, SQLite SQL migrations, seeds, views or equivalent repository queries, and atomic write plans. |
 | `packages/features/auth` | Better Auth instance, Cal auth plugin, projections, provider policy, and numeric-ID mapping. No global framework compatibility package. |
@@ -81,7 +81,7 @@ The clean target preserves original paths. A source-map destination is not evide
 Dependency direction stays route or action -> existing feature/service -> repository/provider -> D1 or outbound API.
 UI imports browser-safe package entrypoints. `cloudflare:workers` and `env` remain server-only.
 `apps/web/vite.config.mts` and `cloudflare.config.ts` own vinext, Cloudflare plugin v2, bindings, and build output.
-`apps/api/v2` owns its Fetch entry and matching Cloudflare configuration. Web reaches v2 through a service binding at the original `/api/v2` URL.
+`apps/api/v2` owns its Fetch entry and matching Cloudflare configuration. Web reaches v2 through a service binding at the original `/api/v2` URL. API v2 is not part of this release.
 Both product Workers share the same authoritative `DB`; docs has no product DB binding.
 An implementation move uses `git mv` before edits where a source actually changes location. No blind copy from the Astro port.
 
@@ -251,7 +251,7 @@ No cross-provider transaction, exactly-once effect, or stronger global double-bo
 
 ## Jobs, ephemeral state, and integrations
 
-The v2 Worker owns `scheduled` and `queue` handlers and the application `RUNTIME_STATE` DO class. Shared job services stay in original packages.
+The v2 Worker owns `scheduled` and `queue` handlers and the application `RUNTIME_STATE` DO class. Shared job services stay in original packages. API v2 is not part of this release.
 One UTC minute dispatcher evaluates product rows from [schedules](inventory/schedules.tsv), including source calendar conditions and monthly last-day guards.
 Existing cron URLs retain methods and authorization. Repository-maintenance schedules and `no-product-handler` rows create no new product job.
 
@@ -259,7 +259,7 @@ Existing cron URLs retain methods and authorization. Repository-maintenance sche
 | --- | --- |
 | `DB` | Complete domain/auth records, existing Task records, and required delivery state. Same database for both product Workers. |
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
-| `API_V2` | Web-to-v2 service binding. Preserve public `/api/v2` transport without a Node host or external app server. |
+| `API_V2` | Web-to-v2 service binding. Preserve public `/api/v2` transport without a Node host or external app server. API v2 is not part of this release. |
 | `JOBS` | Cloudflare Queue replaces consumed Bull and Trigger submission, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. |
 | `RUNTIME_STATE` | SQLite DO per rate-limit namespace. Holds application limiter state, including the web limiter when `UNKEY_ROOT_KEY` enables it. Preserve keys, TTLs, atomic counters, and failure results. |
 | Response Store bindings | Native helper-owned DO and R2 cache-body bindings, distinct from `RUNTIME_STATE`. No provider credentials or authoritative product records belong in this cache. |
@@ -296,6 +296,8 @@ Local sendmail has no Workers executable and is an explicit configuration blocke
 Cloudflare-only hosting/storage does not remove original third-party calendar, payment, mail, SMS, or analytics APIs. Private-network-only integrations need a supported Cloudflare path or a recorded compatibility blocker.
 
 ## v2, docs, configuration, and checks
+
+API v2 (`apps/api/v2`) is not part of this release. The web app runs without it, and its optional API v2 team-slots path is disabled.
 
 [Hono Workers dispatch][hono-workers] preserves every consumed controller method/version at `apps/api/v2/src`. Explicit service composition replaces Nest Express bootstrap and background processes.
 Keep original DTO transformation/whitelisting, decorators/validators, guard order, response interceptor, pagination, cache, throttling, and error filters.
