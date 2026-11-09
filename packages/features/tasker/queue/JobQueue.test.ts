@@ -91,8 +91,9 @@ describe("queue configuration", () => {
     ).toEqual({ webhooks: 25, calendars: 10, notifications: 20 });
   });
 
-  it("keeps the transport retry backstop above every job's attempt budget", () => {
+  it("keeps the transport retry backstop at 10 retries, above every job's 3 attempts", () => {
     for (const queue of Object.values(QUEUES)) {
+      expect(queue.maxRetries).toBe(10);
       expect(queue.maxRetries).toBeGreaterThan(3);
     }
   });

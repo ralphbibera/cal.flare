@@ -1,6 +1,7 @@
 import process from "node:process";
 import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
 import { bindings, defineConfig, defineWorker, exports, triggers } from "cf/config";
+// The cf config loader resolves the shared queue module only with its extension.
 import {
   DEAD_LETTER_QUEUE,
   type JobQueueName,
