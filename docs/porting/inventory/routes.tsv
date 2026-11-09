@@ -182,7 +182,6 @@ apps/docs/content/apps/hubspot.mdx	D_DOCS	docs-content	/apps/hubspot	apps/docs/a
 apps/docs/content/apps/microsoft.mdx	D_DOCS	docs-content	/apps/microsoft	apps/docs/app/[[...mdxPath]]/page.tsx	GET
 apps/docs/content/apps/sendgrid.mdx	D_DOCS	docs-content	/apps/sendgrid	apps/docs/app/[[...mdxPath]]/page.tsx	GET
 apps/docs/content/apps/stripe.mdx	D_DOCS	docs-content	/apps/stripe	apps/docs/app/[[...mdxPath]]/page.tsx	GET
-apps/docs/content/apps/twilio.mdx	D_DOCS	docs-content	/apps/twilio	apps/docs/app/[[...mdxPath]]/page.tsx	GET
 apps/docs/content/apps/zoho.mdx	D_DOCS	docs-content	/apps/zoho	apps/docs/app/[[...mdxPath]]/page.tsx	GET
 apps/docs/content/apps/zoom.mdx	D_DOCS	docs-content	/apps/zoom	apps/docs/app/[[...mdxPath]]/page.tsx	GET
 apps/docs/content/database-migrations.mdx	D_DOCS	docs-content	/database-migrations	apps/docs/app/[[...mdxPath]]/page.tsx	GET

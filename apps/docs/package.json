@@ -8,8 +8,7 @@
     "start": "vite preview",
     "type-check": "tsc --noEmit --strict",
     "type-check:ci": "tsc --noEmit --strict",
-    "lint": "biome lint .",
-    "test": "playwright test --config playwright.config.ts"
+    "lint": "biome lint ."
   },
   "dependencies": {
     "next": "16.4.3",

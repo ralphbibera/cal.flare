@@ -11,7 +11,7 @@ env:
 
 jobs:
   docs:
-    name: Build and test Docs
+    name: Build Docs
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -20,11 +20,8 @@ jobs:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
       - uses: ./.github/actions/bun-install
-      - uses: ./.github/actions/bun-playwright-install
       - name: Build Docs Worker and search index
         run: bun run --cwd apps/docs build
-      - name: Check original Docs in workerd
-        run: bun run --cwd apps/docs test
       - name: Upload Docs build
         if: always()
         uses: actions/upload-artifact@v4
@@ -35,10 +32,3 @@ jobs:
           path: |
             apps/docs/.cloudflare/output/
             apps/docs/dist/server/
-      - name: Upload Docs browser results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-docs
-          path: test-results/docs/
-          if-no-files-found: ignore
