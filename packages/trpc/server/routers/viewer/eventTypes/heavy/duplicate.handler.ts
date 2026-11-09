@@ -7,6 +7,7 @@ import { Prisma } from "@calcom/prisma/client";
 import { TRPCError } from "@trpc/server";
 import type { TrpcSessionUser } from "../../../../types";
 import { setDestinationCalendarHandler } from "../../../viewer/calendars/setDestinationCalendar.handler";
+import { isUniqueEventTypeSlugConflict } from "../util";
 import type { TDuplicateInputSchema } from "./duplicate.schema";
 
 type DuplicateOptions = {
@@ -222,14 +223,14 @@ export const duplicateHandler = async ({ ctx, input }: DuplicateOptions) => {
       eventType: newEventType,
     };
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      if (Array.isArray(error.meta?.target) && error.meta?.target.includes("slug")) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "duplicate_event_slug_conflict",
-        });
-      }
+    if (isUniqueEventTypeSlugConflict(error)) {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "duplicate_event_slug_conflict",
+      });
+    }
 
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new TRPCError({
         code: "CONFLICT",
         message: "Unique constraint violation while creating a duplicate event.",

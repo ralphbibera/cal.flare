@@ -2,12 +2,13 @@ import { getDefaultLocations } from "@calcom/app-store/_utils/getDefaultLocation
 import { DailyLocationType } from "@calcom/app-store/constants";
 import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import type { PrismaClient } from "@calcom/prisma";
-import { Prisma } from "@calcom/prisma/client";
+import type { Prisma } from "@calcom/prisma/client";
 import { MembershipRole, SchedulingType } from "@calcom/prisma/enums";
 import type { eventTypeLocations } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
 import type { z } from "zod";
 import type { TrpcSessionUser } from "../../../../types";
+import { isUniqueEventTypeSlugConflict } from "../util";
 import type { TCreateInputSchema } from "./create.schema";
 
 class PermissionCheckService {
@@ -157,10 +158,8 @@ export const createHandler = async ({ ctx, input }: CreateOptions) => {
     return { eventType };
   } catch (e) {
     console.warn(e);
-    if (e instanceof Prisma.PrismaClientKnownRequestError) {
-      if (e.code === "P2002" && Array.isArray(e.meta?.target) && e.meta?.target.includes("slug")) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "URL Slug already exists for given user." });
-      }
+    if (isUniqueEventTypeSlugConflict(e)) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "URL Slug already exists for given user." });
     }
     throw new TRPCError({ code: "BAD_REQUEST" });
   }

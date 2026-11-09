@@ -199,6 +199,23 @@ export const createEventPbacProcedure = (
     });
 };
 
+type UniqueConstraintMeta = {
+  target?: unknown;
+  driverAdapterError?: { cause?: { constraint?: { fields?: unknown } } };
+};
+
+/**
+ * D1 reports the violated columns under `meta.driverAdapterError`, while Prisma's
+ * PostgreSQL client uses `meta.target`.
+ */
+export function isUniqueEventTypeSlugConflict(error: unknown): boolean {
+  const { code, meta } = (error ?? {}) as { code?: unknown; meta?: UniqueConstraintMeta };
+  if (code !== "P2002") return false;
+  return [meta?.target, meta?.driverAdapterError?.cause?.constraint?.fields]
+    .flatMap((field) => (Array.isArray(field) ? field : [field]))
+    .some((field) => typeof field === "string" && field.includes("slug"));
+}
+
 export function isPeriodType(keyInput: string): keyInput is PeriodType {
   return Object.keys(PeriodType).includes(keyInput);
 }
