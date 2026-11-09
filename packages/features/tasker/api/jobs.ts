@@ -1,3 +1,7 @@
+import { confirmBookingNotificationsJob } from "@calcom/features/bookings/lib/tasker/trigger/notifications/confirm";
+import { requestBookingNotificationsJob } from "@calcom/features/bookings/lib/tasker/trigger/notifications/request";
+import { rescheduleBookingNotificationsJob } from "@calcom/features/bookings/lib/tasker/trigger/notifications/reschedule";
+import { rrRescheduleBookingNotificationsJob } from "@calcom/features/bookings/lib/tasker/trigger/notifications/rr-reschedule";
 import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
 import { deliverWebhookJob } from "@calcom/features/webhooks/lib/tasker/trigger/deliver-webhook";
 import type { NextRequest } from "next/server";
@@ -7,7 +11,14 @@ import type { JobDelivery } from "../queue/JobQueue";
 import { runJobs } from "../queue/JobQueue";
 import type { JobQueueName } from "../queue/queues";
 
-const QUEUE_JOBS = [ensureDefaultCalendarsJob, deliverWebhookJob];
+const QUEUE_JOBS = [
+  ensureDefaultCalendarsJob,
+  requestBookingNotificationsJob,
+  confirmBookingNotificationsJob,
+  rescheduleBookingNotificationsJob,
+  rrRescheduleBookingNotificationsJob,
+  deliverWebhookJob,
+];
 
 export async function handler(request: NextRequest) {
   if (!isInternalJobDispatch()) {

@@ -1,31 +1,31 @@
+import { hasJobQueue } from "@calcom/features/tasker/queue/context";
 import type { ITaskerDependencies } from "@calcom/lib/tasker/types";
-
-import { IBookingEmailAndSmsTasker } from "./types";
+import type { IBookingEmailAndSmsTasker } from "./types";
 
 export class BookingEmailAndSmsTriggerDevTasker implements IBookingEmailAndSmsTasker {
   constructor(public readonly dependencies: ITaskerDependencies) {}
 
+  isConfigured(): boolean {
+    return hasJobQueue("notifications");
+  }
+
   async request(payload: Parameters<IBookingEmailAndSmsTasker["request"]>[0]) {
-    const { request } = await import("./trigger/notifications/request");
-    const handle = await request.trigger(payload);
-    return { runId: handle.id };
+    const { requestBookingNotificationsJob } = await import("./trigger/notifications/request");
+    return requestBookingNotificationsJob.enqueue(payload);
   }
 
   async confirm(payload: Parameters<IBookingEmailAndSmsTasker["confirm"]>[0]) {
-    const { confirm } = await import("./trigger/notifications/confirm");
-    const handle = await confirm.trigger(payload);
-    return { runId: handle.id };
+    const { confirmBookingNotificationsJob } = await import("./trigger/notifications/confirm");
+    return confirmBookingNotificationsJob.enqueue(payload);
   }
 
   async reschedule(payload: Parameters<IBookingEmailAndSmsTasker["reschedule"]>[0]) {
-    const { reschedule } = await import("./trigger/notifications/reschedule");
-    const handle = await reschedule.trigger(payload);
-    return { runId: handle.id };
+    const { rescheduleBookingNotificationsJob } = await import("./trigger/notifications/reschedule");
+    return rescheduleBookingNotificationsJob.enqueue(payload);
   }
 
   async rrReschedule(payload: Parameters<IBookingEmailAndSmsTasker["rrReschedule"]>[0]) {
-    const { rrReschedule } = await import("./trigger/notifications/rr-reschedule");
-    const handle = await rrReschedule.trigger(payload);
-    return { runId: handle.id };
+    const { rrRescheduleBookingNotificationsJob } = await import("./trigger/notifications/rr-reschedule");
+    return rrRescheduleBookingNotificationsJob.enqueue(payload);
   }
 }

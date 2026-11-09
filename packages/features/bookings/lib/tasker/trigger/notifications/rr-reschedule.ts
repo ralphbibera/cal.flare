@@ -1,27 +1,19 @@
-import { schemaTask } from "@trigger.dev/sdk";
-
+import { defineQueueJob } from "@calcom/features/tasker/queue/JobQueue";
 import { bookingNotificationsTaskConfig } from "./config";
 import { bookingNotificationTaskSchema } from "./schema";
 
-export const rrReschedule = schemaTask({
-  id: "booking.send.rr.reschedule.notifications",
-  ...bookingNotificationsTaskConfig,
+export const RR_RESCHEDULE_BOOKING_NOTIFICATIONS_JOB_ID = "booking.send.rr.reschedule.notifications";
+
+export const rrRescheduleBookingNotificationsJob = defineQueueJob({
+  id: RR_RESCHEDULE_BOOKING_NOTIFICATIONS_JOB_ID,
+  queue: "notifications",
+  retry: bookingNotificationsTaskConfig.retry,
   schema: bookingNotificationTaskSchema,
   run: async (payload) => {
-    const { TriggerDevLogger } = await import("@calcom/lib/triggerDevLogger");
-    const { BookingEmailSmsHandler } = await import("@calcom/features/bookings/lib/BookingEmailSmsHandler");
-    const { BookingRepository } = await import("@calcom/features/bookings/repositories/BookingRepository");
-    const { prisma } = await import("@calcom/prisma");
-    const { BookingEmailAndSmsTaskService } = await import("../../BookingEmailAndSmsTaskService");
+    const { getBookingEmailAndSmsTaskService } = await import(
+      "@calcom/features/bookings/di/tasker/BookingEmailAndSmsTaskService.container"
+    );
 
-    const triggerDevLogger = new TriggerDevLogger();
-    const emailsAndSmsHandler = new BookingEmailSmsHandler({ logger: triggerDevLogger });
-    const bookingRepo = new BookingRepository(prisma);
-    const bookingTaskService = new BookingEmailAndSmsTaskService({
-      logger: triggerDevLogger,
-      bookingRepository: bookingRepo,
-      emailsAndSmsHandler: emailsAndSmsHandler,
-    });
-    await bookingTaskService.rrReschedule(payload);
+    await getBookingEmailAndSmsTaskService().rrReschedule(payload);
   },
 });

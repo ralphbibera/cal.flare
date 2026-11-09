@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { REQUEST_BOOKING_NOTIFICATIONS_JOB_ID } from "@calcom/features/bookings/lib/tasker/trigger/notifications/request";
 import { calendarsTaskConfig } from "@calcom/features/calendars/lib/tasker/trigger/config";
 import { webhookDeliveryTaskConfig } from "@calcom/features/webhooks/lib/tasker/trigger/config";
 import { WEBHOOK_DELIVERY_JOB_ID } from "@calcom/features/webhooks/lib/tasker/trigger/deliver-webhook";
@@ -15,6 +16,7 @@ import { nextRetryDelayMs } from "./JobQueue";
 const CALENDAR_JOB_ID = "calendars.ensure-default-calendars";
 
 const fixtureWorker = `
+import { requestBookingNotificationsJob } from "@calcom/features/bookings/lib/tasker/trigger/notifications/request";
 import { getCalendarsTasker } from "@calcom/features/calendars/di/tasker/CalendarsTasker.container";
 import { ensureDefaultCalendarsJob } from "@calcom/features/calendars/lib/tasker/trigger/ensure-default-calendars";
 import { calendarsTaskConfig } from "@calcom/features/calendars/lib/tasker/trigger/config";
@@ -45,7 +47,7 @@ const failingJob = defineQueueJob({
   },
   run: failingRun,
 });
-const jobs = [ensureDefaultCalendarsJob, deliverWebhookJob, failingJob];
+const jobs = [ensureDefaultCalendarsJob, requestBookingNotificationsJob, deliverWebhookJob, failingJob];
 const jobsForQueue = (queue) => jobs.filter((job) => job.queue === queue);
 
 const deliveries = [];
@@ -62,6 +64,7 @@ async function route(request, env) {
     return webhookContainer.get(WEBHOOK_TOKENS.WEBHOOK_TASKER).deliverWebhook(body);
   }
   if (pathname === "/enqueue-webhook") return deliverWebhookJob.enqueue(body);
+  if (pathname === "/enqueue-booking") return requestBookingNotificationsJob.enqueue(body);
   if (pathname === "/enqueue-failing") return failingJob.enqueue(body);
   if (pathname === "/send-raw") return env.JOBS_WEBHOOKS.send(body);
   if (pathname === "/deliveries") return deliveries;
@@ -371,6 +374,18 @@ describe("JOBS queue job path in workerd", () => {
     await new Promise((resolve) => setTimeout(resolve, 2_500));
     expect(await deliveriesOf(runId)).toHaveLength(3);
     expect(providerCallsOf("").filter((entry) => entry.includes("/always-fails")).length).toBeGreaterThan(0);
+  });
+
+  it("retries a failing booking notification run until the budget is spent", async () => {
+    const { runId } = await call<{ runId: string }>("/enqueue-booking", { bookingId: 999_999 });
+
+    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(3);
+    expect((await deliveriesOf(runId)).map(({ attempts }) => attempts)).toEqual([1, 2, 3]);
+    expect((await deliveriesOf(runId))[0].jobId).toBe(REQUEST_BOOKING_NOTIFICATIONS_JOB_ID);
+    expect(await taskRowsOf(runId)).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect(await deliveriesOf(runId)).toHaveLength(3);
   });
 
   it("keeps a swallowed provider failure terminal instead of retrying it", async () => {
