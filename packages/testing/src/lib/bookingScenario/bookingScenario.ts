@@ -1,26 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import i18nMock from "../__mocks__/libServerI18n";
 import prismock from "../__mocks__/prisma";
 import { prisma } from "@calcom/prisma";
-import i18nMock from "../__mocks__/libServerI18n";
 import type { TFunction } from "i18next";
 import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
 import "vitest-fetch-mock";
 import { getOrCreateCalendarServiceMock, mockVideoAdapterRegistry } from "./bookingScenarioMocks";
+import process from "node:process";
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
 import { type WeekDays, weekdayToWeekIndex } from "@calcom/lib/dayjs";
 import type { IntervalLimit } from "@calcom/lib/intervalLimits/intervalLimitSchema";
 import logger from "@calcom/lib/logger";
 import { safeStringify } from "@calcom/lib/safeStringify";
-import type {
-  Attendee,
-  Booking,
-  BookingReference,
-  Membership,
-  Prisma,
-  Team,
-} from "@calcom/prisma/client";
+import type { Attendee, Booking, BookingReference, Membership, Prisma, Team } from "@calcom/prisma/client";
 import type {
   BookingStatus,
   PaymentOption,
@@ -64,59 +58,67 @@ vi.mock("@calcom/features/bookings/lib/handleNewBooking/createBookingInD1", asyn
   };
 });
 
-vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAttendeesInD1", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAttendeesInD1")
-  >();
-  if (isD1Scenario()) return actual;
-  return {
-    ...actual,
-    moveSeatedAttendeesInD1: async ({
-      bookingId,
-      attendeeIdsToMove,
-      attendeeIdsToDelete,
-    }: {
-      bookingId: number;
-      attendeeIdsToMove: number[];
-      attendeeIdsToDelete: number[];
-    }) => {
-      for (const id of attendeeIdsToMove) {
-        await prismock.attendee.update({
-          where: { id },
-          data: {
-            bookingId,
-            bookingSeat: {
-              upsert: { create: { referenceUid: `seat-${id}`, bookingId }, update: { bookingId } },
+vi.mock(
+  "@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAttendeesInD1",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAttendeesInD1")
+      >();
+    if (isD1Scenario()) return actual;
+    return {
+      ...actual,
+      moveSeatedAttendeesInD1: async ({
+        bookingId,
+        attendeeIdsToMove,
+        attendeeIdsToDelete,
+      }: {
+        bookingId: number;
+        attendeeIdsToMove: number[];
+        attendeeIdsToDelete: number[];
+      }) => {
+        for (const id of attendeeIdsToMove) {
+          await prismock.attendee.update({
+            where: { id },
+            data: {
+              bookingId,
+              bookingSeat: {
+                upsert: { create: { referenceUid: `seat-${id}`, bookingId }, update: { bookingId } },
+              },
             },
-          },
-        });
-      }
-      await prismock.attendee.deleteMany({ where: { id: { in: attendeeIdsToDelete } } });
-    },
-  };
-});
+          });
+        }
+        await prismock.attendee.deleteMany({ where: { id: { in: attendeeIdsToDelete } } });
+      },
+    };
+  }
+);
 
-vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/attendee/moveSeatedAttendeeInD1", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("@calcom/features/bookings/lib/handleSeats/reschedule/attendee/moveSeatedAttendeeInD1")
-  >();
-  if (isD1Scenario()) return actual;
-  return {
-    ...actual,
-    moveSeatedAttendeeInD1: async ({
-      attendeeId,
-      bookingSeatId,
-      bookingId,
-    }: {
-      attendeeId: number;
-      bookingSeatId: number;
-      bookingId: number;
-    }) => {
-      await prismock.attendee.update({ where: { id: attendeeId }, data: { bookingId } });
-      await prismock.bookingSeat.update({ where: { id: bookingSeatId }, data: { bookingId } });
-    },
-  };
-});
+vi.mock(
+  "@calcom/features/bookings/lib/handleSeats/reschedule/attendee/moveSeatedAttendeeInD1",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@calcom/features/bookings/lib/handleSeats/reschedule/attendee/moveSeatedAttendeeInD1")
+      >();
+    if (isD1Scenario()) return actual;
+    return {
+      ...actual,
+      moveSeatedAttendeeInD1: async ({
+        attendeeId,
+        bookingSeatId,
+        bookingId,
+      }: {
+        attendeeId: number;
+        bookingSeatId: number;
+        bookingId: number;
+      }) => {
+        await prismock.attendee.update({ where: { id: attendeeId }, data: { bookingId } });
+        await prismock.bookingSeat.update({ where: { id: bookingSeatId }, data: { bookingId } });
+      },
+    };
+  }
+);
 
 vi.mock("@calcom/features/webhooks/lib/queryWebhookRows", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@calcom/features/webhooks/lib/queryWebhookRows")>();
@@ -170,7 +172,6 @@ vi.mock("@calcom/features/webhooks/lib/queryWebhookRows", async (importOriginal)
     },
   };
 });
-
 
 type NonNullableVideoApiAdapter = NonNullable<VideoApiAdapter>;
 
@@ -492,10 +493,191 @@ export async function addEventTypesToDb(
   })[]
 ) {
   log.silly("TestData: Add EventTypes to DB", JSON.stringify(eventTypes));
-  await prisma.eventType.createMany({
-    data: eventTypes,
-  });
+  for (const input of eventTypes) {
+    const seed = input as unknown as Record<string, unknown>;
+    const {
+      users: usersInput,
+      hosts: _hosts,
+      hostGroups: _hostGroups,
+      destinationCalendar,
+      schedule,
+      restrictionSchedule,
+      team,
+      restrictionScheduleId,
+      includeManagedEventsInLimits: _includeManagedEventsInLimits,
+      parent,
+      owner,
+      ...eventTypeData
+    } = seed;
+
+    const destinationCalendarInput = destinationCalendar as
+      | { create?: Prisma.DestinationCalendarCreateInput }
+      | undefined;
+    const scheduleInput = schedule as { create?: Prisma.ScheduleCreateInput } | null | undefined;
+    const restrictionScheduleInput = restrictionSchedule as
+      | {
+          create: {
+            name: string;
+            timeZone: string;
+            availability: { createMany: { data: Prisma.AvailabilityCreateManyInput[] } };
+            user: { connect: { id: number } };
+          };
+        }
+      | undefined;
+    const users = Array.isArray(usersInput) ? usersInput.filter(Boolean) : undefined;
+    const connectedUserIds: { id: number }[] | undefined = users
+      ? users.map((user) => ({ id: (user as { id: number }).id }))
+      : ((usersInput as Prisma.UserCreateNestedManyWithoutEventTypesInput | undefined)?.connect as
+          | { id: number }[]
+          | undefined);
+
+    let teamId = eventTypeData.teamId as number | null | undefined;
+    const teamConnection = team as
+      | {
+          connect?: { id: number };
+          id?: number | null;
+          bookingLimits?: IntervalLimit;
+          includeManagedEventsInLimits?: boolean;
+        }
+      | undefined;
+    if (teamConnection?.connect) {
+      teamId = teamConnection.connect.id;
+    } else if (teamConnection?.id) {
+      await prisma.team.upsert({
+        where: { id: teamConnection.id },
+        update: {
+          bookingLimits: teamConnection.bookingLimits,
+          includeManagedEventsInLimits: teamConnection.includeManagedEventsInLimits,
+        },
+        create: {
+          id: teamConnection.id,
+          name: "",
+          bookingLimits: teamConnection.bookingLimits,
+          includeManagedEventsInLimits: teamConnection.includeManagedEventsInLimits,
+        },
+      });
+      teamId = teamConnection.id;
+    }
+
+    const ownerConnection = owner as { connect?: { id: number } } | undefined;
+    const parentConnection = parent as { connect?: { id: number } } | undefined;
+    const { teamId: _teamId, ...scalars } = eventTypeData;
+    if (teamId && typeof scalars.slug === "string") {
+      const existingSlug = await prisma.eventType.findFirst({
+        where: { teamId, slug: scalars.slug },
+        select: { id: true },
+      });
+      if (existingSlug) scalars.slug = `${scalars.slug}-${scalars.id ?? uuidv4().slice(0, 8)}`;
+    }
+    const usersForCreate = Array.isArray(usersInput)
+      ? !isIntegrationMode
+        ? usersInput.filter(Boolean)
+        : undefined
+      : usersInput;
+    const eventType = await prisma.eventType.create({
+      data: {
+        ...(scalars as Prisma.EventTypeUncheckedCreateInput),
+        ...(usersForCreate ? { users: usersForCreate } : {}),
+        userId: (scalars.userId as number | undefined) ?? ownerConnection?.connect?.id ?? null,
+        parentId: (scalars.parentId as number | undefined) ?? parentConnection?.connect?.id ?? null,
+        teamId: teamId ?? null,
+      } as Prisma.EventTypeUncheckedCreateInput,
+    });
+
+    const hostUserIds = Array.isArray(_hosts)
+      ? (_hosts as { userId?: number }[]).map((host) => host.userId).filter((id): id is number => !!id)
+      : [];
+    const userIdForSchedule =
+      (scalars.userId as number | undefined) ??
+      ownerConnection?.connect?.id ??
+      connectedUserIds?.[0]?.id ??
+      hostUserIds[0] ??
+      1;
+    if (isIntegrationMode) await ensureUserForForeignKey(userIdForSchedule);
+
+    if (isIntegrationMode) {
+      const ownerId = scalars.userId as number | undefined;
+      const userIds = connectedUserIds?.length ? connectedUserIds : ownerId ? [{ id: ownerId }] : [];
+      if (userIds.length) {
+        await prisma.eventType.update({
+          where: { id: eventType.id },
+          data: {
+            users: {
+              connect: userIds,
+            },
+          },
+        });
+      }
+    }
+
+    if (destinationCalendarInput?.create) {
+      const { credential, user: _dcUser, eventType: _dcEventType, ...calendarData } =
+        destinationCalendarInput.create as Prisma.DestinationCalendarCreateInput & {
+          credentialId?: number | null;
+        };
+      await prisma.destinationCalendar.create({
+        data: {
+          ...(calendarData as unknown as Prisma.DestinationCalendarUncheckedCreateInput),
+          credentialId: credential?.connect?.id ?? calendarData.credentialId ?? null,
+          eventTypeId: eventType.id,
+        },
+      });
+    }
+
+    if (scheduleInput?.create) {
+      log.silly("TestData: Creating Schedule for EventType", JSON.stringify(schedule));
+      const {
+        user: _user,
+        availability,
+        ...scheduleData
+      } = scheduleInput.create as Prisma.ScheduleCreateInput & {
+        user?: { connect?: { id: number } };
+        availability?: { createMany?: { data: Prisma.AvailabilityCreateManyInput[] } };
+      };
+      const createdSchedule = await prisma.schedule.create({
+        data: {
+          ...scheduleData,
+          userId:
+            (scheduleInput.create as { user?: { connect?: { id: number } } }).user?.connect?.id ??
+            userIdForSchedule,
+        },
+      });
+      if (availability?.createMany?.data.length) {
+        await prisma.availability.createMany({
+          data: normalizeAvailability(availability.createMany.data).map((entry) => ({
+            ...entry,
+            scheduleId: createdSchedule.id,
+          })),
+        });
+      }
+      await prisma.eventType.update({
+        where: { id: eventType.id },
+        data: { scheduleId: createdSchedule.id },
+      });
+    }
+
+    if (restrictionScheduleInput) {
+      const { user, ...restrictionData } = restrictionScheduleInput.create;
+      const createdRestrictionSchedule = await prisma.schedule.create({
+        data: {
+          ...restrictionData,
+          userId: user.connect.id,
+        },
+      });
+      await prisma.eventType.update({
+        where: { id: eventType.id },
+        data: { restrictionScheduleId: createdRestrictionSchedule.id },
+      });
+    } else if (typeof restrictionScheduleId === "number") {
+      await prisma.eventType.update({
+        where: { id: eventType.id },
+        data: { restrictionScheduleId },
+      });
+    }
+  }
+
   const allEventTypes = await prisma.eventType.findMany({
+    orderBy: { id: "asc" },
     include: {
       users: true,
       destinationCalendar: true,
@@ -503,59 +685,6 @@ export async function addEventTypesToDb(
       hostGroups: true,
     },
   });
-
-  for (let i = 0; i < eventTypes.length; i++) {
-    const eventType = eventTypes[i];
-    const createdEventType = allEventTypes[i];
-
-    if (eventType.schedule) {
-      log.silly("TestData: Creating Schedule for EventType", JSON.stringify(eventType));
-      await prisma.schedule.create({
-        data: {
-          ...eventType.schedule.create,
-          eventType: {
-            connect: {
-              id: createdEventType.id,
-            },
-          },
-        },
-      });
-    }
-
-    // Handle restrictionSchedule creation and connection
-    if (eventType.restrictionSchedule) {
-      const createdRestrictionSchedule = await prisma.schedule.create({
-        data: {
-          ...eventType.restrictionSchedule.create,
-          eventType: {
-            connect: {
-              id: createdEventType.id,
-            },
-          },
-        },
-      });
-      await prisma.eventType.update({
-        where: { id: createdEventType.id },
-        data: { restrictionScheduleId: createdRestrictionSchedule.id },
-      });
-    }
-
-    if (eventType.team?.id) {
-      const createdTeam = await prisma.team.create({
-        data: {
-          id: eventType.team?.id,
-          bookingLimits: eventType.team?.bookingLimits,
-          includeManagedEventsInLimits: eventType.team?.includeManagedEventsInLimits,
-          name: "",
-        },
-      });
-
-      await prisma.eventType.update({
-        where: { id: eventType.id },
-        data: { teamId: createdTeam.id },
-      });
-    }
-  }
 
   log.silly(
     "TestData: All EventTypes in DB are",
@@ -655,12 +784,6 @@ export async function addEventTypes(eventTypes: InputEventType[], usersStore: In
   return await addEventTypesToDb(eventTypesWithUsers as unknown as any);
 }
 
-function addBookingReferencesToDB(bookingReferences: Prisma.BookingReferenceCreateManyInput[]) {
-  prisma.bookingReference.createMany({
-    data: bookingReferences,
-  });
-}
-
 async function addBookingsToDb(
   bookings: (Prisma.BookingCreateInput & {
     references: any[];
@@ -675,15 +798,73 @@ async function addBookingsToDb(
 
   // Make sure that we store the date in Date object always. This is to ensure consistency which Prisma does but not prismock
   log.silly("Handling Prismock bug-3");
-  const fixedBookings = bookings.map((booking) => {
-    const startTime = getDateObj(booking.startTime);
-    const endTime = getDateObj(booking.endTime);
-    return { ...booking, startTime, endTime };
-  });
+  for (const booking of bookings) {
+    const { references, attendees, user, ...bookingData } = booking as unknown as Record<string, unknown> & {
+      references?: { createMany?: { data: Prisma.BookingReferenceCreateManyInput[] } };
+      attendees?: { createMany?: { data: Record<string, unknown>[] } };
+      user?: { id: number };
+    };
 
-  await prisma.booking.createMany({
-    data: fixedBookings,
-  });
+    const desiredStatus = bookingData.status as Prisma.BookingUncheckedCreateInput["status"];
+    const createdBooking = await prisma.booking.create({
+      data: {
+        ...(bookingData as unknown as Prisma.BookingUncheckedCreateInput),
+        uid: (bookingData.uid as string) ?? uuidv4(),
+        startTime: getDateObj(bookingData.startTime as string | Date),
+        endTime: getDateObj(bookingData.endTime as string | Date),
+        userId: user?.id ?? (bookingData.userId as number | undefined) ?? null,
+        // The D1 client derives a unique idempotency key for every accepted booking, which rejects
+        // fixtures with two accepted bookings on the same slot. Create first, then apply the status.
+        status: "PENDING",
+      },
+    });
+    if (desiredStatus && desiredStatus !== "PENDING") {
+      await prisma.booking.update({
+        where: { id: createdBooking.id },
+        data: { status: desiredStatus },
+      });
+    }
+
+    const attendeeRows = attendees?.createMany?.data ?? [];
+    for (const attendee of attendeeRows) {
+      const { bookingSeat, ...attendeeData } = attendee as {
+        bookingSeat?: { create?: Record<string, unknown> } | Record<string, unknown>;
+        [key: string]: unknown;
+      };
+      const seatData =
+        (bookingSeat as { create?: Record<string, unknown> } | undefined)?.create ??
+        (bookingSeat as Record<string, unknown> | undefined);
+      await prisma.attendee.create({
+        data: {
+          ...(attendeeData as unknown as Prisma.AttendeeUncheckedCreateInput),
+          email: (attendeeData.email as string) ?? "",
+          name: (attendeeData.name as string) ?? (attendeeData.email as string) ?? "",
+          timeZone: (attendeeData.timeZone as string) ?? "Europe/London",
+          bookingId: createdBooking.id,
+          ...(seatData
+            ? {
+                bookingSeat: {
+                  create: {
+                    ...seatData,
+                    bookingId: createdBooking.id,
+                  },
+                },
+              }
+            : {}),
+        } as unknown as Prisma.AttendeeCreateInput,
+      });
+    }
+
+    const referenceRows = references?.createMany?.data ?? [];
+    if (referenceRows.length) {
+      await prisma.bookingReference.createMany({
+        data: referenceRows.map((reference) => ({
+          ...reference,
+          bookingId: createdBooking.id,
+        })),
+      });
+    }
+  }
   log.silly(
     "TestData: Bookings as in DB",
     JSON.stringify({
@@ -700,16 +881,6 @@ async function addBookingsToDb(
 export async function addBookings(bookings: InputBooking[]) {
   log.silly("TestData: Creating Bookings", JSON.stringify(bookings));
   const allBookings = [...bookings].map((booking) => {
-    if (booking.references) {
-      addBookingReferencesToDB(
-        booking.references.map((reference) => {
-          return {
-            ...reference,
-            bookingId: booking.id,
-          };
-        })
-      );
-    }
     return {
       uid: booking.uid || uuidv4(),
       references: [],
@@ -737,29 +908,7 @@ export async function addBookings(bookings: InputBooking[]) {
           // eslint-disable-next-line @typescript-eslint/ban-ts-comment
           //@ts-expect-error
           createMany: {
-            data: booking.attendees.map((attendee) => {
-              if (attendee.bookingSeat) {
-                const { bookingSeat, ...attendeeWithoutBookingSeat } = attendee;
-                return {
-                  ...attendeeWithoutBookingSeat,
-                  bookingSeat: {
-                    create: { ...bookingSeat, bookingId: booking.id },
-                  },
-                };
-              } else {
-                return attendee;
-              }
-            }),
-          },
-        };
-      }
-
-      if (booking?.user?.id) {
-        bookingCreate.user = {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          //@ts-expect-error
-          connect: {
-            id: booking.user.id,
+            data: booking.attendees,
           },
         };
       }
@@ -986,8 +1135,11 @@ export async function addUsersToDb(users: InputUser[]) {
       (destinationCalendar as { create?: Prisma.DestinationCalendarCreateInput } | undefined)?.create ??
       (destinationCalendar as Prisma.DestinationCalendarCreateInput | undefined);
     if (destinationCalendarData) {
-      const { user: _dcUser, credential, ...calendarData } = destinationCalendarData as
-        Prisma.DestinationCalendarCreateInput & { credentialId?: number | null };
+      const {
+        user: _dcUser,
+        credential,
+        ...calendarData
+      } = destinationCalendarData as Prisma.DestinationCalendarCreateInput & { credentialId?: number | null };
       await prisma.destinationCalendar.create({
         data: {
           ...(calendarData as unknown as Prisma.DestinationCalendarUncheckedCreateInput),
