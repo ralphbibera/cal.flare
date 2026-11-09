@@ -1,7 +1,7 @@
 # Bounded product lifecycle models
 
 These models describe selected upstream Cal.diy `e8afecd163cd3a0a3ff279bd4721aa7f073c4685` transitions.
-They support the [behavior contract](../behavior.md). They do not establish full-product correctness or observed Cal.flare parity.
+They document bounded upstream transitions. They do not establish full-product correctness or observed Cal.flare parity.
 Models ran in scratch outside the repository with synthetic states only.
 No application implementation, private data, credentials or port-only tests changed.
 

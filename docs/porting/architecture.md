@@ -1,7 +1,7 @@
 # Vinext architecture contract
 
 This reference binds the non-enterprise Cal.diy port at `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`.
-[Plan](plan.md), [behavior](behavior.md), [contribution guidelines](../../CONTRIBUTING.md), and [source map](inventory/source-map.tsv) define scope, acceptance, and ownership.
+[Plan](plan.md), [contribution guidelines](../../CONTRIBUTING.md), and [source map](inventory/source-map.tsv) define scope, acceptance, and ownership.
 
 ## Evidence and stack
 
