@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Miniflare } from "miniflare";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { migrateD1 } from "./migrate-d1.mjs";
+import { migrateD1, migrationMode, selectRemoteDatabase } from "./migrate-d1.mjs";
 
 const execute = promisify(execFile);
 const runner = fileURLToPath(new URL("./migrate-d1.mts", import.meta.url));
@@ -60,6 +60,32 @@ async function readDatabase(sql: string) {
     await mf.dispose();
   }
 }
+
+describe("D1 migration targets", () => {
+  it("requires exactly one explicit target and rejects local persistence for remote", () => {
+    expect(migrationMode({ "local-only": true })).toEqual({ remote: false, persistTo: undefined });
+    expect(migrationMode({ remote: true })).toEqual({ remote: true, persistTo: undefined });
+    expect(() => migrationMode({})).toThrow("exactly one of --local-only or --remote");
+    expect(() => migrationMode({ "local-only": true, remote: true })).toThrow(
+      "exactly one of --local-only or --remote"
+    );
+    expect(() => migrationMode({ remote: true, "persist-to": "/tmp/state" })).toThrow(
+      "--persist-to is only available with --local-only"
+    );
+  });
+
+  it("resolves the remote database by exact name", () => {
+    const databases = [
+      { uuid: "first", name: "calflare" },
+      { uuid: "second", name: "other" },
+    ];
+    expect(selectRemoteDatabase(databases, "calflare")).toBe("first");
+    expect(() => selectRemoteDatabase(databases, "missing")).toThrow("found 0");
+    expect(() =>
+      selectRemoteDatabase([...databases, { uuid: "third", name: "calflare" }], "calflare")
+    ).toThrow("found 2");
+  });
+});
 
 describe("D1 migration history", () => {
   it("applies real SQL files and triggers once, sharing the web binding's persisted database", async () => {
@@ -166,7 +192,7 @@ describe("D1 migration history", () => {
   });
 
   it("runs the opt-in command only with an explicit local target", async () => {
-    for (const args of [[], ["--remote"], ["--local-only", "--remote"]]) {
+    for (const args of [[], ["--local-only", "--remote"], ["--remote", "--persist-to", persistTo]]) {
       await expect(
         execute("bun", [runner, ...args, "--persist-to", persistTo], { cwd: root })
       ).rejects.toThrow();

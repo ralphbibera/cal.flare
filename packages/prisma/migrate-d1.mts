@@ -36,6 +36,7 @@ const targetSchema = z.object({
     env: z.object({ DB: z.object({ type: z.literal("d1"), name: z.string(), id: z.string().optional() }) }),
   }),
 });
+const databaseListSchema = z.array(z.object({ uuid: z.string().min(1), name: z.string() }));
 
 type Query = { sql: string; params?: string[] };
 
@@ -70,23 +71,81 @@ async function isEmptyOrMissing(directory: string) {
 
 const QUERY_TIMEOUT_MS = 120_000;
 
+function migrationMode(values: { "local-only"?: boolean; remote?: boolean; "persist-to"?: string }) {
+  const remote = values.remote === true;
+  if (remote === (values["local-only"] === true)) {
+    throw new ErrorWithCode(
+      ErrorCode.Forbidden,
+      "D1 migrations require exactly one of --local-only or --remote"
+    );
+  }
+  if (remote && values["persist-to"] !== undefined) {
+    throw new ErrorWithCode(ErrorCode.BadRequest, "--persist-to is only available with --local-only");
+  }
+  return { remote, persistTo: values["persist-to"] };
+}
+
+function selectRemoteDatabase(databases: { uuid: string; name: string }[], name: string) {
+  const matches = databases.filter((database) => database.name === name);
+  if (matches.length !== 1) {
+    throw new ErrorWithCode(
+      ErrorCode.BadRequest,
+      `Expected one remote D1 database named ${name}, found ${matches.length}`
+    );
+  }
+  return matches[0].uuid;
+}
+
+async function remoteDatabaseId(name: string) {
+  try {
+    const { stdout } = await execute(
+      process.env.npm_node_execpath || "node",
+      [cf, "d1", "list", "--per-page", "1000"],
+      {
+        env: Object.assign({}, process.env, { CI: "true", CLOUDFLARE_SEND_METRICS: "false" }),
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: QUERY_TIMEOUT_MS,
+        killSignal: "SIGKILL",
+      }
+    );
+    return selectRemoteDatabase(databaseListSchema.parse(JSON.parse(stdout)), name);
+  } catch (cause) {
+    if (cause instanceof ErrorWithCode) throw cause;
+    throw new ErrorWithCode(
+      ErrorCode.InternalServerError,
+      `Unable to resolve remote D1 database ${name}: ${String(cause)}`
+    );
+  }
+}
+
 async function migrateD1({
   persistTo,
   migrationsDirectory,
   useTemplate = true,
+  remote = false,
 }: {
   persistTo?: string;
   migrationsDirectory?: string;
   useTemplate?: boolean;
+  remote?: boolean;
 } = {}) {
+  if (remote && persistTo !== undefined) {
+    throw new ErrorWithCode(ErrorCode.BadRequest, "--persist-to is only available with --local-only");
+  }
   const { version } = z
     .object({ version: z.literal("1.0.0-beta.27") })
     .parse(JSON.parse(await readFile(cfPackage, "utf8")));
   const { worker } = targetSchema.parse((await import(configUrl.href)).default);
   const config = MiniflareWorkerConfigSchema.parse({ ...worker, env: { DB: worker.env.DB } });
   const binding = config.env?.DB;
-  if (binding?.type !== "d1" || !binding.id) {
+  const databaseName = worker.env.DB.name;
+  const localDatabase = binding?.type === "d1" ? binding.id : undefined;
+  if (!remote && !localDatabase) {
     throw new ErrorWithCode(ErrorCode.BadRequest, "Web DB must resolve to a local D1 identity");
+  }
+  const target = remote ? await remoteDatabaseId(databaseName) : localDatabase;
+  if (!target) {
+    throw new ErrorWithCode(ErrorCode.BadRequest, "Web DB must resolve to a D1 database");
   }
   const migrations = await readMigrations(migrationsDirectory);
   const persistence = resolve(persistTo ?? join(webRoot, ".cloudflare/state"));
@@ -107,8 +166,9 @@ async function migrateD1({
     return {
       applied: migrations.length,
       total: migrations.length,
-      database: binding.id,
+      database: target,
       persistence,
+      remote: false,
       version,
     };
   }
@@ -116,23 +176,25 @@ async function migrateD1({
   const batchPath = join(temporary, "batch.json");
   async function query(batch: Query[]) {
     await writeFile(batchPath, JSON.stringify(batch));
+    const args = [cf, "d1", "raw", target];
+    if (!remote) args.push("--local", "--persist-to", persistence);
+    args.push("--batch", `@${batchPath}`);
     try {
-      // beta.27's local explorer exposes /raw, not /query. Whole SQL stays in workerd's parser.
-      const { stdout } = await execute(
-        process.env.npm_node_execpath || "node",
-        [cf, "d1", "raw", binding.id, "--local", "--persist-to", persistence, "--batch", `@${batchPath}`],
-        {
-          cwd: temporary,
-          env: Object.assign({}, process.env, { CI: "true", CLOUDFLARE_SEND_METRICS: "false" }),
-          maxBuffer: 16 * 1024 * 1024,
-          // A stalled CLI would otherwise hang the caller until its own much longer timeout.
-          timeout: QUERY_TIMEOUT_MS,
-          killSignal: "SIGKILL",
-        }
-      );
+      // beta.27 exposes /raw for both targets; a batch keeps whole SQL inside SQLite's parser.
+      const { stdout } = await execute(process.env.npm_node_execpath || "node", args, {
+        cwd: temporary,
+        env: Object.assign({}, process.env, { CI: "true", CLOUDFLARE_SEND_METRICS: "false" }),
+        maxBuffer: 16 * 1024 * 1024,
+        // A stalled CLI would otherwise hang the caller until its own much longer timeout.
+        timeout: QUERY_TIMEOUT_MS,
+        killSignal: "SIGKILL",
+      });
       return resultSchema.parse(JSON.parse(stdout));
     } catch (cause) {
-      throw new ErrorWithCode(ErrorCode.InternalServerError, `Local D1 batch failed: ${String(cause)}`);
+      throw new ErrorWithCode(
+        ErrorCode.InternalServerError,
+        `${remote ? "Remote" : "Local"} D1 batch failed: ${String(cause)}`
+      );
     }
   }
   try {
@@ -169,8 +231,9 @@ async function migrateD1({
     return {
       applied: migrations.length - history.length,
       total: migrations.length,
-      database: binding.id,
-      persistence,
+      database: remote ? databaseName : target,
+      ...(remote ? {} : { persistence }),
+      remote,
       version,
     };
   } finally {
@@ -181,23 +244,28 @@ async function migrateD1({
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const { values } = parseArgs({
-      options: { "local-only": { type: "boolean" }, "persist-to": { type: "string" } },
+      options: {
+        "local-only": { type: "boolean" },
+        remote: { type: "boolean" },
+        "persist-to": { type: "string" },
+      },
       strict: true,
       allowPositionals: false,
     });
-    if (!values["local-only"]) {
-      throw new ErrorWithCode(
-        ErrorCode.Forbidden,
-        "D1 migrations require --local-only; remote execution is unavailable"
-      );
-    }
-    process.stdout.write(
-      `${JSON.stringify(await migrateD1({ persistTo: values["persist-to"], useTemplate: false }))}\n`
-    );
+    const target = migrationMode(values);
+    process.stdout.write(`${JSON.stringify(await migrateD1({ ...target, useTemplate: false }))}\n`);
   } catch (error) {
     process.stderr.write(`${String(error)}\n`);
     process.exitCode = 1;
   }
 }
 
-export { d1TemplateEnv, migrateD1, migrationsFingerprint, readMigrations, templateManifestPath };
+export {
+  d1TemplateEnv,
+  migrateD1,
+  migrationMode,
+  migrationsFingerprint,
+  readMigrations,
+  selectRemoteDatabase,
+  templateManifestPath,
+};

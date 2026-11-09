@@ -44,7 +44,7 @@ Set a consumed secret on the web Worker when its services need it.
 
 1. Create a D1 database and bind it as `DB` to the web Worker. Use a separate database for each deployment environment.
 2. Use `packages/prisma/migrations-d1/` for the converted domain and auth schema.
-3. Apply migrations to fresh local D1, then populate synthetic users, schedules, event types and app-store metadata with the ported seed commands.
+3. Apply migrations to fresh local D1 with `bun run --cwd packages/prisma db-deploy:d1 --local-only`, then populate synthetic users, schedules, event types and app-store metadata with the ported seed commands. Use the same command with `--remote` for the configured D1 database; both modes share the `_calflare_migrations` history and checksum validation, and the synthetic seed remains local-only.
 4. Validate IDs, relationships, defaults, list/JSON fields and timezone/date representation through the real Prisma/D1 boundary.
 5. Verify rollback and guarded concurrent writes before accepting booking mutations.
 
