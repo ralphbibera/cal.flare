@@ -65,6 +65,25 @@ function sentryRuntime(): Plugin {
   };
 }
 
+/**
+ * The RSC and SSR builds share most of their module graph. Vite writes each
+ * environment to its own directory, so every shared chunk ships twice. One
+ * output directory lets identical content-hashed files collapse into one copy.
+ */
+function sharedServerOutput(): Plugin {
+  return {
+    name: "calflare:shared-server-output",
+    enforce: "post",
+    configResolved(config) {
+      const rsc = config.environments.rsc;
+      const ssr = config.environments.ssr;
+      if (!rsc || !ssr) throw new Error("The web build requires the rsc and ssr environments");
+      ssr.build.outDir = rsc.build.outDir;
+      ssr.build.emptyOutDir = false;
+    },
+  };
+}
+
 function prismaClient(): Plugin {
   return {
     name: "calflare:prisma-client",
@@ -107,6 +126,7 @@ export default defineConfig({
       remoteBindings: false,
       tunnel: false,
     }),
+    sharedServerOutput(),
     publicEnvironment(),
   ],
   css: {
