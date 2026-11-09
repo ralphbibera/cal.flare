@@ -1,11 +1,10 @@
-import { platform } from "@todesktop/client-core";
 import type { IncomingMessage } from "node:http";
+import process from "node:process";
+import { IS_PRODUCTION, WEBAPP_URL } from "@calcom/lib/constants";
+import { platform } from "@todesktop/client-core";
 import { dir } from "i18next";
 import type { DocumentContext, DocumentProps } from "next/document";
 import Document, { Head, Html, Main, NextScript } from "next/document";
-
-import { IS_PRODUCTION } from "@calcom/lib/constants";
-
 import { applyTheme, applyToDesktopClass } from "./../lib/pages/document/_applyThemeForDocument";
 
 type Props = Record<string, unknown> & DocumentProps & { newLocale: string };
@@ -52,6 +51,7 @@ class MyDocument extends Document<Props> {
         dir={newDir}
         style={embedColorScheme ? { colorScheme: embedColorScheme as string } : undefined}>
         <Head>
+          <meta property="og:logo" content={new URL("/cal-logo-word.svg", WEBAPP_URL).href} />
           <script
             id="newLocale"
             // eslint-disable-next-line react/no-danger

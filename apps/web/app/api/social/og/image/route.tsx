@@ -1,4 +1,6 @@
 import { WEBAPP_URL } from "@calcom/lib/constants";
+import { ErrorCode } from "@calcom/lib/errorCodes";
+import { ErrorWithCode } from "@calcom/lib/errors";
 import { App, Generic, getOGImageVersion, Meeting } from "@calcom/lib/OgImages";
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
@@ -6,6 +8,7 @@ import type { ReactNode } from "react";
 import { cloneElement, isValidElement } from "react";
 import type { SatoriOptions } from "satori";
 import { ZodError, z } from "zod";
+import { fetchInternal } from "../../../../../worker/internal-fetch";
 
 export const runtime = "edge";
 
@@ -32,6 +35,30 @@ async function readOwnAsset(url: URL, assets: AssetsBinding | undefined): Promis
   const response = assets ? await assets.fetch(new Request(assetUrl)) : await fetch(assetUrl);
   if (!response.ok) throw new Error(`Unable to read ${assetUrl.pathname} (${response.status})`);
   return response;
+}
+
+async function readOwnImage(url: URL, assets: AssetsBinding): Promise<Response> {
+  let target = new URL(url);
+  for (let redirects = 0; redirects <= 20; redirects++) {
+    if (!ownImageUrl(target.href)) return fetch(target);
+    target.pathname = target.pathname.replace(/\/{2,}/g, "/");
+    const response = await assets.fetch(new Request(target));
+    // Dynamic avatars are served by app routes, which cannot self-fetch on Workers.
+    const image = response.status === 404 ? await fetchInternal(new Request(target)) : response;
+    const location = image.headers.get("location");
+    if (image.status >= 300 && image.status < 400 && location) {
+      target = new URL(location, target);
+      continue;
+    }
+    if (!image.ok) {
+      throw new ErrorWithCode(
+        ErrorCode.InternalServerError,
+        `Unable to read ${target.pathname} (${image.status})`
+      );
+    }
+    return image;
+  }
+  throw new ErrorWithCode(ErrorCode.InternalServerError, "Too many OG image redirects");
 }
 
 function toBase64(bytes: Uint8Array) {
@@ -114,13 +141,16 @@ async function ownImageSource(
 
   let dataUri = sources.get(url.href);
   if (!dataUri) {
-    dataUri = readOwnAsset(url, assets)
+    dataUri = readOwnImage(url, assets)
       .then(async (response) => {
-        const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-        return `data:${contentType};base64,${toBase64(new Uint8Array(await response.arrayBuffer()))}`;
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        // The avatar route labels stored JPEG bytes as image/png.
+        const contentType =
+          bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+            ? "image/jpeg"
+            : (response.headers.get("content-type") ?? "application/octet-stream");
+        return `data:${contentType};base64,${toBase64(bytes)}`;
       })
-      // Dynamic same-origin images such as avatars are not Static Assets, so
-      // keep the source URL and let the image loader request it normally.
       .catch(() => source);
     sources.set(url.href, dataUri);
   }
