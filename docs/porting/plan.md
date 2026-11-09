@@ -88,6 +88,7 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 **Build.**
 
 - [ ] Complete public user/event pages, availability, booking submission, success, confirmation, payments, seats, reschedule and cancellation.
+  - Evidence: `apps/web/playwright/change-theme.e2e.ts` passes 6/6 on the built Worker. Its booking-page dark case now waits for the first visit's post-hydration `booking-theme:<username>` write before reloading, because vinext hydrates after the `load` event; the upstream theme provider and `useTheme` effect are unchanged.
 - [ ] Complete signup, onboarding, event types, schedules, date overrides, booking lists, settings and app installation.
 - [ ] Migrate only consumed query, auth, transport and transactional prerequisites with each complete flow. Unrelated package work does not block it.
 - [x] Preserve the latest upstream notification behavior when all calendar/video integrations fail, including warning details and email suppression settings.
