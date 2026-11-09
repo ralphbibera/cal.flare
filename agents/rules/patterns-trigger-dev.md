@@ -7,7 +7,7 @@ tags: trigger.dev, async, tasker, concurrency, cron, scheduled-tasks
 
 # Trigger.dev Task Implementation
 
-The original Tasker definitions are shared by `apps/web` and `apps/api/v2`. Their hosted Trigger.dev execution is replaced by the selected D1/Queues/Durable Object adapters on Cloudflare, preserving payloads, dispatch and retry behavior. Tasks can be disabled via the `ENABLE_ASYNC_TASKER` env var (set to `"false"` to fall back to synchronous execution).
+The original Tasker definitions are shared by `apps/web` and `apps/api/v2`. Their hosted Trigger.dev execution remains the optional async runner, preserving payloads, dispatch and retry behavior. Tasks run inline unless `ENABLE_ASYNC_TASKER="true"`, `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` are set; a failed async dispatch falls back to inline execution.
 
 ## Tasker Architecture
 
@@ -140,7 +140,7 @@ Reference: [Trigger.dev Concurrency & Queues](https://trigger.dev/docs/queue-con
 ## Local Development
 
 Follow [README Setup](../../README.md#setup) for the Worker environment.
-Keep the existing Tasker, SyncTasker, service and schema boundaries. Configure the [Cloudflare job bindings](../../docs/porting/architecture.md#jobs-ephemeral-state-and-integrations) instead of a hosted Trigger.dev CLI/dashboard.
+Keep the existing Tasker, SyncTasker, service and schema boundaries. Supply `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` as Worker secrets/vars to use the hosted Trigger.dev runner; leave them unset for inline execution. See [jobs and ephemeral state](../../docs/porting/architecture.md#jobs-ephemeral-state-and-integrations).
 The original `ENABLE_ASYNC_TASKER` opt-in and synchronous fallback remain part of the contract.
 
 ## Before Merging

@@ -2,9 +2,6 @@ import { EmailMessage } from "cloudflare:email";
 import process from "node:process";
 import manifest from "virtual:calflare-static-assets";
 import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-context";
-import type { JobMessage } from "@calcom/features/tasker/queue/context";
-import { withJobQueue } from "@calcom/features/tasker/queue/context";
-import { dispatchJobBatch } from "@calcom/features/tasker/queue/internal-dispatch";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
@@ -65,8 +62,7 @@ function serve(
               rateLimit: process.env.UNKEY_ROOT_KEY ? "enabled" : "disabled",
             },
           },
-          () =>
-            withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
+          () => handler.fetch(request, withStaticAssets(env, manifest), ctx)
         )
       ),
     (promise) => ctx.waitUntil(promise)
@@ -85,9 +81,6 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
   },
   scheduled(controller: ScheduledController, env: WorkerEnvironment, ctx: ExecutionContext) {
     ctx.waitUntil(dispatchSchedules(controller, env, (request) => serve(request, env, ctx)));
-  },
-  queue(batch: MessageBatch<JobMessage>, env: WorkerEnvironment, ctx: ExecutionContext) {
-    return dispatchJobBatch(batch, (request) => serve(request, env, ctx));
   },
 });
 

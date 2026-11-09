@@ -1,7 +1,8 @@
-import type { PrismaClient } from "@calcom/prisma";
 import { prisma } from "@calcom/prisma";
+import type { PrismaClient } from "@calcom/prisma";
 import { Prisma } from "@calcom/prisma/client";
-import type { TaskTypes } from "./tasker";
+
+import { type TaskTypes } from "./tasker";
 
 const whereSucceeded: Prisma.TaskWhereInput = {
   succeededAt: { not: null },
@@ -43,7 +44,7 @@ export class TaskRepository {
   constructor(private readonly deps: Dependencies) {}
 
   async create(
-    type: string,
+    type: TaskTypes,
     payload: string,
     options: { scheduledAt?: Date; maxAttempts?: number; referenceUid?: string } = {}
   ) {
@@ -61,10 +62,10 @@ export class TaskRepository {
     return newTask.id;
   }
 
-  async getNextBatch(types: string[]) {
+  async getNextBatch() {
     console.info("Getting next batch of tasks", makeWhereUpcomingTasks());
     return this.deps.prismaClient.task.findMany({
-      where: { ...makeWhereUpcomingTasks(), type: { in: types } },
+      where: makeWhereUpcomingTasks(),
       orderBy: {
         scheduledAt: "asc",
       },
@@ -147,72 +148,6 @@ export class TaskRepository {
     });
   }
 
-  async findById(id: string) {
-    return this.deps.prismaClient.task.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        type: true,
-        payload: true,
-        attempts: true,
-        maxAttempts: true,
-        scheduledAt: true,
-        succeededAt: true,
-      },
-    });
-  }
-
-  async claim({
-    id,
-    attempts,
-    now,
-    leaseUntil,
-  }: {
-    id: string;
-    attempts: number;
-    now: Date;
-    leaseUntil: Date;
-  }) {
-    const { count } = await this.deps.prismaClient.task.updateMany({
-      where: { id, attempts, succeededAt: null, scheduledAt: { lte: now } },
-      data: { scheduledAt: leaseUntil },
-    });
-    return count === 1;
-  }
-
-  async succeedAttempt({ id, attempts, now }: { id: string; attempts: number; now: Date }) {
-    await this.deps.prismaClient.task.updateMany({
-      where: { id, attempts, succeededAt: null },
-      data: { attempts: attempts + 1, succeededAt: now },
-    });
-  }
-
-  async failAttempt({
-    id,
-    attempts,
-    nextAttempts,
-    lastError,
-    now,
-    scheduledAt,
-  }: {
-    id: string;
-    attempts: number;
-    nextAttempts: number;
-    lastError: string;
-    now: Date;
-    scheduledAt?: Date;
-  }) {
-    await this.deps.prismaClient.task.updateMany({
-      where: { id, attempts, succeededAt: null },
-      data: {
-        attempts: nextAttempts,
-        lastError,
-        lastFailedAttemptAt: now,
-        ...(scheduledAt && { scheduledAt }),
-      },
-    });
-  }
-
   /**
    * Update the payload of a task
    *
@@ -275,6 +210,7 @@ export class TaskRepository {
     //   },
     // });
   }
+
 }
 
 // Export singleton instance for backward compatibility

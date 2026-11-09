@@ -17,7 +17,7 @@ The source configuration is `cloudflare.config.ts` beside each app's Vite config
 
 | Application | Required resources |
 | --- | --- |
-| Web | `DB`, `ASSETS`, `JOBS`, the scheduler, auth/provider secrets and the selected Response Store cache bindings. |
+| Web | `DB`, `ASSETS`, the scheduler, auth/provider secrets and the selected Response Store cache bindings. |
 | Docs | Its own Static Assets and configured static response handling; no application DB binding. |
 
 Response Store uses its native helper's DO/R2 resources for disposable cached data. D1 remains authoritative for domain and auth records.
@@ -69,7 +69,7 @@ Install app-store metadata and connect the user or team account before expecting
 1. Complete the [Bun/vinext milestone](porting/plan.md#phase-1-establish-the-original-application-on-vinext) and use its frozen Bun lockfile.
 2. Build the web and docs workspaces. Validate configuration and generated binding types against their intended environment.
 3. Apply the reviewed D1 migrations. Back up existing data before a production schema change and retain an appropriate recovery procedure.
-4. Deploy the web Worker and its job, queue and state bindings.
+4. Deploy the web Worker with its scheduler and state bindings. The upstream Trigger.dev tasker is optional; without its configuration, tasks run inline.
 5. Publish the docs build and Static Assets separately.
 6. Configure custom domains and provider callbacks for the actual public URLs.
 7. Verify authentication, booking, reschedule/cancel, provider events, delivered email, signed webhooks, retries and cached/uncached access.

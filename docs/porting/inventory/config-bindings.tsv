@@ -143,8 +143,8 @@ STRIPE_PRIVATE_KEY	secret	secret:STRIPE_PRIVATE_KEY
 STRIPE_WEBHOOK_SECRET	unsupported	none:test-support	D_SHELL references are Playwright and testing fixtures
 TEAM_ID_VERCEL	binding	var:TEAM_ID_VERCEL	organization domains stay an outbound Vercel API integration
 TELEMETRY_DEBUG	binding	var:TELEMETRY_DEBUG	
-TRIGGER_API_URL	destination	queue:JOBS	Trigger runner replaced by the JOBS queue
-TRIGGER_SECRET_KEY	destination	queue:JOBS	Trigger runner replaced by the JOBS queue
+TRIGGER_API_URL	binding	var:TRIGGER_API_URL	optional Trigger.dev endpoint; the tasker runs inline when unset
+TRIGGER_SECRET_KEY	secret	secret:TRIGGER_SECRET_KEY	optional Trigger.dev key; the tasker runs inline when unset
 TZ	unsupported	none:test-support	timezone test only
 UNKEY_ROOT_KEY	secret	secret:UNKEY_ROOT_KEY	upstream Unkey rate limiter; unset disables rate limiting
 UPSTASH_REDIS_REST_TOKEN	secret	secret:UPSTASH_REDIS_REST_TOKEN	optional Upstash token for web and API v2; NoopRedisService when unset

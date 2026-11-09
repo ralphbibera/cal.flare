@@ -9,31 +9,17 @@ import type { ILogger } from "./types";
 const isAsyncTaskerEnabled =
   ENABLE_ASYNC_TASKER && process.env.TRIGGER_SECRET_KEY && process.env.TRIGGER_API_URL;
 
-/** An async tasker that owns its transport configuration instead of relying on Trigger env vars. */
-type SelfConfiguredTasker = { isConfigured?: () => boolean };
-
 export abstract class Tasker<T> {
   protected readonly asyncTasker: T;
   protected readonly syncTasker: T;
   protected readonly logger: ILogger;
-  // Bindings such as a Queue exist only inside a Worker invocation, so availability is checked per dispatch.
-  private readonly isAsyncAvailable: () => boolean;
 
   constructor(dependencies: {
-    asyncTasker: T & SelfConfiguredTasker;
+    asyncTasker: T;
     syncTasker: T;
     logger: ILogger;
   }) {
     this.logger = dependencies.logger;
-    this.asyncTasker = dependencies.asyncTasker;
-    this.syncTasker = dependencies.syncTasker;
-
-    const { asyncTasker } = dependencies;
-    if (asyncTasker.isConfigured) {
-      this.isAsyncAvailable = () => ENABLE_ASYNC_TASKER && Boolean(asyncTasker.isConfigured?.());
-      return;
-    }
-    this.isAsyncAvailable = () => Boolean(isAsyncTaskerEnabled);
 
     if (!isAsyncTaskerEnabled) {
       if (ENABLE_ASYNC_TASKER && (!process.env.TRIGGER_SECRET_KEY || !process.env.TRIGGER_API_URL)) {
@@ -49,6 +35,9 @@ export abstract class Tasker<T> {
         baseURL: process.env.TRIGGER_API_URL,
       });
     }
+
+    this.asyncTasker = isAsyncTaskerEnabled ? dependencies.asyncTasker : dependencies.syncTasker;
+    this.syncTasker = dependencies.syncTasker;
   }
 
   public async dispatch<K extends keyof T>(
@@ -63,14 +52,14 @@ export abstract class Tasker<T> {
     taskName: K,
     ...args: T[K] extends (...args: any[]) => any ? Parameters<T[K]> : never
   ): Promise<T[K] extends (...args: any[]) => any ? Awaited<ReturnType<T[K]>> : never> {
-    const isAsync = this.isAsyncAvailable();
-    const tasker = isAsync ? this.asyncTasker : this.syncTasker;
     try {
-      this.logger.info(`${isAsync ? "AsyncTasker" : "SyncTasker"} '${String(taskName)}' dispatched.`);
-      const method = tasker[taskName] as (...args: any[]) => any;
-      return await method.apply(tasker, args);
+      this.logger.info(
+        `${isAsyncTaskerEnabled ? "AsyncTasker" : "SyncTasker"} '${String(taskName)}' dispatched.`
+      );
+      const method = this.asyncTasker[taskName] as (...args: any[]) => any;
+      return await method.apply(this.asyncTasker, args);
     } catch (err) {
-      const taskerLabel = isAsync ? "AsyncTasker" : "SyncTasker";
+      const taskerLabel = isAsyncTaskerEnabled ? "AsyncTasker" : "SyncTasker";
       const baseUrlInfo = isAsyncTaskerEnabled
         ? ` (baseURL: ${process.env.TRIGGER_API_URL ?? "unknown"})`
         : "";
@@ -79,7 +68,7 @@ export abstract class Tasker<T> {
         this.getErrorDetails(err)
       );
 
-      if (!isAsync) {
+      if (this.asyncTasker === this.syncTasker) {
         throw err;
       }
 

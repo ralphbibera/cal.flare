@@ -1,5 +1,7 @@
 import process from "node:process";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+
 import type { ILogger } from "./types";
 
 vi.mock("@trigger.dev/sdk", () => ({
@@ -483,70 +485,6 @@ describe("Tasker", () => {
         expect.stringContaining("AsyncTasker failed"),
         expect.objectContaining({ message: "string error" })
       );
-    });
-  });
-
-  describe("when the async tasker configures its own transport", () => {
-    beforeEach(() => {
-      delete process.env.TRIGGER_SECRET_KEY;
-      delete process.env.TRIGGER_API_URL;
-    });
-
-    it("chooses async or sync on each dispatch from isConfigured", async () => {
-      const { Tasker } = await import("./Tasker");
-      let configured = false;
-      const mockAsyncTasker = {
-        isConfigured: () => configured,
-        taskWithParams: vi.fn().mockResolvedValue("async-result"),
-        simpleTask: vi.fn().mockResolvedValue(undefined),
-        taskThatFails: vi.fn().mockResolvedValue("async-result"),
-      };
-      const mockSyncTasker: MockTaskerInterface = {
-        taskWithParams: vi.fn().mockResolvedValue("sync-result"),
-        simpleTask: vi.fn().mockResolvedValue(undefined),
-        taskThatFails: vi.fn().mockResolvedValue("sync-result"),
-      };
-
-      class TestTasker extends Tasker<MockTaskerInterface> {
-        constructor() {
-          super({ asyncTasker: mockAsyncTasker, syncTasker: mockSyncTasker, logger: createMockLogger() });
-        }
-      }
-      const tasker = new TestTasker();
-
-      expect(await tasker.dispatch("taskWithParams", "a", 1, { nested: false })).toBe("sync-result");
-      configured = true;
-      expect(await tasker.dispatch("taskWithParams", "b", 2, { nested: true })).toBe("async-result");
-      expect(mockAsyncTasker.taskWithParams).toHaveBeenCalledWith("b", 2, { nested: true });
-      expect(mockSyncTasker.taskWithParams).toHaveBeenCalledTimes(1);
-    });
-
-    it("stays synchronous without the ENABLE_ASYNC_TASKER opt-in", async () => {
-      vi.doMock("../constants", () => ({ ENABLE_ASYNC_TASKER: false }));
-      const { Tasker } = await import("./Tasker");
-      const mockAsyncTasker = {
-        isConfigured: () => true,
-        taskWithParams: vi.fn().mockResolvedValue("async-result"),
-        simpleTask: vi.fn().mockResolvedValue(undefined),
-        taskThatFails: vi.fn().mockResolvedValue("async-result"),
-      };
-      const mockSyncTasker: MockTaskerInterface = {
-        taskWithParams: vi.fn().mockResolvedValue("sync-result"),
-        simpleTask: vi.fn().mockResolvedValue(undefined),
-        taskThatFails: vi.fn().mockResolvedValue("sync-result"),
-      };
-
-      class TestTasker extends Tasker<MockTaskerInterface> {
-        constructor() {
-          super({ asyncTasker: mockAsyncTasker, syncTasker: mockSyncTasker, logger: createMockLogger() });
-        }
-      }
-
-      expect(await new TestTasker().dispatch("taskWithParams", "a", 1, { nested: false })).toBe(
-        "sync-result"
-      );
-      expect(mockAsyncTasker.taskWithParams).not.toHaveBeenCalled();
-      vi.doUnmock("../constants");
     });
   });
 });

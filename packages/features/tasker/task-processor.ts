@@ -8,8 +8,7 @@ import tasksMap, { tasksConfig } from "./tasks";
  */
 export class TaskProcessor {
   async processQueue(): Promise<void> {
-    // Queue-backed jobs share the Task table but are driven by JOBS deliveries, not this sweep.
-    const tasks = await Task.getNextBatch(Object.keys(tasksMap));
+    const tasks = await Task.getNextBatch();
     console.info(`Processing ${tasks.length} tasks`, tasks);
 
     const tasksPromises = tasks.map(async (task) => {
