@@ -1,6 +1,5 @@
 import process from "node:process";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
-import { IS_OUTLOOK_LOGIN_ENABLED } from "@calcom/features/auth/lib/outlook";
 import { WEBSITE_URL } from "@calcom/lib/constants";
 import { getSafeRedirectUrl } from "@calcom/lib/getSafeRedirectUrl";
 import prisma from "@calcom/prisma";
@@ -87,7 +86,7 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
   return {
     props: {
       isGoogleLoginEnabled: IS_GOOGLE_LOGIN_ENABLED,
-      isOutlookLoginEnabled: IS_OUTLOOK_LOGIN_ENABLED,
+      isOutlookLoginEnabled: false,
       totpEmail,
     },
   };

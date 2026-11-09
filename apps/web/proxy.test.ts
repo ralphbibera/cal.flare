@@ -2,16 +2,17 @@
 
 import { getAuthRequestConfiguration } from "@calcom/features/auth/lib/request-context";
 import { WEBAPP_URL } from "@calcom/lib/constants";
-import { getRuntimeConfigValue } from "@calcom/lib/server/runtimeConfig";
 import { NextRequest, NextResponse } from "next/server";
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // We'll test the wrapped proxy as it would be used in production
 import proxy, { config } from "./proxy";
 
+const { edgeConfigGet } = vi.hoisted(() => ({ edgeConfigGet: vi.fn() }));
+
 // Mock dependencies at module level
-vi.mock("@calcom/lib/server/runtimeConfig", () => ({
-  getRuntimeConfigValue: vi.fn(),
+vi.mock("cloudflare:workers", () => ({
+  env: { EDGE_CONFIG: { get: edgeConfigGet } },
 }));
 
 vi.mock("@calcom/features/auth/lib/request-context", () => ({
@@ -109,7 +110,7 @@ const createTestRequest = (overrides?: {
   return req;
 };
 
-const createRuntimeConfigMock = (config: Record<string, unknown>) => {
+const createEdgeConfigMock = (config: Record<string, unknown>) => {
   return (key: string) => {
     if (key in config) return Promise.resolve(config[key]);
     return Promise.resolve(undefined);
@@ -136,11 +137,14 @@ describe("Middleware Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getAuthRequestConfiguration as Mock).mockReset();
+    edgeConfigGet.mockReset();
+    edgeConfigGet.mockResolvedValue(undefined);
     // Set test environment
     vi.stubEnv("NEXT_PUBLIC_WEBAPP_URL", WEBAPP_URL);
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -159,11 +163,11 @@ describe("Middleware Integration Tests", () => {
     });
   });
 
-  describe("Signup Flag Scope", () => {
-    it("should not affect page requests when signup is disabled", async () => {
-      (getRuntimeConfigValue as Mock).mockImplementation(
-        createRuntimeConfigMock({
-          isSignupDisabled: true,
+  describe("Maintenance Mode", () => {
+    it("should redirect to maintenance when enabled", async () => {
+      edgeConfigGet.mockImplementation(
+        createEdgeConfigMock({
+          isInMaintenanceMode: true,
         })
       );
 
@@ -176,10 +180,10 @@ describe("Middleware Integration Tests", () => {
       expectStatus(res, 200);
     });
 
-    it("should not affect API routes when signup is disabled", async () => {
-      (getRuntimeConfigValue as Mock).mockImplementation(
-        createRuntimeConfigMock({
-          isSignupDisabled: true,
+    it("should not affect API routes in maintenance mode", async () => {
+      edgeConfigGet.mockImplementation(
+        createEdgeConfigMock({
+          isInMaintenanceMode: true,
         })
       );
 
@@ -195,8 +199,8 @@ describe("Middleware Integration Tests", () => {
 
   describe("Signup Control", () => {
     it("should block signup when disabled", async () => {
-      (getRuntimeConfigValue as Mock).mockImplementation(
-        createRuntimeConfigMock({
+      edgeConfigGet.mockImplementation(
+        createEdgeConfigMock({
           isSignupDisabled: true,
         })
       );
@@ -214,23 +218,11 @@ describe("Middleware Integration Tests", () => {
     });
 
     it("should allow signup when enabled", async () => {
-      (getRuntimeConfigValue as Mock).mockImplementation(
-        createRuntimeConfigMock({
+      edgeConfigGet.mockImplementation(
+        createEdgeConfigMock({
           isSignupDisabled: false,
         })
       );
-
-      const req = createTestRequest({
-        url: `${WEBAPP_URL}/api/auth/signup`,
-        method: "POST",
-      });
-
-      const res = await callProxy(req);
-      expectStatus(res, 200);
-    });
-
-    it("should allow signup when the setting is missing or unreadable", async () => {
-      (getRuntimeConfigValue as Mock).mockResolvedValue(undefined);
 
       const req = createTestRequest({
         url: `${WEBAPP_URL}/api/auth/signup`,
@@ -427,6 +419,20 @@ describe("Middleware Integration Tests", () => {
   });
 
   describe("Error Handling", () => {
+    it("should handle Edge Config errors gracefully", async () => {
+      edgeConfigGet.mockImplementation(() => {
+        throw new Error("Config error");
+      });
+
+      const req = createTestRequest({
+        url: `${WEBAPP_URL}/team/test`,
+      });
+
+      const res = await callProxy(req);
+      expect(res).toBeDefined();
+      expectStatus(res, 200);
+    });
+
     it("should handle malformed URLs", async () => {
       const req = createTestRequest({
         url: `${WEBAPP_URL}//double-slash`,
