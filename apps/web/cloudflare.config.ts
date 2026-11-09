@@ -1,12 +1,12 @@
 import process from "node:process";
+import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
+import { bindings, defineConfig, defineWorker, exports, triggers } from "cf/config";
 import {
   DEAD_LETTER_QUEUE,
   type JobQueueName,
   QUEUES,
   queueName,
-} from "@calcom/features/tasker/queue/queues";
-import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
-import { bindings, defineConfig, defineWorker, exports, triggers } from "cf/config";
+} from "../../packages/features/tasker/queue/queues.ts";
 
 const cache = await createWorkersResponseStoreSelfContainedConfig({
   worker: "calflare-web",
