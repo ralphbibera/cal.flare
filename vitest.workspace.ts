@@ -47,6 +47,7 @@ const workspaces: TestProjectInlineConfiguration[] = packagedEmbedTestsOnly
             environment: "node",
             include: ["packages/**/*.integration-test.ts", "apps/**/*.integration-test.ts"],
             exclude: ["**/node_modules/**/*", "packages/embeds/**/*"],
+            env: { CALFLARE_D1_SCENARIO: "true" },
             setupFiles: ["packages/testing/src/setupVitest.ts"],
             pool,
           },

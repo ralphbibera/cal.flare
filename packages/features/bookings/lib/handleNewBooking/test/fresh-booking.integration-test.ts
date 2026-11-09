@@ -7,8 +7,6 @@
  *
  * They don't intend to test what the apps logic should do, but rather test if the apps are called with the correct data. For testing that, once should write tests within each app.
  */
-import type { CommitPaymentSuccessInput } from "@calcom/app-store/_utils/payments/handlePaymentSuccessInD1";
-import prismaMock from "@calcom/testing/lib/__mocks__/prisma";
 import {
   BookingLocations,
   createBookingScenario,
@@ -43,7 +41,7 @@ import type { HttpError } from "@calcom/lib/http-error";
 import logger from "@calcom/lib/logger";
 import { resetTestEmails } from "@calcom/lib/testEmails";
 import { distributedTracing } from "@calcom/lib/tracing/factory";
-import type { PrismaClient } from "@calcom/prisma";
+import { prisma } from "@calcom/prisma";
 import { BookingStatus, CreationSource, SchedulingType, WatchlistType } from "@calcom/prisma/enums";
 import {
   expectAwaitingPaymentEmails,
@@ -61,6 +59,7 @@ import {
 import { getMockRequestDataForBooking } from "@calcom/testing/lib/bookingScenario/getMockRequestDataForBooking";
 import { setupAndTeardown } from "@calcom/testing/lib/bookingScenario/setupAndTeardown";
 import { testWithAndWithoutOrg } from "@calcom/testing/lib/bookingScenario/test";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
 import { test } from "@calcom/testing/lib/fixtures/fixtures";
 import type { CalendarEvent } from "@calcom/types/Calendar";
 import type { Request, Response } from "express";
@@ -72,39 +71,12 @@ import { getNewBookingHandler } from "./getNewBookingHandler";
 
 const log = logger.getSubLogger({ prefix: ["[fresh-booking.test]"] });
 
-// This flow keeps its records in prismock; the D1 batch boundary has its own workerd coverage.
-vi.mock("@calcom/app-store/_utils/payments/handlePaymentSuccessInD1", () => ({
-  commitPaymentSuccessInD1: async ({
-    paymentId,
-    bookingId,
-    status,
-    referencesToCreate,
-  }: CommitPaymentSuccessInput) => {
-    const { default: prismaMock } = await import("@calcom/testing/lib/__mocks__/prisma");
-    const payment = await prismaMock.payment.update({
-      where: { id: paymentId },
-      data: { success: true },
-      select: { id: true, externalId: true },
-    });
-    const booking = await prismaMock.booking.update({
-      where: { id: bookingId },
-      data: {
-        paid: true,
-        ...(status === undefined ? {} : { status }),
-        ...(referencesToCreate.length === 0 ? {} : { references: { create: referencesToCreate } }),
-      },
-      select: { status: true },
-    });
-    return { payment, booking };
-  },
-}));
-
 async function mockPaymentSuccessWebhookFromStripe({ externalId }: { externalId: string }) {
   const { handlePaymentSuccess } = await import("@calcom/app-store/_utils/payments/handlePaymentSuccess");
   let webhookResponse = null;
   try {
     // Look up the payment by externalId (simulating what the old Stripe webhook handler did)
-    const payment = await prismaMock.payment.findFirst({
+    const payment = await prisma.payment.findFirst({
       where: { externalId },
       select: { id: true, bookingId: true },
     });
@@ -131,13 +103,19 @@ export type CustomNextApiResponse = NextApiResponse & Response;
 // Local test runs sometime gets too slow
 const timeout = process.env.CI ? 5000 : 20000;
 
+setupMiniflareD1({
+  worker: async () => (await import("../../../../../../apps/web/cloudflare.config")).default.worker,
+  bind: true,
+  reset: true,
+});
+
 describe("handleNewBooking", () => {
   setupAndTeardown();
 
   beforeEach(() => {
     vi.spyOn(D1PaymentCredentialRepository, "findForBooking").mockImplementation(
       async ({ credentialId, userId }) => {
-        const credentials = await prismaMock.credential.findMany({
+        const credentials = await prisma.credential.findMany({
           where: {
             ...(credentialId ? { id: credentialId } : { userId }),
           },
@@ -231,7 +209,7 @@ describe("handleNewBooking", () => {
           )
         );
 
-        const orgProfiles = await prismaMock.profile.findMany({
+        const orgProfiles = await prisma.profile.findMany({
           where: {
             organizationId: org?.organization.id ?? undefined,
           },
@@ -817,7 +795,7 @@ describe("handleNewBooking", () => {
             })
           );
 
-          // await prismaMock.destinationCalendar.update({
+          // await prisma.destinationCalendar.update({
           //   where: {
           //     userId: organizer.id,
           //   },
@@ -2539,7 +2517,7 @@ describe("handleNewBooking", () => {
           resetTestEmails();
           mockCalendarToCrashOnCreateEvent("googlecalendar");
 
-          const dbBooking = await prismaMock.booking.findUniqueOrThrow({
+          const dbBooking = await prisma.booking.findUniqueOrThrow({
             where: { id: createdBooking.id },
             select: {
               id: true,
@@ -2637,7 +2615,7 @@ describe("handleNewBooking", () => {
             evt,
             bookingId: dbBooking.id,
             booking: dbBooking,
-            prisma: prismaMock as unknown as PrismaClient,
+            prisma,
             traceContext,
           });
 
@@ -3724,7 +3702,7 @@ describe("handleNewBooking", () => {
             })
           );
 
-          const firstBookingInDb = await prismaMock.booking.findUnique({
+          const firstBookingInDb = await prisma.booking.findUnique({
             where: { uid: firstBooking.uid },
             include: { payment: true },
           });
@@ -3741,7 +3719,7 @@ describe("handleNewBooking", () => {
           expect(secondBooking.paymentUid).toBe(firstBooking.paymentUid);
           expect(secondBooking.paymentRequired).toBe(true);
 
-          const bookingsInDb = await prismaMock.booking.findMany({
+          const bookingsInDb = await prisma.booking.findMany({
             where: {
               eventTypeId: 1,
               attendees: {
