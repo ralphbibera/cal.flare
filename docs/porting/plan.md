@@ -97,7 +97,8 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 - [ ] Run the migrated inherited Playwright journeys with the planned `bun run e2e`. Pass when they target the built vinext Worker and reach the same URLs, UI and persisted states as the baseline.
 - [ ] Replay `D_BOOKING`, `D_AVAILABILITY`, `D_EVENTS`, `D_BOOKINGS`, `D_SETTINGS`, `D_APPS` and `D_PAYMENTS`. Pass when every owned transition has equivalent success, denial, invalid input, post-write failure and provider effects.
-- [ ] Follow `docs/porting/verification.md` to capture original desktop/mobile, light/dark, loading/empty/error and representative locale states. Pass when original markup, copy, styles and interactions remain equivalent. Screenshots alone do not accept behavior.
+- [x] Follow `docs/porting/verification.md` to capture original desktop/mobile, light/dark, loading/empty/error and representative locale states. Pass when original markup, copy, styles and interactions remain equivalent. Screenshots alone do not accept behavior.
+  - Evidence: source audit against `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`. The original app was not run locally. The audited UI sources, global CSS, Tailwind sources and locale resources changed only for React 19 type support, Better Auth and vinext runtime adaptation, the deliberate Cal.flare rename (#39), configured social-login visibility (#156), Bun package-manager copy, and the merged interaction fixes (#246, #264, #265). The inherited journeys that pass on the built Worker cover booking, settings, theme and locale states (#248, #179). The public booking page's first-paint theme is the known unmerged #249 gap. Pixel comparison remains limited to `apps/web/playwright/icons.e2e.ts`.
 
 ## Phase 4. Complete delivery, jobs, v2 and remaining product surfaces
 
