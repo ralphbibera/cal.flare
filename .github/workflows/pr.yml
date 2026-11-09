@@ -455,8 +455,7 @@ jobs:
         e2e-embed-react,
         e2e-app-store,
       ]
-    # A run cancelled by a newer push or by hand skips the gate; the newer run reports for the PR head.
-    # A job that times out or fails inside a live run still fails the gate.
+    # Cancelled runs have no verdict; a replacement run or rerun must pass for the current head.
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
@@ -474,6 +473,7 @@ jobs:
       - name: Fail if conditional jobs failed
         run: exit 1
         if: |
+          needs.prepare.result != 'success' ||
           (needs.prepare.outputs.run-docs == 'true' && needs.docs.result != 'success') ||
           (
             needs.prepare.outputs.has-files-requiring-all-checks == 'true' &&
