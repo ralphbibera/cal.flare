@@ -2,17 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withD1Database } from "@calcom/prisma/d1";
-import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import type { MiniflareOptions } from "miniflare";
 import { Miniflare } from "miniflare";
 import {
   afterAll as vitestAfterAll,
   afterEach as vitestAfterEach,
+  aroundEach as vitestAroundEach,
   beforeAll as vitestBeforeAll,
   beforeEach as vitestBeforeEach,
   it as vitestIt,
   test as vitestTest,
 } from "vitest";
+import { resetD1Database } from "./resetD1";
 
 type Workers = NonNullable<MiniflareOptions["workers"]>;
 type WorkerEntry = Extract<Workers[number], { config: unknown }>;
@@ -28,6 +29,10 @@ export type MiniflareD1Options = {
   /** Extra Miniflare bindings for suites that query more than one D1 database. */
   env?: WorkerEnv;
   setupTimeout?: number;
+  /** Bind every test body to this D1 database so production Prisma calls reach it. */
+  bind?: boolean;
+  /** Wipe scenario data before each test, preserving rows created by migrations. */
+  reset?: boolean;
 };
 
 export function setupMiniflareD1(options: MiniflareD1Options) {
@@ -48,9 +53,25 @@ export function setupMiniflareD1(options: MiniflareD1Options) {
     await run(callback);
   };
 
+  if (options.bind) {
+    vitestAroundEach(async (runTest) => {
+      const binding = database;
+      if (!binding) return runTest();
+      await withD1Database({ DB: binding }, () => runTest());
+    });
+    if (options.reset) {
+      vitestBeforeEach(async () => {
+        await resetD1Database(db());
+      });
+    }
+  }
+
   vitestBeforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "calflare-d1-"));
     const persistTo = join(directory, "state");
+    // Loaded at runtime so apps that include this fixture do not type-check the migration CLI.
+    const migrateModulePath = "@calcom/prisma/migrate-d1.mjs";
+    const { migrateD1 } = await import(migrateModulePath);
     await migrateD1({ persistTo });
     const worker = typeof options.worker === "function" ? await options.worker() : options.worker;
     runtime = new Miniflare({
@@ -94,6 +115,9 @@ export function setupMiniflareD1(options: MiniflareD1Options) {
       return miniflare();
     },
     run,
+    async reset() {
+      await resetD1Database(db());
+    },
     it: (name: string, callback: () => unknown, timeout?: number) =>
       vitestIt(name, wrapped(callback), timeout),
     test: (name: string, callback: () => unknown, timeout?: number) =>
