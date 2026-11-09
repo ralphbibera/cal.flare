@@ -1,9 +1,9 @@
-import { expect } from "@playwright/test";
-
 // eslint-disable-next-line no-restricted-imports
 import { test } from "@calcom/web/playwright/lib/fixtures";
+import { expect } from "@playwright/test";
 
 import "../../src/types";
+import { waitForEmbedSdk } from "../lib/testUtils";
 
 test.describe("Embed Pages", () => {
   test("Event Type Page: should not have margin top on embed page", async ({ page }) => {
@@ -64,6 +64,7 @@ test.describe("Embed Pages", () => {
       });
 
       await page.goto(`http://localhost:3000/free/30min?theme=${queryParamTheme}`);
+      await waitForEmbedSdk(page);
 
       const isEmbed = await page.evaluate(() => {
         return window?.isEmbed?.();
@@ -91,6 +92,7 @@ test.describe("Embed Pages", () => {
         window.name = "testing";
       });
       await page.goto(`http://localhost:3000/free/30min`);
+      await waitForEmbedSdk(page);
       const isEmbed = await page.evaluate(() => {
         return window?.isEmbed?.();
       });
@@ -109,6 +111,7 @@ test.describe("Embed Pages", () => {
         window.name = "cal-embed=";
       });
       await page.goto("http://localhost:3000/free/30min?theme=dark");
+      await waitForEmbedSdk(page);
       let embedTheme = await page.evaluate(() => {
         return window?.getEmbedTheme?.();
       });
@@ -129,13 +132,12 @@ test.describe("Embed Pages", () => {
   });
 
   test.describe("useSlotsViewOnSmallScreen", () => {
-    test("should enable slots view on small screen when parameter is 'true'", async ({
-      page,
-    }) => {
+    test("should enable slots view on small screen when parameter is 'true'", async ({ page }) => {
       await page.evaluate(() => {
         window.name = "cal-embed=";
       });
       await page.goto("http://localhost:3000/free/30min/embed?useSlotsViewOnSmallScreen=true");
+      await waitForEmbedSdk(page);
 
       const useSlotsViewOnSmallScreen = await page.evaluate(() => {
         return window.CalEmbed?.embedStore?.uiConfig?.useSlotsViewOnSmallScreen;
@@ -144,13 +146,12 @@ test.describe("Embed Pages", () => {
       expect(useSlotsViewOnSmallScreen).toBe(true);
     });
 
-    test("should default to false when parameter is not present", async ({
-      page,
-    }) => {
+    test("should default to false when parameter is not present", async ({ page }) => {
       await page.evaluate(() => {
         window.name = "cal-embed=";
       });
       await page.goto("http://localhost:3000/free/30min/embed");
+      await waitForEmbedSdk(page);
 
       const useSlotsViewOnSmallScreen = await page.evaluate(() => {
         return window.CalEmbed?.embedStore?.uiConfig?.useSlotsViewOnSmallScreen;
@@ -164,6 +165,7 @@ test.describe("Embed Pages", () => {
         window.name = "cal-embed=";
       });
       await page.goto("http://localhost:3000/free/30min/embed?useSlotsViewOnSmallScreen=false");
+      await waitForEmbedSdk(page);
 
       const useSlotsViewOnSmallScreen = await page.evaluate(() => {
         return window.CalEmbed?.embedStore?.uiConfig?.useSlotsViewOnSmallScreen;
