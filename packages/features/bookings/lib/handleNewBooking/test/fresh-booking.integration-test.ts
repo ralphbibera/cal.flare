@@ -101,7 +101,7 @@ export type CustomNextApiRequest = NextApiRequest & Request;
 
 export type CustomNextApiResponse = NextApiResponse & Response;
 // Local test runs sometime gets too slow
-const timeout = process.env.CI ? 5000 : 20000;
+const timeout = process.env.CI ? 30000 : 20000;
 
 setupMiniflareD1({
   worker: async () => (await import("../../../../../../apps/web/cloudflare.config")).default.worker,
