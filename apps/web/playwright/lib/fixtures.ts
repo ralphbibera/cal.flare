@@ -16,7 +16,7 @@ import { createBookingPageFixture } from "../fixtures/regularBookings";
 import { createServersFixture } from "../fixtures/servers";
 import { createUsersFixture } from "../fixtures/users";
 import { createWebhookPageFixture } from "../fixtures/webhooks";
-import { bindFixtureD1, openLocalD1 } from "./localD1";
+import { bindFixtureD1, createFixtureD1 } from "./httpD1";
 
 export interface Fixtures {
   page: Page;
@@ -61,13 +61,12 @@ declare global {
 export const test = base.extend<Fixtures, WorkerFixtures>({
   localD1: [
     async ({}, use) => {
-      const { mf, db } = await openLocalD1();
+      const db = await createFixtureD1();
       const release = bindFixtureD1(db);
       try {
         await use();
       } finally {
         release();
-        await mf.dispose();
       }
     },
     { scope: "worker", auto: true },

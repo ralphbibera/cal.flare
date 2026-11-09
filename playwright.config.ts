@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 import process from "node:process";
@@ -10,6 +11,9 @@ dotEnv.config({ path: ".env" });
 
 // Upstream CI runs MailHog next to the app and enables it for the suite; local e2e does the same.
 process.env.E2E_TEST_MAILHOG_ENABLED ??= "1";
+
+// One bridge token per run reaches both the preview Worker and every fixture process.
+const e2eD1Token = (process.env.E2E_D1_TOKEN ??= randomBytes(16).toString("hex"));
 
 const outputDir = path.join(__dirname, "test-results");
 
@@ -39,6 +43,7 @@ const webServer: PlaywrightTestConfig["webServer"] = [
     reuseExistingServer: !process.env.CI,
     stdout: "ignore",
     stderr: "ignore",
+    env: { E2E_D1_TOKEN: e2eD1Token },
   },
 ];
 

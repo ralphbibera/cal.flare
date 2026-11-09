@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { responseStoreAdapter } from "@vinext/cloudflare/cache/response-store-adapter";
@@ -85,6 +86,9 @@ function prismaClient(): Plugin {
 
 export default defineConfig({
   envPrefix: [],
+  define: {
+    __CALFLARE_E2E_D1__: JSON.stringify(process.env.NEXT_PUBLIC_IS_E2E === "1"),
+  },
   environments: {
     rsc: { define: { __CALFLARE_EMAIL_RENDERER__: JSON.stringify("ssr") } },
     ssr: { build: { rolldownOptions: { output: { entryFileNames: "[name].js" } } } },
