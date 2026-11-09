@@ -108,6 +108,7 @@ function PasswordResetForm({
   };
 
   const passwordValue = watch("newPassword");
+  const csrfToken = watch("csrfToken");
   const isEmpty = passwordValue?.length === 0;
 
   return (
@@ -151,7 +152,7 @@ function PasswordResetForm({
           loading={loading}
           color="primary"
           type="submit"
-          disabled={loading || isEmpty}
+          disabled={loading || isEmpty || !csrfToken}
           className="w-full justify-center">
           {t("reset_password")}
         </Button>

@@ -138,5 +138,8 @@ export default defineConfig({
       },
     },
   },
-  build: { sourcemap: true },
+  build: {
+    sourcemap: true,
+    rolldownOptions: { output: { sourcemapExcludeSources: true } },
+  },
 });

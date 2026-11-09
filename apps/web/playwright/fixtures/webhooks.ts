@@ -7,6 +7,7 @@ export function createWebhookPageFixture(page: Page) {
     createTeamReceiver: async () => {
       const webhookReceiver = createHttpServer();
       await page.goto(`/settings/developer/webhooks`);
+      await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
       await page.click('[data-testid="new_webhook"]');
       await page.click('[data-testid="option-team-1"]');
       await page.waitForURL((u) => u.pathname === "/settings/developer/webhooks/new");
@@ -25,6 +26,7 @@ export function createWebhookPageFixture(page: Page) {
     createReceiver: async () => {
       const webhookReceiver = createHttpServer();
       await page.goto(`/settings/developer/webhooks`);
+      await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
       await page.click('[data-testid="new_webhook"]');
       await page.fill('[name="subscriberUrl"]', webhookReceiver.url);
       await page.fill('[name="secret"]', "secret");

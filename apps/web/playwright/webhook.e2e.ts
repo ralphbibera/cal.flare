@@ -34,6 +34,7 @@ test.describe("BOOKING_CREATED", async () => {
 
     // --- Book the first available day next month in the pro user's "30min"-event
     await page.goto(`/${user.username}/${eventType.slug}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     await selectFirstAvailableTimeSlotNextMonth(page);
     await bookTimeSlot(page);
 
@@ -136,6 +137,7 @@ test.describe("BOOKING_REJECTED", async () => {
 
     // --- visit user page
     await page.goto(`/${user.username}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     // --- book the user's event
     await bookOptinEvent(page);
@@ -144,6 +146,7 @@ test.describe("BOOKING_REJECTED", async () => {
     await user.apiLogin();
     const webhookReceiver = await webhooks.createReceiver();
     await page.goto("/bookings/unconfirmed");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     await page.click('[data-testid="reject"]');
 
     await submitAndWaitForResponse(page, "/api/trpc/bookings/confirm?batch=1", {
@@ -249,6 +252,7 @@ test.describe("BOOKING_REQUESTED", async () => {
 
     // --- visit user page
     await page.goto(`/${user.username}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     // --- book the user's opt in
     await bookOptinEvent(page);
@@ -357,6 +361,7 @@ test.describe("BOOKING_RESCHEDULED", async () => {
     });
 
     await page.goto(`/${user.username}/${eventType.slug}?rescheduleUid=${booking.uid}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     await selectFirstAvailableTimeSlotNextMonth(page);
 
@@ -425,6 +430,7 @@ test.describe("BOOKING_RESCHEDULED", async () => {
     });
 
     await page.goto(`/reschedule/${references[0].referenceUid}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     await selectFirstAvailableTimeSlotNextMonth(page);
 
@@ -458,6 +464,7 @@ test.describe("BOOKING_RESCHEDULED", async () => {
     });
 
     await page.goto(`/reschedule/${references[1].referenceUid}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     await selectFirstAvailableTimeSlotNextMonth(page);
 
@@ -493,6 +500,7 @@ test.describe("MEETING_ENDED, MEETING_STARTED", async () => {
 
     //create a new webhook with meeting ended trigger here
     await page.goto("/settings/developer/webhooks");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     // --- add webhook
     await page.click('[data-testid="new_webhook"]');
 
@@ -548,7 +556,8 @@ test.describe("MEETING_ENDED, MEETING_STARTED", async () => {
       expect.arrayContaining(existingUserBookings.map((booking) => booking.endTime))
     );
 
-    page.reload();
+    await page.reload();
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     // edit webhook and remove trigger meeting ended trigger
     await page.click('[data-testid="webhook-edit-button"]');
@@ -610,6 +619,7 @@ test.describe("OOO_CREATED", async () => {
     const webhookReceiver = await webhooks.createReceiver();
 
     await page.goto("/settings/my-account/out-of-office");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     await page.getByTestId("add_entry_ooo").click();
     await page.getByTestId("reason_select").click();
@@ -677,6 +687,7 @@ test.describe("Webhook deletion", async () => {
     await user.apiLogin();
 
     await page.goto("/settings/developer/webhooks");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     await page.click('[data-testid="new_webhook"]');
     await page.fill('[name="subscriberUrl"]', "https://example.com/test-webhook");
 

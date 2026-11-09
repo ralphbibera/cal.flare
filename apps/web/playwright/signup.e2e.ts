@@ -12,6 +12,7 @@ test.describe.configure({ mode: "parallel" });
 
 const preventFlakyTest = async (page: Page) => {
   await expect(page.locator("text=Create your account")).toBeVisible();
+  await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 };
 test.describe("Signup Main Page Test", async () => {
   test.beforeEach(async ({ page }) => {
