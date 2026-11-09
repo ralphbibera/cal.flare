@@ -102,7 +102,7 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 **Build.**
 
-- [ ] Accept every app-store integration separately, including credential format, enablement, refresh, callbacks, payloads, signatures, failure mapping and link-only catalog behavior.
+- [ ] Accept app-store integrations that have provider behavior separately, including OAuth or API credentials, refresh, callbacks, payloads, signatures and failure mapping. Accept link-only and catalog apps through the inventory audit of metadata, enablement and install links.
 - [ ] Replace consumed Trigger, Bull and Redis hosting with selected Cloudflare job/state adapters. Preserve attempt accounting, TTL, throttling, ordering and source-swallowed failures.
 - [x] Bind existing product schedules to Worker dispatch with exact method, authorization and calendar predicates. Do not invent jobs for absent-handler declarations.
   - Evidence: `apps/web/worker/schedules.ts:10-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:91-96` wires `scheduled` and `queue`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
