@@ -99,9 +99,9 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 - [ ] Replay `D_BOOKING`, `D_AVAILABILITY`, `D_EVENTS`, `D_BOOKINGS`, `D_SETTINGS`, `D_APPS` and `D_PAYMENTS`. Pass when every owned transition has equivalent success, denial, invalid input, post-write failure and provider effects.
 - [ ] Follow `docs/porting/verification.md` to capture original desktop/mobile, light/dark, loading/empty/error and representative locale states. Pass when original markup, copy, styles and interactions remain equivalent. Screenshots alone do not accept behavior.
 
-## Phase 4. Complete delivery, jobs, v2 and remaining product surfaces
+## Phase 4. Complete delivery, jobs and remaining product surfaces
 
-API v2 (`apps/api/v2`) is not part of this release. The web app runs without it, and its optional API v2 team-slots path is disabled. The v2 items below and the `D_API` case in the replay item are out of scope.
+API v2 (`apps/api/v2`) is deferred and is not part of this release. The web app runs without it, and its optional API v2 team-slots path is disabled.
 
 **Build.**
 
@@ -111,7 +111,6 @@ API v2 (`apps/api/v2`) is not part of this release. The web app runs without it,
 - [ ] Replace consumed Trigger, Bull and Redis hosting with selected Cloudflare job/state adapters. Preserve attempt accounting, TTL, throttling, ordering and source-swallowed failures.
 - [x] Bind existing product schedules to Worker dispatch with exact method, authorization and calendar predicates. Do not invent jobs for absent-handler declarations.
   - Evidence: `apps/web/worker/schedules.ts:10-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:91-96` wires `scheduled` and `queue`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
-- [ ] Replace the v2 Node host at `apps/api/v2/src/worker.ts`, retaining controller/service folders, version selection, DTOs, guards, filters, pagination and public `/api/v2` routes.
 - [ ] Complete mail, webhooks, social PNGs, embeds, all locales and docs at their bound Cloudflare destinations.
 
 **You see.**
@@ -120,9 +119,13 @@ API v2 (`apps/api/v2`) is not part of this release. The web app runs without it,
 
 **Verify.**
 
-- [ ] Execute retained v2 cases with the planned `bun run --cwd apps/api/v2 test:e2e`. Pass when they target the Worker adapter and preserve original endpoint/version/validation/permission contracts.
-- [ ] Replay `D_JOBS`, `D_API`, `D_EMBEDS`, `D_DOCS` and each integration row. Pass when signed requests, receiver records, retry/exhaustion, queue/cache behavior, embed messages, content URLs and final rows match the baseline.
-- [ ] Compare planned `bun run --cwd apps/api/v2 generate-swagger` output with the baseline. Pass when no in-scope path, method, version, schema, required field or response difference remains unexplained.
+- [ ] Replay `D_JOBS`, `D_API` (web `/api` routes only), `D_EMBEDS`, `D_DOCS` and each integration row. Pass when signed requests, receiver records, retry/exhaustion, queue/cache behavior, embed messages, content URLs and final rows match the baseline.
+
+**Deferred.**
+
+- The v2 Node host at `apps/api/v2/src/worker.ts`, retaining controller/service folders, version selection, DTOs, guards, filters, pagination and public `/api/v2` routes.
+- The retained v2 cases at the planned `bun run --cwd apps/api/v2 test:e2e`, preserving original endpoint/version/validation/permission contracts.
+- The planned `bun run --cwd apps/api/v2 generate-swagger` comparison with the baseline.
 
 ## Phase 5. Complete authorized release acceptance
 
