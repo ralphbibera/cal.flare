@@ -9,6 +9,7 @@ import { createHandler } from "../apiKeys/create.handler";
 import { deleteHandler } from "../apiKeys/delete.handler";
 import { listHandler } from "../apiKeys/list.handler";
 import { changePasswordHandler } from "../auth/changePassword.handler";
+import { setDestinationCalendarHandler } from "../calendars/setDestinationCalendar.handler";
 import { updateProfileHandler } from "./updateProfile.handler";
 
 const d1 = setupMiniflareD1({
@@ -416,5 +417,24 @@ describe("developer API keys on D1", () => {
       })
     ).resolves.toEqual({ id: personal.id });
     expect(await prisma.apiKey.findUnique({ where: { id: personal.id } })).toBeNull();
+  });
+});
+
+describe("calendars settings on D1", () => {
+  d1.test("rejects an unknown destination calendar without writing a row", async () => {
+    const user = await createUser();
+
+    await expect(
+      setDestinationCalendarHandler({
+        ctx: {
+          user: {
+            ...user,
+            userLevelSelectedCalendars: [],
+          } as unknown as Parameters<typeof setDestinationCalendarHandler>[0]["ctx"]["user"],
+        },
+        input: { integration: "google_calendar", externalId: "missing-calendar" },
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "Could not find calendar missing-calendar" });
+    expect(await prisma.destinationCalendar.count({ where: { userId: user.id } })).toBe(0);
   });
 });
