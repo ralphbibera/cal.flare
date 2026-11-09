@@ -23,3 +23,7 @@ runs:
         bun run build
       if: steps.cache-build.outputs.cache-hit != 'true'
       shell: bash
+      env:
+        NEXT_PUBLIC_IS_E2E: "1"
+        NEXT_PUBLIC_WEBAPP_URL: http://localhost:3000
+        NEXTAUTH_URL: http://localhost:3000

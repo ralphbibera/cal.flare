@@ -69,7 +69,7 @@ jobs:
         continue-on-error: true
         run: |
           gh extension install actions/gh-actions-cache
-          for key in $(gh actions-cache list -R ${{ github.repository }} --key "prod-build-$BRANCH_KEY" --limit 100 | cut -f1); do
+          for key in $(gh actions-cache list -R ${{ github.repository }} --key "prod-build-e2e-$BRANCH_KEY" --limit 100 | cut -f1); do
             gh actions-cache delete "$key" -R ${{ github.repository }} --confirm
           done
         env:

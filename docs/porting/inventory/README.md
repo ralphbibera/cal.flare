@@ -9,7 +9,6 @@ These files bind source scope and placement. They do not claim that the source a
 | [source-map.tsv](source-map.tsv) | Every tracked baseline file has a retained destination or explicit replacement disposition. |
 | [routes.tsv](routes.tsv) | App and Pages routes, metadata assets, v2 HTTP decorators and aliases, and docs content URLs. |
 | [integrations.tsv](integrations.tsv) | Every app-store definition from metadata or config, including link-only apps. |
-| [manifests.tsv](manifests.tsv) | Every direct dependency edge at the baseline. Original ranges are not selected target versions. |
 | [schedules.tsv](schedules.tsv) | Vercel schedules, GitHub workflow methods and conditions, and matching or absent handlers. |
 | [environment.tsv](environment.tsv) | Static and computed environment references. No values or secrets. |
 | [config-bindings.tsv](config-bindings.tsv) | Every `D_SHELL` variable names its target: Worker var, secret, public build value, dynamic lookup, or recorded replacement. |
@@ -23,7 +22,7 @@ Pinned `.env` values never become committed target configuration.
 Example apps remain outside product acceptance. The session-warmup route remains inherited test support.
 
 `domain` is a path-based discovery index, not a security boundary or an assertion that a file serves only one feature.
-The [behavior contract](../behavior.md) binds actual transitions and effects. Cross-domain callers remain obligations of their implementation slice.
+Cross-domain callers remain obligations of their implementation slice.
 
 The route inventory describes declarations. It does not replace the running router, middleware, configuration, or generated OpenAPI document.
 Route groups disappear from URLs. Optional catch-alls, metadata routes, App/Pages precedence and redirects retain upstream behavior through vinext.

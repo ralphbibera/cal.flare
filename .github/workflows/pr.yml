@@ -167,27 +167,15 @@ jobs:
       pull-requests: read
     outputs:
       has-files-requiring-all-checks: ${{ steps.filter-exclusions.outputs.has-files-requiring-all-checks }}
-      has-api-v2-changes: ${{ steps.filter-inclusions.outputs.has-api-v2-changes }}
       has-prisma-changes: ${{ steps.filter-inclusions.outputs.has-prisma-changes }}
       run-docs: ${{ steps.filter-inclusions.outputs.has-docs-changes == 'true' || (steps.check-if-pr-has-label.outputs.run-e2e == 'true' && steps.filter-exclusions.outputs.has-files-requiring-all-checks == 'true') }}
       commit-sha: ${{ steps.get_sha.outputs.commit-sha }}
       run-e2e: ${{ steps.check-if-pr-has-label.outputs.run-e2e == 'true' }}
-      db-cache-hit: ${{ steps.cache-db-check.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github
       - uses: ./.github/actions/cache-checkout
-      - name: Generate DB cache key
-        id: cache-db-key
-        uses: ./.github/actions/cache-db-key
-      - name: Check DB cache (lookup-only)
-        id: cache-db-check
-        uses: actions/cache/restore@v4
-        with:
-          path: backups/backup.sql
-          key: ${{ steps.cache-db-key.outputs.key }}
-          lookup-only: true
       - name: Check for files requiring all checks (with exclusions)
         uses: dorny/paths-filter@v3
         id: filter-exclusions
@@ -221,15 +209,6 @@ jobs:
               - ".github/workflows/pr.yml"
               - ".github/actions/bun-install/**"
               - ".github/actions/bun-playwright-install/**"
-            has-api-v2-changes:
-              - "apps/api/v2/**"
-              - "packages/platform-constants/**"
-              - "packages/platform-enums/**"
-              - "packages/platform-utils/**"
-              - "packages/platform-types/**"
-              - "packages/platform-libraries/**"
-              - "packages/trpc/**"
-              - "packages/prisma/schema.prisma"
             has-prisma-changes:
               - "packages/prisma/schema.prisma"
               - "packages/prisma/migrations/**"
@@ -348,22 +327,6 @@ jobs:
     uses: ./.github/workflows/check-prisma-migrations.yml
     secrets: inherit
 
-  setup-db:
-    name: Setup Database
-    needs: [prepare]
-    if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
-    uses: ./.github/workflows/setup-db.yml
-    with:
-      DB_CACHE_HIT: ${{ needs.prepare.outputs.db-cache-hit }}
-    secrets: inherit
-
-  build-api-v2:
-    name: Production builds
-    needs: [prepare]
-    if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
-    uses: ./.github/workflows/api-v2-production-build.yml
-    secrets: inherit
-
   build-atoms:
     name: Production builds
     needs: [prepare]
@@ -386,42 +349,35 @@ jobs:
 
   integration-test:
     name: Tests
-    needs: [prepare, build, setup-db]
+    needs: [prepare, build]
     if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
 
   e2e:
     name: Tests
-    needs: [prepare, build, setup-db]
+    needs: [prepare, build]
     if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/e2e.yml
     secrets: inherit
 
-  e2e-api-v2:
-    name: Tests
-    needs: [prepare, setup-db]
-    if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
-    uses: ./.github/workflows/e2e-api-v2.yml
-    secrets: inherit
-
   e2e-app-store:
     name: Tests
-    needs: [prepare, build, setup-db]
+    needs: [prepare, build]
     if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/e2e-app-store.yml
     secrets: inherit
 
   e2e-embed:
     name: Tests
-    needs: [prepare, build, setup-db]
+    needs: [prepare, build]
     if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/e2e-embed.yml
     secrets: inherit
 
   e2e-embed-react:
     name: Tests
-    needs: [prepare, build, setup-db]
+    needs: [prepare, build]
     if: ${{ needs.prepare.outputs.run-e2e == 'true' && needs.prepare.outputs.has-files-requiring-all-checks == 'true' }}
     uses: ./.github/workflows/e2e-embed-react.yml
     secrets: inherit
@@ -445,12 +401,9 @@ jobs:
         check-prisma-migrations,
         integration-test,
         build,
-        build-api-v2,
         build-atoms,
         docs,
-        setup-db,
         e2e,
-        e2e-api-v2,
         e2e-embed,
         e2e-embed-react,
         e2e-app-store,
@@ -486,12 +439,9 @@ jobs:
             (needs.prepare.outputs.has-prisma-changes == 'true' && needs.check-prisma-migrations.result != 'success') ||
             (needs.prepare.outputs.run-e2e == 'true' && (
               needs.build.result != 'success' ||
-              needs.build-api-v2.result != 'success' ||
               needs.build-atoms.result != 'success' ||
-              needs.setup-db.result != 'success' ||
               needs.integration-test.result != 'success' ||
               needs.e2e.result != 'success' ||
-              needs.e2e-api-v2.result != 'success' ||
               needs.e2e-embed.result != 'success' ||
               needs.e2e-embed-react.result != 'success' ||
               needs.e2e-app-store.result != 'success'

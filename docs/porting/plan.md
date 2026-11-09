@@ -8,12 +8,26 @@ Deployment requires the Cloudflare Workers Paid plan. Application hosting and pe
 
 Original routing and package ownership are retained.
 
+## Scope
+
+The target keeps Cal.diy behavior and changes only these things:
+- Hosting moves from Vercel to Cloudflare Workers with vinext.
+- The database moves from PostgreSQL to D1.
+- Authentication uses Better Auth at the existing auth boundary.
+- Email uses the Cloudflare email transport, with the upstream Resend and SMTP alternatives retained.
+- The toolchain uses Bun.
+- The product name is Cal.flare.
+- API v2 is deferred and is not part of this release.
+
+Optional outside services stay upstream with user keys: Trigger.dev, Unkey, Upstash, Stripe and the provider integrations.
+The signup flag reads the optional `EDGE_CONFIG` KV namespace.
+The payment page keeps upstream's stubbed loader.
+
 ## How to read this
 
-One box is one unit of work. Every box names the evidence that checks it. Check a box only when its evidence exists.
-A PR is verified only when its required checks and scoped acceptance pass.
-[Architecture](architecture.md) binds the target stack and runtime boundaries. [Behavior](behavior.md) binds observable contracts.
-[Inventories](inventory/README.md) account for original source, routes, dependencies, integrations, schedules and configuration.
+One box is one unit of work. Check a box only when its evidence exists.
+A phase is done when upstream's own unit, integration and e2e suites for its surfaces pass in CI on the built vinext Worker with D1, with the same skips as upstream.
+[Architecture](architecture.md) binds the target stack and runtime boundaries. [Inventories](inventory/README.md) record the baseline source, routes, dependencies, integrations and schedules.
 Use the existing [contribution guidelines](../../CONTRIBUTING.md) and [agent guide](../../AGENTS.md).
 
 Deployment, real credentials, paid-resource creation and live-data changes require their own prepared procedure and authorization.
@@ -100,20 +114,15 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 **Verify.**
 
-- [ ] Run the migrated inherited Playwright journeys with the planned `bun run e2e`. Pass when they target the built vinext Worker and reach the same URLs, UI and persisted states as the baseline.
-- [ ] Replay `D_BOOKING`, `D_AVAILABILITY`, `D_EVENTS`, `D_BOOKINGS`, `D_SETTINGS`, `D_APPS` and `D_PAYMENTS`. Pass when every owned transition has equivalent success, denial, invalid input, post-write failure and provider effects.
-- [x] Follow `docs/porting/verification.md` to capture original desktop/mobile, light/dark, loading/empty/error and representative locale states. Pass when original markup, copy, styles and interactions remain equivalent. Screenshots alone do not accept behavior.
-  - Evidence: source audit against `e8afecd163cd3a0a3ff279bd4721aa7f073c4685`. The original app was not run locally. The audited UI sources, global CSS, Tailwind sources and locale resources changed only for React 19 type support, Better Auth and vinext runtime adaptation, the deliberate Cal.flare rename (#39), configured social-login visibility (#156), Bun package-manager copy, and the merged interaction fixes (#246, #264, #265). The inherited journeys that pass on the built Worker cover booking, settings, theme and locale states (#248, #179). The public booking page's first-paint theme is the known unmerged #249 gap. Pixel comparison remains limited to `apps/web/playwright/icons.e2e.ts`.
+- [ ] Upstream's own unit, integration and e2e suites for public booking and organizer workflows pass in CI on the built vinext Worker with D1. Skips must match upstream's.
 
 ## Phase 4. Complete delivery, jobs and remaining product surfaces
 
-API v2 (`apps/api/v2`) is deferred and is not part of this release. The web app runs without it, and its optional API v2 team-slots path is disabled.
+API v2 is deferred.
 
 **Build.**
 
-- [ ] Accept app-store integrations by kind: provider apps one by one and link-only apps through the inventory audit.
-  - Provider apps call an outside service. They have OAuth or API credentials, token refresh, callbacks or webhooks, or payment, meeting, calendar or CRM calls. Accept each one separately for credential format, enablement, refresh, callbacks, payloads, signatures and failure mapping. Examples: `packages/app-store/stripepayment`, `packages/app-store/zoomvideo`, `packages/app-store/googlecalendar`, `packages/app-store/salesforce`.
-  - Link-only apps call no outside service. They declare `appData.location`, store key `{}` at install, and show that link or location on the booking. Their code has no provider client under `lib/` and no provider call in `api/`. No per-app acceptance applies to them. Examples: `packages/app-store/facetime`, `packages/app-store/whatsapp`, `packages/app-store/signal`, `packages/app-store/telegram`. The inventory audit (`packages/app-store/tests/integrationAcceptance.test.ts`) accepts them together: it loads and registers every row in `docs/porting/inventory/integrations.tsv`, then checks each row's metadata, enablement and install handler.
+- [ ] Accept app-store integrations with their upstream metadata, enablement, credential schema, callbacks and provider effects. Link-only apps show their link or location on the booking.
 - [ ] Replace consumed Trigger, Bull and Redis hosting with selected Cloudflare job/state adapters. Preserve attempt accounting, TTL, throttling, ordering and source-swallowed failures.
 - [x] Bind existing product schedules to Worker dispatch with exact method, authorization and calendar predicates. Do not invent jobs for absent-handler declarations.
   - Evidence: `apps/web/worker/schedules.ts:10-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:91-96` wires `scheduled` and `queue`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
@@ -121,11 +130,11 @@ API v2 (`apps/api/v2`) is deferred and is not part of this release. The web app 
 
 **You see.**
 
-- [ ] Every in-scope API and delivery path works on Cloudflare. Independent booking, payment, provider and email states retain their original ordering and partial failures.
+- [ ] Every in-scope API and delivery path works on Cloudflare.
 
 **Verify.**
 
-- [ ] Replay `D_JOBS`, `D_API` (web `/api` routes only), `D_EMBEDS`, `D_DOCS` and each integration row. Pass when signed requests, receiver records, retry/exhaustion, queue/cache behavior, embed messages, content URLs and final rows match the baseline.
+- [ ] Upstream's own unit, integration and e2e suites for delivery, jobs and the remaining product surfaces pass in CI on the built vinext Worker with D1. Skips must match upstream's.
 
 **Deferred.**
 
@@ -137,28 +146,16 @@ API v2 (`apps/api/v2`) is deferred and is not part of this release. The web app 
 
 **Build.**
 
-- [ ] Confirm the deployment account has Cloudflare Workers Paid, then complete resumable setup, D1 migrations, resource bindings, secret provisioning and deployment documentation.
-- [ ] Prepare the exact release procedure and request separate operator authorization before deployment or real-provider access.
+- [ ] Confirm the deployment account has Cloudflare Workers Paid.
+- [ ] Request operator authorization for the release.
+- [ ] Run setup.
+- [ ] Apply the D1 migrations.
+- [ ] Deploy.
 
 **You see.**
 
-- [ ] A fresh authorized Cloudflare installation runs the full product. A real booking reaches the enabled provider and separate guest inbox.
+- [ ] Make one real booking on the deployed app.
 
 **Verify.**
 
-- [ ] Execute the planned `bun run setup` under the deployment grant. Pass when fresh installation and interruption recovery succeed without touching unrelated databases or exposing secrets.
-- [ ] Run planned `bun run e2e` against the authorized deployment and measure the documented release workload. Pass when actual provider delivery, persistence, limits, recovery and operating measurements have evidence.
-
-## Close the plan
-
-- [ ] Account for every inventory row, behavior domain, external gate and approved deviation with specific evidence.
-- [ ] Report specification completeness, implementation completeness, local parity, real provider delivery and deployed acceptance separately.
-- [ ] Preserve baseline behavior, including source defects and community-edition stubs, unless a separate product change is authorized.
-
-## Release workload
-
-Measure separate synthetic runs with 5 and 10 bookings per day, one organizer, three connected calendars, five event types and two schedules.
-Include a 31-day availability window with 1,000 busy events, date overrides and a daylight saving time change.
-Include 100 daily visitor sessions, up to three reschedules and two cancellations, background jobs, a provider outage/recovery and twelve months of retained booking data.
-Record requests, CPU, D1 reads/writes, storage, provider outcomes and recovery over one week, then project a month.
-This is a release measurement, not permission to deploy or use real customer data.
+- [ ] Run upstream e2e against the deployed app.
