@@ -52,6 +52,7 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 
 - [x] Run `bun --version` and `bun install --frozen-lockfile` from a clean checkout. Pass when Bun is 1.4.4, the install leaves `bun.lock` unchanged and consumed commands use Bun.
 - [x] Run the planned `bun run --cwd apps/web check:compat`, `bun run --cwd apps/web build` and `bun run --cwd apps/web preview`. Pass when the actual consumed graph builds for Workers and named compatibility findings have source-backed dispositions.
+  - Worker packaging keeps RSC and SSR query-compiler state separate, loads 37 non-English dictionaries through Static Assets, and filters test API imports at build time. `cf deploy --prebuilt --dry-run` reports 48,076.38 KiB; `cf workers check --prebuilt` measures a 630.129 ms local startup profile. The retained locale, i18n-routing, and booking-pages suites pass 63 tests with 3 upstream skips at `--workers=4`.
 - [x] Drive hard load, navigation, back/forward, form action, loading/error/not-found, locale, cookie and static asset cases. Pass when their `D_SHELL` outcomes match the baseline in workerd.
 - [x] Run the planned root `bun run lint` and `bun run type-check:ci`. Pass when they check the actual accepted source without shim stubs or exclusions that hide reachable failures.
 

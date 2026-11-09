@@ -66,21 +66,18 @@ function sentryRuntime(): Plugin {
   };
 }
 
-/**
- * The RSC and SSR builds share most of their module graph. Vite writes each
- * environment to its own directory, so every shared chunk ships twice. One
- * output directory lets identical content-hashed files collapse into one copy.
- */
-function sharedServerOutput(): Plugin {
+function productionApiRoutes(): Plugin {
   return {
-    name: "calflare:shared-server-output",
-    enforce: "post",
-    configResolved(config) {
-      const rsc = config.environments.rsc;
-      const ssr = config.environments.ssr;
-      if (!rsc || !ssr) throw new Error("The web build requires the rsc and ssr environments");
-      ssr.build.outDir = rsc.build.outDir;
-      ssr.build.emptyOutDir = false;
+    name: "calflare:production-api-routes",
+    apply: "build",
+    enforce: "pre",
+    transform(code, id) {
+      if (id !== "\0virtual:vinext-server-entry") return;
+      // Vinext's Pages scanner has no exclude option for co-located tests.
+      return code.replace(/const apiRoutes = \[([\s\S]*?)\n\];/, (_routes, entries: string) => {
+        const production = entries.split("\n").filter((entry) => !/\.(?:test|spec)\.[^"/]+"\)/.test(entry));
+        return `const apiRoutes = [${production.join("\n")}\n];`;
+      });
     },
   };
 }
@@ -115,6 +112,7 @@ export default defineConfig({
   },
   plugins: [
     staticAssets(),
+    productionApiRoutes(),
     localeAssets(),
     clientProcessPolyfill(),
     prismaClient(),
@@ -128,7 +126,6 @@ export default defineConfig({
       remoteBindings: false,
       tunnel: false,
     }),
-    sharedServerOutput(),
     publicEnvironment(),
   ],
   css: {
