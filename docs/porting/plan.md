@@ -139,6 +139,8 @@ API v2 is deferred.
 - [x] Bind existing product schedules to Worker dispatch with exact method, authorization and calendar predicates. Do not invent jobs for absent-handler declarations.
   - Evidence: `apps/web/worker/schedules.ts:11-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:86-88` wires `scheduled`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
 - [ ] Complete mail, webhooks, social PNGs, embeds, all locales and docs at their bound Cloudflare destinations.
+  - [x] Share the request's email sender and `waitUntil` between the Worker entry and Pages handlers.
+    - Evidence: `packages/lib/cloudflareEmailTransport.test.ts` reloads the transport module and verifies isolated senders and lifetime registration for concurrent requests. A local workerd run with independently bundled entry and handler modules reproduces `EMAIL binding is required for email delivery` before the fix, then delivers one MIME message with one `waitUntil` registration after the fix. Production resend logged the same missing-binding error; authenticated delivery after deployment remains unverified.
 
 **You see.**
 

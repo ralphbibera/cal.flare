@@ -5,7 +5,14 @@ import type { Transport } from "nodemailer";
 
 type EmailDelivery = (message: { from: string; to: string; raw: Uint8Array }) => Promise<void>;
 type WaitUntil = (promise: Promise<void>) => void;
-const delivery = new AsyncLocalStorage<{ send: EmailDelivery; waitUntil?: WaitUntil }>();
+type EmailRequestScope = { send: EmailDelivery; waitUntil?: WaitUntil };
+
+const storageKey = Symbol.for("calflare.email.request-storage");
+const shared = globalThis as typeof globalThis & {
+  [storageKey]?: AsyncLocalStorage<EmailRequestScope>;
+};
+// Vinext evaluates the Worker entry and Pages handlers in separate module environments.
+const delivery = (shared[storageKey] ??= new AsyncLocalStorage<EmailRequestScope>());
 
 export function withCloudflareEmail<T>(sender: EmailDelivery, callback: () => T, waitUntil?: WaitUntil): T {
   return delivery.run({ send: sender, waitUntil }, callback);
