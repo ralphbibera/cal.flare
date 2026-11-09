@@ -30,7 +30,8 @@ export const generateMetadata = async () => {
 };
 
 const getCachedEventType = unstable_cache(
-  async (eventTypeId: number, headers: ReadonlyHeaders, cookies: ReadonlyRequestCookies) => {
+  // The viewer id is part of the cache key so one user's event type is never served to another.
+  async (_userId: number, eventTypeId: number, headers: ReadonlyHeaders, cookies: ReadonlyRequestCookies) => {
     const caller = await createRouterCaller(eventTypesRouter, await getTRPCContext(headers, cookies));
     return await caller.get({ id: eventTypeId });
   },
@@ -52,7 +53,7 @@ const ServerPage = async ({ params }: PageProps) => {
   const _headers = await headers();
   const _cookies = await cookies();
 
-  const data = await getCachedEventType(eventTypeId, _headers, _cookies);
+  const data = await getCachedEventType(session.user.id, eventTypeId, _headers, _cookies);
   if (!data?.eventType) {
     throw new Error("This event type does not exist");
   }
