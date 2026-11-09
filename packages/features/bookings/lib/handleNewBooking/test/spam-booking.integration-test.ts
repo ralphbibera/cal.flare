@@ -1,26 +1,31 @@
 import {
+  BookingLocations,
   createBookingScenario,
-  TestData,
+  getBooker,
   getGoogleCalendarCredential,
   getOrganizer,
-  getBooker,
   getScenarioData,
-  mockCalendarToHaveNoBusySlots,
   mockCalendarToCrashOnGetAvailability,
-  BookingLocations,
+  mockCalendarToHaveNoBusySlots,
+  TestData,
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
+import process from "node:process";
+import { prisma } from "@calcom/prisma";
+import { BookingStatus, WatchlistType } from "@calcom/prisma/enums";
 import { getMockRequestDataForBooking } from "@calcom/testing/lib/bookingScenario/getMockRequestDataForBooking";
 import { setupAndTeardown } from "@calcom/testing/lib/bookingScenario/setupAndTeardown";
-
-import { describe, expect, vi } from "vitest";
-
-import { prisma } from "@calcom/prisma";
-import { WatchlistType, BookingStatus } from "@calcom/prisma/enums";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
 import { test } from "@calcom/testing/lib/fixtures/fixtures";
-
+import { describe, expect, vi } from "vitest";
 import { getNewBookingHandler } from "./getNewBookingHandler";
 
 const timeout = process.env.CI ? 5000 : 20000;
+
+setupMiniflareD1({
+  worker: async () => (await import("../../../../../../apps/web/cloudflare.config")).default.worker,
+  bind: true,
+  reset: true,
+});
 
 const createTestWatchlistEntry = async (overrides: {
   type: WatchlistType;
@@ -33,7 +38,6 @@ const createTestWatchlistEntry = async (overrides: {
       type: overrides.type,
       value: overrides.value,
       action: overrides.action,
-      createdById: 0,
       organizationId: overrides.organizationId,
       isGlobal: overrides.organizationId !== null ? false : true,
     },
@@ -384,5 +388,4 @@ describe("handleNewBooking - Spam Detection", () => {
       timeout
     );
   });
-
 });

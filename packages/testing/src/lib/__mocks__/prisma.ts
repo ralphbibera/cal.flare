@@ -71,6 +71,9 @@ const prismaMockProxy = new Proxy(proxyTarget, {
 });
 
 vi.mock("@calcom/prisma", async (importOriginal) => {
+  if (process.env.CALFLARE_D1_SCENARIO === "true") {
+    return await importOriginal<typeof import("@calcom/prisma")>();
+  }
   const original = await importOriginal<typeof import("@calcom/prisma/client")>();
   const { Prisma } = original;
 
