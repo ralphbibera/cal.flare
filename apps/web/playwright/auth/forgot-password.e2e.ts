@@ -16,6 +16,7 @@ test.describe("Forgot password", async () => {
 
     // Got to reset password flow
     await page.goto("/auth/forgot-password");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     await page.waitForSelector("text=Forgot Password?");
 
     await page.fill('input[name="email"]', `${user.username}@example.com`);
@@ -63,7 +64,17 @@ test.describe("Forgot password", async () => {
       },
     });
 
+    let releaseCsrf = () => {};
+    const csrfReady = new Promise<void>((resolve) => {
+      releaseCsrf = resolve;
+    });
+    await page.route("**/api/csrf", async (route) => {
+      await csrfReady;
+      await route.continue();
+    });
+
     await page.goto(`/auth/forgot-password/${id}`);
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
 
     const newPassword = `${user.username}-123CAL-${uuid().toString()}`; // To match the password policy
 
@@ -71,6 +82,11 @@ test.describe("Forgot password", async () => {
     await page.waitForSelector("text=Reset Password");
 
     await page.fill('input[name="newPassword"]', newPassword);
+    try {
+      await expect(page.locator('button[type="submit"]')).toBeDisabled();
+    } finally {
+      releaseCsrf();
+    }
     await page.click('button[type="submit"]');
 
     await page.waitForSelector("text=Password updated");
@@ -101,6 +117,7 @@ test.describe("Forgot password", async () => {
     const user = await users.create();
 
     await page.goto("/auth/forgot-password");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     await page.waitForSelector("text=Forgot Password?");
 
     await page.fill('input[name="email"]', `${user.username}@example.com`);
@@ -123,6 +140,7 @@ test.describe("Forgot password", async () => {
     });
 
     await page.goto("/auth/forgot-password");
+    await page.waitForFunction(() => Reflect.get(window, "__NEXT_HYDRATED") === true);
     await page.waitForSelector("text=Forgot Password?");
 
     await page.fill('input[name="email"]', `${user.username}@example.com`);
