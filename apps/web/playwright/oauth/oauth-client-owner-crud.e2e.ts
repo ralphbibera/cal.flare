@@ -3,6 +3,7 @@ import type { PrismaClient } from "@calcom/prisma";
 import type { OAuthClientType } from "@calcom/prisma/enums";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "../lib/fixtures";
+import { deleteOAuthClientsByPrefix } from "./oauth-client-helpers";
 
 async function loginAsSeededAdminAndGoToOAuthSettings(page: Page) {
   await page.goto("/auth/login");
@@ -11,7 +12,7 @@ async function loginAsSeededAdminAndGoToOAuthSettings(page: Page) {
   await page.getByTestId("login-form").locator("#email").fill("admin@example.com");
   await page.getByTestId("login-form").locator("#password").fill("ADMINadmin2022!");
 
-  const responsePromise = page.waitForResponse(/\/api\/auth\/callback\/credentials/);
+  const responsePromise = page.waitForResponse(/\/api\/auth\/sign-in\/cal-credentials/);
   await page.getByTestId("login-form").locator('[type="submit"]').click();
   await responsePromise;
 
@@ -291,14 +292,8 @@ test.describe("OAuth client creation", () => {
   test.afterEach(async ({ users, prisma }, testInfo) => {
     const testPrefix = `e2e-oauth-client-creation-${testInfo.testId}-`;
 
-    // Clean up any clients created by the e2e tests (by naming convention)
-    await prisma.oAuthClient.deleteMany({
-      where: {
-        name: {
-          startsWith: testPrefix,
-        },
-      },
-    });
+    // Clean up any clients created by the e2e tests (by naming convention).
+    await deleteOAuthClientsByPrefix(prisma, "e2e-oauth-client-creation-", testPrefix);
 
     await users.deleteAll();
   });

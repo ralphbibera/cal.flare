@@ -7,10 +7,10 @@ import type { browserSession } from "../lib/cal-session";
 const calCredentialsClient = {
   id: "cal-credentials",
   $InferServerPlugin: {} as CalCredentialsServerPlugin,
-  // Profile switches and session updates change the projection, so they invalidate the session atom.
+  // Profile switches, Cal sign-in and session updates change the projection, so they invalidate the session atom.
   atomListeners: [
     {
-      matcher: (path: string) => path === "/cal/update-session",
+      matcher: (path: string) => path === "/cal/update-session" || path === "/sign-in/cal-credentials",
       signal: "$sessionSignal",
     },
   ],

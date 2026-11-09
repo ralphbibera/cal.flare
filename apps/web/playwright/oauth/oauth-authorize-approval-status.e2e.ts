@@ -3,18 +3,13 @@ import { OAUTH_ERROR_REASONS } from "@calcom/features/oauth/services/OAuthServic
 import type { PrismaClient } from "@calcom/prisma";
 import { expect } from "@playwright/test";
 import { test } from "../lib/fixtures";
+import { deleteOAuthClientsByPrefix } from "./oauth-client-helpers";
 
 test.describe("OAuth authorize - client approval status", () => {
   test.afterEach(async ({ prisma, users }, testInfo) => {
     const testPrefix = `e2e-oauth-authorize-status-${testInfo.testId}-`;
 
-    await prisma.oAuthClient.deleteMany({
-      where: {
-        name: {
-          startsWith: testPrefix,
-        },
-      },
-    });
+    await deleteOAuthClientsByPrefix(prisma, "e2e-oauth-authorize-status-", testPrefix);
 
     await users.deleteAll();
   });
