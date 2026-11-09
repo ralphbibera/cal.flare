@@ -50,7 +50,11 @@ export const getUsersFromGWorkspace = async ({ ctx }: CheckForGCalOptions) => {
 
   const credentials = credentialsSchema.parse(hasExistingCredentials.key);
 
-  const oAuth2Client = new OAuth2Client(client_id, client_secret);
+  const oAuth2Client = new OAuth2Client({
+    clientId: client_id,
+    clientSecret: client_secret,
+    transporterOptions: { fetchImplementation: globalThis.fetch },
+  });
 
   // Set users credentials instead of our app credentials - allowing us to make requests on their behalf
   oAuth2Client.setCredentials(credentials);

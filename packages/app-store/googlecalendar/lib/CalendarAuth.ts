@@ -33,6 +33,7 @@ class MyGoogleOAuth2Client extends OAuth2Client {
       clientId: client_id,
       clientSecret: client_secret,
       redirectUri: redirect_uri,
+      transporterOptions: { fetchImplementation: globalThis.fetch },
       // default: 5 * 60 * 1000, 5 minutes
       // tho, fn will never run in excess of 60 seconds
       eagerRefreshThresholdMillis: 60000,
@@ -94,6 +95,7 @@ export class CalendarAuth {
       const authClient = new JWT({
         email: delegatedTo.serviceAccountKey.client_email,
         key: delegatedTo.serviceAccountKey.private_key,
+        transporterOptions: { fetchImplementation: globalThis.fetch },
         scopes: ["https://www.googleapis.com/auth/calendar"],
         subject: emailToImpersonate.replace(oauthClientIdAliasRegex, ""),
       });
