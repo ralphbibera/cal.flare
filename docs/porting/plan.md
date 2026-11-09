@@ -47,6 +47,7 @@ Deployment, real credentials, paid-resource creation and live-data changes requi
 **You see.**
 
 - [x] The unchanged route/layout/provider structure renders through the native Workers runtime, including SSR, client navigation, actions, metadata and static assets.
+  - Evidence: `apps/web/next.config.ts` permits quality 100 and query strings on `/api/social/og/image` through the Worker image endpoint. Built-Worker curl checks follow `/_next/image?w=1200&q=100&url=...` to `200 image/png` for generic and meeting images, including a nested production-avatar fetch returning 200, and resolve the `og:image` emitted by `/auth/login`.
 
 **Verify.**
 
