@@ -100,7 +100,11 @@ export const EventType = ({
         tabsNavigation={tabsNavigation}
         saveButtonRef={saveButtonRef}>
         <Form form={formMethods} id="event-type-form" handleSubmit={handleSubmit}>
-          <div ref={animationParentRef}>{tabMap[tabName]}</div>
+          <div ref={animationParentRef}>
+            {/* Keep a stable child so the tab swap is synchronous. Auto-animate otherwise keeps
+                the previous tab mounted during its leave animation, duplicating its controls. */}
+            <div>{tabMap[tabName]}</div>
+          </div>
         </Form>
       </EventTypeSingleLayout>
       {children}

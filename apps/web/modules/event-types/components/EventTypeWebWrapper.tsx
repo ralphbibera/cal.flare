@@ -18,9 +18,25 @@ import { revalidateEventTypeEditPage } from "@calcom/web/app/(use-page-wrapper)/
 import { TRPCClientError } from "@trpc/react-query";
 import dynamic from "next/dynamic";
 import { useRouter as useAppRouter, usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { EventType as EventTypeComponent } from "./EventType";
+
+const EVENT_TYPE_TAB_NAMES = [
+  "setup",
+  "availability",
+  "team",
+  "limits",
+  "advanced",
+  "recurring",
+  "apps",
+  "webhooks",
+] as const;
+
+type EventTypeTabName = (typeof EVENT_TYPE_TAB_NAMES)[number];
+
+const isEventTypeTabName = (value: string): value is EventTypeTabName =>
+  (EVENT_TYPE_TAB_NAMES as readonly string[]).includes(value);
 
 type EventPermissions = {
   eventTypes: {
@@ -277,19 +293,7 @@ const EventTypeWeb = ({
   };
 
   const querySchema = z.object({
-    tabName: z
-      .enum([
-        "setup",
-        "availability",
-        "team",
-        "limits",
-        "advanced",
-        "recurring",
-        "apps",
-        "webhooks",
-      ])
-      .optional()
-      .default("setup"),
+    tabName: z.enum(EVENT_TYPE_TAB_NAMES).optional().default("setup"),
   });
 
   const {
@@ -327,6 +331,45 @@ const EventTypeWeb = ({
     eventTypeApps,
   });
 
+  // Switching tabs must not reload the page: the editor holds unsaved changes in this form.
+  const [activeTab, setActiveTab] = useState<EventTypeTabName>(tabName);
+
+  useEffect(() => {
+    setActiveTab(tabName);
+  }, [tabName]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextTab = new URLSearchParams(window.location.search).get("tabName");
+      if (nextTab && isEventTypeTabName(nextTab)) setActiveTab(nextTab);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const tabsNavigationWithHandlers = useMemo(
+    () =>
+      tabsNavigation.map((tab) => {
+        const tabNameFromHref = new URL(tab.href, "http://localhost").searchParams.get("tabName");
+        return {
+          ...tab,
+          isActive: tabNameFromHref === activeTab,
+          onClick: () => {
+            if (!tabNameFromHref || !isEventTypeTabName(tabNameFromHref)) return;
+            setActiveTab(tabNameFromHref);
+            const url = new URL(window.location.href);
+            url.searchParams.set("tabName", tabNameFromHref);
+            window.history.pushState(
+              { ...window.history.state, tabName: tabNameFromHref },
+              "",
+              `${url.pathname}${url.search}`
+            );
+          },
+        };
+      }),
+    [tabsNavigation, activeTab]
+  );
+
   return (
     <EventTypeComponent
       {...rest}
@@ -341,8 +384,8 @@ const EventTypeWeb = ({
       formMethods={form}
       isUpdating={updateMutation.isPending}
       isPlatform={false}
-      tabName={tabName}
-      tabsNavigation={tabsNavigation}>
+      tabName={activeTab}
+      tabsNavigation={tabsNavigationWithHandlers}>
       {slugExistsChildrenDialogOpen.length ? (
         <ManagedEventTypeDialog
           slugExistsChildrenDialogOpen={slugExistsChildrenDialogOpen}
