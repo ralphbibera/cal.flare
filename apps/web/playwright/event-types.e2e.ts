@@ -352,9 +352,10 @@ test.describe("Event Types tests", () => {
         await unCheckDisplayLocation(page);
 
         await page.locator("[data-testid=add-location]").click();
+        await expect(page.getByRole("listbox").last()).toBeVisible();
 
         const testUrl2 = "https://cal.com/ai";
-        await page.locator(`text="Link meeting"`).last().click();
+        await page.getByRole("option", { name: /Link meeting/ }).last().dispatchEvent("click");
         await page.locator(`input[name="${locationInputName(1)}"]`).waitFor();
         await page.locator(`input[name="${locationInputName(1)}"]`).fill(testUrl2);
         await checkDisplayLocation(page);
@@ -367,7 +368,7 @@ test.describe("Event Types tests", () => {
 
         // Add Multiple Phone Call location options
         await page.getByTestId("location-select").last().click();
-        await page.getByTestId("location-select-item-userPhone").click();
+        await page.getByTestId("location-select-item-userPhone").last().click();
 
         const organizerPhoneNumberInputName = (idx: number) => `locations[${idx}].hostPhoneNumber`;
 
@@ -378,9 +379,10 @@ test.describe("Event Types tests", () => {
         await checkDisplayLocation(page);
         await unCheckDisplayLocation(page);
         await page.locator("[data-testid=add-location]").click();
+        await expect(page.getByRole("listbox").last()).toBeVisible();
 
         const testPhoneInputValue2 = "9188888888";
-        await page.getByTestId("location-select-item-userPhone").last().click();
+        await page.getByRole("option", { name: /Phone call/ }).last().dispatchEvent("click");
         await page.locator(`input[name="${organizerPhoneNumberInputName(1)}"]`).waitFor();
         await page.locator(`input[name="${organizerPhoneNumberInputName(1)}"]`).fill(testPhoneInputValue2);
         await checkDisplayLocation(page);
