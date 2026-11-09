@@ -113,6 +113,7 @@ API v2 (`apps/api/v2`) is not part of this release. The web app runs without it,
   - Evidence: `apps/web/worker/schedules.ts:10-21` lists only the nine product schedules with a handler and their caller; `apps/web/worker/schedules.ts:25-37` maps GitHub and Vercel authorization; `apps/web/worker/index.ts:91-96` wires `scheduled` and `queue`; `apps/web/worker/schedules.integration-test.ts:100-164` proves method, authorization, failure isolation, and the no-secret branches in workerd.
 - [ ] Replace the v2 Node host at `apps/api/v2/src/worker.ts`, retaining controller/service folders, version selection, DTOs, guards, filters, pagination and public `/api/v2` routes.
 - [ ] Complete mail, webhooks, social PNGs, embeds, all locales and docs at their bound Cloudflare destinations.
+  - Evidence: `apps/web/playwright/social-og.e2e.ts` requests the `meeting`, `app` and `generic` social images on the built Worker, asserting upstream's 200 PNG response with its cache-control and ETag, a decoded 1200x630 PNG body, stable ETags, and the 400/404 validation responses.
 
 **You see.**
 
