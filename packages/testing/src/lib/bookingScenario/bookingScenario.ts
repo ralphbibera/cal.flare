@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import i18nMock from "../__mocks__/libServerI18n";
-import prismock from "../__mocks__/prisma";
+import "../__mocks__/prisma";
+import { prisma } from "@calcom/prisma";
 import type { TFunction } from "i18next";
 import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
@@ -44,32 +45,8 @@ import type { CredentialPayload } from "@calcom/types/Credential";
 import type { VideoApiAdapter } from "@calcom/types/VideoApiAdapter";
 import { z } from "zod";
 import type { getMockRequestDataForBooking } from "./getMockRequestDataForBooking";
+import { getOrCreateCalendarServiceMock, mockVideoAdapterRegistry } from "./bookingScenarioMocks";
 import { getMockPaymentService } from "./MockPaymentService";
-
-type NonNullableVideoApiAdapter = NonNullable<VideoApiAdapter>;
-
-// Shared map of mock calendar service constructors accessible to both the vi.mock factory and mockCalendar.
-// Using a Proxy-based CalendarServiceMap ensures any calendar service key is automatically mocked,
-// preventing real module imports (e.g., feishu/lark) that trigger async fetch calls during worker shutdown.
-const calendarServiceConstructorMocks: Record<string, ReturnType<typeof vi.fn>> = {};
-
-function getOrCreateCalendarServiceMock(key: string): ReturnType<typeof vi.fn> {
-  if (!calendarServiceConstructorMocks[key]) {
-    calendarServiceConstructorMocks[key] = vi.fn();
-  }
-  return calendarServiceConstructorMocks[key];
-}
-
-vi.mock("@calcom/app-store/calendar.services.generated", () => ({
-  CalendarServiceMap: new Proxy({} as Record<string, Promise<{ default: ReturnType<typeof vi.fn> }>>, {
-    get(_target, prop: string) {
-      if (typeof prop === "symbol") return undefined;
-      return Promise.resolve({ default: getOrCreateCalendarServiceMock(prop) });
-    },
-  }),
-}));
-
-const mockVideoAdapterRegistry: Record<string, unknown> = {};
 
 vi.mock("@calcom/features/bookings/lib/handleNewBooking/createBookingInD1", async (importOriginal) => {
   const actual =
@@ -77,8 +54,8 @@ vi.mock("@calcom/features/bookings/lib/handleNewBooking/createBookingInD1", asyn
   return {
     ...actual,
     createBookingInD1: async ({ data, cancellation }: Parameters<typeof actual.createBookingInD1>[0]) => {
-      if (cancellation) await prismock.booking.update(cancellation);
-      return prismock.booking.create({ data, include: actual.bookingRelations });
+      if (cancellation) await prisma.booking.update(cancellation);
+      return prisma.booking.create({ data, include: actual.bookingRelations });
     },
   };
 });
@@ -94,7 +71,7 @@ vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAt
     attendeeIdsToDelete: number[];
   }) => {
     for (const id of attendeeIdsToMove) {
-      await prismock.attendee.update({
+      await prisma.attendee.update({
         where: { id },
         data: {
           bookingId,
@@ -104,7 +81,7 @@ vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/owner/moveSeatedAt
         },
       });
     }
-    await prismock.attendee.deleteMany({ where: { id: { in: attendeeIdsToDelete } } });
+    await prisma.attendee.deleteMany({ where: { id: { in: attendeeIdsToDelete } } });
   },
 }));
 
@@ -118,35 +95,10 @@ vi.mock("@calcom/features/bookings/lib/handleSeats/reschedule/attendee/moveSeate
     bookingSeatId: number;
     bookingId: number;
   }) => {
-    await prismock.attendee.update({ where: { id: attendeeId }, data: { bookingId } });
-    await prismock.bookingSeat.update({ where: { id: bookingSeatId }, data: { bookingId } });
+    await prisma.attendee.update({ where: { id: attendeeId }, data: { bookingId } });
+    await prisma.bookingSeat.update({ where: { id: bookingSeatId }, data: { bookingId } });
   },
 }));
-
-vi.mock("@calcom/app-store/video.adapters.generated", () => ({
-  VideoApiAdapterMap: new Proxy(
-    {},
-    {
-      get(_target, prop) {
-        if (typeof prop === "string" && mockVideoAdapterRegistry[prop]) {
-          return mockVideoAdapterRegistry[prop];
-        }
-        return Promise.resolve({ default: vi.fn() });
-      },
-    }
-  ),
-}));
-
-// Routing forms feature removed - mock no longer needed
-
-vi.mock("@calcom/lib/crypto", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@calcom/lib/crypto")>();
-  return {
-    ...actual,
-    symmetricEncrypt: vi.fn((serviceAccountKey) => serviceAccountKey),
-    symmetricDecrypt: vi.fn((serviceAccountKey) => serviceAccountKey),
-  };
-});
 
 vi.mock("@calcom/features/webhooks/lib/queryWebhookRows", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@calcom/features/webhooks/lib/queryWebhookRows")>();
@@ -169,7 +121,7 @@ vi.mock("@calcom/features/webhooks/lib/queryWebhookRows", async (importOriginal)
       const eventsSchema = z.array(z.nativeEnum(WebhookTriggerEvents));
       const events = eventsSchema.parse(JSON.parse(eventsJson));
       const teamIds = z.array(z.number()).parse(JSON.parse(teamsJson));
-      const webhooks = await prismock.webhook.findMany({
+      const webhooks = await prisma.webhook.findMany({
         where: {
           active: true,
           OR: [
@@ -199,6 +151,9 @@ vi.mock("@calcom/features/webhooks/lib/queryWebhookRows", async (importOriginal)
     },
   };
 });
+
+
+type NonNullableVideoApiAdapter = NonNullable<VideoApiAdapter>;
 
 type Fields = z.infer<typeof eventTypeBookingFields>;
 
@@ -421,7 +376,7 @@ async function addHostsToDb(eventTypes: InputEventType[]) {
   for (const eventType of eventTypes) {
     // Create host groups first if they exist
     if (eventType.hostGroups?.length) {
-      await prismock.hostGroup.createMany({
+      await prisma.hostGroup.createMany({
         data: eventType.hostGroups.map((group) => ({
           id: group.id, // Preserve the input ID
           name: group.name,
@@ -460,12 +415,12 @@ async function addHostsToDb(eventTypes: InputEventType[]) {
           : undefined,
       };
 
-      await prismock.host.create({
+      await prisma.host.create({
         data,
       });
 
       if (host.location) {
-        await prismock.hostLocation.create({
+        await prisma.hostLocation.create({
           data: {
             userId: host.userId,
             eventTypeId: eventType.id,
@@ -516,10 +471,10 @@ export async function addEventTypesToDb(
   })[]
 ) {
   log.silly("TestData: Add EventTypes to DB", JSON.stringify(eventTypes));
-  await prismock.eventType.createMany({
+  await prisma.eventType.createMany({
     data: eventTypes,
   });
-  const allEventTypes = await prismock.eventType.findMany({
+  const allEventTypes = await prisma.eventType.findMany({
     include: {
       users: true,
       destinationCalendar: true,
@@ -534,7 +489,7 @@ export async function addEventTypesToDb(
 
     if (eventType.schedule) {
       log.silly("TestData: Creating Schedule for EventType", JSON.stringify(eventType));
-      await prismock.schedule.create({
+      await prisma.schedule.create({
         data: {
           ...eventType.schedule.create,
           eventType: {
@@ -548,7 +503,7 @@ export async function addEventTypesToDb(
 
     // Handle restrictionSchedule creation and connection
     if (eventType.restrictionSchedule) {
-      const createdRestrictionSchedule = await prismock.schedule.create({
+      const createdRestrictionSchedule = await prisma.schedule.create({
         data: {
           ...eventType.restrictionSchedule.create,
           eventType: {
@@ -558,14 +513,14 @@ export async function addEventTypesToDb(
           },
         },
       });
-      await prismock.eventType.update({
+      await prisma.eventType.update({
         where: { id: createdEventType.id },
         data: { restrictionScheduleId: createdRestrictionSchedule.id },
       });
     }
 
     if (eventType.team?.id) {
-      const createdTeam = await prismock.team.create({
+      const createdTeam = await prisma.team.create({
         data: {
           id: eventType.team?.id,
           bookingLimits: eventType.team?.bookingLimits,
@@ -574,7 +529,7 @@ export async function addEventTypesToDb(
         },
       });
 
-      await prismock.eventType.update({
+      await prisma.eventType.update({
         where: { id: eventType.id },
         data: { teamId: createdTeam.id },
       });
@@ -680,7 +635,7 @@ export async function addEventTypes(eventTypes: InputEventType[], usersStore: In
 }
 
 function addBookingReferencesToDB(bookingReferences: Prisma.BookingReferenceCreateManyInput[]) {
-  prismock.bookingReference.createMany({
+  prisma.bookingReference.createMany({
     data: bookingReferences,
   });
 }
@@ -705,13 +660,13 @@ async function addBookingsToDb(
     return { ...booking, startTime, endTime };
   });
 
-  await prismock.booking.createMany({
+  await prisma.booking.createMany({
     data: fixedBookings,
   });
   log.silly(
     "TestData: Bookings as in DB",
     JSON.stringify({
-      bookings: await prismock.booking.findMany({
+      bookings: await prisma.booking.findMany({
         include: {
           references: true,
           attendees: true,
@@ -794,13 +749,13 @@ export async function addBookings(bookings: InputBooking[]) {
 }
 
 async function addWebhooksToDb(webhooks: any[]) {
-  await prismock.webhook.createMany({
+  await prisma.webhook.createMany({
     data: webhooks,
   });
 }
 
 async function addPaymentToDb(payment: InputPayment[]) {
-  await prismock.payment.createMany({
+  await prisma.payment.createMany({
     data: payment,
   });
 }
@@ -813,7 +768,7 @@ async function addWebhooks(webhooks: InputWebhook[]) {
 
 export async function addUsersToDb(users: InputUser[]) {
   log.silly("TestData: Creating Users", JSON.stringify(users));
-  await prismock.user.createMany({
+  await prisma.user.createMany({
     data: users,
   });
 
@@ -822,7 +777,7 @@ export async function addUsersToDb(users: InputUser[]) {
     if (user.outOfOffice) {
       log.debug("Creating OutOfOfficeEntry for user", user.id);
       for (const dateRange of user.outOfOffice.dateRanges) {
-        await prismock.outOfOfficeEntry.create({
+        await prisma.outOfOfficeEntry.create({
           data: {
             uuid: uuidv4(),
             start: new Date(dateRange.start),
@@ -842,7 +797,7 @@ export async function addUsersToDb(users: InputUser[]) {
     if (user.secondaryEmails) {
       log.debug("Creating SecondaryEmail entries for user", user.id);
       for (const secondaryEmail of user.secondaryEmails) {
-        await prismock.secondaryEmail.create({
+        await prisma.secondaryEmail.create({
           data: {
             email: secondaryEmail.email,
             emailVerified: secondaryEmail.emailVerified,
@@ -853,7 +808,7 @@ export async function addUsersToDb(users: InputUser[]) {
     }
   }
 
-  const allUsers = await prismock.user.findMany({
+  const allUsers = await prisma.user.findMany({
     include: {
       credentials: true,
       teams: true,
@@ -886,7 +841,7 @@ export async function addTeamsToDb(teams: NonNullable<InputUser["teams"]>[number
       ...team,
       parentId: team.parentId,
     };
-    await prismock.team.upsert({
+    await prisma.team.upsert({
       where: {
         id: teamsWithParentId.id,
       },
@@ -899,7 +854,7 @@ export async function addTeamsToDb(teams: NonNullable<InputUser["teams"]>[number
     });
   }
 
-  const addedTeams = await prismock.team.findMany({
+  const addedTeams = await prisma.team.findMany({
     where: {
       id: {
         in: teams.map((team) => team.id),
@@ -995,19 +950,19 @@ export async function addUsers(users: InputUser[]) {
 
 async function addAppsToDb(apps: any[]) {
   log.silly("TestData: Creating Apps", JSON.stringify({ apps }));
-  await prismock.app.createMany({
+  await prisma.app.createMany({
     data: apps,
   });
-  const allApps = await prismock.app.findMany();
+  const allApps = await prisma.app.findMany();
   log.silly("TestData: Apps as in DB", JSON.stringify({ apps: allApps }));
 }
 
 async function addSelectedSlotsToDb(selectedSlots: InputSelectedSlot[]) {
   log.silly("TestData: Creating Selected Slots", JSON.stringify(selectedSlots));
-  await prismock.selectedSlots.createMany({
+  await prisma.selectedSlots.createMany({
     data: selectedSlots,
   });
-  const allSelectedSlots = await prismock.selectedSlots.findMany();
+  const allSelectedSlots = await prisma.selectedSlots.findMany();
   log.silly("TestData: Selected Slots as in DB", JSON.stringify({ selectedSlots: allSelectedSlots }));
 }
 
@@ -1042,7 +997,7 @@ export async function createBookingScenario(data: ScenarioData) {
   };
 }
 
-type TeamCreateReturnType = Awaited<ReturnType<typeof prismock.team.create>>;
+type TeamCreateReturnType = Awaited<ReturnType<typeof prisma.team.create>>;
 
 function assertNonNullableSlug<T extends { slug: string | null }>(
   org: T
@@ -1058,7 +1013,7 @@ export async function createOrganization(orgData: {
   metadata?: z.infer<typeof teamMetadataSchema>;
   withTeam?: boolean;
 }): Promise<TeamCreateReturnType & { slug: NonNullable<TeamCreateReturnType["slug"]>; children: any }> {
-  const org = await prismock.team.create({
+  const org = await prisma.team.create({
     data: {
       name: orgData.name,
       slug: orgData.slug,
@@ -1070,7 +1025,7 @@ export async function createOrganization(orgData: {
     },
   });
   if (orgData.withTeam) {
-    await prismock.team.create({
+    await prisma.team.create({
       data: {
         name: "Org Team",
         slug: "org-team",
@@ -1084,7 +1039,7 @@ export async function createOrganization(orgData: {
     });
   }
   assertNonNullableSlug(org);
-  const team = await prismock.team.findUnique({ where: { id: org.id }, include: { children: true } });
+  const team = await prisma.team.findUnique({ where: { id: org.id }, include: { children: true } });
   if (!team) {
     throw new Error(`Team with id ${org.id} not found`);
   }
@@ -1101,7 +1056,7 @@ export async function createCredentials(
     teamId?: number | null;
   }[]
 ) {
-  const credentials = await prismock.credential.createMany({
+  const credentials = await prisma.credential.createMany({
     data: credentialData,
   });
   return credentials;
@@ -1688,7 +1643,7 @@ export function getScenarioData(
 }
 
 export function enableEmailFeature() {
-  prismock.feature.create({
+  prisma.feature.create({
     data: {
       slug: "emails",
       enabled: false,
@@ -2448,7 +2403,7 @@ export const createDelegationCredential = async (orgId: number, type: "google" |
       auth_provider_x509_cert_url: "AUTH_PROVIDER_X509_CERT_URL",
     };
 
-    const workspace = await prismock.workspacePlatform.create({
+    const workspace = await prisma.workspacePlatform.create({
       data: {
         name: "Test Workspace",
         slug: "google",
@@ -2472,7 +2427,7 @@ export const createDelegationCredential = async (orgId: number, type: "google" |
       auth_provider_x509_cert_url: "AUTH_PROVIDER_X509_CERT_URL",
     };
 
-    const delegationCredential = await prismock.delegationCredential.create({
+    const delegationCredential = await prisma.delegationCredential.create({
       data: {
         workspacePlatform: {
           connect: {
@@ -2498,7 +2453,7 @@ export const createDelegationCredential = async (orgId: number, type: "google" |
       tenant_id: "TENANT_ID",
     };
 
-    const workspace = await prismock.workspacePlatform.create({
+    const workspace = await prisma.workspacePlatform.create({
       data: {
         name: "Test Workspace",
         slug: "office365",
@@ -2514,7 +2469,7 @@ export const createDelegationCredential = async (orgId: number, type: "google" |
       tenant_id: "TENANT_ID",
     };
 
-    const delegationCredential = await prismock.delegationCredential.create({
+    const delegationCredential = await prisma.delegationCredential.create({
       data: {
         workspacePlatform: {
           connect: {

@@ -1,5 +1,4 @@
-import prismock from "@calcom/testing/lib/__mocks__/prisma";
-
+import { prisma } from "@calcom/prisma";
 import type { WatchlistType } from "@calcom/prisma/enums";
 
 interface WatchlistInput {
@@ -8,7 +7,7 @@ interface WatchlistInput {
 }
 
 export const createWatchlistEntry = async (input: WatchlistInput) => {
-  await prismock.watchlist.create({
+  await prisma.watchlist.create({
     data: {
       ...input,
     },

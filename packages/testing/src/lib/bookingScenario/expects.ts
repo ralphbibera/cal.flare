@@ -1,5 +1,5 @@
-import prismaMock from "../__mocks__/prisma";
 import type { CalendarServiceMethodMock, getOrganizer, InputEventType } from "./bookingScenario";
+import { prisma } from "@calcom/prisma";
 import { parse } from "node-html-parser";
 import type { VEvent } from "node-ical";
 import ical from "node-ical";
@@ -413,7 +413,7 @@ export function expectSMSWorkflowToBeNotTriggered({
 export async function expectBookingToBeInDatabase(
   booking: Partial<Booking> & Pick<Booking, "uid"> & { references?: Partial<BookingReference>[] }
 ) {
-  const actualBooking = await prismaMock.booking.findUnique({
+  const actualBooking = await prisma.booking.findUnique({
     where: {
       uid: booking.uid,
     },
@@ -430,7 +430,7 @@ export async function expectBookingToBeInDatabase(
 }
 
 export async function expectBookingTrackingToBeInDatabase(tracking: Tracking, uid?: string) {
-  const actualBooking = await prismaMock.booking.findUnique({
+  const actualBooking = await prisma.booking.findUnique({
     where: {
       uid,
     },
@@ -1350,7 +1350,7 @@ export async function expectBookingToNotHaveReference(
   booking: Pick<Booking, "uid">,
   reference: Partial<BookingReference>
 ) {
-  const actualBooking = await prismaMock.booking.findUnique({
+  const actualBooking = await prisma.booking.findUnique({
     where: {
       uid: booking.uid,
     },
