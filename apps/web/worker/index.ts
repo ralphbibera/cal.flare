@@ -24,8 +24,6 @@ type WorkerEnvironment = SentryEnvironment &
   Env &
   ScheduleEnvironment;
 
-export * from "vinext/server/fetch-handler";
-
 function serve(
   request: Parameters<typeof handler.fetch>[0],
   env: WorkerEnvironment,
@@ -107,3 +105,6 @@ export default {
     return frameStaticAsset(await instrumented.fetch(request, env, ctx), manifest);
   },
 };
+
+export { RuntimeState } from "@calcom/lib/RuntimeState";
+export * from "vinext/server/fetch-handler";
