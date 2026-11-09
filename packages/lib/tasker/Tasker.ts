@@ -1,16 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import process from "node:process";
-import { configure } from "@trigger.dev/sdk";
 import { ENABLE_ASYNC_TASKER } from "../constants";
 import { redactError } from "../redactError";
 import type { ILogger } from "./types";
 
-const isAsyncTaskerEnabled =
-  ENABLE_ASYNC_TASKER && process.env.TRIGGER_SECRET_KEY && process.env.TRIGGER_API_URL;
-
-/** An async tasker that owns its transport configuration instead of relying on Trigger env vars. */
-type SelfConfiguredTasker = { isConfigured?: () => boolean };
+/** An async tasker that owns its transport configuration instead of relying on process-wide env vars. */
+type SelfConfiguredTasker = { isConfigured: () => boolean };
 
 export abstract class Tasker<T> {
   protected readonly asyncTasker: T;
@@ -29,26 +24,7 @@ export abstract class Tasker<T> {
     this.syncTasker = dependencies.syncTasker;
 
     const { asyncTasker } = dependencies;
-    if (asyncTasker.isConfigured) {
-      this.isAsyncAvailable = () => ENABLE_ASYNC_TASKER && Boolean(asyncTasker.isConfigured?.());
-      return;
-    }
-    this.isAsyncAvailable = () => Boolean(isAsyncTaskerEnabled);
-
-    if (!isAsyncTaskerEnabled) {
-      if (ENABLE_ASYNC_TASKER && (!process.env.TRIGGER_SECRET_KEY || !process.env.TRIGGER_API_URL)) {
-        this.logger.info(
-          "Missing env variables TRIGGER_SECRET_KEY or TRIGGER_API_URL, falling back to Sync tasker."
-        );
-      }
-    }
-
-    if (isAsyncTaskerEnabled) {
-      configure({
-        accessToken: process.env.TRIGGER_SECRET_KEY,
-        baseURL: process.env.TRIGGER_API_URL,
-      });
-    }
+    this.isAsyncAvailable = () => ENABLE_ASYNC_TASKER && asyncTasker.isConfigured();
   }
 
   public async dispatch<K extends keyof T>(
@@ -71,13 +47,7 @@ export abstract class Tasker<T> {
       return await method.apply(tasker, args);
     } catch (err) {
       const taskerLabel = isAsync ? "AsyncTasker" : "SyncTasker";
-      const baseUrlInfo = isAsyncTaskerEnabled
-        ? ` (baseURL: ${process.env.TRIGGER_API_URL ?? "unknown"})`
-        : "";
-      this.logger.error(
-        `${taskerLabel} failed for '${String(taskName)}'.${baseUrlInfo}`,
-        this.getErrorDetails(err)
-      );
+      this.logger.error(`${taskerLabel} failed for '${String(taskName)}'.`, this.getErrorDetails(err));
 
       if (!isAsync) {
         throw err;
