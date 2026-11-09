@@ -7,11 +7,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "lint": "biome lint .",
-    "dev:trigger": "npx trigger.dev@latest dev --analyze",
-    "deploy:trigger:prod": "npx trigger.dev@latest deploy --skip-promotion",
-    "deploy:trigger:ci": "trigger deploy --config ./trigger.config.ts --skip-promotion",
-    "deploy:trigger:staging": "npx trigger.dev@latest deploy --env staging --skip-promotion"
+    "lint": "biome lint ."
   },
   "dependencies": {
     "@calcom/atoms": "workspace:*",
