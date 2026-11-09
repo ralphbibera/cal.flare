@@ -249,6 +249,8 @@ const nextConfig = (phase: string): NextConfig => {
     },
     images: {
       unoptimized: true,
+      qualities: [75, 100],
+      localPatterns: [{ pathname: "**", search: "" }, { pathname: "/api/social/og/image" }],
     },
     turbopack: {},
     async rewrites() {
