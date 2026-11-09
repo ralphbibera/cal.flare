@@ -1,9 +1,8 @@
 import { Tasker } from "@calcom/lib/tasker/Tasker";
 import type { ILogger } from "@calcom/lib/tasker/types";
-import type { TriggerOptions } from "@trigger.dev/sdk";
 import type { CalendarsSyncTasker } from "./CalendarsSyncTasker";
 import type { CalendarsTriggerTasker } from "./CalendarsTriggerTasker";
-import type { ICalendarsTasker, CalendarsTaskPayload } from "./types";
+import type { CalendarsTaskPayload, ICalendarsTasker } from "./types";
 
 export interface ICalendarsTaskerDependencies {
   asyncTasker: CalendarsTriggerTasker;
@@ -16,17 +15,14 @@ export class CalendarsTasker extends Tasker<ICalendarsTasker> {
     super(dependencies);
   }
 
-  public async ensureDefaultCalendars(data: {
-    payload: CalendarsTaskPayload;
-    options?: TriggerOptions;
-  }): Promise<{ runId: string }> {
+  public async ensureDefaultCalendars(data: { payload: CalendarsTaskPayload }): Promise<{ runId: string }> {
     const { payload } = data;
     let taskResponse: {
       runId: string;
     } = { runId: "task-not-found" };
 
     try {
-      taskResponse = await this.dispatch("ensureDefaultCalendars", payload, data.options);
+      taskResponse = await this.dispatch("ensureDefaultCalendars", payload);
 
       this.logger.info(`CalendarsTasker ensureDefaultCalendars success:`, taskResponse, {
         userId: payload.userId,
