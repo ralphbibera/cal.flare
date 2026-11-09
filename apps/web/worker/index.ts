@@ -11,6 +11,7 @@ import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
 import type { SentryEnvironment } from "../sentry.server.config";
 import { getSentryOptions } from "../sentry.server.config";
+import { handleE2eD1 } from "./e2e-d1";
 import type { ScheduleEnvironment } from "./schedules";
 import { dispatchSchedules } from "./schedules";
 import { frameStaticAsset, withStaticAssets } from "./static-assets";
@@ -20,11 +21,13 @@ type WorkerEnvironment = SentryEnvironment &
   Env &
   ScheduleEnvironment;
 
-function serve(
+async function serve(
   request: Parameters<typeof handler.fetch>[0],
   env: WorkerEnvironment,
   ctx: Parameters<typeof handler.fetch>[2]
 ) {
+  const e2eD1Response = await handleE2eD1(request, env);
+  if (e2eD1Response) return e2eD1Response;
   return withCloudflareEmail(
     async ({ from, to, raw }) => {
       if (!env.EMAIL) {

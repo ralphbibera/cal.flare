@@ -68,6 +68,8 @@ jobs:
       - uses: ./.github/actions/bun-playwright-install
       - run: bun run prisma generate
       - uses: ./.github/actions/cache-build
+      - name: Generate E2E D1 token
+        run: echo "E2E_D1_TOKEN=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
       - name: Run Tests
         run: bun run e2e:app-store --workers=4
       - name: Upload Test Results

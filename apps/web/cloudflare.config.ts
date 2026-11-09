@@ -44,6 +44,7 @@ export default defineConfig({
       EMAIL_SERVER_HOST: textBinding(emailServerHost),
       EMAIL_SERVER_PORT: textBinding(emailServerPort),
       EMAIL_FROM: textBinding(emailFrom),
+      ...(isE2E ? { E2E_D1_TOKEN: bindings.secret() } : {}),
     },
   }),
 });
