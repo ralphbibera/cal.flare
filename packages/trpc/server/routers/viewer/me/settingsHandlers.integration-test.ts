@@ -1,4 +1,5 @@
 import { hashAPIKey } from "@calcom/features/api-keys-legacy/api-keys/lib/apiKeys";
+import { IS_PREMIUM_USERNAME_ENABLED } from "@calcom/lib/constants";
 import prisma from "@calcom/prisma";
 import { IdentityProvider, MembershipRole, RedirectType } from "@calcom/prisma/enums";
 import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
@@ -132,12 +133,18 @@ describe("updateProfile on D1", () => {
     const user = await createUser();
     const other = await createUser();
 
-    await expect(
-      updateProfileHandler({
-        ctx: { user: user as unknown as Parameters<typeof updateProfileHandler>[0]["ctx"]["user"] },
-        input: { username: other.username },
-      })
-    ).rejects.toMatchObject({ code: "P2002" });
+    const attempt = updateProfileHandler({
+      ctx: { user: user as unknown as Parameters<typeof updateProfileHandler>[0]["ctx"]["user"] },
+      input: { username: other.username },
+    });
+    if (IS_PREMIUM_USERNAME_ENABLED) {
+      await expect(attempt).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "Username is already taken",
+      });
+    } else {
+      await expect(attempt).rejects.toMatchObject({ code: "P2002" });
+    }
     expect(
       await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { username: true } })
     ).toEqual({ username: user.username });
