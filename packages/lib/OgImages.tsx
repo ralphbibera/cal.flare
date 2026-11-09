@@ -51,7 +51,7 @@ const makeAbsoluteUrl = (url: string) => (/^https?:\/\//.test(url) ? url : `${CA
 
 const OG_ASSETS = {
   meeting: {
-    id: "meeting-og-image-v1", // Bump version when changing Meeting component structure/styling
+    id: "meeting-og-image-v2", // Bump version when changing Meeting component structure/styling
     logo: LOGO,
     logoWidth: "350",
     avatarSize: "160",
