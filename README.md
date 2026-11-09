@@ -284,7 +284,7 @@ The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secre
 - **Cloudflare Workers Paid is required to deploy Cal.flare.**
 - The web Worker uses the authoritative D1 database.
 - `ASSETS` serves public files, fonts, embeds and built output.
-- The web Worker uses `JOBS`, `RUNTIME_STATE` and the selected cache bindings for Cloudflare job, state and cache resources.
+- The web Worker uses `JOBS` and the selected cache bindings for Cloudflare job and cache resources.
 - The docs application has its own static assets and no application database binding.
 
 #### Deploying Cal.flare
@@ -481,10 +481,7 @@ Publish or verify the OAuth consent application when required for the users and 
 
 ### Rate limiting
 
-The Cloudflare target uses the `RUNTIME_STATE` Durable Object for limiter storage.
-Preserve the original namespaces, windows, response shape, fail-open behavior and enabled/disabled configuration.
-An installation with the legacy `UNKEY_ROOT_KEY` unset must not gain rate limiting merely because the DO exists.
-Follow the [state and job contract](docs/porting/architecture.md#jobs-ephemeral-state-and-integrations) when migrating the configuration; an external Unkey service is not required by the selected target.
+Rate limiting uses Unkey, as upstream does. Set `UNKEY_ROOT_KEY` to enable it. Without the key, rate limiting is off.
 
 ### Payments and automation
 

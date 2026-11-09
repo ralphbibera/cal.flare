@@ -22,6 +22,7 @@ export default defineConfig({
     entrypoint: "./worker/index.ts",
     compatibilityDate: "2026-11-04",
     compatibilityFlags: ["nodejs_compat"],
+    exports: cache.exports,
     workersDev: false,
     previewUrls: false,
     assets: {
@@ -45,9 +46,7 @@ export default defineConfig({
       EMAIL_SERVER_HOST: textBinding(emailServerHost),
       EMAIL_SERVER_PORT: textBinding(emailServerPort),
       EMAIL_FROM: textBinding(emailFrom),
-      API_V2: bindings.worker({ worker: "calflare-api-v2" }),
       JOBS: bindings.queue({ name: "calflare-jobs" }),
-      RUNTIME_STATE: bindings.durableObject({ worker: "calflare-api-v2", exportName: "RuntimeState" }),
     },
   }),
 });

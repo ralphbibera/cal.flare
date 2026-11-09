@@ -44,7 +44,7 @@ Better Auth carries its own Zod 4 and JOSE 6 dependencies. Keep domain Zod 3 and
 No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, Accelerate, Neon, Hyperdrive-to-PG, or Node application server belongs in the target runtime.
 Redis is optional. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, web and API v2 use that Upstash database. When either is missing, both use `NoopRedisService`.
 API v2 has no `REDIS_URL` and no Bull Redis connection. Its Bull work runs on `JOBS`, and its throttler keeps state in memory when Upstash is not configured.
-Web rate limiting is off unless `UNKEY_ROOT_KEY` is set. Limiter state lives in `RUNTIME_STATE`.
+Web rate limiting uses Unkey as upstream does, and is off unless `UNKEY_ROOT_KEY` is set.
 
 ## Bun workspaces and lockfile
 
@@ -251,7 +251,7 @@ No cross-provider transaction, exactly-once effect, or stronger global double-bo
 
 ## Jobs, ephemeral state, and integrations
 
-The web Worker owns `scheduled` and `queue` handlers and the application `RUNTIME_STATE` DO class. Shared job services stay in original packages.
+The web Worker owns `scheduled` and `queue` handlers. Shared job services stay in original packages.
 One UTC minute dispatcher evaluates product rows from [schedules](inventory/schedules.tsv), including source calendar conditions and monthly last-day guards.
 Existing cron URLs retain methods and authorization. Repository-maintenance schedules and `no-product-handler` rows create no new product job.
 
@@ -260,8 +260,7 @@ Existing cron URLs retain methods and authorization. Repository-maintenance sche
 | `DB` | Complete domain/auth records, existing Task records, and required delivery state. Same database for both product Workers. |
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
 | `JOBS` | Cloudflare Queue replaces consumed Bull and Trigger submission, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. |
-| `RUNTIME_STATE` | SQLite DO per rate-limit namespace. Holds application limiter state, including the web limiter when `UNKEY_ROOT_KEY` enables it. Preserve keys, TTLs, atomic counters, and failure results. |
-| Response Store bindings | Native helper-owned DO and R2 cache-body bindings, distinct from `RUNTIME_STATE`. No provider credentials or authoritative product records belong in this cache. |
+| Response Store bindings | Native helper-owned DO and R2 cache-body bindings. No provider credentials or authoritative product records belong in this cache. |
 
 [Task repository][pin-tasker] preserves due ordering, `take: 1000`, attempt increments, retry interval, max attempts, cancellation, and success. Its cleanup is a no-op at the pin.
 Task retries and transport retries remain separate. Queue redelivery must not double-increment a completed Task or blindly repeat a successful provider effect.

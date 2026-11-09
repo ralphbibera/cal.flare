@@ -17,7 +17,7 @@ The source configuration is `cloudflare.config.ts` beside each app's Vite config
 
 | Application | Required resources |
 | --- | --- |
-| Web | `DB`, `ASSETS`, `JOBS`, `RUNTIME_STATE`, the scheduler, auth/provider secrets and the selected Response Store cache bindings. |
+| Web | `DB`, `ASSETS`, `JOBS`, the scheduler, auth/provider secrets and the selected Response Store cache bindings. |
 | Docs | Its own Static Assets and configured static response handling; no application DB binding. |
 
 Response Store uses its native helper's DO/R2 resources for disposable cached data. D1 remains authoritative for domain and auth records.
