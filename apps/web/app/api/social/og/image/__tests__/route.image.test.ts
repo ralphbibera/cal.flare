@@ -4,11 +4,13 @@ import { NextRequest } from "next/server";
 import type { ReactNode } from "react";
 import { createElement, isValidElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { withInternalFetch } from "../../../../../../worker/internal-fetch";
 import { GET } from "../route";
 
 const publicDir = new URL("../../../../../../public/", import.meta.url);
 
 const staticFiles: Record<string, { path: string; contentType: string }> = {
+  "/avatar.svg": { path: "avatar.svg", contentType: "image/svg+xml" },
   "/fonts/cal.ttf": { path: "fonts/cal.ttf", contentType: "font/ttf" },
   "/fonts/Inter-Regular.ttf": { path: "fonts/Inter-Regular.ttf", contentType: "font/ttf" },
   "/fonts/Inter-Medium.ttf": { path: "fonts/Inter-Medium.ttf", contentType: "font/ttf" },
@@ -209,6 +211,58 @@ test("meeting passes numeric logo and avatar dimensions to the renderer", async 
   const facts = elementFacts(0);
   expect(facts.sources).toContain("https://images.example/avatar.png");
   expect(facts.dimensions).toEqual([1200, 600, 350, undefined, 160, 160]);
+});
+
+test("meeting inlines a same-origin JPEG avatar served as image/png without network fetch", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Cloudflare-Workers" });
+  const fetchMock = vi.fn(() => {
+    throw new Error("unexpected self-fetch");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const avatar = await readFile(new URL("social-bg-dark-lines.jpg", publicDir));
+  const dispatch = vi.fn(
+    async (_request: Request) =>
+      new Response(new Uint8Array(avatar), {
+        headers: { "content-type": "image/png" },
+      })
+  );
+  const response = await withInternalFetch(dispatch, () =>
+    GET(
+      createRequest(
+        "type=meeting&title=Team+sync&meetingProfileName=Alice&meetingImage=https%3A%2F%2Fcalflare.test%2Fapi%2Favatar%2Ftest.png"
+      )
+    )
+  );
+
+  expect(response.status).toBe(200);
+  expect(elementFacts(0).sources.at(-1)).toBe(`data:image/jpeg;base64,${avatar.toString("base64")}`);
+  expect(dispatch).toHaveBeenCalledOnce();
+  expect(dispatch.mock.calls[0][0].url).toBe("https://calflare.test/api/avatar/test.png");
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("meeting follows a missing avatar redirect through static assets without self-fetch", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Cloudflare-Workers" });
+  const fetchMock = vi.fn(() => {
+    throw new Error("unexpected self-fetch");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const dispatch = vi.fn(async (_request: Request) =>
+    Response.redirect("https://calflare.test/avatar.svg", 302)
+  );
+  const response = await withInternalFetch(dispatch, () =>
+    GET(
+      createRequest(
+        "type=meeting&title=Team+sync&meetingProfileName=Alice&meetingImage=https%3A%2F%2Fcalflare.test%2Fapi%2Favatar%2Fmissing.png"
+      )
+    )
+  );
+
+  const avatar = await readFile(new URL("avatar.svg", publicDir));
+  expect(response.status).toBe(200);
+  expect(elementFacts(0).sources).toContain(`data:image/svg+xml;base64,${avatar.toString("base64")}`);
+  expect(dispatch).toHaveBeenCalledOnce();
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("preserves numeric and percentage image dimensions without mutating the component tree", async () => {

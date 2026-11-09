@@ -13,6 +13,7 @@ import handler from "vinext/server/fetch-handler";
 import type { SentryEnvironment } from "../sentry.server.config";
 import { getSentryOptions } from "../sentry.server.config";
 import { handleE2eD1 } from "./e2e-d1";
+import { withInternalFetch } from "./internal-fetch";
 import type { ScheduleEnvironment } from "./schedules";
 import { dispatchSchedules } from "./schedules";
 import { frameStaticAsset, withStaticAssets } from "./static-assets";
@@ -68,7 +69,11 @@ async function serve(
                 rateLimit: process.env.UNKEY_ROOT_KEY ? "enabled" : "disabled",
               },
             },
-            () => handler.fetch(request, runtimeEnv, ctx)
+            () =>
+              withInternalFetch(
+                (imageRequest) => handler.fetch(imageRequest, runtimeEnv, ctx),
+                () => handler.fetch(request, runtimeEnv, ctx)
+              )
           )
         ),
       (promise) => ctx.waitUntil(promise)
