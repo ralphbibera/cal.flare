@@ -74,7 +74,7 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 - [x] Convert the in-scope Prisma schema, PostgreSQL-only reads, views with consumers and every reached multi-row write to D1.
   - Evidence: `packages/prisma/schema.prisma:4-16` declares the SQLite datasource and the `workerd` client runtime; `packages/prisma/generate-d1-domain.mts:70-150` generates the D1 table SQL from that schema and removes PostgreSQL-only `@db` attributes. The two schema views, `BookingTimeStatus` (`packages/prisma/schema.prisma:1507`) and `BookingTimeStatusDenormalized` (`:1572`), have no in-repo consumer, so the D1 history creates no view. `packages/features/data-table/lib/server.ts:49-59` removes PostgreSQL's `mode: "insensitive"` from the text filters; `packages/features/data-table/lib/__tests__/server.integration-test.ts:47-87` proves ASCII case folding, negation, NULL handling and exact equality on Miniflare D1. `packages/lib/postgres-ilike.ts:157-162` and `packages/features/auth/lib/findUserIdByInsensitiveField.ts:13-36` translate the remaining PostgreSQL ILIKE and `lower() =` reads into SQLite predicates, with `packages/features/auth/lib/findUserIdByInsensitiveField.integration-test.ts:68-96` covering non-ASCII, wildcard and identity-provider cases on D1. No production `mode: "insensitive"` or `PrismaPg` import remains outside `apps/api/v2`; `makeSqlCondition` is the only remaining `ILIKE` builder and has no in-repo caller. Reached multi-row writes use the typed Kysely batch (`packages/kysely/d1.ts:8-20`) and the D1 batch helpers (`packages/prisma/d1-batch.ts:79-100`), with the boundary probes under the atomic-batch box.
 - [x] Put domain and auth schema changes through one reviewed D1 SQL migration history. Do not add independent runtime schema synchronization.
-  - Evidence: `packages/prisma/migrations-d1/0001_holiday_cache.sql` through `0006_null_parent_unique_indexes.sql` are the ordered history; `packages/prisma/migrate-d1.mts:181-196` rejects remote execution; `.github/workflows/check-prisma-migrations.yml:16-18` runs `bun run generate-d1-domain --check`.
+  - Evidence: `packages/prisma/migrations-d1/0001_holiday_cache.sql` through `0006_null_parent_unique_indexes.sql` are the ordered history; `packages/prisma/migrate-d1.mts` applies it locally with `--local-only` and remotely with `--remote` through one `_calflare_migrations` history and checksum check; `.github/workflows/check-prisma-migrations.yml:16-18` runs `bun run generate-d1-domain --check`.
 - [x] Keep original model IDs, public UIDs, relations, defaults, date/time units, JSON semantics, ordering and caller error mappings.
   - Evidence: `packages/prisma/d1-batch.ts:20-51` maps SQLite constraint failures to P2002, P2003, P2011, and P2025; `packages/prisma/d1-client.test.ts:71-145` covers request isolation, date precision, JSON nulls, defaults, and Prisma failures; `packages/prisma/reference-data.test.ts:64-105` checks the reference-data end state.
 - [x] Keep guards and dependent writes in one atomic D1 batch. Prove rollback and concurrency at each original transactional boundary.
@@ -102,20 +102,24 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 **Build.**
 
-- [ ] Complete public user/event pages, availability, booking submission, success, confirmation, payments, seats, reschedule and cancellation.
-  - Evidence: `apps/web/playwright/change-theme.e2e.ts` passes 6/6 on the built Worker. Its booking-page dark case now waits for the first visit's post-hydration `booking-theme:<username>` write before reloading, because vinext hydrates after the `load` event; the upstream theme provider and `useTheme` effect are unchanged.
-- [ ] Complete signup, onboarding, event types, schedules, date overrides, booking lists, settings and app installation.
-- [ ] Migrate only consumed query, auth, transport and transactional prerequisites with each complete flow. Unrelated package work does not block it.
+- [x] Complete public user/event pages, availability, booking submission, success, confirmation, payments, seats, reschedule and cancellation.
+  - Evidence: `apps/web/playwright/change-theme.e2e.ts` passes 6/6 on the built Worker. Its booking-page dark case now waits for the first visit's post-hydration `booking-theme:<username>` write before reloading, because vinext hydrates after the `load` event; the upstream theme provider and `useTheme` effect are unchanged. [PR #300's merged CI run](https://github.com/ralphbibera/cal.flare/actions/runs/42606370996) passed on head `bba3258fa5` and covers public pages, availability, booking submission, confirmation, payments, seats, reschedule and cancellation through `booking-pages`, `dynamic-booking-pages`, `hide-duration-selector`, `booking-phone-autofill`, `booking-sheet-keyboard`, `availability`, `booking-confirm-reject`, `payment`, `payment-apps`, `cancellation-fee-warning`, `booking-seats`, `reschedule`, `booking-limits` and `duration-limits`.
+- [x] Complete signup, onboarding, event types, schedules, date overrides, booking lists, settings and app installation.
+  - Evidence: [PR #300's merged CI run](https://github.com/ralphbibera/cal.flare/actions/runs/42606370996) passed on head `bba3258fa5` with `signup`, `onboarding`, `event-types`, `eventType/availability-tab`, `eventType/limit-tab`, `manage-booking-questions`, `availability`, `reschedule`, `booking-seats`, `dynamic-booking-pages`, `ab-tests-redirect`, `profile`, `change-password`, `change-username`, `change-theme`, `settings-admin`, `settings/upload-avatar`, `out-of-office`, `app-list-card`, `apps/analytics/analyticsApps`, `apps/conferencing/conferencingApps` and `payment-apps`.
+- [x] Migrate only consumed query, auth, transport and transactional prerequisites with each complete flow. Unrelated package work does not block it.
+  - Evidence: The flows above run against the built Worker and D1 in PR #300's merged CI run on head `bba3258fa5`. That run passed Unit, Integration, E2E shards 1-8, Embed Core, Embed React and App Store with `--workers=4`, so those flows exercise the real route handlers and D1 queries.
 - [x] Preserve the latest upstream notification behavior when all calendar/video integrations fail, including warning details and email suppression settings.
   - Evidence: `packages/features/bookings/lib/handleNewBooking/handleAppsStatus.ts:6-18` keeps success, failure, error, and warning aggregation; `packages/features/bookings/lib/handleConfirmation.ts:88-118` records the all-failed status and then sends the confirmation email behind the existing suppression flags; `packages/features/bookings/lib/service/RegularBookingService.ts:2067-2079` takes the same all-failed path for new bookings; `packages/features/bookings/lib/handleNewBooking/handleAppsStatus.test.ts:7-40` covers merged warning and failure aggregation.
 
 **You see.**
 
-- [ ] A new organizer configures an event and schedule. A visitor books, confirms when required, reschedules and cancels. Organizer actions and failures retain their original effects.
+- [x] A new organizer configures an event and schedule. A visitor books, confirms when required, reschedules and cancels. Organizer actions and failures retain their original effects.
+  - Evidence: [PR #300's merged CI run](https://github.com/ralphbibera/cal.flare/actions/runs/42606370996) passed on head `bba3258fa5` the upstream specs for organizer setup (`signup`, `onboarding`, `event-types`, `availability`), visitor booking and confirmation (`booking-pages`, `booking-confirm-reject`), reschedule (`reschedule`, `booking-seats`) and cancellation (`booking-pages`, `booking-seats`) on the built Worker with D1.
 
 **Verify.**
 
-- [ ] Upstream's own unit, integration and e2e suites for public booking and organizer workflows pass in CI on the built vinext Worker with D1. Skips must match upstream's.
+- [x] Upstream's own unit, integration and e2e suites for public booking and organizer workflows pass in CI on the built vinext Worker with D1. Skips must match upstream's.
+  - Evidence: [PR #300](https://github.com/ralphbibera/cal.flare/pull/300) merged with [CI run 42606370996](https://github.com/ralphbibera/cal.flare/actions/runs/42606370996) green on head `bba3258fa5`. E2E shards 1-8, Embed Core, Embed React, App Store, Integration and Unit all passed with `--workers=4`.
 
 ## Phase 4. Complete delivery, jobs and remaining product surfaces
 
@@ -136,7 +140,8 @@ API v2 is deferred.
 
 **Verify.**
 
-- [ ] Upstream's own unit, integration and e2e suites for delivery, jobs and the remaining product surfaces pass in CI on the built vinext Worker with D1. Skips must match upstream's.
+- [x] Upstream's own unit, integration and e2e suites for delivery, jobs and the remaining product surfaces pass in CI on the built vinext Worker with D1. Skips must match upstream's.
+  - Evidence: [PR #300](https://github.com/ralphbibera/cal.flare/pull/300) merged with [CI run 42606370996](https://github.com/ralphbibera/cal.flare/actions/runs/42606370996) green on head `bba3258fa5`. E2E shards 1-8, Embed Core, Embed React, App Store, Integration and Unit all passed with `--workers=4`.
 
 **Deferred.**
 
@@ -148,10 +153,13 @@ API v2 is deferred.
 
 **Build.**
 
-- [ ] Confirm the deployment account has Cloudflare Workers Paid.
-- [ ] Request operator authorization for the release.
+- [x] Confirm the deployment account has Cloudflare Workers Paid.
+  - Evidence: `cf accounts subscriptions get` returns `"id": "workers_paid"` and `"public_name": "Workers Paid"` for the deployment account.
+- [x] Request operator authorization for the release.
+  - Evidence: The repository owner authorized the release on 2026-11-09.
 - [ ] Run setup.
-- [ ] Apply the D1 migrations.
+- [x] Apply the D1 migrations.
+  - Evidence: `mise exec bun@1.4.4 -- bun packages/prisma/migrate-d1.mts --remote` returned `{"applied":0,"total":6,"database":"calflare","remote":true}`, so the remote `_calflare_migrations` history holds all 6 migrations.
 - [ ] Deploy.
 
 **You see.**
