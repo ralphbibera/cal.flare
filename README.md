@@ -208,6 +208,8 @@ bun run test-e2e
 bunx playwright show-report test-results/reports/playwright-html-report
 ```
 
+The suite enables MailHog for the email journeys by default. Start the development mail receiver below before running the tests.
+
 #### Development mail receiver
 
 Run [mailhog](https://github.com/mailhog/MailHog) to view emails sent during development

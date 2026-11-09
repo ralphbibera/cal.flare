@@ -7,7 +7,13 @@ const cache = await createWorkersResponseStoreSelfContainedConfig({
   bucket: "calflare-web-response-store-cache-bodies",
 });
 
-const cspPolicy = process.env.CSP_POLICY;
+const isE2E = process.env.NEXT_PUBLIC_IS_E2E === "1";
+// The e2e runner serves MailHog on the loopback interface, matching the upstream CI service.
+const emailServerHost = process.env.EMAIL_SERVER_HOST ?? (isE2E ? "127.0.0.1" : undefined);
+const emailServerPort = process.env.EMAIL_SERVER_PORT ?? (isE2E ? "1025" : undefined);
+const emailFrom = process.env.EMAIL_FROM ?? (isE2E ? "notifications@example.com" : undefined);
+const cspPolicy = process.env.CSP_POLICY ?? (isE2E ? "non-strict" : undefined);
+const textBinding = (value: string | undefined) => (value ? bindings.text(value) : undefined);
 
 export default defineConfig({
   worker: defineWorker({
@@ -32,10 +38,13 @@ export default defineConfig({
       ...cache.env,
       NEXTAUTH_SECRET: bindings.secret(),
       CALENDSO_ENCRYPTION_KEY: bindings.secret(),
-      CSP_POLICY: cspPolicy ? bindings.text(cspPolicy) : undefined,
+      CSP_POLICY: textBinding(cspPolicy),
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
       EMAIL: bindings.sendEmail(),
+      EMAIL_SERVER_HOST: textBinding(emailServerHost),
+      EMAIL_SERVER_PORT: textBinding(emailServerPort),
+      EMAIL_FROM: textBinding(emailFrom),
       API_V2: bindings.worker({ worker: "calflare-api-v2" }),
       JOBS: bindings.queue({ name: "calflare-jobs" }),
       RUNTIME_STATE: bindings.durableObject({ worker: "calflare-api-v2", exportName: "RuntimeState" }),
