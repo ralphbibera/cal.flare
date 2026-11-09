@@ -89,7 +89,7 @@ function createMockPaymentService(_credentials?: unknown) {
       _selectedEventTypeTitle?: string,
       _eventTitle?: string
     ) {
-      const { default: prismaMock } = await import("@calcom/testing/lib/__mocks__/prisma");
+      const { prisma } = await import("@calcom/prisma");
       const externalId = "mock_payment_external_id";
 
       const paymentCreateData = {
@@ -106,7 +106,7 @@ function createMockPaymentService(_credentials?: unknown) {
         currency: payment.currency,
       };
 
-      const createdPayment = await prismaMock.payment.create({
+      const createdPayment = await prisma.payment.create({
         data: paymentCreateData,
       });
 

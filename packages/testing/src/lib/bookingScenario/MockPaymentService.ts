@@ -1,8 +1,7 @@
-import prismaMock from "../__mocks__/prisma";
+import { prisma } from "@calcom/prisma";
 
 import "vitest-fetch-mock";
 
-import { sendAwaitingPaymentEmailAndSMS } from "@calcom/emails/email-manager";
 import logger from "@calcom/lib/logger";
 import type { Booking, Payment, PaymentOption, Prisma } from "@calcom/prisma/client";
 import type { CalendarEvent } from "@calcom/types/Calendar";
@@ -45,12 +44,12 @@ export function getMockPaymentService() {
         currency: payment.currency,
       };
 
-      const paymentData = await prismaMock.payment.create({
+      const paymentData = await prisma.payment.create({
         data: paymentCreateData,
       });
       logger.silly("Created mock payment", JSON.stringify({ paymentData }));
 
-      const verifyPayment = await prismaMock.payment.findFirst({
+      const verifyPayment = await prisma.payment.findFirst({
         where: { externalId: paymentCreateData.externalId },
       });
       logger.silly("Verified payment exists", JSON.stringify({ verifyPayment }));
@@ -68,6 +67,7 @@ export function getMockPaymentService() {
       paymentData: Payment
     ): Promise<void> {
       // TODO: App implementing PaymentService is supposed to send email by itself at the moment.
+      const { sendAwaitingPaymentEmailAndSMS } = await import("@calcom/emails/email-manager");
       await sendAwaitingPaymentEmailAndSMS({
         ...event,
         paymentInfo: {
