@@ -1,28 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
 import type { JobBatch } from "./context";
 import { dispatchJobBatch, isInternalJobDispatch } from "./internal-dispatch";
+import type { JobDelivery } from "./JobQueue";
 
-function delivery(runId: string) {
+function delivery(jobId: string) {
   return {
-    id: runId,
+    id: jobId,
     timestamp: new Date(),
-    body: { runId },
+    body: { jobId, runId: `${jobId}-run`, payload: { value: 1 } },
     attempts: 1,
     ack: vi.fn(),
     retry: vi.fn(),
   };
 }
 
-const batch = (...runIds: string[]): { batch: JobBatch; messages: ReturnType<typeof delivery>[] } => {
-  const messages = runIds.map(delivery);
-  return { batch: { messages }, messages };
+const batch = (
+  queue: JobBatch["queue"],
+  ...jobIds: string[]
+): {
+  batch: JobBatch;
+  messages: ReturnType<typeof delivery>[];
+} => {
+  const messages = jobIds.map(delivery);
+  return { batch: { queue, messages }, messages };
 };
 
 describe("dispatchJobBatch", () => {
   it("applies each outcome to the delivery that produced it", async () => {
-    const { batch: deliveries, messages } = batch("run-acked", "run-delayed");
+    const { batch: deliveries, messages } = batch("webhooks", "job-acked", "job-delayed");
     const fetchRoute = vi.fn(async () =>
-      Response.json({ outcomes: [{}, { retry: true, delaySeconds: 30 }] })
+      Response.json({
+        outcomes: [{ action: "ack" }, { action: "retry", delaySeconds: 30 }],
+      })
     );
 
     await dispatchJobBatch(deliveries, fetchRoute);
@@ -33,7 +42,7 @@ describe("dispatchJobBatch", () => {
   });
 
   it("retries every delivery when the app cannot run the batch", async () => {
-    const { batch: deliveries, messages } = batch("run-1", "run-2");
+    const { batch: deliveries, messages } = batch("calendars", "run-1", "run-2");
 
     await dispatchJobBatch(deliveries, async () => new Response("broken", { status: 500 }));
 
@@ -43,7 +52,7 @@ describe("dispatchJobBatch", () => {
   });
 
   it("retries every delivery when the dispatch request itself fails", async () => {
-    const { batch: deliveries, messages } = batch("run-1");
+    const { batch: deliveries, messages } = batch("notifications", "run-1");
 
     await dispatchJobBatch(deliveries, async () => {
       throw new Error("router unavailable");
@@ -52,14 +61,20 @@ describe("dispatchJobBatch", () => {
     expect(messages[0].retry).toHaveBeenCalledOnce();
   });
 
-  it("sends the run IDs inside the internal dispatch context", async () => {
-    const { batch: deliveries } = batch("run-1");
+  it("sends the queue and deliveries inside the internal dispatch context", async () => {
+    const { batch: deliveries } = batch("webhooks", "run-1");
     let wasInternal = false;
+    const expected: JobDelivery = {
+      jobId: "run-1",
+      runId: "run-1-run",
+      payload: { value: 1 },
+      attempts: 1,
+    };
     const fetchRoute = vi.fn(async (request: Request) => {
       wasInternal = isInternalJobDispatch();
       expect(request.url).toBe("https://calflare.internal/api/tasks/jobs");
-      expect(await request.json()).toEqual({ jobs: [{ runId: "run-1", attempts: 1 }] });
-      return Response.json({ outcomes: [{}] });
+      expect(await request.json()).toEqual({ queue: "webhooks", jobs: [expected] });
+      return Response.json({ outcomes: [{ action: "ack" }] });
     });
 
     await dispatchJobBatch(deliveries, fetchRoute);

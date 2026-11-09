@@ -1,4 +1,10 @@
 import process from "node:process";
+import {
+  DEAD_LETTER_QUEUE,
+  type JobQueueName,
+  QUEUES,
+  queueName,
+} from "@calcom/features/tasker/queue/queues";
 import { createWorkersResponseStoreSelfContainedConfig } from "@vinext/cloudflare/cache/config";
 import { bindings, defineConfig, defineWorker, exports, triggers } from "cf/config";
 
@@ -8,6 +14,18 @@ const cache = await createWorkersResponseStoreSelfContainedConfig({
 });
 
 const cspPolicy = process.env.CSP_POLICY;
+
+const jobQueues = (Object.keys(QUEUES) as JobQueueName[]).map((name) => {
+  const queue = QUEUES[name];
+  return triggers.queue({
+    name: queueName(name),
+    deadLetterQueue: DEAD_LETTER_QUEUE,
+    maxBatchSize: 1,
+    maxConcurrency: queue.maxConcurrency,
+    maxRetries: queue.maxRetries,
+    visibilityTimeoutMs: queue.visibilityTimeoutMs,
+  });
+});
 
 export default defineConfig({
   worker: defineWorker({
@@ -27,11 +45,7 @@ export default defineConfig({
       notFoundHandling: "none",
       runWorkerFirst: ["/*", "!/_next/static/*", "!/*/_next/static/*"],
     },
-    // One message per invocation keeps the source calendars concurrency limit of 10 until DO admission.
-    triggers: [
-      triggers.scheduled({ schedule: "* * * * *" }),
-      triggers.queue({ name: "calflare-jobs", maxBatchSize: 1, maxConcurrency: 10, maxRetries: 10 }),
-    ],
+    triggers: [triggers.scheduled({ schedule: "* * * * *" }), ...jobQueues],
     env: {
       ...cache.env,
       NEXTAUTH_SECRET: bindings.secret(),
@@ -40,7 +54,9 @@ export default defineConfig({
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
       EMAIL: bindings.sendEmail(),
-      JOBS: bindings.queue({ name: "calflare-jobs" }),
+      JOBS_WEBHOOKS: bindings.queue({ name: queueName("webhooks") }),
+      JOBS_CALENDARS: bindings.queue({ name: queueName("calendars") }),
+      JOBS_NOTIFICATIONS: bindings.queue({ name: queueName("notifications") }),
       RUNTIME_STATE: bindings.durableObject({ worker: "calflare-web", exportName: "RuntimeState" }),
     },
   }),

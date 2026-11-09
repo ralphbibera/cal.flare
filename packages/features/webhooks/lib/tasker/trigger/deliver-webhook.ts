@@ -6,6 +6,7 @@ export const WEBHOOK_DELIVERY_JOB_ID = "webhook.deliver";
 
 export const deliverWebhookJob = defineQueueJob({
   id: WEBHOOK_DELIVERY_JOB_ID,
+  queue: "webhooks",
   retry: webhookDeliveryTaskConfig.retry,
   schema: webhookDeliveryTaskSchema,
   run: async (payload, { runId }) => {

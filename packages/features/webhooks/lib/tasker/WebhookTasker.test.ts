@@ -1,24 +1,20 @@
 import { nextRetryDelayMs } from "@calcom/features/tasker/queue/JobQueue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QUEUES } from "@calcom/features/tasker/queue/queues";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WebhookTaskConsumer } from "../service/WebhookTaskConsumer";
 import type { WebhookTaskPayload } from "../types/webhookTask";
 import { webhookDeliveryTaskConfig } from "./trigger/config";
+import { deliverWebhookJob } from "./trigger/deliver-webhook";
 import { WebhookSyncTasker } from "./WebhookSyncTasker";
 import { WebhookTriggerTasker } from "./WebhookTriggerTasker";
 
 const mocks = vi.hoisted(() => ({
-  enqueueJob: vi.fn(),
   hasJobQueue: vi.fn(),
 }));
 
 vi.mock("nanoid", () => ({
   nanoid: vi.fn().mockReturnValue("test123456"),
 }));
-
-vi.mock("@calcom/features/tasker/queue/JobQueue", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@calcom/features/tasker/queue/JobQueue")>();
-  return { ...actual, enqueueJob: mocks.enqueueJob };
-});
 
 vi.mock("@calcom/features/tasker/queue/context", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@calcom/features/tasker/queue/context")>();
@@ -89,7 +85,7 @@ describe("WebhookTriggerTasker", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.enqueueJob.mockResolvedValue({ runId: "run-id-123" });
+    vi.spyOn(deliverWebhookJob, "enqueue").mockResolvedValue({ runId: "run-id-123" });
     mocks.hasJobQueue.mockReturnValue(true);
     mockLogger = {
       info: vi.fn(),
@@ -101,20 +97,22 @@ describe("WebhookTriggerTasker", () => {
     });
   });
 
-  it("should enqueue webhook delivery on the JOBS queue", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should enqueue webhook delivery on the webhooks queue", async () => {
     const payload = createMockWebhookTaskPayload();
 
     const result = await triggerTasker.deliverWebhook(payload);
 
-    expect(mocks.enqueueJob).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "webhook.deliver" }),
-      payload
-    );
+    expect(deliverWebhookJob.enqueue).toHaveBeenCalledWith(payload);
     expect(result.taskId).toBe("run-id-123");
   });
 
-  it("should report configured only when the JOBS binding is available", () => {
+  it("should report configured only when the webhooks queue binding is available", () => {
     expect(triggerTasker.isConfigured()).toBe(true);
+    expect(mocks.hasJobQueue).toHaveBeenCalledWith("webhooks");
 
     mocks.hasJobQueue.mockReturnValue(false);
 
@@ -122,7 +120,7 @@ describe("WebhookTriggerTasker", () => {
   });
 
   it("should propagate enqueue failures so the base tasker can fall back to sync", async () => {
-    mocks.enqueueJob.mockRejectedValueOnce(new Error("queue unavailable"));
+    vi.mocked(deliverWebhookJob.enqueue).mockRejectedValueOnce(new Error("queue unavailable"));
 
     await expect(triggerTasker.deliverWebhook(createMockWebhookTaskPayload())).rejects.toThrow(
       "queue unavailable"
@@ -134,7 +132,8 @@ describe("webhook delivery retry policy", () => {
   it("should retain the source concurrency and randomized 30s-600s backoff", () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0.37);
 
-    expect(webhookDeliveryTaskConfig.concurrencyLimit).toBe(25);
+    expect(QUEUES.webhooks.maxConcurrency).toBe(25);
+    expect(deliverWebhookJob.queue).toBe("webhooks");
     expect([1, 2, 3].map((attempt) => nextRetryDelayMs(webhookDeliveryTaskConfig.retry, attempt))).toEqual([
       41_100,
       82_200,

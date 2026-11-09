@@ -6,6 +6,7 @@ export const ENSURE_DEFAULT_CALENDARS_JOB_ID = "calendars.ensure-default-calenda
 
 export const ensureDefaultCalendarsJob = defineQueueJob({
   id: ENSURE_DEFAULT_CALENDARS_JOB_ID,
+  queue: "calendars",
   retry: calendarsTaskConfig.retry,
   schema: calendarsTaskSchema,
   run: async (payload) => {

@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { JobBatch } from "./context";
+import type { JobDelivery, JobOutcome } from "./JobQueue";
 
 const storageKey = Symbol.for("calflare.jobs.internal-dispatch");
 const shared = globalThis as typeof globalThis & { [storageKey]?: AsyncLocalStorage<boolean> };
@@ -11,12 +12,9 @@ export function isInternalJobDispatch(): boolean {
   return internalDispatch.getStore() === true;
 }
 
-type DeliveredJob = { runId: string; attempts: number };
-type JobOutcome = { retry?: true; delaySeconds?: number };
-
 /**
  * The app graph runs the job because the Worker entry must stay free of app-store and Prisma code.
- * Outcomes keep the ack, delay and retry decisions on the delivery that made them.
+ * Outcomes keep the ack and delay decisions on the delivery that made them.
  */
 export async function dispatchJobBatch(
   batch: JobBatch,
@@ -29,7 +27,7 @@ export async function dispatchJobBatch(
         new Request("https://calflare.internal/api/tasks/jobs", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ jobs: batch.messages.map(toDeliveredJob) }),
+          body: JSON.stringify({ queue: batch.queue, jobs: batch.messages.map(toDeliveredJob) }),
         })
       );
     } catch (error) {
@@ -38,7 +36,7 @@ export async function dispatchJobBatch(
       return;
     }
     if (!response.ok) {
-      // No Task attempt ran to an outcome, so only the transport retries.
+      // No job attempt ran to an outcome, so only the transport retries.
       retryAll(batch);
       return;
     }
@@ -47,8 +45,10 @@ export async function dispatchJobBatch(
   });
 }
 
-const toDeliveredJob = ({ body, attempts }: JobBatch["messages"][number]): DeliveredJob => ({
+const toDeliveredJob = ({ body, attempts }: JobBatch["messages"][number]): JobDelivery => ({
+  jobId: body.jobId,
   runId: body.runId,
+  payload: body.payload,
   attempts,
 });
 
@@ -57,8 +57,8 @@ function retryAll({ messages }: JobBatch) {
 }
 
 function applyOutcome(message: JobBatch["messages"][number], outcome: JobOutcome | undefined) {
-  if (outcome?.retry) {
-    message.retry(outcome.delaySeconds === undefined ? undefined : { delaySeconds: outcome.delaySeconds });
+  if (outcome?.action === "retry") {
+    message.retry({ delaySeconds: outcome.delaySeconds });
     return;
   }
   message.ack();

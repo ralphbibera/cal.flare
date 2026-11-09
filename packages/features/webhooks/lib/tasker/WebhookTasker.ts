@@ -18,11 +18,11 @@ export interface WebhookTaskerDependencies {
  * Webhook Tasker with Async/Sync Fallback
  *
  * This tasker automatically selects the appropriate execution mode:
- * - Production (ENABLE_ASYNC_TASKER=true): Uses WebhookTriggerTasker to queue tasks on the JOBS queue
+ * - Production (ENABLE_ASYNC_TASKER=true): Uses WebhookTriggerTasker to queue tasks on the webhooks job queue
  * - E2E Tests (ENABLE_ASYNC_TASKER=false): Uses WebhookSyncTasker for immediate execution
  *
  * The base Tasker class selects the mode from ENABLE_ASYNC_TASKER (automatically false in E2E
- * tests) and the availability of the JOBS binding.
+ * tests) and the availability of the webhooks queue binding.
  *
  * This pattern ensures webhooks are delivered immediately in E2E tests
  * without requiring the queue consumer or the cron job that processes queued tasks.

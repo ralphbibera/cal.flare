@@ -21,9 +21,10 @@ import { calendarsTaskConfig } from "@calcom/features/calendars/lib/tasker/trigg
 import { calendarsTaskSchema } from "@calcom/features/calendars/lib/tasker/trigger/schema";
 import { webhookContainer } from "@calcom/features/di/webhooks/containers/webhook";
 import { WEBHOOK_TOKENS } from "@calcom/features/di/webhooks/Webhooks.tokens";
-import { consumeJobBatch, defineQueueJob, enqueueJob } from "@calcom/features/tasker/queue/JobQueue";
+import { defineQueueJob, runJobs } from "@calcom/features/tasker/queue/JobQueue";
 import { withJobQueue } from "@calcom/features/tasker/queue/context";
-import { TaskProcessor } from "@calcom/features/tasker/task-processor";
+import { dispatchJobBatch, isInternalJobDispatch } from "@calcom/features/tasker/queue/internal-dispatch";
+import { queueFromName } from "@calcom/features/tasker/queue/queues";
 import { deliverWebhookJob } from "@calcom/features/webhooks/lib/tasker/trigger/deliver-webhook";
 import { withD1Database } from "@calcom/prisma/d1";
 
@@ -33,38 +34,36 @@ const failingRun = async () => {
 };
 const failingJob = defineQueueJob({
   id: "test.fails-quickly",
+  queue: "calendars",
   schema: calendarsTaskSchema,
-  retry: { ...calendarsTaskConfig.retry, minTimeoutInMs: 1000, randomize: false },
+  retry: {
+    ...calendarsTaskConfig.retry,
+    factor: 2,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 2000,
+    randomize: false,
+  },
   run: failingRun,
 });
-const failingJobWithCalendarTiming = defineQueueJob({
-  id: "test.fails-with-calendar-timing",
-  schema: calendarsTaskSchema,
-  retry: calendarsTaskConfig.retry,
-  run: failingRun,
-});
-const jobs = [ensureDefaultCalendarsJob, deliverWebhookJob, failingJob, failingJobWithCalendarTiming];
+const jobs = [ensureDefaultCalendarsJob, deliverWebhookJob, failingJob];
+const jobsForQueue = (queue) => jobs.filter((job) => job.queue === queue);
 
 const deliveries = [];
-let loseNextAck = false;
 
 async function route(request, env) {
   const { pathname } = new URL(request.url);
   const body = request.method === "POST" ? await request.json() : undefined;
   if (pathname === "/dispatch") return getCalendarsTasker().ensureDefaultCalendars({ payload: body });
   if (pathname === "/dispatch-broken-queue") {
-    const JOBS = { send: () => Promise.reject(new Error("queue unavailable")) };
-    return withJobQueue({ JOBS }, () => getCalendarsTasker().ensureDefaultCalendars({ payload: body }));
+    const JOBS_CALENDARS = { send: () => Promise.reject(new Error("queue unavailable")) };
+    return withJobQueue({ JOBS_CALENDARS }, () => getCalendarsTasker().ensureDefaultCalendars({ payload: body }));
   }
   if (pathname === "/dispatch-webhook") {
     return webhookContainer.get(WEBHOOK_TOKENS.WEBHOOK_TASKER).deliverWebhook(body);
   }
-  if (pathname === "/enqueue-webhook") return enqueueJob(deliverWebhookJob, body);
-  if (pathname === "/enqueue-failing") return enqueueJob(failingJob, body);
-  if (pathname === "/enqueue-failing-calendar-timing") return enqueueJob(failingJobWithCalendarTiming, body);
-  if (pathname === "/send") return env.JOBS.send(body);
-  if (pathname === "/lose-next-ack") return void (loseNextAck = true);
-  if (pathname === "/sweep") return new TaskProcessor().processQueue();
+  if (pathname === "/enqueue-webhook") return deliverWebhookJob.enqueue(body);
+  if (pathname === "/enqueue-failing") return failingJob.enqueue(body);
+  if (pathname === "/send-raw") return env.JOBS_WEBHOOKS.send(body);
   if (pathname === "/deliveries") return deliveries;
   return null;
 }
@@ -75,33 +74,37 @@ export default {
     return Response.json(result ?? null);
   },
   queue(batch, env) {
+    const queue = queueFromName(batch.queue);
+    if (!queue) throw new Error("Unknown queue " + batch.queue);
     const messages = batch.messages.map((message) => {
-      deliveries.push({ runId: message.body.runId, attempts: message.attempts });
-      if (!loseNextAck) return message;
-      loseNextAck = false;
-      return { body: message.body, ack: () => message.retry(), retry: (options) => message.retry(options) };
+      deliveries.push({ jobId: message.body.jobId, runId: message.body.runId, attempts: message.attempts });
+      return message;
     });
-    return withD1Database(env, () => withJobQueue(env, () => consumeJobBatch({ ...batch, messages }, jobs)));
+    return withD1Database(env, () =>
+      withJobQueue(env, () =>
+        dispatchJobBatch({ queue, messages }, async (request) => {
+          if (!isInternalJobDispatch()) return new Response("Unauthorized", { status: 401 });
+          const delivered = await request.json();
+          return Response.json({ outcomes: await runJobs(delivered.jobs, jobsForQueue(delivered.queue)) });
+        })
+      )
+    );
   },
 };
 `;
 
-type Delivery = { runId: string; attempts: number };
+type Delivery = { jobId: string; runId: string; attempts: number };
 type WebhookCall = {
   url: string;
   signature: string | null;
   version: string | null;
   body: string;
 };
-type TaskRow = {
-  id: string;
-  type: string;
-  attempts: number;
-  maxAttempts: number;
-  succeededAt: string | null;
-  scheduledAt: string;
-  lastFailedAttemptAt: string | null;
-  lastError: string | null;
+type QueueTrigger = {
+  name: string;
+  maxConcurrency?: number | null;
+  maxBatchSize?: number;
+  deadLetterQueue?: string;
 };
 
 describe("JOBS queue job path in workerd", () => {
@@ -151,19 +154,17 @@ describe("JOBS queue job path in workerd", () => {
     return (await response.json()) as T;
   };
 
-  const readTask = (id: string) =>
-    db.prepare('SELECT * FROM "Task" WHERE "id" = ?').bind(id).first<TaskRow>();
-  const delayMsOf = (task: TaskRow | undefined) =>
-    Date.parse(task?.scheduledAt ?? "") - Date.parse(task?.lastFailedAttemptAt ?? "");
-  const makeDue = (runId: string) =>
-    db
-      .prepare('UPDATE "Task" SET "scheduledAt" = ? WHERE "id" = ?')
-      .bind("2020-01-01T00:00:00.000+00:00", runId)
-      .run();
   const deliveriesOf = async (runId: string) =>
     (await call<Delivery[]>("/deliveries")).filter((delivery) => delivery.runId === runId);
   const providerCallsOf = (token: string) => providerCalls.filter((entry) => entry.startsWith(`${token} `));
   const webhookCallsOf = (url: string) => webhookCalls.filter((entry) => entry.url === url);
+  const taskRowsOf = async (runId: string) =>
+    (
+      await db
+        .prepare('SELECT COUNT(*) AS "count" FROM "Task" WHERE "id" = ?')
+        .bind(runId)
+        .first<{ count: number }>()
+    )?.count;
   const destinationCalendars = async (userId: number) =>
     (
       await db
@@ -289,6 +290,11 @@ describe("JOBS queue job path in workerd", () => {
     // The local D1 identity derives from the worker name; every fixture worker must share the web one.
     const DB = MiniflareWorkerConfigSchema.parse({ ...base, name: worker.name, env: { DB: worker.env.DB } })
       .env?.DB;
+    const queueBindings = {
+      JOBS_WEBHOOKS: worker.env.JOBS_WEBHOOKS,
+      JOBS_CALENDARS: worker.env.JOBS_CALENDARS,
+      JOBS_NOTIFICATIONS: worker.env.JOBS_NOTIFICATIONS,
+    };
     const dev = { outboundService: { type: "fetcher" as const, handler: provider } };
     mf = new Miniflare({
       cf: false,
@@ -302,7 +308,7 @@ describe("JOBS queue job path in workerd", () => {
             name: worker.name,
             env: {
               DB,
-              JOBS: worker.env.JOBS,
+              ...queueBindings,
               ENABLE_ASYNC_TASKER: { type: "text", value: "true" },
             },
             triggers: worker.triggers?.map((trigger) =>
@@ -324,7 +330,7 @@ describe("JOBS queue job path in workerd", () => {
           config: {
             ...base,
             name: "without-async-opt-in",
-            env: { DB, JOBS: worker.env.JOBS },
+            env: { DB, ...queueBindings },
           },
           dev,
         },
@@ -349,60 +355,22 @@ describe("JOBS queue job path in workerd", () => {
 
     const { runId } = await call<{ runId: string }>("/dispatch", { userId: 1 });
 
-    await expect.poll(async () => (await readTask(runId))?.succeededAt, { timeout: 20_000 }).toBeTruthy();
-    const task = await readTask(runId);
-    expect(task).toMatchObject({ type: CALENDAR_JOB_ID, attempts: 1, maxAttempts: 3, lastError: null });
-    expect(await destinationCalendars(1)).toEqual(["calendar-user-1"]);
+    await expect.poll(async () => destinationCalendars(1), { timeout: 20_000 }).toEqual(["calendar-user-1"]);
+    expect(await deliveriesOf(runId)).toEqual([{ jobId: CALENDAR_JOB_ID, runId, attempts: 1 }]);
+    expect(await taskRowsOf(runId)).toBe(0);
     expect(providerCallsOf("user-1").length).toBeGreaterThan(0);
   });
 
-  it("does not repeat a completed run when the queue redelivers it", async () => {
-    await seedUser(2);
-    await call("/lose-next-ack", {});
-
-    const { runId } = await call<{ runId: string }>("/dispatch", { userId: 2 });
-
-    await expect.poll(() => deliveriesOf(runId), { timeout: 30_000 }).toHaveLength(2);
-    const [first, redelivered] = await deliveriesOf(runId);
-    expect(first.attempts).toBe(1);
-    expect(redelivered.attempts).toBe(2);
-    await expect.poll(async () => (await readTask(runId))?.succeededAt).toBeTruthy();
-    expect((await readTask(runId))?.attempts).toBe(1);
-    const callsAfterRun = providerCallsOf("user-2").length;
-    await call("/send", { runId });
-    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(3);
-    expect((await readTask(runId))?.attempts).toBe(1);
-    expect(providerCallsOf("user-2")).toHaveLength(callsAfterRun);
-    expect(await destinationCalendars(2)).toHaveLength(1);
-  });
-
-  it("retries a throwing run with Task attempts until the budget is spent", async () => {
-    const before = providerCallsOf(" ").length;
+  it("retries a throwing run with transport attempts until the budget is spent", async () => {
     const { runId } = await call<{ runId: string }>("/enqueue-failing", { userId: 3 });
 
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(3);
+    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(3);
+    expect((await deliveriesOf(runId)).map(({ attempts }) => attempts)).toEqual([1, 2, 3]);
+    expect(await taskRowsOf(runId)).toBe(0);
 
-    const task = await readTask(runId);
-    expect(task).toMatchObject({ maxAttempts: 3, succeededAt: null, lastError: "provider effect failed" });
-    const deliveries = await deliveriesOf(runId);
-    expect(deliveries).toHaveLength(3);
-    // Each Task retry is a new message, so none of them spends the transport's redelivery budget.
-    expect(deliveries.map(({ attempts }) => attempts)).toEqual([1, 1, 1]);
-    await call("/send", { runId });
-    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(4);
-    expect((await readTask(runId))?.attempts).toBe(3);
-    expect(providerCallsOf("").filter((entry) => entry.includes("/always-fails")).length - before).toBe(3);
-  });
-
-  it("schedules the next attempt with the calendar job's retry timing", async () => {
-    const { runId } = await call<{ runId: string }>("/enqueue-failing-calendar-timing", { userId: 4 });
-
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 20_000 }).toBe(1);
-
-    const task = await readTask(runId);
-    const delayMs = Date.parse(task?.scheduledAt ?? "") - Date.parse(task?.lastFailedAttemptAt ?? "");
-    expect(delayMs).toBeGreaterThanOrEqual(60_000);
-    expect(delayMs).toBeLessThanOrEqual(120_000);
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect(await deliveriesOf(runId)).toHaveLength(3);
+    expect(providerCallsOf("").filter((entry) => entry.includes("/always-fails")).length).toBeGreaterThan(0);
   });
 
   it("keeps a swallowed provider failure terminal instead of retrying it", async () => {
@@ -411,9 +379,8 @@ describe("JOBS queue job path in workerd", () => {
 
     const { runId } = await call<{ runId: string }>("/dispatch", { userId: 5 });
 
-    await expect.poll(async () => (await readTask(runId))?.succeededAt, { timeout: 20_000 }).toBeTruthy();
-    expect(await readTask(runId)).toMatchObject({ attempts: 1, lastError: null, lastFailedAttemptAt: null });
-    expect(providerCallsOf("user-5").length).toBeGreaterThan(0);
+    await expect.poll(() => providerCallsOf("user-5").length, { timeout: 20_000 }).toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
     expect(await deliveriesOf(runId)).toHaveLength(1);
   });
 
@@ -431,15 +398,7 @@ describe("JOBS queue job path in workerd", () => {
       timestamp: new Date().toISOString(),
     });
 
-    await expect.poll(async () => (await readTask(taskId))?.succeededAt, { timeout: 30_000 }).toBeTruthy();
-    expect(await readTask(taskId)).toMatchObject({
-      type: WEBHOOK_DELIVERY_JOB_ID,
-      attempts: 1,
-      maxAttempts: 3,
-      lastError: null,
-    });
-
-    await expect.poll(() => webhookCallsOf(subscriberUrl), { timeout: 10_000 }).toHaveLength(1);
+    await expect.poll(() => webhookCallsOf(subscriberUrl), { timeout: 30_000 }).toHaveLength(1);
     const [delivery] = webhookCallsOf(subscriberUrl);
     expect(delivery.version).toBe("2021-10-20");
     expect(delivery.signature).toBe(
@@ -449,6 +408,10 @@ describe("JOBS queue job path in workerd", () => {
       triggerEvent: "BOOKING_REQUESTED",
       payload: { title: "Webhook booking" },
     });
+    expect(await deliveriesOf(taskId)).toEqual([
+      { jobId: WEBHOOK_DELIVERY_JOB_ID, runId: taskId, attempts: 1 },
+    ]);
+    expect(await taskRowsOf(taskId)).toBe(0);
   });
 
   it("keeps a webhook provider failure terminal instead of retrying it", async () => {
@@ -465,123 +428,23 @@ describe("JOBS queue job path in workerd", () => {
       timestamp: new Date().toISOString(),
     });
 
-    await expect.poll(async () => (await readTask(taskId))?.succeededAt, { timeout: 30_000 }).toBeTruthy();
-    expect(await readTask(taskId)).toMatchObject({
-      attempts: 1,
-      lastError: null,
-      lastFailedAttemptAt: null,
-    });
+    await expect.poll(() => webhookCallsOf(subscriberUrl), { timeout: 30_000 }).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
     expect(webhookCallsOf(subscriberUrl)).toHaveLength(1);
     expect(await deliveriesOf(taskId)).toHaveLength(1);
   });
 
-  it("retries a failing webhook job per its policy and exhausts it", async () => {
-    const { runId } = await call<{ runId: string }>("/enqueue-webhook", {
-      operationId: "webhook-missing-fetcher",
-      triggerEvent: "FORM_SUBMITTED",
-      formId: "form-1",
-      timestamp: new Date().toISOString(),
+  it("fails an invalid webhook payload without retrying", async () => {
+    await call("/send-raw", {
+      jobId: WEBHOOK_DELIVERY_JOB_ID,
+      runId: "invalid-webhook-payload",
+      payload: { operationId: "missing-trigger-event" },
+      attempts: 1,
     });
 
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(1);
-    expect(delayMsOf(await readTask(runId))).toBeGreaterThanOrEqual(30_000);
-    expect(delayMsOf(await readTask(runId))).toBeLessThanOrEqual(60_000);
-
-    await makeDue(runId);
-    await call("/send", { runId });
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(2);
-    expect(delayMsOf(await readTask(runId))).toBeGreaterThanOrEqual(60_000);
-    expect(delayMsOf(await readTask(runId))).toBeLessThanOrEqual(120_000);
-
-    await makeDue(runId);
-    await call("/send", { runId });
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 30_000 }).toBe(3);
-
-    const exhausted = await readTask(runId);
-    expect(exhausted).toMatchObject({ maxAttempts: 3, succeededAt: null });
-    expect(exhausted?.lastError).toContain("No data fetcher registered for trigger event: FORM_SUBMITTED");
-    expect((await deliveriesOf(runId)).map(({ attempts }) => attempts)).toEqual([1, 1, 1]);
-
-    await call("/send", { runId });
-    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(4);
-    expect((await readTask(runId))?.attempts).toBe(3);
-  });
-
-  it("fails an invalid webhook payload without retrying", async () => {
-    const runId = "invalid-webhook-payload";
-    await db
-      .prepare('INSERT INTO "Task" ("id", "type", "payload", "updatedAt") VALUES (?, ?, ?, ?)')
-      .bind(
-        runId,
-        WEBHOOK_DELIVERY_JOB_ID,
-        '{"operationId":"missing-trigger-event"}',
-        "2026-11-05T00:00:00.000+00:00"
-      )
-      .run();
-
-    await call("/send", { runId });
-
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 20_000 }).toBe(3);
-    expect((await readTask(runId))?.lastError).toBeTruthy();
-    expect(await deliveriesOf(runId)).toHaveLength(1);
-  });
-
-  it("does not run a delivery that arrives before the run is due", async () => {
-    await seedUser(6);
-    const runId = "not-yet-due";
-    await db
-      .prepare(
-        'INSERT INTO "Task" ("id", "type", "payload", "scheduledAt", "updatedAt") VALUES (?, ?, ?, ?, ?)'
-      )
-      .bind(
-        runId,
-        CALENDAR_JOB_ID,
-        '{"userId":6}',
-        "2100-01-01T00:00:00.000+00:00",
-        "2026-11-05T00:00:00.000+00:00"
-      )
-      .run();
-
-    await call("/send", { runId });
-
-    await expect.poll(() => deliveriesOf(runId), { timeout: 20_000 }).toHaveLength(1);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    expect(await readTask(runId)).toMatchObject({ attempts: 0, succeededAt: null });
-    expect(providerCallsOf("user-6")).toEqual([]);
-  });
-
-  it("fails an invalid stored payload without retrying, as Trigger does", async () => {
-    const runId = "invalid-payload";
-    await db
-      .prepare('INSERT INTO "Task" ("id", "type", "payload", "updatedAt") VALUES (?, ?, ?, ?)')
-      .bind(runId, CALENDAR_JOB_ID, '{"userId":"seven"}', "2026-11-05T00:00:00.000+00:00")
-      .run();
-
-    await call("/send", { runId });
-
-    await expect.poll(async () => (await readTask(runId))?.attempts, { timeout: 20_000 }).toBe(3);
-    expect((await readTask(runId))?.lastError).toBeTruthy();
-    expect(await deliveriesOf(runId)).toHaveLength(1);
-  });
-
-  it("leaves queue-backed rows to JOBS when the internal task sweep runs", async () => {
-    const runId = "not-for-the-sweep";
-    await db
-      .prepare(
-        'INSERT INTO "Task" ("id", "type", "payload", "scheduledAt", "updatedAt") VALUES (?, ?, ?, ?, ?)'
-      )
-      .bind(
-        runId,
-        CALENDAR_JOB_ID,
-        '{"userId":8}',
-        "2026-11-05T00:00:00.000+00:00",
-        "2026-11-05T00:00:00.000+00:00"
-      )
-      .run();
-
-    await call("/sweep", {});
-
-    expect(await readTask(runId)).toMatchObject({ attempts: 0, succeededAt: null, lastError: null });
+    await expect.poll(() => deliveriesOf("invalid-webhook-payload"), { timeout: 20_000 }).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(await deliveriesOf("invalid-webhook-payload")).toHaveLength(1);
   });
 
   it.each(["without-queue-binding", "without-async-opt-in"])("stays synchronous %s", async (worker) => {
@@ -592,25 +455,36 @@ describe("JOBS queue job path in workerd", () => {
 
     expect(runId).toMatch(/^sync_/);
     expect(await destinationCalendars(userId)).toEqual([`calendar-user-${userId}`]);
-    const pending = await db
-      .prepare('SELECT COUNT(*) AS "count" FROM "Task" WHERE "payload" = ?')
-      .bind(JSON.stringify({ userId }))
-      .first<{ count: number }>();
-    expect(pending?.count).toBe(0);
+    expect(await deliveriesOf(runId)).toEqual([]);
   });
 
-  it("removes the run and falls back to synchronous when the send fails", async () => {
+  it("falls back to synchronous when the send fails", async () => {
     await seedUser(11);
 
     const { runId } = await call<{ runId: string }>("/dispatch-broken-queue", { userId: 11 });
 
     expect(runId).toMatch(/^sync_/);
     expect(await destinationCalendars(11)).toEqual(["calendar-user-11"]);
-    const pending = await db
-      .prepare('SELECT COUNT(*) AS "count" FROM "Task" WHERE "payload" = ?')
-      .bind(JSON.stringify({ userId: 11 }))
-      .first<{ count: number }>();
-    expect(pending?.count).toBe(0);
+    expect(await deliveriesOf(runId)).toEqual([]);
+  });
+
+  it("configures each job family with the source concurrency limit", async () => {
+    const { worker } = (await import("../../../../apps/web/cloudflare.config")).default;
+    const queueTriggers = (worker.triggers ?? []).filter(
+      (trigger): trigger is QueueTrigger & { type: "queue" } => trigger.type === "queue"
+    );
+
+    expect(
+      Object.fromEntries(queueTriggers.map((trigger) => [trigger.name, trigger.maxConcurrency]))
+    ).toEqual({
+      "calflare-jobs-webhooks": 25,
+      "calflare-jobs-calendars": 10,
+      "calflare-jobs-notifications": 20,
+    });
+    for (const trigger of queueTriggers) {
+      expect(trigger.maxBatchSize).toBe(1);
+      expect(trigger.deadLetterQueue).toBe("calflare-jobs-dlq");
+    }
   });
 
   it("computes the same delays as Trigger's retry formula", () => {

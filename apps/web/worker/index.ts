@@ -5,6 +5,7 @@ import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-co
 import type { JobMessage } from "@calcom/features/tasker/queue/context";
 import { withJobQueue } from "@calcom/features/tasker/queue/context";
 import { dispatchJobBatch } from "@calcom/features/tasker/queue/internal-dispatch";
+import { queueFromName } from "@calcom/features/tasker/queue/queues";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
@@ -90,7 +91,9 @@ const instrumented = withSentry<WorkerEnvironment>((env) => getSentryOptions(env
     ctx.waitUntil(dispatchSchedules(controller, env, (request) => serve(request, env, ctx)));
   },
   queue(batch: MessageBatch<JobMessage>, env: WorkerEnvironment, ctx: ExecutionContext) {
-    return dispatchJobBatch(batch, (request) => serve(request, env, ctx));
+    const queue = queueFromName(batch.queue);
+    if (!queue) throw new Error(`No job handlers for queue ${batch.queue}`);
+    return dispatchJobBatch({ queue, messages: batch.messages }, (request) => serve(request, env, ctx));
   },
 });
 
