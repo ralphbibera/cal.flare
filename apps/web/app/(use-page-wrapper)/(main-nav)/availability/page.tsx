@@ -22,7 +22,7 @@ export const generateMetadata = async () => {
 };
 
 const getCachedAvailabilities = unstable_cache(
-  async (headers: ReadonlyHeaders, cookies: ReadonlyRequestCookies) => {
+  async (_userId: number, headers: ReadonlyHeaders, cookies: ReadonlyRequestCookies) => {
     const availabilityCaller = await createRouterCaller(
       availabilityRouter,
       await getTRPCContext(headers, cookies)
@@ -43,7 +43,7 @@ const Page = async ({ searchParams: _searchParams }: PageProps) => {
     return redirect("/auth/login");
   }
 
-  const cachedAvailabilities = await getCachedAvailabilities(_headers, _cookies);
+  const cachedAvailabilities = await getCachedAvailabilities(session.user.id, _headers, _cookies);
 
   // Transform the data to ensure startTime, endTime, and date are Date objects
   // This is because the data is cached and as a result the data is converted to a string

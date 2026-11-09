@@ -15,6 +15,7 @@ import type { ReactElement } from "react";
 import { EventTypesWrapper } from "./EventTypesWrapper";
 
 const getCachedEventGroups: (
+  _userId: number,
   headers: ReadonlyHeaders,
   cookies: ReadonlyRequestCookies,
   filters?: {
@@ -24,6 +25,7 @@ const getCachedEventGroups: (
   }
 ) => Promise<RouterOutputs["viewer"]["eventTypes"]["getUserEventGroups"]> = unstable_cache(
   async (
+    _userId: number,
     headers: ReadonlyHeaders,
     cookies: ReadonlyRequestCookies,
     filters?: {
@@ -66,7 +68,7 @@ const Page = async ({ searchParams }: PageProps): Promise<ReactElement> => {
   }
 
   const filters = getTeamsFiltersFromQuery(_searchParams);
-  const userEventGroupsData = await getCachedEventGroups(_headers, _cookies, filters);
+  const userEventGroupsData = await getCachedEventGroups(session.user.id, _headers, _cookies, filters);
 
   return <EventTypesWrapper userEventGroupsData={userEventGroupsData} user={session.user} />;
 };
