@@ -491,7 +491,7 @@ Rate limiting uses Unkey, as upstream does. Set `UNKEY_ROOT_KEY` to enable it. W
 - [Zapier](packages/app-store/zapier/README.md) and [Make](packages/app-store/make/README.md) describe API-key connections and webhook setup.
 
 The community baseline contains Stripe webhook stubs. Registering credentials does not replace those stubs with payment fulfillment.
-Check the [payment behavior contract](docs/porting/behavior.md#d_payments) for the specific flow and limitations.
+Check the [port plan](docs/porting/plan.md) for the in-scope payment behavior.
 
 ## Contributing
 
