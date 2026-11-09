@@ -377,7 +377,7 @@ export const outOfOfficeCreateOrUpdate = async ({ ctx, input }: TBookingRedirect
   };
 
   await Promise.all(
-    subscribers.map(async (subscriber) => {
+    subscribers.map((subscriber) =>
       sendPayload(
         subscriber.secret,
         WebhookTriggerEvents.OOO_CREATED,
@@ -389,8 +389,8 @@ export const outOfOfficeCreateOrUpdate = async ({ ctx, input }: TBookingRedirect
           version: subscriber.version,
         },
         payload
-      );
-    })
+      )
+    )
   );
 
   return {};
