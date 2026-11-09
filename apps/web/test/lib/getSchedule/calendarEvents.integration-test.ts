@@ -1,16 +1,23 @@
 import {
+  createBookingScenario,
   getDate,
   getGoogleCalendarCredential,
-  createBookingScenario,
-  Timezones,
-  TestData,
   mockCalendar,
+  TestData,
+  Timezones,
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
 
-import { describe, test } from "vitest";
+const cloudflareConfigPath = "../../../cloudflare.config";
+
+setupMiniflareD1({
+  worker: async () => (await import(cloudflareConfigPath)).default.worker,
+  bind: true,
+  reset: true,
+});
 
 import { getAvailableSlotsService } from "@calcom/features/di/containers/AvailableSlots";
-
+import { describe, test } from "vitest";
 import { expect, expectedSlotsForSchedule } from "./expects";
 import { setupAndTeardown } from "./setupAndTeardown";
 

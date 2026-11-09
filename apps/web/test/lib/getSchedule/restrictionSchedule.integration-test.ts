@@ -1,18 +1,24 @@
-import prismock from "@calcom/testing/lib/__mocks__/prisma";
-
 import {
   createBookingScenario,
-  Timezones,
-  TestData,
   type ScenarioData,
+  TestData,
+  Timezones,
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
 
-import { describe, test, vi } from "vitest";
-import type { z } from "zod";
+const cloudflareConfigPath = "../../../cloudflare.config";
+
+setupMiniflareD1({
+  worker: async () => (await import(cloudflareConfigPath)).default.worker,
+  bind: true,
+  reset: true,
+});
 
 import { getAvailableSlotsService } from "@calcom/features/di/containers/AvailableSlots";
+import { prisma } from "@calcom/prisma";
 import type { getScheduleSchema } from "@calcom/trpc/server/routers/viewer/slots/types";
-
+import { describe, test, vi } from "vitest";
+import type { z } from "zod";
 import { expect } from "./expects";
 import { setupAndTeardown } from "./setupAndTeardown";
 
@@ -81,8 +87,10 @@ const getBaseScenarioData = (): ScheduleScenario => ({
 // Helper function to set up team for the tests
 async function setupTeamAndFeatures() {
   // Create the team (needed for event type configuration)
-  await prismock.team.create({
-    data: {
+  await prisma.team.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
       id: 1,
       name: "Test Team",
       slug: "test-team",
