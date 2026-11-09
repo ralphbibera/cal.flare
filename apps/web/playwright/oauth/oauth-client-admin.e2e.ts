@@ -4,8 +4,9 @@ import { test } from "../lib/fixtures";
 import {
   closeOAuthClientDetails,
   createPendingOAuthClient,
-  openOAuthClientDetailsFromList,
+  deleteOAuthClientsByPrefix,
   goToAdminOAuthSettings,
+  openOAuthClientDetailsFromList,
 } from "./oauth-client-helpers";
 
 async function expectClientStatusInDb(
@@ -55,13 +56,7 @@ test.describe("OAuth clients admin", () => {
   test.afterEach(async ({ users, prisma }, testInfo) => {
     const testPrefix = `e2e-oauth-client-admin-${testInfo.testId}-`;
 
-    await prisma.oAuthClient.deleteMany({
-      where: {
-        name: {
-          startsWith: testPrefix,
-        },
-      },
-    });
+    await deleteOAuthClientsByPrefix(prisma, "e2e-oauth-client-admin-", testPrefix);
 
     await users.deleteAll();
   });

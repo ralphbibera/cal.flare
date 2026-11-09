@@ -1,12 +1,33 @@
-import { expect, type Locator, type Page } from "@playwright/test";
 import path from "node:path";
+import type { PrismaClient } from "@calcom/prisma";
+import { expect, type Locator, type Page } from "@playwright/test";
+
+// D1 rejects LIKE patterns longer than 50 characters, so match the owning test's rows in memory.
+export async function deleteOAuthClientsByPrefix(
+  prisma: PrismaClient,
+  namePrefix: string,
+  testPrefix: string
+): Promise<void> {
+  const clients = await prisma.oAuthClient.findMany({
+    where: { name: { startsWith: namePrefix } },
+    select: { clientId: true, name: true },
+  });
+
+  await prisma.oAuthClient.deleteMany({
+    where: {
+      clientId: {
+        in: clients.filter(({ name }) => name.startsWith(testPrefix)).map(({ clientId }) => clientId),
+      },
+    },
+  });
+}
 
 export async function loginAsSeededAdmin(page: Page) {
   await page.goto("/auth/login");
   await page.getByTestId("login-form").locator("#email").fill("admin@example.com");
   await page.getByTestId("login-form").locator("#password").fill("ADMINadmin2022!");
 
-  const responsePromise = page.waitForResponse(/\/api\/auth\/callback\/credentials/);
+  const responsePromise = page.waitForResponse(/\/api\/auth\/sign-in\/cal-credentials/);
   await page.getByTestId("login-form").locator('[type="submit"]').click();
   await responsePromise;
 }
