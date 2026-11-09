@@ -9,7 +9,6 @@ import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
-import { withRuntimeState } from "@calcom/lib/runtimeStateContext";
 import { withD1Database } from "@calcom/prisma/d1";
 import { withSentry } from "@sentry/cloudflare";
 import handler from "vinext/server/fetch-handler";
@@ -67,9 +66,7 @@ function serve(
             },
           },
           () =>
-            withRuntimeState(env, () =>
-              withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
-            )
+            withJobQueue(env, () => handler.fetch(request, withStaticAssets(env, manifest), ctx))
         )
       ),
     (promise) => ctx.waitUntil(promise)
@@ -106,5 +103,4 @@ export default {
   },
 };
 
-export { RuntimeState } from "@calcom/lib/RuntimeState";
 export * from "vinext/server/fetch-handler";
