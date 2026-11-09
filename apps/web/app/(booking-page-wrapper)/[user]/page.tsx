@@ -1,5 +1,5 @@
-import type { JSX } from "react";
 import { WEBAPP_URL } from "@calcom/lib/constants";
+import { BookingPageProviderTheme } from "@components/BookingPageProviderTheme";
 import { buildLegacyCtx, decodeParams } from "@lib/buildLegacyCtx";
 import { getServerSideProps } from "@server/lib/[user]/getServerSideProps";
 import type { PageProps } from "app/_types";
@@ -7,7 +7,7 @@ import { generateMeetingMetadata } from "app/_utils";
 import { withAppDirSsr } from "app/WithAppDirSsr";
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
-import type React from "react";
+import type { JSX } from "react";
 import type { PageProps as LegacyPageProps } from "~/users/views/users-public-view";
 import LegacyPage from "~/users/views/users-public-view";
 
@@ -15,11 +15,19 @@ const getData: (ctx: ReturnType<typeof buildLegacyCtx>) => Promise<LegacyPagePro
   withAppDirSsr<LegacyPageProps>(getServerSideProps);
 
 const ServerPage = async ({ params, searchParams }: PageProps): Promise<JSX.Element> => {
+  const requestHeaders = await headers();
   const props = await getData(
-    buildLegacyCtx(await headers(), await cookies(), await params, await searchParams)
+    buildLegacyCtx(requestHeaders, await cookies(), await params, await searchParams)
   );
 
-  return <LegacyPage {...props} />;
+  return (
+    <BookingPageProviderTheme
+      theme={props.profile.theme}
+      themeBasis={props.themeBasis}
+      nonce={requestHeaders.get("x-csp-nonce") ?? undefined}>
+      <LegacyPage {...props} />
+    </BookingPageProviderTheme>
+  );
 };
 
 export const generateMetadata = async ({ params, searchParams }: PageProps): Promise<Metadata> => {

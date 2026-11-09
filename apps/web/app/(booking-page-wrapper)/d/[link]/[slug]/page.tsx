@@ -1,12 +1,10 @@
-import { withAppDirSsr } from "app/WithAppDirSsr";
+import { BookingPageProviderTheme } from "@components/BookingPageProviderTheme";
+import { buildLegacyCtx } from "@lib/buildLegacyCtx";
+import { getServerSideProps, type PageProps } from "@lib/d/[link]/[slug]/getServerSideProps";
 import type { PageProps as _PageProps } from "app/_types";
 import { _generateMetadata } from "app/_utils";
+import { withAppDirSsr } from "app/WithAppDirSsr";
 import { cookies, headers } from "next/headers";
-
-import { buildLegacyCtx } from "@lib/buildLegacyCtx";
-import { getServerSideProps } from "@lib/d/[link]/[slug]/getServerSideProps";
-import { type PageProps } from "@lib/d/[link]/[slug]/getServerSideProps";
-
 import Type from "~/d/[link]/d-type-view";
 
 export const generateMetadata = async ({ params, searchParams }: _PageProps) => {
@@ -30,10 +28,19 @@ export const generateMetadata = async ({ params, searchParams }: _PageProps) => 
 
 const getData = withAppDirSsr<PageProps>(getServerSideProps);
 const ServerPage = async ({ params, searchParams }: _PageProps) => {
-  const legacyCtx = buildLegacyCtx(await headers(), await cookies(), await params, await searchParams);
+  const requestHeaders = await headers();
+  const resolvedParams = await params;
+  const legacyCtx = buildLegacyCtx(requestHeaders, await cookies(), resolvedParams, await searchParams);
   const pageProps = await getData(legacyCtx);
 
-  return <Type {...pageProps} />;
+  return (
+    <BookingPageProviderTheme
+      theme={pageProps.eventData?.profile.theme}
+      themeBasis={typeof resolvedParams.link === "string" ? resolvedParams.link : null}
+      nonce={requestHeaders.get("x-csp-nonce") ?? undefined}>
+      <Type {...pageProps} />
+    </BookingPageProviderTheme>
+  );
 };
 
 export default ServerPage;

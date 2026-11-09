@@ -1,4 +1,3 @@
-import type { JSX } from "react";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
 import type { PageWrapperProps } from "@components/PageWrapperAppDir";
@@ -12,6 +11,7 @@ import type { ReadonlyURLSearchParams } from "next/navigation";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import type { JSX } from "react";
 import { getThemeProviderProps } from "./getThemeProviderProps";
 
 // Workaround for https://github.com/vercel/next.js/issues/8592
@@ -39,6 +39,17 @@ const getEmbedNamespace = (searchParams: ReadonlyURLSearchParams) => {
   // Use the most reliable detection on client
   return typeof window !== "undefined" ? window.getEmbedNamespace() : (searchParams.get("embed") ?? null);
 };
+
+// Public booking pages render BookingPageProviderTheme and own the document theme.
+// Booking detail and success routes keep the generic app theme provider.
+const BOOKING_ROUTES_WITHOUT_BOOKING_PAGE_THEME = ["/booking/", "/booking-successful/"];
+
+function isBookingPageThemedRoute(pathname: string | null): boolean {
+  if (!pathname || pathname.endsWith("/embed")) {
+    return false;
+  }
+  return !BOOKING_ROUTES_WITHOUT_BOOKING_PAGE_THEME.some((route) => pathname.startsWith(route));
+}
 
 type CalcomThemeProps = Readonly<{
   isBookingPage: boolean;
@@ -96,21 +107,31 @@ const AppProviders = (props: PageWrapperProps) => {
   const isBookingPage = useIsBookingPage();
   const isThemeSupported = useIsThemeSupported();
   const nuqsParams = useNuqsParams();
+  const pathname = usePathname();
+  const isBookingPageThemed = Boolean(props.isBookingPage) && isBookingPageThemedRoute(pathname);
+
+  const bookingPageProviders = (
+    <NuqsAdapter {...nuqsParams}>
+      <FeatureFlagsProvider>
+        <OrgBrandProvider>{props.children}</OrgBrandProvider>
+      </FeatureFlagsProvider>
+    </NuqsAdapter>
+  );
 
   const RemainingProviders = (
     <>
       <TooltipProvider>
         {/* color-scheme makes background:transparent not work which is required by embed. We need to ensure next-theme adds color-scheme to `body` instead of `html`(https://github.com/pacocoursey/next-themes/blob/main/src/index.tsx#L74). Once that's done we can enable color-scheme support */}
-        <CalcomThemeProvider
-          nonce={props.nonce}
-          isThemeSupported={isThemeSupported}
-          isBookingPage={props.isBookingPage || isBookingPage}>
-          <NuqsAdapter {...nuqsParams}>
-            <FeatureFlagsProvider>
-              <OrgBrandProvider>{props.children}</OrgBrandProvider>
-            </FeatureFlagsProvider>
-          </NuqsAdapter>
-        </CalcomThemeProvider>
+        {isBookingPageThemed ? (
+          bookingPageProviders
+        ) : (
+          <CalcomThemeProvider
+            nonce={props.nonce}
+            isThemeSupported={isThemeSupported}
+            isBookingPage={props.isBookingPage || isBookingPage}>
+            {bookingPageProviders}
+          </CalcomThemeProvider>
+        )}
       </TooltipProvider>
     </>
   );
