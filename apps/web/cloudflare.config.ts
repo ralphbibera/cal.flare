@@ -14,6 +14,7 @@ const emailServerPort = process.env.EMAIL_SERVER_PORT ?? (isE2E ? "1025" : undef
 const emailFrom = process.env.EMAIL_FROM ?? (isE2E ? "notifications@example.com" : undefined);
 const cspPolicy = process.env.CSP_POLICY ?? (isE2E ? "non-strict" : undefined);
 const textBinding = (value: string | undefined) => (value ? bindings.text(value) : undefined);
+const edgeConfig = process.env.EDGE_CONFIG;
 
 export default defineConfig({
   worker: defineWorker({
@@ -39,6 +40,7 @@ export default defineConfig({
       NEXTAUTH_SECRET: bindings.secret(),
       CALENDSO_ENCRYPTION_KEY: bindings.secret(),
       CSP_POLICY: cspPolicy ? bindings.text(cspPolicy) : undefined,
+      EDGE_CONFIG: edgeConfig ? bindings.kv({ id: edgeConfig }) : undefined,
       ASSETS: bindings.assets(),
       DB: bindings.d1({ name: "calflare" }),
       EMAIL: bindings.sendEmail(),

@@ -101,7 +101,7 @@ Preserve headers and redirects, proxy behavior, `beforeFiles`, static/literal re
 Keep query merging, duplicate values, host predicates, reserved names, onboarding exception, org domains, single-org mode, and original status codes.
 `/forms`, `/success?uid=`, `/cancel`, `/login`, `/embed.js`, avatar routes, and `/api/v2` retain their visible URLs and ordered rewrites.
 Proxy retains signup-disable `503`, return-to handling, logout deletion, embed headers, CSP nonce generation, and its exact matcher coverage.
-Replace its [Vercel Edge Config lookup][pin-edge] with D1 `RuntimeConfig(key TEXT PRIMARY KEY, valueJson TEXT)` for `isSignupDisabled`, preserving missing-key and error behavior.
+Replace its [Vercel Edge Config lookup][pin-edge] with the optional `EDGE_CONFIG` Workers KV namespace for `isSignupDisabled`, preserving missing-binding and error behavior.
 Pages APIs retain method dispatch, raw-body access, parser configuration, limits, cookies, redirects, and repeated `Set-Cookie`. Webhook verification receives unchanged bytes.
 App Route Handlers retain named HTTP exports and unsupported-method behavior. Server Actions retain authorization, form/error results, redirects, and revalidation.
 Hard loads and client navigation retain provider order, boundary placement, metadata, scroll, and hydration behavior. Server Actions remain server functions, not replacement REST features.

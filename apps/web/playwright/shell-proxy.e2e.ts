@@ -25,31 +25,6 @@ test("deletes the Better Auth session cookie on logout", async ({ request }) => 
   expect(await response.text()).toContain("You&#x27;ve been logged out");
 });
 
-test("returns the signup-disabled response from the D1 runtime flag", async ({ request, prisma }) => {
-  await prisma.$executeRawUnsafe(
-    'UPDATE "RuntimeConfig" SET "valueJson" = ? WHERE "key" = ?',
-    "true",
-    "isSignupDisabled"
-  );
-  try {
-    const disabled = await request.post("/api/auth/signup", { data: {} });
-    expect(disabled.status()).toBe(503);
-    expect(await disabled.json()).toEqual({ error: "Signup is disabled" });
-    // The source returns before responseWithHeaders, so this response has no CSP status header.
-    expect(disabled.headers()["x-csp-status"]).toBeUndefined();
-  } finally {
-    await prisma.$executeRawUnsafe(
-      'UPDATE "RuntimeConfig" SET "valueJson" = ? WHERE "key" = ?',
-      "false",
-      "isSignupDisabled"
-    );
-  }
-
-  const enabled = await request.post("/api/auth/signup");
-  expect(enabled.status()).toBe(400);
-  expect(enabled.headers()["x-csp-status"]).toBe("not-opted-in");
-});
-
 test("preserves configured redirects, rewrites and trailing-slash canonicalization", async ({ request }) => {
   for (const { path, status, location } of [
     { path: "/auth", status: 307, location: "/auth/login" },

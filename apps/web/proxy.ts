@@ -1,10 +1,19 @@
 import process from "node:process";
 import { getAuthRequestConfiguration } from "@calcom/features/auth/lib/request-context";
 import { sessionCookieDeletions } from "@calcom/features/auth/lib/session-cookie";
-import { getRuntimeConfigValue } from "@calcom/lib/server/runtimeConfig";
 import { getCspHeader, getCspNonce } from "@lib/csp";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
+const safeGet = async <T = unknown>(key: string): Promise<T | undefined> => {
+  try {
+    // @ts-expect-error The app tsconfig excludes the Worker runtime types that declare this module.
+    const { env } = await import("cloudflare:workers");
+    return (await env.EDGE_CONFIG?.get(key, "json")) as T | undefined;
+  } catch {
+    // Don't crash if the EDGE_CONFIG binding is missing
+  }
+};
 
 // Vercel/Edge rejects non‑ASCII header values (see: https://github.com/vercel/next.js/issues/85631)
 const isAscii = (s: string) => {
@@ -65,7 +74,7 @@ const proxy = async (req: NextRequest): Promise<NextResponse<unknown>> => {
   const requestHeaders = new Headers(reqWithEnrichedHeaders.headers);
 
   if (url.pathname.startsWith("/api/auth/signup")) {
-    const isSignupDisabled = await getRuntimeConfigValue("isSignupDisabled");
+    const isSignupDisabled = await safeGet<boolean>("isSignupDisabled");
     // If is in maintenance mode, point the url pathname to the maintenance page
     if (isSignupDisabled) {
       // TODO: Consider using responseWithHeaders here

@@ -17,7 +17,7 @@ const migration = new URL("../../../prisma/migrations-d1/0004_auth.sql", import.
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "calflare-auth-test-"));
   const persistTo = join(root, "state");
-  expect(await migrateD1({ persistTo })).toMatchObject({ applied: 7, total: 7 });
+  expect(await migrateD1({ persistTo })).toMatchObject({ applied: 6, total: 6 });
   const bundled = await build({
     entryPoints: [fileURLToPath(new URL("better-auth.worker.ts", fixture))],
     bundle: true,
