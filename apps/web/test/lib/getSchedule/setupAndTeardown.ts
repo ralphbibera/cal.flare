@@ -1,24 +1,8 @@
-import prismock from "@calcom/testing/lib/__mocks__/prisma";
+import { afterEach, vi } from "vitest";
 
-import { vi, beforeEach, afterEach } from "vitest";
-
-const cleanup = async () => {
-  await prismock.eventType.deleteMany();
-  await prismock.user.deleteMany();
-  await prismock.schedule.deleteMany();
-  await prismock.selectedCalendar.deleteMany();
-  await prismock.credential.deleteMany();
-  await prismock.booking.deleteMany();
-  await prismock.app.deleteMany();
-  vi.useRealTimers();
-};
-
+// Scenario rows are wiped by setupMiniflareD1({ reset: true }) before each test.
 export function setupAndTeardown() {
-  beforeEach(async () => {
-    await cleanup();
-  });
-
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.useRealTimers();
   });
 }

@@ -1,25 +1,31 @@
 import CalendarManagerMock from "@calcom/features/calendars/lib/__mocks__/CalendarManager";
 import { constantsScenarios } from "@calcom/lib/__mocks__/constants";
-
 import {
+  createBookingScenario,
+  createCredentials,
+  createOrganization,
   getDate,
   getGoogleCalendarCredential,
-  createBookingScenario,
-  createOrganization,
   getOrganizer,
   getScenarioData,
-  Timezones,
-  TestData,
-  createCredentials,
   mockCrmApp,
+  TestData,
+  Timezones,
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
 
-import { describe, vi, test } from "vitest";
+const cloudflareConfigPath = "../../cloudflare.config";
+
+setupMiniflareD1({
+  worker: async () => (await import(cloudflareConfigPath)).default.worker,
+  bind: true,
+  reset: true,
+});
 
 import dayjs from "@calcom/dayjs";
 import { getAvailableSlotsService } from "@calcom/features/di/containers/AvailableSlots";
-import { SchedulingType, type BookingStatus } from "@calcom/prisma/enums";
-
+import { type BookingStatus, SchedulingType } from "@calcom/prisma/enums";
+import { describe, test, vi } from "vitest";
 import { expect, expectedSlotsForSchedule } from "./getSchedule/expects";
 import { setupAndTeardown } from "./getSchedule/setupAndTeardown";
 import { timeTravelToTheBeginningOfToday } from "./getSchedule/utils";
@@ -3562,7 +3568,7 @@ describe("getSchedule", () => {
       );
     });
 
-    test("Reschedule: should show timeslots as per routedTeamMemberIds(instead of same host) even if rescheduleWithSameRoundRobinHost is true but it is a rerouting scenario",async () => {
+    test("Reschedule: should show timeslots as per routedTeamMemberIds(instead of same host) even if rescheduleWithSameRoundRobinHost is true but it is a rerouting scenario", async () => {
       vi.setSystemTime("2024-05-21T00:00:13Z");
 
       const plus1DateString = "2024-05-22";

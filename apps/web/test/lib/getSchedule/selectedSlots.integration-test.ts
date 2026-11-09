@@ -1,20 +1,27 @@
 import {
-  getGoogleCalendarCredential,
   createBookingScenario,
-  Timezones,
-  TestData,
+  getGoogleCalendarCredential,
   mockCalendarToHaveNoBusySlots,
   type ScenarioData,
+  TestData,
+  Timezones,
 } from "@calcom/testing/lib/bookingScenario/bookingScenario";
+import { setupMiniflareD1 } from "@calcom/testing/lib/d1/setupMiniflareD1";
+
+const cloudflareConfigPath = "../../../cloudflare.config";
+
+setupMiniflareD1({
+  worker: async () => (await import(cloudflareConfigPath)).default.worker,
+  bind: true,
+  reset: true,
+});
 
 import type { IncomingMessage } from "node:http";
-import { describe, test, beforeEach, vi } from "vitest";
-import type { z } from "zod";
-
 import { getAvailableSlotsService } from "@calcom/features/di/containers/AvailableSlots";
 import { prisma } from "@calcom/prisma";
-import type { getScheduleSchema, GetScheduleOptions } from "@calcom/trpc/server/routers/viewer/slots/types";
-
+import type { GetScheduleOptions, getScheduleSchema } from "@calcom/trpc/server/routers/viewer/slots/types";
+import { beforeEach, describe, test, vi } from "vitest";
+import type { z } from "zod";
 import { expect } from "./expects";
 import { setupAndTeardown } from "./setupAndTeardown";
 
