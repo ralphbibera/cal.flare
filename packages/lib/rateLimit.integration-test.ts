@@ -37,13 +37,7 @@ describe("rateLimiter on the RUNTIME_STATE Durable Object", () => {
     const stdin = { contents: HARNESS, resolveDir: __dirname, loader: "js" as const };
     const { outputFiles } = await build({ stdin, bundle: true, format: "esm", write: false });
     const durableObject = { type: "durable-object", storage: "sqlite" } as const;
-    const owner = { type: "durable-object", worker: "calflare-api-v2" } as const;
-    const config = (name: string, contents: string) => ({
-      name,
-      compatibilityDate: worker.compatibilityDate,
-      compatibilityFlags: worker.compatibilityFlags,
-      manifest: { mainModule: "worker.js", modules: { "worker.js": { type: "esm" as const, contents } } },
-    });
+    const owner = { type: "durable-object", worker: worker.name } as const;
     const env = {
       RUNTIME_STATE: worker.env.RUNTIME_STATE,
       BROKEN: { ...owner, exportName: "Broken" },
@@ -55,8 +49,19 @@ describe("rateLimiter on the RUNTIME_STATE Durable Object", () => {
       enableDevRegistry: false,
       telemetry: { enabled: false },
       workers: [
-        { config: { ...config(worker.name, "export default {fetch(){return new Response()}}"), env } },
-        { config: { ...config(owner.worker, outputFiles[0].text), exports } },
+        {
+          config: {
+            name: worker.name,
+            compatibilityDate: worker.compatibilityDate,
+            compatibilityFlags: worker.compatibilityFlags,
+            env,
+            exports,
+            manifest: {
+              mainModule: "worker.js",
+              modules: { "worker.js": { type: "esm" as const, contents: outputFiles[0].text } },
+            },
+          },
+        },
       ],
     });
     for (const binding of Object.keys(env)) {

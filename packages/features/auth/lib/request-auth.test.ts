@@ -86,37 +86,29 @@ beforeAll(async () => {
     resolveDir: join(__dirname, "../../../lib"),
   };
   const { outputFiles } = await build({ stdin, bundle: true, format: "esm", write: false });
-  const owner = "calflare-api-v2";
   const durableObject = { type: "durable-object", storage: "sqlite" } as const;
   const runtime = new Miniflare({
     cf: false,
     enableDevRegistry: false,
     telemetry: { enabled: false },
-    workers: [worker.name, owner].map((name) => ({
-      config: {
-        name,
-        compatibilityDate: worker.compatibilityDate,
-        compatibilityFlags: worker.compatibilityFlags,
-        ...(name === owner
-          ? { exports: { RuntimeState: durableObject, Broken: durableObject } }
-          : {
-              env: {
-                RUNTIME_STATE: worker.env.RUNTIME_STATE,
-                BROKEN: { type: "durable-object", worker: owner, exportName: "Broken" },
-              },
-            }),
-        manifest: {
-          mainModule: "worker.js",
-          modules: {
-            "worker.js": {
-              type: "esm" as const,
-              contents:
-                name === owner ? outputFiles[0].text : "export default {fetch(){return new Response()}}",
-            },
+    workers: [
+      {
+        config: {
+          name: worker.name,
+          compatibilityDate: worker.compatibilityDate,
+          compatibilityFlags: worker.compatibilityFlags,
+          env: {
+            RUNTIME_STATE: worker.env.RUNTIME_STATE,
+            BROKEN: { type: "durable-object", worker: worker.name, exportName: "Broken" },
+          },
+          exports: { RuntimeState: durableObject, Broken: durableObject },
+          manifest: {
+            mainModule: "worker.js",
+            modules: { "worker.js": { type: "esm" as const, contents: outputFiles[0].text } },
           },
         },
       },
-    })),
+    ],
   });
   runtimes.push(runtime);
   const namespace = async (binding: string) =>

@@ -28,29 +28,6 @@ function publicEnvironment(): Plugin {
   };
 }
 
-function apiV2Transport(): Plugin {
-  const nativeProxyPath = fileURLToPath(import.meta.resolve("vinext/config/config-matchers"));
-  const transportPath = fileURLToPath(new URL("./worker/api-v2-transport.ts", import.meta.url));
-  const nativeFetch = "upstreamResponse = await fetch(targetUrl.href, {";
-
-  return {
-    name: "calflare:api-v2-transport",
-    enforce: "pre",
-    transform(code, id) {
-      if (this.environment.config.consumer !== "server" || id.split("?")[0] !== nativeProxyPath) return;
-      if (code.split(nativeFetch).length !== 2) {
-        throw new Error("vinext external rewrite transport changed. Review the API_V2 binding adapter.");
-      }
-      return {
-        code:
-          `import { fetchRewriteDestination } from ${JSON.stringify(transportPath)};\n` +
-          code.replace(nativeFetch, "upstreamResponse = await fetchRewriteDestination(targetUrl.href, {"),
-        map: null,
-      };
-    },
-  };
-}
-
 function i18nConfigInterop(): Plugin {
   const configPath = fileURLToPath(new URL("../../packages/i18n/next-i18next.config.js", import.meta.url));
   const facadeId = "\0calflare:i18n-config";
@@ -119,7 +96,6 @@ export default defineConfig({
     bundleAnalysis(),
     i18nConfigInterop(),
     sentryRuntime(),
-    apiV2Transport(),
     patchCssModules({ exportMode: "default" }),
     vinext({ cache: responseStoreAdapter({ mode: "self-contained" }) }),
     cloudflare({
