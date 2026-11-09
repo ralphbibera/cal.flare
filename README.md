@@ -115,12 +115,12 @@ Here’s what you need to run Cal.flare.
 
 5. Set up local Worker configuration:
 
-   - Set consumed variables in ignored `.dev.vars` files for web and API v2. Use [.env.example](.env.example) and [.env.appStore.example](.env.appStore.example) for existing names, with the [Cloudflare binding and secret configuration](docs/cloudflare.md).
+   - Set consumed variables in an ignored `.dev.vars` file for the web app. Use [.env.example](.env.example) and [.env.appStore.example](.env.appStore.example) for existing names, with the [Cloudflare binding and secret configuration](docs/cloudflare.md).
    - Generate `NEXTAUTH_SECRET` with `openssl rand -base64 32`.
    - Generate `CALENDSO_ENCRYPTION_KEY` with `openssl rand -base64 24`.
    - Store each value in the consuming Worker's `.dev.vars` file for local development, and in Worker secrets for deployment.
 
-6. Bind the web and API v2 Workers to the same local D1 database and apply the converted migrations. See the [D1 configuration reference](docs/cloudflare.md#prepare-d1).
+6. Bind the web Worker to the local D1 database and apply the converted migrations. See the [D1 configuration reference](docs/cloudflare.md#prepare-d1).
 7. Create your [first user](#setting-up-your-first-user), or load the development fixtures below.
 8. Start the application:
 
@@ -280,10 +280,9 @@ The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secre
 #### Requirements
 
 - **Cloudflare Workers Paid is required to deploy Cal.flare.**
-- The web and API v2 Workers share one authoritative D1 database.
+- The web Worker uses the authoritative D1 database.
 - `ASSETS` serves public files, fonts, embeds and built output.
-- `API_V2` binds web to API v2 at the original `/api/v2` URL.
-- `JOBS`, `RUNTIME_STATE` and the selected cache bindings supply Cloudflare job/state/cache resources.
+- The web Worker uses `JOBS`, `RUNTIME_STATE` and the selected cache bindings for Cloudflare job, state and cache resources.
 - The docs application has its own static assets and no application database binding.
 
 #### Deploying Cal.flare
@@ -299,7 +298,7 @@ Provide these values through Worker bindings, variables and secrets:
 
 | Variable or binding | Description | Required |
 | --- | --- | --- |
-| `DB` | D1 application/auth database, shared by web and API v2. | required |
+| `DB` | D1 application/auth database. | required |
 | `NEXT_PUBLIC_WEBAPP_URL` | Public web origin, consistent with client build configuration. | required |
 | `NEXTAUTH_URL` | Public authentication origin and callback configuration. | required |
 | `NEXTAUTH_SECRET` | Installation session/signing secret; generate during [Setup](#setup). | required |

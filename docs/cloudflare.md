@@ -6,7 +6,7 @@ This reference describes the Cloudflare-specific bindings, secrets, D1 configura
 ## Prepare your account and domains
 
 1. Select the Cloudflare account that owns the application Workers and D1 database. **Cal.flare deployment requires the [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/).**
-2. Choose the web, API and docs URLs. Web exposes the original `/api/v2` path through the `API_V2` service binding.
+2. Choose the web and docs URLs.
 3. Set the application URLs consistently, including `NEXT_PUBLIC_WEBAPP_URL`, `NEXT_PUBLIC_WEBSITE_URL`, `NEXT_PUBLIC_EMBED_LIB_URL` and `NEXTAUTH_URL`.
 4. Register exact OAuth callback URLs with each enabled provider. Use separate registrations or callback entries for local development and production.
 
@@ -17,8 +17,7 @@ The source configuration is `cloudflare.config.ts` beside each app's Vite config
 
 | Application | Required resources |
 | --- | --- |
-| Web | `DB`, `ASSETS`, `API_V2`, auth/provider secrets and the selected Response Store cache bindings. |
-| API v2 and jobs | The same `DB`, `JOBS`, `RUNTIME_STATE`, scheduler, and the secrets consumed by its handlers. |
+| Web | `DB`, `ASSETS`, `JOBS`, `RUNTIME_STATE`, the scheduler, auth/provider secrets and the selected Response Store cache bindings. |
 | Docs | Its own Static Assets and configured static response handling; no application DB binding. |
 
 Response Store uses its native helper's DO/R2 resources for disposable cached data. D1 remains authoritative for domain and auth records.
@@ -39,11 +38,11 @@ Generate installation secrets using the commands in [README Setup](../README.md#
 
 For deployment, use [Worker secret bindings](https://developers.cloudflare.com/workers/configuration/secrets/).
 Nonsecret public URLs and flags belong in configuration; passwords, client secrets, API tokens and signing keys belong in secrets.
-Set a consumed secret on both Workers when shared services need it.
+Set a consumed secret on the web Worker when its services need it.
 
 ## Prepare D1
 
-1. Create a D1 database and bind it as `DB` to web and v2. Use a separate database for each deployment environment.
+1. Create a D1 database and bind it as `DB` to the web Worker. Use a separate database for each deployment environment.
 2. Use `packages/prisma/migrations-d1/` for the converted domain and auth schema.
 3. Apply migrations to fresh local D1, then populate synthetic users, schedules, event types and app-store metadata with the ported seed commands.
 4. Validate IDs, relationships, defaults, list/JSON fields and timezone/date representation through the real Prisma/D1 boundary.
@@ -52,7 +51,7 @@ Set a consumed secret on both Workers when shared services need it.
 Prisma is the normal domain access path through the official D1 adapter. Required atomic writes use native guarded batches at the existing repository boundary.
 Prisma domain SQL and Better Auth schema changes share one reviewed D1 migration sequence. See [D1 and Prisma usage](porting/architecture.md#d1-and-prisma-usage).
 
-Both Workers must resolve the same local D1 storage identity during development.
+The web Worker must resolve its local D1 storage identity during development.
 PostgreSQL migration commands and the upstream Docker database are not Cal.flare deployment steps.
 See [Cloudflare D1 setup](https://developers.cloudflare.com/d1/get-started/) and the [complete D1 contract](porting/architecture.md#full-d1-schema-and-atomicity).
 
@@ -68,9 +67,9 @@ Install app-store metadata and connect the user or team account before expecting
 ## Deploy and verify
 
 1. Complete the [Bun/vinext milestone](porting/plan.md#phase-1-establish-the-original-application-on-vinext) and use its frozen Bun lockfile.
-2. Build the web, API v2 and docs workspaces. Validate configuration and generated binding types against their intended environment.
+2. Build the web and docs workspaces. Validate configuration and generated binding types against their intended environment.
 3. Apply the reviewed D1 migrations. Back up existing data before a production schema change and retain an appropriate recovery procedure.
-4. Deploy API v2, job/queue/state handlers and their bindings, then the web Worker and its `API_V2` service binding.
+4. Deploy the web Worker and its job, queue and state bindings.
 5. Publish the docs build and Static Assets separately.
 6. Configure custom domains and provider callbacks for the actual public URLs.
 7. Verify authentication, booking, reschedule/cancel, provider events, delivered email, signed webhooks, retries and cached/uncached access.
