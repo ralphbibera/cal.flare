@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
+import * as OgImages from "@calcom/lib/OgImages";
 import { NextRequest } from "next/server";
 import type { ReactNode } from "react";
-import { isValidElement } from "react";
+import { createElement, isValidElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
 import { GET } from "../route";
 
 const publicDir = new URL("../../../../../../public/", import.meta.url);
@@ -34,9 +34,8 @@ async function publicAsset(pathname: string) {
   return new Response(new Uint8Array(asset.bytes), { headers: { "content-type": asset.contentType } });
 }
 
-// ImageResponse is stubbed so the test reads the element tree the route hands to
-// the renderer. Next's Node renderer cannot draw the shared components' string
-// image dimensions; the Worker renderer is verified separately.
+// ImageResponse is stubbed to inspect the renderer boundary without running
+// its WASM runtime. Actual PNG output is verified on the built Worker.
 const rendered = vi.hoisted(() => ({ elements: [] as ReactNode[] }));
 vi.mock("next/og", () => ({
   ImageResponse: vi.fn(function (this: unknown, element: ReactNode) {
@@ -139,6 +138,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -189,12 +189,42 @@ describe("GET /api/social/og/image with Worker static assets", () => {
       expect(inlinedAssets).toContainEqual(expected);
     }
 
-    expect(facts.dimensions.every((value) => value === undefined || typeof value === "string")).toBe(true);
+    expect(facts.dimensions.every((value) => value === undefined || typeof value === "number")).toBe(true);
 
     const second = await GET(createRequest(query));
     expect(second.headers.get("etag")).toBe(response.headers.get("etag"));
     expect(second.headers.get("cache-control")).toBe(response.headers.get("cache-control"));
   });
+});
+
+test("meeting passes numeric logo and avatar dimensions to the renderer", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Cloudflare-Workers" });
+  const response = await GET(
+    createRequest(
+      "type=meeting&title=Team+sync&meetingProfileName=Alice&meetingImage=https%3A%2F%2Fimages.example%2Favatar.png"
+    )
+  );
+
+  expect(response.status).toBe(200);
+  const facts = elementFacts(0);
+  expect(facts.sources).toContain("https://images.example/avatar.png");
+  expect(facts.dimensions).toEqual([1200, 600, 350, undefined, 160, 160]);
+});
+
+test("preserves numeric and percentage image dimensions without mutating the component tree", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Cloudflare-Workers" });
+  const element = createElement("img", {
+    src: "/cal-logo-word-black.svg",
+    width: "50%",
+    height: 160,
+  });
+  vi.spyOn(OgImages, "Generic").mockReturnValueOnce(element);
+
+  const response = await GET(createRequest("type=generic&title=Test&description=Hello"));
+
+  expect(response.status).toBe(200);
+  expect(elementFacts(0).dimensions).toEqual(["50%", 160]);
+  expect(element.props).toEqual({ src: "/cal-logo-word-black.svg", width: "50%", height: 160 });
 });
 
 describe("GET /api/social/og/image without the ASSETS binding", () => {
@@ -214,14 +244,10 @@ describe("GET /api/social/og/image without the ASSETS binding", () => {
     );
 
     const facts = elementFacts(0);
-    const sourcePaths = facts.sources.map((source) =>
-      new URL(source).pathname.replace(/\/{2,}/g, "/")
-    );
+    const sourcePaths = facts.sources.map((source) => new URL(source).pathname.replace(/\/{2,}/g, "/"));
     expect(sourcePaths).toEqual(expect.arrayContaining([...paths]));
     expect(facts.sources.every((source) => !source.startsWith("data:"))).toBe(true);
-    expect(facts.backgroundImages.every((value) => value.startsWith("url(https://calflare.test"))).toBe(
-      true
-    );
-    expect(facts.dimensions.every((value) => value === undefined || typeof value === "string")).toBe(true);
+    expect(facts.backgroundImages.every((value) => value.startsWith("url(https://calflare.test"))).toBe(true);
+    expect(facts.dimensions.every((value) => value === undefined || typeof value === "number")).toBe(true);
   });
 });

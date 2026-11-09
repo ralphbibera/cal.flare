@@ -1,12 +1,11 @@
+import { WEBAPP_URL } from "@calcom/lib/constants";
+import { App, Generic, getOGImageVersion, Meeting } from "@calcom/lib/OgImages";
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 import type { ReactNode } from "react";
 import { cloneElement, isValidElement } from "react";
 import type { SatoriOptions } from "satori";
-import { z, ZodError } from "zod";
-
-import { Meeting, App, Generic, getOGImageVersion } from "@calcom/lib/OgImages";
-import { WEBAPP_URL } from "@calcom/lib/constants";
+import { ZodError, z } from "zod";
 
 export const runtime = "edge";
 
@@ -61,24 +60,33 @@ async function inlineBackgroundImage(
   return backgroundImage.replace(pattern, () => `url(${inlined[index++]})`);
 }
 
-async function inlineOwnImages(
+async function prepareImageTree(
   node: ReactNode,
   assets: AssetsBinding | undefined,
   sources: Map<string, Promise<string>>
 ): Promise<ReactNode> {
   if (Array.isArray(node)) {
-    return Promise.all(node.map((child: ReactNode) => inlineOwnImages(child, assets, sources)));
+    return Promise.all(node.map((child: ReactNode) => prepareImageTree(child, assets, sources)));
   }
   if (!isValidElement<Record<string, unknown>>(node)) return node;
   if (typeof node.type === "function") {
     // The shared OG components render the host elements whose sources we inline.
     const component = node.type as (props: Record<string, unknown>) => ReactNode;
-    return inlineOwnImages(component(node.props), assets, sources);
+    return prepareImageTree(component(node.props), assets, sources);
   }
 
   const props = { ...node.props };
-  if (node.type === "img" && typeof props.src === "string") {
-    props.src = await ownImageSource(props.src, assets, sources);
+  if (node.type === "img") {
+    // Vinext's Satori renderer rejects unitless numeric strings in image attributes.
+    for (const dimension of ["width", "height"]) {
+      const value = props[dimension];
+      if (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value)) continue;
+      const size = Number(value);
+      if (Number.isFinite(size)) props[dimension] = size;
+    }
+    if (typeof props.src === "string") {
+      props.src = await ownImageSource(props.src, assets, sources);
+    }
   }
 
   const style = props.style;
@@ -92,7 +100,7 @@ async function inlineOwnImages(
     }
   }
 
-  props.children = await inlineOwnImages(props.children as ReactNode, assets, sources);
+  props.children = await prepareImageTree(props.children as ReactNode, assets, sources);
   return cloneElement(node, props);
 }
 
@@ -181,7 +189,7 @@ async function handler(req: NextRequest) {
 
     const imageSources = new Map<string, Promise<string>>();
     const renderImage = async (element: ReactNode) => {
-      const tree = await inlineOwnImages(element, assets, imageSources);
+      const tree = await prepareImageTree(element, assets, imageSources);
       if (!isValidElement(tree)) throw new Error("OG image requires a React element");
       return new ImageResponse(tree, ogConfig);
     };
