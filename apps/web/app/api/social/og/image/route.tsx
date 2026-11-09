@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
+import type { ReactNode } from "react";
+import { cloneElement, isValidElement } from "react";
 import type { SatoriOptions } from "satori";
 import { z, ZodError } from "zod";
 
@@ -7,6 +9,115 @@ import { Meeting, App, Generic, getOGImageVersion } from "@calcom/lib/OgImages";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 
 export const runtime = "edge";
+
+interface AssetsBinding {
+  fetch(request: Request): Promise<Response>;
+}
+
+// On Workers, WEBAPP_URL points back at this same Worker and workerd rejects
+// that self-request, so public assets are read from the ASSETS binding.
+function isWorkersRuntime() {
+  return typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+}
+
+async function getAssetsBinding(): Promise<AssetsBinding | undefined> {
+  if (!isWorkersRuntime()) return undefined;
+  // @ts-expect-error The app tsconfig excludes the Worker runtime types that declare this module.
+  const { env } = await import("cloudflare:workers");
+  return env.ASSETS;
+}
+
+async function readOwnAsset(url: URL, assets: AssetsBinding | undefined): Promise<Response> {
+  const assetUrl = new URL(url);
+  assetUrl.pathname = assetUrl.pathname.replace(/\/{2,}/g, "/");
+  const response = assets ? await assets.fetch(new Request(assetUrl)) : await fetch(assetUrl);
+  if (!response.ok) throw new Error(`Unable to read ${assetUrl.pathname} (${response.status})`);
+  return response;
+}
+
+function toBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index++) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+function ownImageUrl(source: string) {
+  const url = new URL(source, WEBAPP_URL);
+  return url.origin === new URL(WEBAPP_URL).origin ? url : undefined;
+}
+
+async function inlineBackgroundImage(
+  backgroundImage: string,
+  assets: AssetsBinding | undefined,
+  sources: Map<string, Promise<string>>
+) {
+  const pattern = /url\(([^)]+)\)/g;
+  const inlined = await Promise.all(
+    Array.from(backgroundImage.matchAll(pattern), (match) => ownImageSource(match[1], assets, sources))
+  );
+  let index = 0;
+  return backgroundImage.replace(pattern, () => `url(${inlined[index++]})`);
+}
+
+async function inlineOwnImages(
+  node: ReactNode,
+  assets: AssetsBinding | undefined,
+  sources: Map<string, Promise<string>>
+): Promise<ReactNode> {
+  if (Array.isArray(node)) {
+    return Promise.all(node.map((child: ReactNode) => inlineOwnImages(child, assets, sources)));
+  }
+  if (!isValidElement<Record<string, unknown>>(node)) return node;
+  if (typeof node.type === "function") {
+    // The shared OG components render the host elements whose sources we inline.
+    const component = node.type as (props: Record<string, unknown>) => ReactNode;
+    return inlineOwnImages(component(node.props), assets, sources);
+  }
+
+  const props = { ...node.props };
+  if (node.type === "img" && typeof props.src === "string") {
+    props.src = await ownImageSource(props.src, assets, sources);
+  }
+
+  const style = props.style;
+  if (style && typeof style === "object" && "backgroundImage" in style) {
+    const backgroundImage = (style as { backgroundImage?: unknown }).backgroundImage;
+    if (typeof backgroundImage === "string") {
+      props.style = {
+        ...style,
+        backgroundImage: await inlineBackgroundImage(backgroundImage, assets, sources),
+      };
+    }
+  }
+
+  props.children = await inlineOwnImages(props.children as ReactNode, assets, sources);
+  return cloneElement(node, props);
+}
+
+async function ownImageSource(
+  source: string,
+  assets: AssetsBinding | undefined,
+  sources: Map<string, Promise<string>>
+) {
+  const url = ownImageUrl(source);
+  if (!url || !assets) return source;
+
+  let dataUri = sources.get(url.href);
+  if (!dataUri) {
+    dataUri = readOwnAsset(url, assets)
+      .then(async (response) => {
+        const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+        return `data:${contentType};base64,${toBase64(new Uint8Array(await response.arrayBuffer()))}`;
+      })
+      // Dynamic same-origin images such as avatars are not Static Assets, so
+      // keep the source URL and let the image loader request it normally.
+      .catch(() => source);
+    sources.set(url.href, dataUri);
+  }
+  return dataUri;
+}
 
 const meetingSchema = z.object({
   imageType: z.literal("meeting"),
@@ -36,10 +147,15 @@ async function handler(req: NextRequest) {
   const imageType = searchParams.get("type");
 
   try {
+    const assets = await getAssetsBinding();
     const fontResults = await Promise.allSettled([
-      fetch(new URL("/fonts/cal.ttf", WEBAPP_URL)).then((res) => res.arrayBuffer()),
-      fetch(new URL("/fonts/Inter-Regular.ttf", WEBAPP_URL)).then((res) => res.arrayBuffer()),
-      fetch(new URL("/fonts/Inter-Medium.ttf", WEBAPP_URL)).then((res) => res.arrayBuffer()),
+      readOwnAsset(new URL("/fonts/cal.ttf", WEBAPP_URL), assets).then((response) => response.arrayBuffer()),
+      readOwnAsset(new URL("/fonts/Inter-Regular.ttf", WEBAPP_URL), assets).then((response) =>
+        response.arrayBuffer()
+      ),
+      readOwnAsset(new URL("/fonts/Inter-Medium.ttf", WEBAPP_URL), assets).then((response) =>
+        response.arrayBuffer()
+      ),
     ]);
 
     const fonts: SatoriOptions["fonts"] = [];
@@ -63,6 +179,13 @@ async function handler(req: NextRequest) {
       fonts,
     };
 
+    const imageSources = new Map<string, Promise<string>>();
+    const renderImage = async (element: ReactNode) => {
+      const tree = await inlineOwnImages(element, assets, imageSources);
+      if (!isValidElement(tree)) throw new Error("OG image requires a React element");
+      return new ImageResponse(tree, ogConfig);
+    };
+
     switch (imageType) {
       case "meeting": {
         try {
@@ -76,13 +199,12 @@ async function handler(req: NextRequest) {
           });
 
           const etag = await getOGImageVersion("meeting");
-          const img = new ImageResponse(
+          const img = await renderImage(
             <Meeting
               title={title}
               profile={{ name: meetingProfileName, image: meetingImage }}
               users={names.map((name, index) => ({ name, username: usernames[index] }))}
-            />,
-            ogConfig
+            />
           );
 
           return new Response(img.body, {
@@ -127,9 +249,8 @@ async function handler(req: NextRequest) {
           const svgHash = SVG_HASHES[slug] ?? undefined;
 
           const etag = await getOGImageVersion("app", { svgHash });
-          const img = new ImageResponse(
-            <App name={name} description={description} slug={slug} logoUrl={logoUrl} />,
-            ogConfig
+          const img = await renderImage(
+            <App name={name} description={description} slug={slug} logoUrl={logoUrl} />
           );
 
           return new Response(img.body, {
@@ -167,7 +288,7 @@ async function handler(req: NextRequest) {
           });
 
           const etag = await getOGImageVersion("generic");
-          const img = new ImageResponse(<Generic title={title} description={description} />, ogConfig);
+          const img = await renderImage(<Generic title={title} description={description} />);
 
           return new Response(img.body, {
             status: 200,
