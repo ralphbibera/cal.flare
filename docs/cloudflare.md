@@ -64,6 +64,14 @@ Follow [integration setup](integrations.md) for calendar, conferencing, payment,
 Provider OAuth client secrets are installation configuration. Per-user account tokens remain server-side application records in D1.
 Install app-store metadata and connect the user or team account before expecting an enabled integration to appear on event types.
 
+## Observe logs and traces
+
+`cloudflare.config.ts` enables Workers Logs and tracing for every deployment, so invocation logs, `console` output and traces appear under the Worker's **Observability** tab.
+[Live tail](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/) streams events from a running deployment.
+Traces [export over OpenTelemetry](https://developers.cloudflare.com/workers/observability/opentelemetry-export/) to a destination you configure.
+The upstream optional Sentry integration stays available. Set `SENTRY_DSN` to keep it.
+Observability usage bills separately from requests. See [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/).
+
 ## Deploy and verify
 
 1. Complete the [Bun/vinext milestone](porting/plan.md#phase-1-establish-the-original-application-on-vinext) and use its frozen Bun lockfile.

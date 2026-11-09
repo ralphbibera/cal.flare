@@ -26,6 +26,12 @@ export default defineConfig({
     exports: cache.exports,
     workersDev: false,
     previewUrls: false,
+    placement: { mode: "smart" },
+    observability: {
+      enabled: true,
+      logs: { enabled: true, invocationLogs: true },
+      traces: { enabled: true },
+    },
     assets: {
       htmlHandling: "none",
       notFoundHandling: "none",
