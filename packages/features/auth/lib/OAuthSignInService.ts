@@ -523,7 +523,11 @@ export class OAuthSignInService implements OAuthSignInPort {
       }
 
       const { client_id, client_secret } = GOOGLE_API_CREDENTIALS();
-      const oAuth2Client = new OAuth2Client(client_id, client_secret);
+      const oAuth2Client = new OAuth2Client({
+        clientId: client_id,
+        clientSecret: client_secret,
+        transporterOptions: { fetchImplementation: globalThis.fetch },
+      });
       oAuth2Client.setCredentials(credentialkey);
       const calendar = new calendar_v3.Calendar({
         auth: oAuth2Client,
