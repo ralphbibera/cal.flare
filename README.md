@@ -284,7 +284,8 @@ The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secre
 - **Cloudflare Workers Paid is required to deploy Cal.flare.**
 - The web Worker uses the authoritative D1 database.
 - `ASSETS` serves public files, fonts, embeds and built output.
-- The web Worker uses `JOBS` and the selected cache bindings for Cloudflare job and cache resources.
+- The web Worker uses the selected cache bindings for cache resources.
+- The upstream Trigger.dev tasker is optional. Tasks run inline unless `ENABLE_ASYNC_TASKER="true"`, `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` are all set.
 - The docs application has its own static assets and no application database binding.
 
 #### Deploying Cal.flare

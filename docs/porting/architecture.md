@@ -31,7 +31,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 | v2 HTTP | `hono` `4.13.16` for a Fetch Worker dispatcher. Retain source DTO, service, guard, error, and validation contracts. |
 | Cache | `@vinext/cloudflare` Response Store adapter, self-contained mode. Its exact dependency is `@cloudflare/workers-response-store` `1.1.5`. |
 | Styling | Retain Tailwind CSS `4.1.17`, PostCSS `8.5.6`, `@tailwindcss/postcss` `4.1.15`, source CSS, classes, and component systems. `vite-css-modules` `1.16.1` handles consumed CSS Modules. |
-| Source async runner | `@trigger.dev/sdk` `4.5.4` is observed upstream, not selected for hosting. Its consumed jobs move to D1/Queues/DO scheduling; no Trigger-hosted or Node worker remains. |
+| Source async runner | `@trigger.dev/sdk` `4.5.4` remains the optional upstream async Tasker. Inline execution is the default; Trigger-hosted dispatch runs only when `ENABLE_ASYNC_TASKER="true"`, `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` are set, and no Node worker is deployed. |
 | RPC | Retain tRPC packages, including `@trpc/next`, at `11.0.0-next-beta.222`; TanStack Query `5.17.19`, SuperJSON `1.9.1`, Zod `3.25.76`. |
 | Docs | Source Next range is `^15.5.28`; target uses vinext and the React/Next peer pins above. Retain Nextra and `nextra-theme-docs` `4.6.1`, `@mdx-js/mdx` `3.1.1`, Pagefind `1.5.2`. Replace only Nextra's webpack loading boundary with a vinext build integration. |
 | Delivery and errors | Default to Cloudflare Email Sending through the native Workers binding on Workers Paid. Retain Resend/configured SMTP, Nodemailer `7.0.12`, Handlebars `4.7.10`, OG `@vercel/og` `0.6.3`. Select `@sentry/cloudflare` and browser `@sentry/react` both `10.75.2`. |
@@ -43,7 +43,7 @@ Exact-version registry reads succeeded for the new pins. No registry-unavailabil
 Better Auth carries its own Zod 4 and JOSE 6 dependencies. Keep domain Zod 3 and JOSE 4 consumers scoped to their original packages.
 No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, Accelerate, Neon, Hyperdrive-to-PG, or Node application server belongs in the target runtime.
 Redis is optional. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, web and API v2 use that Upstash database. When either is missing, both use `NoopRedisService`.
-API v2 has no `REDIS_URL` and no Bull Redis connection. Its Bull work runs on `JOBS`, and its throttler keeps state in memory when Upstash is not configured.
+API v2 has no `REDIS_URL` and no Bull Redis connection. Its throttler keeps state in memory when Upstash is not configured.
 Web rate limiting uses Unkey as upstream does, and is off unless `UNKEY_ROOT_KEY` is set.
 
 ## Bun workspaces and lockfile
@@ -251,7 +251,7 @@ No cross-provider transaction, exactly-once effect, or stronger global double-bo
 
 ## Jobs, ephemeral state, and integrations
 
-The web Worker owns `scheduled` and `queue` handlers. Shared job services stay in original packages.
+The web Worker owns the `scheduled` handler. Shared job services stay in original packages.
 One UTC minute dispatcher evaluates product rows from [schedules](inventory/schedules.tsv), including source calendar conditions and monthly last-day guards.
 Existing cron URLs retain methods and authorization. Repository-maintenance schedules and `no-product-handler` rows create no new product job.
 
@@ -259,21 +259,21 @@ Existing cron URLs retain methods and authorization. Repository-maintenance sche
 | --- | --- |
 | `DB` | Complete domain/auth records, existing Task records, and required delivery state. Same database for both product Workers. |
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
-| `JOBS` | Cloudflare Queue replaces consumed Bull and Trigger submission, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. |
+| Trigger.dev (optional) | Upstream's remote async Tasker over HTTPS, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. Uses `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` only after `ENABLE_ASYNC_TASKER="true"`; failed dispatch falls back to inline execution. |
 | Response Store bindings | Native helper-owned DO and R2 cache-body bindings. No provider credentials or authoritative product records belong in this cache. |
 
 [Task repository][pin-tasker] preserves due ordering, `take: 1000`, attempt increments, retry interval, max attempts, cancellation, and success. Its cleanup is a no-op at the pin.
-Task retries and transport retries remain separate. Queue redelivery must not double-increment a completed Task or blindly repeat a successful provider effect.
-[Tasker][pin-tasker-select] retains explicit async opt-in, sync fallback, and returned run IDs. Map effective source configuration to Cloudflare configuration; missing async configuration remains synchronous.
-Replace Trigger `schemaTask`, `.trigger()`, consumed run options, and loggers at existing tasker boundaries. D1 stores run/attempt/due/cancellation state; Queues transports work; DO admission/alarms preserve queue concurrency and subsecond retry scheduling.
+Task retries and transport retries remain separate. Trigger delivery retries must not double-increment a completed Task or blindly repeat a successful provider effect.
+[Tasker][pin-tasker-select] retains explicit async opt-in, sync fallback, and returned run IDs. Missing async configuration remains synchronous.
+Keep upstream Trigger `schemaTask`, `.trigger()`, run options, and loggers at existing tasker boundaries. D1 stores run/attempt/due/cancellation state for the internal Tasker.
 Source [notification config][pin-trigger-notify] sets concurrency 20 and 3 attempts with randomized 500 ms to 30 s backoff; calendar config sets concurrency 10 and 60 to 300 s, webhooks 25 and 30 to 600 s. Preserve each task's factor, payload, schema, and retryable errors.
-Trigger machine/OOM tier escalation has no literal Workers equivalent. Job memory/CPU fit and retry timing remain focused acceptance limits; no external compute fallback is selected.
-[Calendar processor][pin-processor] catches provider failures and resolves; preserve that terminal branch. Do not convert it into a retry because Queues permits retries.
+Trigger-hosted execution keeps upstream's machine/OOM tier selection. The Worker build only imports the SDK and dispatches over HTTPS.
+[Calendar processor][pin-processor] catches provider failures and resolves; preserve that terminal branch. Do not convert it into a retry.
 [Calendar cache][pin-calendar-cache] retains key `apiv2:user:<id>:calendars` and `10_000` ms TTL. [Redis service][pin-redis] separately uses milliseconds for set TTL and seconds for expire.
 Also replace direct `.redis` consumers, not only service methods. [OAuth token cache][pin-token-cache] requires hashes, `expireat`, and `setex`; roles/timezones use direct `EX` caches. Tokens remain authoritative in D1.
-Web [rate-limit policy][pin-limit] keeps source namespaces/windows, ban-list branch, missing-`UNKEY_ROOT_KEY` disabled branch, 5-second fail-open policy, and response shape while DO replaces external limiter storage.
+Web [rate-limit policy][pin-limit] keeps source namespaces/windows, ban-list branch, missing-`UNKEY_ROOT_KEY` disabled branch, 5-second fail-open policy, and response shape through hosted Unkey.
 Existing deployment configuration must explicitly preserve enabled/disabled state; provisioning a DO does not enable previously disabled limiting.
-Queue acknowledgement, retry, and deduplication must follow source terminal/retryable outcomes. [Cloudflare Queues can redeliver][queues-delivery].
+Trigger acknowledgement, retry, and deduplication follow upstream's terminal and retryable outcomes.
 
 Each [integration row](inventory/integrations.tsv) retains slug, catalog metadata, enablement, credential schema, scopes, callbacks, selected calendars, effects, and errors.
 Keep SDK versions where Worker imports/networking work. Replace unsupported transport inside existing provider modules with Fetch/TCP to the same provider contract.
@@ -317,7 +317,7 @@ Retain per-route HTTP errors, tRPC formatting, v2 filters, and source log behavi
 
 Target CI uses frozen Bun install, generated D1/auth schema checks, type/lint checks across consumed workspaces, production vinext/v2/docs builds, and relevant retained unit/integration/browser cases.
 Connect existing runners to built workerd and fresh synthetic D1 before treating green results as port evidence. Keep inherited tests and strict main checks intact.
-Focused probes cover auth projections/expiry, i18n isolation, raw bodies, route precedence, Server Actions/hydration, cache variants/invalidation, D1 rollback, Queue redelivery, and DO TTL/counters.
+Focused probes cover auth projections/expiry, i18n isolation, raw bodies, route precedence, Server Actions/hydration, cache variants/invalidation, D1 rollback, Trigger dispatch/fallback, and DO TTL/counters.
 A complete-product prototype, deployment, or paid resource is not a prerequisite for beginning implementation. Each slice proves its concrete boundary and records remaining external gates.
 Release verification records compressed bundle, CPU, memory, subrequests, D1 workload/parameters, migrations/recovery, and provider effects against current account limits.
 Specification completeness, local behavior, live provider delivery, and deployed acceptance remain separate results. Selected decisions do not establish implementation acceptance.
@@ -344,7 +344,7 @@ Specification completeness, local behavior, live provider delivery, and deployed
 [i18next-load]: https://www.i18next.com/how-to/add-or-load-translations
 [react-provider]: https://react.i18next.com/latest/i18nextprovider
 [d1-batch]: https://developers.cloudflare.com/d1/worker-api/d1-database/#batch
-[queues-delivery]: https://developers.cloudflare.com/queues/reference/delivery-guarantees/
+
 [cf-tcp]: https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/
 [cf-email]: https://developers.cloudflare.com/email-service/get-started/send-emails/
 [cf-email-api]: https://developers.cloudflare.com/email-service/api/send-emails/workers-api/

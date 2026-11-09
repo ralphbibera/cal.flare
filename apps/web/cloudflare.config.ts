@@ -30,11 +30,7 @@ export default defineConfig({
       notFoundHandling: "none",
       runWorkerFirst: ["/*", "!/_next/static/*", "!/*/_next/static/*"],
     },
-    // One message per invocation keeps the source calendars concurrency limit of 10 until DO admission.
-    triggers: [
-      triggers.scheduled({ schedule: "* * * * *" }),
-      triggers.queue({ name: "calflare-jobs", maxBatchSize: 1, maxConcurrency: 10, maxRetries: 10 }),
-    ],
+    triggers: [triggers.scheduled({ schedule: "* * * * *" })],
     env: {
       ...cache.env,
       NEXTAUTH_SECRET: bindings.secret(),
@@ -46,7 +42,6 @@ export default defineConfig({
       EMAIL_SERVER_HOST: textBinding(emailServerHost),
       EMAIL_SERVER_PORT: textBinding(emailServerPort),
       EMAIL_FROM: textBinding(emailFrom),
-      JOBS: bindings.queue({ name: "calflare-jobs" }),
     },
   }),
 });
