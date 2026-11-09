@@ -11,10 +11,10 @@ import { unstable_cache } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactElement } from "react";
-
 import { EventTypesWrapper } from "./EventTypesWrapper";
 
 const getCachedEventGroups: (
+  _userId: number,
   headers: ReadonlyHeaders,
   cookies: ReadonlyRequestCookies,
   filters?: {
@@ -23,7 +23,9 @@ const getCachedEventGroups: (
     upIds?: string[] | undefined;
   }
 ) => Promise<RouterOutputs["viewer"]["eventTypes"]["getUserEventGroups"]> = unstable_cache(
+  // The viewer id is part of the cache key so one user's event types are never served to another.
   async (
+    _userId: number,
     headers: ReadonlyHeaders,
     cookies: ReadonlyRequestCookies,
     filters?: {
@@ -66,7 +68,7 @@ const Page = async ({ searchParams }: PageProps): Promise<ReactElement> => {
   }
 
   const filters = getTeamsFiltersFromQuery(_searchParams);
-  const userEventGroupsData = await getCachedEventGroups(_headers, _cookies, filters);
+  const userEventGroupsData = await getCachedEventGroups(session.user.id, _headers, _cookies, filters);
 
   return <EventTypesWrapper userEventGroupsData={userEventGroupsData} user={session.user} />;
 };
