@@ -35,3 +35,13 @@ diff --git a/dist/shims/internal/api-utils.js b/dist/shims/internal/api-utils.js
 +    this.statusCode = statusCode;
 +  }
 +}
+diff --git a/dist/routing/pages-router.js b/dist/routing/pages-router.js
+--- a/dist/routing/pages-router.js
++++ b/dist/routing/pages-router.js
+@@ -12,0 +13,2 @@ const RESERVED_PAGE_NAMES = /* @__PURE__ */ new Set([
++/** Co-located test files are not routes, matching Next.js's documented pageExtensions intent. */
++const TEST_FILE = /\.(?:test|spec)\.[^./\\]+$/;
+@@ -41,0 +44 @@ async function scanPageRoutes(pagesDir, matcher) {
++		if (TEST_FILE.test(file)) continue;
+@@ -148,0 +152 @@ async function scanApiRoutes(pagesDir, matcher) {
++		if (TEST_FILE.test(file)) continue;

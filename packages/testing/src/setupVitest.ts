@@ -1,4 +1,6 @@
 import process from "node:process";
+import { setFallbackDictionaryLoader } from "@calcom/i18n/loader";
+import { createBundledDictionaryLoader } from "@calcom/i18n/node";
 import type { CalendarService } from "@calcom/types/Calendar";
 import matchers from "@testing-library/jest-dom/matchers";
 import ResizeObserver from "resize-observer-polyfill";
@@ -6,6 +8,8 @@ import { expect, vi } from "vitest";
 import createFetchMock from "vitest-fetch-mock";
 
 global.ResizeObserver = ResizeObserver;
+
+setFallbackDictionaryLoader(createBundledDictionaryLoader());
 
 if (typeof window !== "undefined") {
   Object.defineProperty(window, "matchMedia", {

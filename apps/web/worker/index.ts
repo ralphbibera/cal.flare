@@ -2,6 +2,7 @@ import { EmailMessage } from "cloudflare:email";
 import process from "node:process";
 import manifest from "virtual:calflare-static-assets";
 import { withAuthRequestEnvironment } from "@calcom/features/auth/lib/request-context";
+import { createAssetDictionaryLoader, withDictionaryLoader } from "@calcom/i18n/loader";
 import { withCloudflareEmail } from "@calcom/lib/cloudflareEmailTransport";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
@@ -28,47 +29,50 @@ async function serve(
 ) {
   const e2eD1Response = await handleE2eD1(request, env);
   if (e2eD1Response) return e2eD1Response;
-  return withCloudflareEmail(
-    async ({ from, to, raw }) => {
-      if (!env.EMAIL) {
-        throw new ErrorWithCode(
-          ErrorCode.InternalServerError,
-          "EMAIL binding is required for email delivery"
+  const runtimeEnv = withStaticAssets(env, manifest);
+  return withDictionaryLoader(createAssetDictionaryLoader(runtimeEnv.ASSETS, request.url), () =>
+    withCloudflareEmail(
+      async ({ from, to, raw }) => {
+        if (!runtimeEnv.EMAIL) {
+          throw new ErrorWithCode(
+            ErrorCode.InternalServerError,
+            "EMAIL binding is required for email delivery"
+          );
+        }
+        await runtimeEnv.EMAIL.send(
+          new EmailMessage(
+            from,
+            to,
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(raw);
+                controller.close();
+              },
+            })
+          )
         );
-      }
-      await env.EMAIL.send(
-        new EmailMessage(
-          from,
-          to,
-          new ReadableStream({
-            start(controller) {
-              controller.enqueue(raw);
-              controller.close();
+      },
+      () =>
+        withD1Database(runtimeEnv, () =>
+          withAuthRequestEnvironment(
+            {
+              DB: runtimeEnv.DB,
+              NEXTAUTH_SECRET: runtimeEnv.NEXTAUTH_SECRET,
+              baseURL: process.env.NEXTAUTH_URL || WEBAPP_URL,
+              webappURL: WEBAPP_URL,
+              NEXTAUTH_COOKIE_DOMAIN: process.env.NEXTAUTH_COOKIE_DOMAIN,
+              credentialPolicy: {
+                encryptionKey: process.env.CALENDSO_ENCRYPTION_KEY,
+                isDevelopment: process.env.NODE_ENV === "development",
+                isE2E: Boolean(process.env.NEXT_PUBLIC_IS_E2E),
+                rateLimit: process.env.UNKEY_ROOT_KEY ? "enabled" : "disabled",
+              },
             },
-          })
-        )
-      );
-    },
-    () =>
-      withD1Database(env, () =>
-        withAuthRequestEnvironment(
-          {
-            DB: env.DB,
-            NEXTAUTH_SECRET: env.NEXTAUTH_SECRET,
-            baseURL: process.env.NEXTAUTH_URL || WEBAPP_URL,
-            webappURL: WEBAPP_URL,
-            NEXTAUTH_COOKIE_DOMAIN: process.env.NEXTAUTH_COOKIE_DOMAIN,
-            credentialPolicy: {
-              encryptionKey: process.env.CALENDSO_ENCRYPTION_KEY,
-              isDevelopment: process.env.NODE_ENV === "development",
-              isE2E: Boolean(process.env.NEXT_PUBLIC_IS_E2E),
-              rateLimit: process.env.UNKEY_ROOT_KEY ? "enabled" : "disabled",
-            },
-          },
-          () => handler.fetch(request, withStaticAssets(env, manifest), ctx)
-        )
-      ),
-    (promise) => ctx.waitUntil(promise)
+            () => handler.fetch(request, runtimeEnv, ctx)
+          )
+        ),
+      (promise) => ctx.waitUntil(promise)
+    )
   );
 }
 
