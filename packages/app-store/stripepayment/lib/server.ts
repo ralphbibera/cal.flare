@@ -29,8 +29,11 @@ export type StripeData = z.infer<typeof stripeDataSchema>;
 
 /** Figure out a way to get this from the DB without too much wreckage. */
 const stripePrivateKey = process.env.STRIPE_PRIVATE_KEY || "";
-const stripe = new Stripe(stripePrivateKey, {
-  apiVersion: "2020-08-27",
-});
+const stripeOptions: Stripe.StripeConfig = { apiVersion: "2020-08-27" };
+// Stripe's Node HTTP client never settles in workerd; the Workers runtime exposes fetch and the Cache API.
+if (typeof caches !== "undefined") {
+  stripeOptions.httpClient = Stripe.createFetchHttpClient();
+}
+const stripe = new Stripe(stripePrivateKey, stripeOptions);
 
 export default stripe;
