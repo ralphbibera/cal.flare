@@ -45,6 +45,13 @@ const toICalDateArray = (date: string): DateArray => {
   ] satisfies DateArray;
 };
 
+// ics 3 quotes every parameter value and writes MAILTO in upper case; upstream ics 2 did neither.
+const normalizeIcsParameters = (icsString: string): string =>
+  icsString.replaceAll(":MAILTO:", ":mailto:").replace(/CN="((?:[^"\\]|\\.)*)"/g, (match, value) => {
+    if (/[;,:]|\\"/.test(value)) return match;
+    return `CN=${value}`;
+  });
+
 const generateIcsString = ({
   event,
   status,
@@ -119,7 +126,7 @@ const generateIcsString = ({
     }
     throw icsEvent.error;
   }
-  return icsEvent.value ?? undefined;
+  return icsEvent.value ? normalizeIcsParameters(icsEvent.value) : undefined;
 };
 
 export default generateIcsString;
