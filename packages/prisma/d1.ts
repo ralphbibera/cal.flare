@@ -5,19 +5,33 @@ import type { D1Database } from "@cloudflare/workers-types";
 
 export type D1Environment = { DB: D1Database };
 
+export type D1RequestScope = { readonly database: D1Database };
+
 const storageKey = Symbol.for("calflare.d1.request-storage");
-const shared = globalThis as typeof globalThis & { [storageKey]?: AsyncLocalStorage<D1Database> };
+const shared = globalThis as typeof globalThis & {
+  [storageKey]?: AsyncLocalStorage<D1RequestScope>;
+};
 // Vinext evaluates server modules separately for RSC and Pages/SSR.
-const database = (shared[storageKey] ??= new AsyncLocalStorage<D1Database>());
+const scope = (shared[storageKey] ??= new AsyncLocalStorage<D1RequestScope>());
 
 export function withD1Database<T>(env: D1Environment, callback: () => T): T {
-  return database.run(env.DB, callback);
+  // The worker entry and the auth wrapper both bind the same request; a nested bind
+  // must not restart the scope, or request-scoped clients would be recreated mid-request.
+  if (scope.getStore()?.database === env.DB) return callback();
+  return scope.run({ database: env.DB }, callback);
 }
 
 export function getD1Database(): D1Database {
-  const db = database.getStore();
-  if (!db) throw new ErrorWithCode(ErrorCode.InternalServerError, "D1 request binding is required");
-  return db;
+  const database = scope.getStore()?.database;
+  if (!database) throw new ErrorWithCode(ErrorCode.InternalServerError, "D1 request binding is required");
+  return database;
+}
+
+/** Stable identity for the current request, used to key request-scoped clients. */
+export function getD1RequestScope(): D1RequestScope {
+  const current = scope.getStore();
+  if (!current) throw new ErrorWithCode(ErrorCode.InternalServerError, "D1 request binding is required");
+  return current;
 }
 
 // Prisma's D1 adapter rejects a statement over 98 bound values instead of splitting a long `in` list,

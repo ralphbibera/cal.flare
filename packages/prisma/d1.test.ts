@@ -81,4 +81,26 @@ describe("D1 request context", () => {
     );
     expect(() => entry.getD1Database()).toThrow("D1 request binding is required");
   });
+
+  it("keeps one scope per request so request-scoped clients never cross requests", async () => {
+    const { entry, route } = await separateModules();
+    const scopes = new Set<unknown>();
+    let outer: unknown;
+    await entry.withD1Database({ DB: first }, async () => {
+      outer = route.getD1RequestScope();
+      scopes.add(outer);
+      entry.withD1Database({ DB: first }, () => {
+        // The worker entry and auth wrapper bind the same request; they must share its scope.
+        expect(route.getD1RequestScope()).toBe(outer);
+        scopes.add(route.getD1RequestScope());
+      });
+      expect(route.getD1RequestScope()).toBe(outer);
+    });
+    await entry.withD1Database({ DB: first }, () => {
+      scopes.add(route.getD1RequestScope());
+      expect(route.getD1RequestScope()).not.toBe(outer);
+    });
+    expect(scopes.size).toBe(2);
+    expect(() => route.getD1RequestScope()).toThrow("D1 request binding is required");
+  });
 });

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { D1RequestScope } from "@calcom/prisma/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 // Ensure the shared request-storage instance exists before the Playwright process binds it.
 import "@calcom/prisma/d1";
@@ -20,7 +21,7 @@ const targetSchema = z.object({ database: z.string().min(1), persistence: z.stri
 
 export type LocalD1Target = z.infer<typeof targetSchema>;
 
-type D1RequestStorage = { getStore(): D1Database | undefined };
+type D1RequestStorage = { getStore(): D1RequestScope | undefined };
 
 function runD1Script(script: string): LocalD1Target {
   const stdout = execFileSync("bun", ["run", "--cwd", "packages/prisma", script, "--local-only"], {
@@ -195,9 +196,10 @@ export function bindFixtureD1(db: D1Database): () => void {
   if (!storage) {
     throw new Error("Prisma D1 request storage is unavailable in the Playwright process");
   }
+  const fixtureScope = { database: db };
   const getRequestStore = storage.getStore;
   storage.getStore = function () {
-    return getRequestStore.call(this) ?? db;
+    return getRequestStore.call(this) ?? fixtureScope;
   };
   return () => {
     storage.getStore = getRequestStore;
