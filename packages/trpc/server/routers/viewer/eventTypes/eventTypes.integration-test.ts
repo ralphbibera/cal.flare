@@ -138,6 +138,28 @@ describe("event type create on D1", () => {
     ).toEqual({ userId: user.id, schedulingType: null, users: [{ id: user.id }] });
   });
 
+  it("creates a team event with the team scheduling type and no personal owner", async () => {
+    const user = await createUser("owner");
+    const team = await createTeam("team");
+    const result = await createHandler({
+      ctx: createContext(user),
+      input: {
+        title: "Team intro",
+        slug: "team-intro",
+        length: 30,
+        teamId: team.id,
+        schedulingType: SchedulingType.ROUND_ROBIN,
+        locations: [],
+      },
+    });
+
+    expect(result.eventType).toMatchObject({
+      userId: null,
+      teamId: team.id,
+      schedulingType: SchedulingType.ROUND_ROBIN,
+    });
+  });
+
   it("maps a duplicate slug to BAD_REQUEST and leaves the existing event intact", async () => {
     const user = await createUser("owner");
     await createEventType(user.id, { slug: "taken" });
