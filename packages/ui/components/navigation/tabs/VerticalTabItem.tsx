@@ -44,7 +44,8 @@ const VerticalTabItem = ({
   linkScroll,
   ...props
 }: VerticalTabItemProps) => {
-  const isCurrent = useUrlMatchesCurrentUrl(href) || props?.isActive;
+  const urlMatches = useUrlMatchesCurrentUrl(href);
+  const isCurrent = props?.isActive ?? urlMatches;
   const { t } = useLocale();
 
   return (
