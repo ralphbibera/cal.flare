@@ -78,6 +78,12 @@ test.describe("Change Booking Page Theme Test", () => {
     expect(toast).toBeTruthy();
     //Go to the profile page and check if the theme is dark
     await page.goto(`/${pro.username}`);
+    // next-themes stores the organizer's theme from a post-hydration effect, like the app theme
+    // test above. Wait for that first visit to persist it before reloading to check persistence.
+    await page.waitForFunction(
+      (username) => localStorage.getItem(`booking-theme:${username}`) === "dark",
+      pro.username
+    );
     await page.reload();
     await page.waitForLoadState("domcontentloaded"); // Fix the race condition
     const htmlClass = await page.getAttribute("html", "class");
