@@ -100,6 +100,8 @@ Compatibility-scan dispositions remain explicit. Existing Axiom/BotID rewrite/he
 
 ## Phase 4. Complete delivery, jobs, v2 and remaining product surfaces
 
+API v2 (`apps/api/v2`) is not part of this release. The web app runs without it, and its optional API v2 team-slots path is disabled. The v2 items below and the `D_API` case in the replay item are out of scope.
+
 **Build.**
 
 - [ ] Accept every app-store integration separately, including credential format, enablement, refresh, callbacks, payloads, signatures, failure mapping and link-only catalog behavior.
