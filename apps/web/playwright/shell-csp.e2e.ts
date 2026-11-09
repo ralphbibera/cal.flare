@@ -1,8 +1,8 @@
 import { expect } from "@playwright/test";
 import { test } from "./lib/fixtures";
 
-// Opted-in branch of the pinned CSP middleware. The built Worker can carry a different CSP_POLICY
-// from the runner's .env, so the response decides whether the non-strict policy is in effect.
+// Opted-in branch of the pinned CSP middleware. E2E builds pin CSP_POLICY=non-strict, matching the
+// hosted deployment policy.
 test("adds the nonce and non-strict CSP to login pages when opted in", async ({ request }, testInfo) => {
   const baseURL = testInfo.project.use.baseURL;
   if (!baseURL) throw new Error("NEXT_PUBLIC_WEBAPP_URL is required");
@@ -10,10 +10,8 @@ test("adds the nonce and non-strict CSP to login pages when opted in", async ({ 
   const login = await request.get("/auth/login");
   expect(login.status()).toBe(200);
   const csp = login.headers()["content-security-policy"];
-  if (!csp?.includes("style-src 'self' 'unsafe-inline'")) {
-    test.skip(true, "the Worker was not built with CSP_POLICY=non-strict");
-    return;
-  }
+  if (!csp) throw new Error("expected the login page to carry a CSP header");
+  expect(csp).toContain("style-src 'self' 'unsafe-inline'");
   expect(login.headers()["x-csp-status"]).toBeUndefined();
   const nonce = csp.match(/'nonce-([^']+)'/)?.[1];
   expect(nonce).toBeTruthy();

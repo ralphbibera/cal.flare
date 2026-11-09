@@ -1,4 +1,4 @@
-import { IS_MAILHOG_ENABLED, WEBAPP_URL } from "@calcom/lib/constants";
+import { WEBAPP_URL } from "@calcom/lib/constants";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
@@ -220,8 +220,6 @@ test.describe("Update Profile", () => {
   };
 
   test("Can add a new email as a secondary email", async ({ page, users, prisma, emails }) => {
-    // eslint-disable-next-line playwright/no-skipped-test
-    test.skip(!IS_MAILHOG_ENABLED, "MailHog is not enabled");
     const user = await users.create({
       name: "update-profile-user",
     });

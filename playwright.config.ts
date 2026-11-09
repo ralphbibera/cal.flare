@@ -8,6 +8,9 @@ import dotEnv from "dotenv";
 
 dotEnv.config({ path: ".env" });
 
+// Upstream CI runs MailHog next to the app and enables it for the suite; local e2e does the same.
+process.env.E2E_TEST_MAILHOG_ENABLED ??= "1";
+
 const outputDir = path.join(__dirname, "test-results");
 
 // Dev Server on local can be slow to start up and process requests. So, keep timeouts really high on local, so that tests run reliably locally
