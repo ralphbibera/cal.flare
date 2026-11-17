@@ -17,7 +17,7 @@ The source configuration is `cloudflare.config.ts` beside each app's Vite config
 
 | Application | Required resources |
 | --- | --- |
-| Web | `DB`, `ASSETS`, the scheduler, auth/provider secrets and the selected Response Store cache bindings. |
+| Web | `DB`, `ASSETS`, `EMAIL`, the scheduler, auth and provider secrets, and the selected Response Store cache bindings. Optional `EDGE_CONFIG` KV reads `isSignupDisabled`. |
 | Docs | Its own Static Assets and configured static response handling; no application DB binding. |
 
 Response Store uses its native helper's DO/R2 resources for disposable cached data. D1 remains authoritative for domain and auth records.
@@ -57,8 +57,8 @@ See [Cloudflare D1 setup](https://developers.cloudflare.com/d1/get-started/) and
 
 ## Configure mail and integrations
 
-Set `EMAIL_FROM` and the selected relay credentials. The retained selection order is `RESEND_API_KEY`, `EMAIL_SERVER`, explicit SMTP fields, then the unsupported local-sendmail fallback.
-Use a supported public TLS/STARTTLS relay and preserve the original templates, sender and attachments.
+Set `EMAIL_FROM` to a verified sender address. The transport selection order is `RESEND_API_KEY`, `EMAIL_SERVER`, `EMAIL_SERVER_HOST` with its SMTP settings, and then Cloudflare Email Sending through the `EMAIL` binding on Workers.
+Onboard the sending domain in Cloudflare DNS before using `EMAIL`, or configure a public TLS or STARTTLS SMTP relay. Local sendmail has no Workers executable. Preserve the original templates, sender, and attachments.
 
 Follow [integration setup](integrations.md) for calendar, conferencing, payment, CRM and automation credentials.
 Provider OAuth client secrets are installation configuration. Per-user account tokens remain server-side application records in D1.
