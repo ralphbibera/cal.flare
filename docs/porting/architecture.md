@@ -252,13 +252,15 @@ No cross-provider transaction, exactly-once effect, or stronger global double-bo
 ## Jobs, ephemeral state, and integrations
 
 The web Worker owns the `scheduled` handler. Shared job services stay in original packages.
-One UTC minute dispatcher evaluates product rows from [schedules](inventory/schedules.tsv), including source calendar conditions and monthly last-day guards.
+One UTC minute dispatcher evaluates the nine product rows with a handler from [schedules](inventory/schedules.tsv).
 Existing cron URLs retain methods and authorization. Repository-maintenance schedules and `no-product-handler` rows create no new product job.
 
 | Binding | Selected responsibility and source need |
 | --- | --- |
 | `DB` | Complete domain/auth records, existing Task records, and required delivery state. Same database for both product Workers. |
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
+| `EMAIL` | Default outbound Cloudflare Email Sending transport when `RESEND_API_KEY`, `EMAIL_SERVER`, and `EMAIL_SERVER_HOST` are unset. |
+| `EDGE_CONFIG` | Optional Workers KV namespace read for `isSignupDisabled`. |
 | Trigger.dev (optional) | Upstream's remote async Tasker over HTTPS, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. Uses `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` only after `ENABLE_ASYNC_TASKER="true"`; failed dispatch falls back to inline execution. |
 | Response Store bindings | Native helper-owned DO and R2 cache-body bindings. No provider credentials or authoritative product records belong in this cache. |
 
