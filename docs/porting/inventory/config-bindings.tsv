@@ -41,7 +41,7 @@ E2E_DEV_SERVER	unsupported	none:test-support	Playwright server helper only
 E2E_TEST_CALCOM_GCAL_KEYS	unsupported	none:test-support	Playwright fixture only
 E2E_TEST_CALCOM_QA_GCAL_CREDENTIALS	unsupported	none:test-support	Playwright fixture only
 E2E_TEST_MAILHOG_ENABLED	binding	var:E2E_TEST_MAILHOG_ENABLED	
-EDGE_CONFIG	destination	d1:RuntimeConfig	Edge Config SDK replaced by a D1 RuntimeConfig lookup
+EDGE_CONFIG	destination	kv:EDGE_CONFIG	optional Workers KV namespace for isSignupDisabled; replaces @vercel/edge-config
 EMAIL_FROM	binding	var:EMAIL_FROM	
 EMAIL_FROM_NAME	binding	var:EMAIL_FROM_NAME	
 EMAIL_SERVER	secret	secret:EMAIL_SERVER	
@@ -157,4 +157,4 @@ VERCEL_URL	unsupported	none:host-specific	host detection for non-Workers platfor
 [`${prefix}CURRENT`]	dynamic-lookup	dynamic:CALCOM_KEYRING_CREDENTIALS_CURRENT	keyring prefix is CALCOM_KEYRING_CREDENTIALS_
 [envVar]	dynamic-lookup	dynamic:release-script-env	create-sentry-release.js reads a caller-named variable
 _CAL_INTERNAL_PAST_BOOKING_RESCHEDULE_CHANGE_TEAM_IDS	binding	var:_CAL_INTERNAL_PAST_BOOKING_RESCHEDULE_CHANGE_TEAM_IDS	
-isSignupDisabled	dynamic-lookup	dynamic:RuntimeConfig	read through the request D1 RuntimeConfig lookup
+isSignupDisabled	dynamic-lookup	dynamic:EDGE_CONFIG	read from the optional EDGE_CONFIG KV namespace in apps/web/proxy.ts
