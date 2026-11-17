@@ -80,7 +80,7 @@ source	domain	action	destination
 .github/workflows/unit-tests.yml	D_JOBS	retain-repository-file	.github/workflows/unit-tests.yml
 .gitignore	D_SHELL	retain-repository-file	.gitignore
 .gitpod.yml	D_SHELL	replace-build-tool	git-history/.gitpod.yml
-.husky/pre-commit	D_SHELL	replace-build-tool	git-history/.husky/pre-commit
+.husky/pre-commit	D_SHELL	retain-adapt-in-place	.husky/pre-commit
 .kodiak.toml	D_SHELL	retain-repository-file	.kodiak.toml
 .npmrc	D_SHELL	retain-repository-file	.npmrc
 .opencode/skill/vercel-react-best-practices/AGENTS.md	D_SHELL	retain-repository-file	.opencode/skill/vercel-react-best-practices/AGENTS.md
@@ -7705,7 +7705,7 @@ specs/cancellation-reason-requirement/design.md	D_BOOKING	retain-repository-file
 specs/cancellation-reason-requirement/docs/README.md	D_BOOKING	retain-repository-file	specs/cancellation-reason-requirement/docs/README.md
 specs/cancellation-reason-requirement/future-work.md	D_BOOKING	retain-repository-file	specs/cancellation-reason-requirement/future-work.md
 specs/cancellation-reason-requirement/implementation.md	D_BOOKING	retain-repository-file	specs/cancellation-reason-requirement/implementation.md
-turbo.json	D_SHELL	replace-build-tool	git-history/turbo.json
+turbo.json	D_SHELL	retain-adapt-in-place	turbo.json
 vitest-mocks/svg-hashes.json	D_SHELL	retain-repository-file	vitest-mocks/svg-hashes.json
 vitest-mocks/tailwind.generated.css	D_SHELL	retain-repository-file	vitest-mocks/tailwind.generated.css
 vitest.config.mts	D_SHELL	retain-repository-file	vitest.config.mts
