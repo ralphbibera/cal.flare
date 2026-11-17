@@ -308,7 +308,8 @@ Provide these values through Worker bindings, variables and secrets:
 | `NEXTAUTH_URL` | Public authentication origin and callback configuration. | required |
 | `NEXTAUTH_SECRET` | Installation session/signing secret; generate during [Setup](#setup). | required |
 | `CALENDSO_ENCRYPTION_KEY` | Stable 32-character Cal encryption key; generate during [Setup](#setup). | required |
-| `CRON_API_KEY` | Authentication for retained cron HTTP endpoints. | where consumed |
+| `CRON_API_KEY` | Authentication for retained GitHub-format cron HTTP endpoints. | where consumed |
+| `CRON_SECRET` | Bearer secret protecting Worker-dispatched task and cron HTTP endpoints. | for scheduled tasks |
 | `EMAIL` | Cloudflare Email Sending binding for default outbound mail. | default mail transport |
 | `EMAIL_FROM` | Sender identity for application mail. | for mail delivery |
 | `EDGE_CONFIG` | Optional Workers KV namespace read for `isSignupDisabled`. | optional |

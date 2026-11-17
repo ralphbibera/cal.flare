@@ -34,7 +34,7 @@ D1 is accessed through the `DB` binding, with fresh local state for development.
 
 Generate installation secrets using the commands in [README Setup](../README.md#setup).
 `NEXTAUTH_SECRET` signs sessions; `CALENDSO_ENCRYPTION_KEY` must remain a stable 32-character value for the existing encrypted records.
-`CRON_API_KEY` protects retained cron endpoints. Use an installation value rather than an example key.
+`CRON_API_KEY` and `CRON_SECRET` protect retained cron and scheduled task endpoints. Set `CRON_SECRET` on the web Worker so `/api/tasks/cron` and `/api/tasks/cleanup` do not return `401` during scheduled runs, and use installation values rather than example keys.
 
 For deployment, use [Worker secret bindings](https://developers.cloudflare.com/workers/configuration/secrets/).
 Nonsecret public URLs and flags belong in configuration; passwords, client secrets, API tokens and signing keys belong in secrets.
