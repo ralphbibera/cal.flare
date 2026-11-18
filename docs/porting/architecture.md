@@ -39,7 +39,7 @@ Prefer compatible upstream releases over local dependency patches. The versions 
 
 [Vinext metadata][npm-vinext], [Cloudflare adapter metadata][npm-cf-adapter], [plugin v2 metadata][npm-vite-cf], [cf metadata][npm-cf], and [Node release index][node-index] establish framework and engine pins.
 [Better Auth metadata][npm-ba], [Prisma D1 metadata][npm-d1], [Hono metadata][npm-hono], and [pinned web manifest][pin-web] establish the other selected boundaries.
-Exact-version registry reads succeeded for the new pins. No registry-unavailability blocker remains. A fresh install, peer audit, and Worker import probes remain unexecuted.
+Exact-version registry reads succeeded for the new pins, and no registry-unavailability blocker remains. Frozen Bun installs and built-Worker execution verify these pins in CI.
 Better Auth carries its own Zod 4 and JOSE 6 dependencies. Keep domain Zod 3 and JOSE 4 consumers scoped to their original packages.
 No Astro adapter, `@calflare/runtime`, Next-import codemod, PostgreSQL adapter, Accelerate, Neon, Hyperdrive-to-PG, or Node application server belongs in the target runtime.
 Redis is optional. When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, web and API v2 use that Upstash database. When either is missing, both use `NoopRedisService`.
@@ -140,7 +140,7 @@ Pass existing `NEXTAUTH_SECRET` explicitly for signing, keep `CALENDSO_ENCRYPTIO
 [Better Auth's D1 release documentation][ba-d1] documents native binding detection and D1 batch use. [Database mappings/hooks][ba-db] and [plugins][ba-plugins] provide Cal-specific boundaries.
 `packages/features/auth` replaces NextAuth server/client imports at auth boundaries. Existing page/provider files consume Cal projections rather than Better Auth's default session response.
 Disable stock password sign-in, public stock sign-up, automatic email linking, and stock MFA endpoints where they bypass Cal policy. Cal endpoints create Better Auth sessions only after the existing checks complete.
-Cal.flare cuts over fully to native Better Auth `1.7.15`. `/api/auth` is served by Better Auth's own handler with its native endpoints, cookie and origin checks. No NextAuth wire protocol, cookie name, endpoint or session-compatibility layer is kept, and `next-auth` is removed in a later change.
+Cal.flare cuts over fully to native Better Auth `1.7.15`. `/api/auth` is served by Better Auth's own handler with its native endpoints, cookie and origin checks. No NextAuth wire protocol, cookie name, endpoint, or session-compatibility layer is kept, and `next-auth` is removed from the web dependency graph and `bun.lock`.
 
 | Concern | Binding mapping |
 | --- | --- |
@@ -240,25 +240,27 @@ Use Prisma generation for client/enums/Zod output and `prisma migrate diff` to p
 The pinned `cf` runner applies each SQL file plus its `_calflare_migrations` history insert through `cf d1 raw --batch @<generated.json>`; `--local` targets synthetic D1. Its local explorer does not implement the `d1 query` endpoint.
 Migrations and both product Workers must share the SDK-resolved local DB ID `DB-calflare-web` and persistence root `apps/web/.cloudflare/state` with SDK storage under `v3`; future v2 configuration must preserve both. Remote migration requires separate authorization. No PostgreSQL `prisma migrate deploy` runs.
 Dependent writes and former interactive `$transaction` callbacks become guarded `DB.batch()` statements at their existing repositories.
-[Cloudflare documents batch rollback on failure][d1-batch]. Independent calls, earlier reads, provider HTTP requests, and later queue sends are not part of that transaction.
+[Cloudflare documents batch rollback on failure][d1-batch]. Independent calls, earlier reads, provider HTTP requests, and async task dispatches are not part of that transaction.
 Use SQL subqueries and stable unique keys for dependent generated IDs. `RETURNING` collects committed results; it does not feed JavaScript results into a later prebuilt statement.
 Required-row predicates use constraints or explicit SQL guards that fail the batch. A zero-row update alone is not a rollback signal.
 Preserve caller-visible touched-row counts and Prisma error mappings, including `P2002`, `P2003`, and `P2025`.
 Auth mapping/account writes use the same discipline. Better Auth's native D1 support does not prove custom hooks compose into one atomic operation.
-Where source semantics require durable DB-to-Queue handoff, commit delivery state with the domain change, then send/retry idempotently. Preserve provider idempotency where available.
+Where source semantics require durable task handoff, commit delivery state with the domain change, then dispatch and retry idempotently. Preserve provider idempotency where available.
 Acceptance covers every converted query family, null/date/list round trips, FK/cascade behavior, uniqueness, views, later-statement rollback, and concurrent guarded writes.
 No cross-provider transaction, exactly-once effect, or stronger global double-booking guarantee is claimed.
 
 ## Jobs, ephemeral state, and integrations
 
 The web Worker owns the `scheduled` handler. Shared job services stay in original packages.
-One UTC minute dispatcher evaluates product rows from [schedules](inventory/schedules.tsv), including source calendar conditions and monthly last-day guards.
+One UTC minute dispatcher evaluates the nine product rows with a handler from [schedules](inventory/schedules.tsv).
 Existing cron URLs retain methods and authorization. Repository-maintenance schedules and `no-product-handler` rows create no new product job.
 
 | Binding | Selected responsibility and source need |
 | --- | --- |
 | `DB` | Complete domain/auth records, existing Task records, and required delivery state. Same database for both product Workers. |
 | `ASSETS` | Each app's own public files, fonts, embed output, and built assets. |
+| `EMAIL` | Default outbound Cloudflare Email Sending transport when `RESEND_API_KEY`, `EMAIL_SERVER`, and `EMAIL_SERVER_HOST` are unset. |
+| `EDGE_CONFIG` | Optional Workers KV namespace read for `isSignupDisabled`. |
 | Trigger.dev (optional) | Upstream's remote async Tasker over HTTPS, including `calendars/default_calendars_job` with numeric `userId`, booking notifications, calendar setup, and webhook delivery. Uses `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` only after `ENABLE_ASYNC_TASKER="true"`; failed dispatch falls back to inline execution. |
 | Response Store bindings | Native helper-owned DO and R2 cache-body bindings. No provider credentials or authoritative product records belong in this cache. |
 
@@ -272,7 +274,7 @@ Trigger-hosted execution keeps upstream's machine/OOM tier selection. The Worker
 [Calendar cache][pin-calendar-cache] retains key `apiv2:user:<id>:calendars` and `10_000` ms TTL. [Redis service][pin-redis] separately uses milliseconds for set TTL and seconds for expire.
 Also replace direct `.redis` consumers, not only service methods. [OAuth token cache][pin-token-cache] requires hashes, `expireat`, and `setex`; roles/timezones use direct `EX` caches. Tokens remain authoritative in D1.
 Web [rate-limit policy][pin-limit] keeps source namespaces/windows, ban-list branch, missing-`UNKEY_ROOT_KEY` disabled branch, 5-second fail-open policy, and response shape through hosted Unkey.
-Existing deployment configuration must explicitly preserve enabled/disabled state; provisioning a DO does not enable previously disabled limiting.
+Existing deployment configuration must explicitly preserve enabled and disabled state; leaving `UNKEY_ROOT_KEY` unset keeps rate limiting disabled.
 Trigger acknowledgement, retry, and deduplication follow upstream's terminal and retryable outcomes.
 
 Each [integration row](inventory/integrations.tsv) retains slug, catalog metadata, enablement, credential schema, scopes, callbacks, selected calendars, effects, and errors.
@@ -306,7 +308,7 @@ Do not replace DTO errors with generic Zod envelopes or expose default Hono erro
 
 Docs keeps [the pinned catch-all page][pin-doc-page], layout, theme components, `_meta.ts` navigation, content, anchors, fonts, Callouts, and extensionless URLs on its own origin.
 Use Nextra `4.6.1`'s exported `compileMdx` at build time with its existing MDX/theme behavior. A build manifest supplies page imports, page map, metadata, TOC, and static params to existing entries.
-Nextra's webpack plugin is not asserted portable. Replace that loading boundary; retain Nextra React components and `mdx-components.tsx` rather than rewriting the site shell.
+Nextra's webpack plugin is not asserted portable. Replace that loading boundary; retain Nextra React components and `mdx-components.ts` rather than rewriting the site shell.
 Docs selects vinext Static Assets response caching with all docs paths prerendered, no data cache, and no image optimization. Pagefind indexes final rendered HTML into `public/_pagefind`.
 [Nextra exports][npm-nextra] and [pinned dispatcher][pin-doc-page] establish inputs, not an executed Vite integration. The docs slice must compile every page and compare navigation/search/theme output.
 
@@ -317,7 +319,7 @@ Retain per-route HTTP errors, tRPC formatting, v2 filters, and source log behavi
 
 Target CI uses frozen Bun install, generated D1/auth schema checks, type/lint checks across consumed workspaces, production vinext/v2/docs builds, and relevant retained unit/integration/browser cases.
 Connect existing runners to built workerd and fresh synthetic D1 before treating green results as port evidence. Keep inherited tests and strict main checks intact.
-Focused probes cover auth projections/expiry, i18n isolation, raw bodies, route precedence, Server Actions/hydration, cache variants/invalidation, D1 rollback, Trigger dispatch/fallback, and DO TTL/counters.
+Focused probes cover auth projections and expiry, i18n isolation, raw bodies, route precedence, Server Actions and hydration, cache variants and invalidation, D1 rollback, and Trigger dispatch and fallback.
 A complete-product prototype, deployment, or paid resource is not a prerequisite for beginning implementation. Each slice proves its concrete boundary and records remaining external gates.
 Release verification records compressed bundle, CPU, memory, subrequests, D1 workload/parameters, migrations/recovery, and provider effects against current account limits.
 Specification completeness, local behavior, live provider delivery, and deployed acceptance remain separate results. Selected decisions do not establish implementation acceptance.
@@ -333,7 +335,7 @@ Specification completeness, local behavior, live provider delivery, and deployed
 [npm-cf]: https://registry.npmjs.org/cf/1.0.0-beta.27
 [node-index]: https://nodejs.org/dist/index.json
 [npm-ba]: https://registry.npmjs.org/better-auth/1.7.15
-[npm-d1]: https://registry.npmjs.org/@prisma%2fadapter-d1/6.16.1
+[npm-d1]: https://registry.npmjs.org/@prisma%2fadapter-d1/6.16.3
 [npm-hono]: https://registry.npmjs.org/hono/4.13.16
 [npm-nextauth]: https://registry.npmjs.org/next-auth/4.24.15
 [npm-nextra]: https://registry.npmjs.org/nextra/4.6.1

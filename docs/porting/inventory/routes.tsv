@@ -318,7 +318,7 @@ apps/web/app/icons/page.tsx	D_SHELL	app-page	/icons	apps/web/app/icons/page.tsx	
 apps/web/app/page.tsx	D_SHELL	app-page	/	apps/web/app/page.tsx	GET
 apps/web/app/reschedule/[uid]/embed/page.tsx	D_EMBEDS	app-page	/reschedule/[uid]/embed	apps/web/app/reschedule/[uid]/embed/page.tsx	GET
 apps/web/app/reschedule/[uid]/page.tsx	D_BOOKING	app-page	/reschedule/[uid]	apps/web/app/reschedule/[uid]/page.tsx	GET
-apps/web/pages/api/auth/[...nextauth].ts	D_AUTH	pages-api	/api/auth/[...nextauth]	apps/web/pages/api/auth/[...nextauth].ts	handler-dispatch
+apps/web/pages/api/auth/[...nextauth].ts	D_AUTH	pages-api	/api/auth/[...all]	apps/web/pages/api/auth/[...all].ts	handler-dispatch
 apps/web/pages/api/auth/verify-email.ts	D_AUTH	pages-api	/api/auth/verify-email	apps/web/pages/api/auth/verify-email.ts	handler-dispatch
 apps/web/pages/api/book/event.ts	D_BOOKING	pages-api	/api/book/event	apps/web/pages/api/book/event.ts	handler-dispatch
 apps/web/pages/api/book/recurring-event.test.ts	D_BOOKING	pages-api	/api/book/recurring-event.test	apps/web/pages/api/book/recurring-event.test.ts	handler-dispatch

@@ -16,10 +16,10 @@
     "D_SETTINGS": 213,
     "D_SHELL": 2723
   },
-  "environment_references": 553,
+  "environment_references": 554,
   "integration_metadata": 106,
   "pin": "e8afecd163cd3a0a3ff279bd4721aa7f073c4685",
-  "routes_and_v2_decorators": 362,
+  "routes_and_v2_decorators": 361,
   "schedule_entries": 21,
   "schedule_source_files": 12,
   "source_files": 7712

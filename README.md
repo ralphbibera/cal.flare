@@ -276,7 +276,7 @@ Executable doesn't exist at /Users/alice/Library/Caches/ms-playwright/chromium-1
 
 ### Cloudflare Workers
 
-Use the native vinext Cloudflare integration and each application's `vite.config.ts` and `cloudflare.config.ts`.
+Use the native vinext Cloudflare integration and each application's `vite.config.mts` and `cloudflare.config.ts`.
 The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secrets, D1 and deployment configuration.
 
 #### Requirements
@@ -284,7 +284,9 @@ The [Cloudflare setup guide](docs/cloudflare.md) covers local development, secre
 - **Cloudflare Workers Paid is required to deploy Cal.flare.**
 - The web Worker uses the authoritative D1 database.
 - `ASSETS` serves public files, fonts, embeds and built output.
+- `EMAIL` sends outbound mail through Cloudflare Email Sending unless an explicit Resend or SMTP transport is configured.
 - The web Worker uses the selected cache bindings for cache resources.
+- The optional `EDGE_CONFIG` KV namespace supplies the `isSignupDisabled` flag when bound.
 - The upstream Trigger.dev tasker is optional. Tasks run inline unless `ENABLE_ASYNC_TASKER="true"`, `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` are all set.
 - The docs application has its own static assets and no application database binding.
 
@@ -306,11 +308,14 @@ Provide these values through Worker bindings, variables and secrets:
 | `NEXTAUTH_URL` | Public authentication origin and callback configuration. | required |
 | `NEXTAUTH_SECRET` | Installation session/signing secret; generate during [Setup](#setup). | required |
 | `CALENDSO_ENCRYPTION_KEY` | Stable 32-character Cal encryption key; generate during [Setup](#setup). | required |
-| `CRON_API_KEY` | Authentication for retained cron HTTP endpoints. | where consumed |
+| `CRON_API_KEY` | Authentication for retained GitHub-format cron HTTP endpoints. | where consumed |
+| `CRON_SECRET` | Bearer secret protecting Worker-dispatched task and cron HTTP endpoints. | for scheduled tasks |
+| `EMAIL` | Cloudflare Email Sending binding for default outbound mail. | default mail transport |
 | `EMAIL_FROM` | Sender identity for application mail. | for mail delivery |
+| `EDGE_CONFIG` | Optional Workers KV namespace read for `isSignupDisabled`. | optional |
 
-Mail uses `RESEND_API_KEY`, `EMAIL_SERVER`, or the existing SMTP host/port/user/password fields.
-Use a supported public TLS/STARTTLS relay on Workers; local sendmail is not available there.
+Mail checks `RESEND_API_KEY`, `EMAIL_SERVER`, and `EMAIL_SERVER_HOST` in that order, then defaults to Cloudflare Email Sending through `EMAIL` on Workers.
+Cloudflare Email Sending requires a verified sending domain in Cloudflare DNS. External SMTP relays must use public TLS or STARTTLS because Workers has no local sendmail executable.
 Store private values as Worker secrets. Use ignored `.dev.vars` files for local development, and configure each consuming Worker.
 
 ##### Build-time variables
