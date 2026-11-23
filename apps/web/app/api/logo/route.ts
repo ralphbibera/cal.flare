@@ -22,6 +22,32 @@ import { z } from "zod";
 
 const log = logger.getSubLogger({ prefix: ["[api/logo]"] });
 
+interface AssetsBinding {
+  fetch(request: Request): Promise<Response>;
+}
+
+function isWorkersRuntime() {
+  return typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+}
+
+async function getAssetsBinding(): Promise<AssetsBinding | undefined> {
+  if (!isWorkersRuntime()) return undefined;
+  // @ts-expect-error The app and Worker tsconfigs resolve cloudflare:workers differently.
+  const { env }: { env: { ASSETS?: AssetsBinding }; _: never } = await import("cloudflare:workers");
+  return env.ASSETS;
+}
+
+// On Workers, WEBAPP_URL resolves to this same Worker and workerd rejects the self-fetch.
+async function fetchTrustedLogo(url: string): Promise<Response> {
+  const assets = await getAssetsBinding();
+  if (assets) {
+    const assetUrl = new URL(url);
+    assetUrl.pathname = assetUrl.pathname.replace(/\/{2,}/g, "/");
+    return assets.fetch(new Request(assetUrl));
+  }
+  return fetch(url);
+}
+
 function removePort(url: string) {
   return url.replace(/:\d+$/, "");
 }
@@ -194,7 +220,7 @@ async function getHandler(request: NextRequest) {
 
     // Internal URLs (fallbacks from WEBAPP_URL) are trusted
     if (isTrustedInternalUrl(filteredLogo, WEBAPP_URL)) {
-      response = await fetch(filteredLogo);
+      response = await fetchTrustedLogo(filteredLogo);
     }
     // External URLs (including data URLs) need SSRF validation
     else {
@@ -202,7 +228,7 @@ async function getHandler(request: NextRequest) {
       if (!validation.isValid) {
         logBlockedSSRFAttempt(filteredLogo, validation.error || "Unknown", { subdomain });
         // Graceful degradation: use default logo instead of error
-        response = await fetch(logoDefinition.fallback);
+        response = await fetchTrustedLogo(logoDefinition.fallback);
       } else {
         response = await fetch(filteredLogo, {
           signal: AbortSignal.timeout(10000), // 10s conservative timeout

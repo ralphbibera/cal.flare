@@ -1,13 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withD1Database } from "@calcom/prisma/d1";
 import { migrateD1 } from "@calcom/prisma/migrate-d1.mjs";
 import { Miniflare } from "miniflare";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { GET } from "../route";
 
+const assets = vi.hoisted(() => ({ requests: [] as string[], fetch: vi.fn() }));
+vi.mock("cloudflare:workers", () => ({ env: { ASSETS: { fetch: assets.fetch } } }));
 vi.mock("@calcom/lib/constants", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@calcom/lib/constants")>()),
   IS_SELF_HOSTED: false,
@@ -85,5 +87,43 @@ describe("team logo lookup", () => {
     } finally {
       fetchLogo.mockRestore();
     }
+  });
+
+  afterEach(() => {
+    assets.requests.length = 0;
+    assets.fetch.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it("reads the fallback logo from Worker static assets without network self-fetch", async () => {
+    const logoBytes = await readFile(
+      new URL("../../../../public/calcom-logo-white-word.svg", import.meta.url)
+    );
+    assets.fetch.mockImplementation(async (request: Request) => {
+      const pathname = new URL(request.url).pathname;
+      assets.requests.push(pathname);
+      if (pathname === "/calcom-logo-white-word.svg") {
+        return new Response(new Uint8Array(logoBytes), {
+          headers: { "content-type": "image/svg+xml" },
+        });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+    vi.stubGlobal("navigator", { userAgent: "Cloudflare-Workers" });
+    const fetchMock = vi.fn(async () => {
+      throw new Error("unexpected self-fetch");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://app.cal.local:3000/api/logo", {
+      headers: { host: "app.cal.local:3000" },
+    });
+    const response = await withD1Database({ DB: db }, () => GET(request, { params: Promise.resolve({}) }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/svg+xml");
+    expect(assets.requests).toEqual(["/calcom-logo-white-word.svg"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(logoBytes);
   });
 });
