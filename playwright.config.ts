@@ -204,6 +204,11 @@ const config: PlaywrightTestConfig = {
   ],
 };
 
+function isTransparentBackground(background: string): boolean {
+  const normalized = background.trim().toLowerCase().replace(/\s/g, "");
+  return normalized === "transparent" || normalized === "none" || normalized === "rgba(0,0,0,0)";
+}
+
 export type ExpectedUrlDetails = {
   searchParams?: Record<string, string | string[]>;
   pathname?: string;
@@ -316,7 +321,7 @@ expect.extend({
     });
     expect(initialValuesSet).toBe(true);
     expect(visibilityBefore).toBe("hidden");
-    expect(backgroundBefore).toBe("transparent");
+    expect(isTransparentBackground(backgroundBefore)).toBe(true);
 
     const { visibility: visibilityAfter, background: backgroundAfter } = await iframe.evaluate(() => {
       return {
@@ -326,7 +331,7 @@ expect.extend({
     });
 
     expect(visibilityAfter).toBe("visible");
-    expect(backgroundAfter).toBe("transparent");
+    expect(isTransparentBackground(backgroundAfter)).toBe(true);
     if (!iframeReadyEventDetail) {
       return {
         pass: false,

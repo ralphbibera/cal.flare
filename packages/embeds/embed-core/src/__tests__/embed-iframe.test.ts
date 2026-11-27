@@ -357,6 +357,34 @@ describe("embed-iframe", async () => {
     });
   });
 
+  describe("hasTransparentBackground", () => {
+    it("accepts browser serializations of a transparent background", async () => {
+      const { hasTransparentBackground } = await import("../embed-iframe");
+
+      expect(hasTransparentBackground({ backgroundColor: "transparent", backgroundImage: "initial" })).toBe(
+        true
+      );
+      expect(hasTransparentBackground({ backgroundColor: "transparent", backgroundImage: "none" })).toBe(
+        true
+      );
+      expect(hasTransparentBackground({ backgroundColor: "initial", backgroundImage: "none" })).toBe(true);
+      expect(hasTransparentBackground({ backgroundColor: "rgba(0, 0, 0, 0)", backgroundImage: "none" })).toBe(
+        true
+      );
+    });
+
+    it("rejects opaque colors and background images", async () => {
+      const { hasTransparentBackground } = await import("../embed-iframe");
+
+      expect(
+        hasTransparentBackground({ backgroundColor: "rgb(255, 255, 255)", backgroundImage: "none" })
+      ).toBe(false);
+      expect(
+        hasTransparentBackground({ backgroundColor: "transparent", backgroundImage: 'url("/bg.png")' })
+      ).toBe(false);
+    });
+  });
+
   describe("useSlotsViewOnSmallScreen parameter parsing", () => {
     let embedStore: typeof import("../embed-iframe/lib/embedStore").embedStore;
 

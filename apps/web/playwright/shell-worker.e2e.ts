@@ -49,7 +49,8 @@ test("keeps client navigation and browser history inside the shell", async ({ pa
   await user.apiLogin();
   const documents: string[] = [];
   page.on("request", (request) => {
-    if (request.resourceType() === "document") documents.push(request.url());
+    if (request.resourceType() === "document" && request.isNavigationRequest())
+      documents.push(request.url());
   });
 
   await page.goto("/more");
@@ -78,7 +79,8 @@ test("keeps client navigation and browser history inside the shell", async ({ pa
 test("submits the sign-in form through the Worker without a document reload", async ({ page }) => {
   const documents: string[] = [];
   page.on("request", (request) => {
-    if (request.resourceType() === "document") documents.push(request.url());
+    if (request.resourceType() === "document" && request.isNavigationRequest())
+      documents.push(request.url());
   });
 
   await page.goto("/auth/login");

@@ -166,7 +166,7 @@
     "@cloudflare/vite-plugin": "2.0.0-beta.v.11",
     "@cloudflare/workers-types": "4.20260702.1",
     "@microsoft/microsoft-graph-types-beta": "0.15.0-preview",
-    "@playwright/test": "1.57.0",
+    "@playwright/test": "1.65.1",
     "@tailwindcss/postcss": "4.1.15",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
