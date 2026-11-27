@@ -29,11 +29,12 @@ export const OnboardingView = ({ userEmail }: OnboardingViewProps) => {
   const hasTeamMembership = false;
   const isPendingMembership = false;
 
-  // Reset onboarding data when visiting this page, but preserve the selected plan
   useEffect(() => {
     resetOnboardingPreservingPlan();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetOnboardingPreservingPlan]);
+    if (selectedPlan !== "personal") {
+      setSelectedPlan("personal");
+    }
+  }, [resetOnboardingPreservingPlan, selectedPlan, setSelectedPlan]);
 
   // If user has any team membership (pending or accepted), redirect them directly to personal onboarding
   // This handles the case where users sign up with an invite token (membership is auto-accepted)
@@ -118,9 +119,8 @@ export const OnboardingView = ({ userEmail }: OnboardingViewProps) => {
     },
   ];
 
-  // Only show organization plan for company emails
   const plans = allPlans.filter((plan) => {
-    if (plan.id === "organization") {
+    if (plan.id === "organization" || plan.id === "team") {
       return false;
     }
     return true;
