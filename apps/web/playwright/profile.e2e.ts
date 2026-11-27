@@ -229,6 +229,7 @@ test.describe("Update Profile", () => {
     await user.apiLogin();
     await page.goto("/settings/my-account/profile");
     await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(500);
 
     await page.getByTestId("add-secondary-email").click();
 
@@ -290,6 +291,8 @@ test.describe("Update Profile", () => {
 
     await user.apiLogin();
     await page.goto("/settings/my-account/profile");
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(500);
 
     await page.getByTestId("add-secondary-email").click();
 
