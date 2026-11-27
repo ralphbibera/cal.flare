@@ -312,6 +312,18 @@ function makeBodyVisible() {
   });
 }
 
+export function hasTransparentBackground(
+  style: Pick<CSSStyleDeclaration, "backgroundColor" | "backgroundImage">
+): boolean {
+  const backgroundColor = style.backgroundColor.trim().toLowerCase().replace(/\s/g, "");
+  const backgroundImage = style.backgroundImage.trim().toLowerCase();
+  const transparentColor = ["", "initial", "transparent", "rgba(0,0,0,0)"].includes(
+    backgroundColor
+  );
+  const noImage = ["", "initial", "none"].includes(backgroundImage);
+  return transparentColor && noImage;
+}
+
 /**
  * On an embed page, there are two changes done
  * - Body is made invisible
@@ -323,7 +335,7 @@ function showPageAsNonEmbed() {
   makeBodyVisible();
   resetTransparentBackground();
   function resetTransparentBackground() {
-    if (document.body.style.background === "transparent") {
+    if (hasTransparentBackground(document.body.style)) {
       document.body.style.background = "";
     }
   }
